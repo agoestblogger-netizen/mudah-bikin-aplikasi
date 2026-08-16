@@ -400,32 +400,44 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       for (const endpoint of candidateEndpoints) {
         const urlWithKey = `${endpoint}?key=${geminiApiKey}`;
-        const res = await fetch(urlWithKey, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': geminiApiKey || ''
-          },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: systemPrompt }]
+        let attempts = 0;
+        while (attempts < 3) {
+          attempts++;
+          const res = await fetch(urlWithKey, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': geminiApiKey || ''
             },
-            contents: geminiContents,
-            generationConfig: {
-              temperature: 0.4,
-              maxOutputTokens: 8192
-            }
-          })
-        });
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: systemPrompt }]
+              },
+              contents: geminiContents,
+              generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: 8192
+              }
+            })
+          });
 
-        const data = await res.json();
-        if (res.ok && data.candidates && data.candidates.length > 0) {
-          geminiData = data;
-          usedEndpoint = endpoint;
-          break;
-        } else {
-          attemptErrors.push(`[${endpoint.split('/models/')[1]}]: ${data.error?.message || res.statusText || 'unknown'}`);
+          const data = await res.json();
+          if (res.ok && data.candidates && data.candidates.length > 0) {
+            geminiData = data;
+            usedEndpoint = endpoint;
+            break;
+          } else {
+            const msg = data.error?.message || res.statusText || 'unknown';
+            if ((msg.toLowerCase().includes('high demand') || res.status === 429 || res.status === 503) && attempts < 3) {
+              console.log(`Gemini ${endpoint.split('/models/')[1]} high demand, retrying in ${1200 * attempts}ms...`);
+              await new Promise(r => setTimeout(r, 1200 * attempts));
+              continue;
+            }
+            attemptErrors.push(`[${endpoint.split('/models/')[1]}]: ${msg}`);
+            break;
+          }
         }
+        if (geminiData) break;
       }
 
       if (!geminiData || !geminiData.candidates?.[0]) {
