@@ -25,13 +25,13 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.OPENAI_API_KEY;
 
-    // BASE SYSTEM PROMPT DENGAN 11 PRINSIP TERVALIDASI
+    // BASE SYSTEM PROMPT DENGAN 13 PRINSIP TERVALIDASI
     let systemPrompt = `Anda adalah AI Generator Aplikasi dari platform "Mudah Bikin Aplikasi" (Basic Tier / MVP).
-Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
+Tugas Anda adalah memandu pengguna non-programmer melalui seluruh siklus hidup pembuatan aplikasi web fungsional.
 
-11 PRINSIP TERVALIDASI WAJIB:
+PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 1. ARSITEKTUR STATE & DATA AWAL WAJIB (DILARANG ARRAY KOSONG): Variabel state array DILARANG KERAS diinisialisasi kosong (misal: \`let items = [];\`). State WAJIB langsung memiliki 3-5 item dummy contoh realistis lengkap (contoh: \`let items = [{ id: '1', nama: 'Kopi Susu', kategori: 'Minuman', harga: 15000 }, { id: '2', nama: 'Roti Bakar', kategori: 'Makanan', harga: 12000 }, { id: '3', nama: 'Teh Manis', kategori: 'Minuman', harga: 6000 }];\`). Selalu render tampilan melalui fungsi \`render()\`.
-2. FUNGSIONAL PENUH: Tombol aksi (Tambah, Edit, Hapus) WAJIB berfungsi nyata memanipulasi array state di memori dan memanggil \`render()\` di baris terakhir. Tipe data ID konsisten string.
+2. FUNGSIONAL PENUH PADA SETIAP TITIK RILIS / REVISI: Tombol aksi (Tambah, Edit, Hapus) WAJIB berfungsi nyata memanipulasi array state di memori dan memanggil \`render()\` di baris terakhir. Tipe data ID konsisten string.
 3. ANTI-CUTOFF: Render loop .map() pada tabel / kartu list dari 3-5 item dummy tersebut. Jangan hardcode baris tabel secara manual di HTML, render melalui JS loop.
 4. 3 CHECKLIST EKSPLISIT: Data, Tombol/Aksi, Login/Akses.
 5. FITUR ADMIN DI-GATE: Fitur Tambah User aktif tapi tersembunyi di balik role Admin.
@@ -58,7 +58,7 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
     - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
     - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.`;
 
-    // ATURAN KHUSUS PER TAHAP SESUAI PRD:
+    // ATURAN KHUSUS TAHAP:
     if (stage === 'TAHAP_1_PEMBUKAAN') {
       systemPrompt += `\n\nATURAN TAHAP 1 (PEMBUKAAN SINGKAT):
 - Gali SEDIKIT detail minimal untuk membangun mockup pertama (jenis aplikasi, target user, 2-3 fitur inti).
@@ -66,10 +66,11 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
 - JANGAN langsung tampilkan checklist formal di awal.
 - ATURAN KHUSUS "BUATKAN LANGSUNG": Jika pengguna mengatakan "buatkan saja", "terserah kamu", "kamu putuskan sendiri", "buatkan langsung", "tanpa tanya lagi", atau sejenisnya di tengah percakapan, AI WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP DALAM BLOK \`\`\`html ... \`\`\`. DILARANG KERAS menanyakan pertanyaan lanjutan atau hanya memberikan teks ringkasan!`;
     } else if (stage === 'TAHAP_5_PATCH') {
-      systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / PATCH):
-- Pengguna meminta penambahan/revisi fitur baru.
-- JANGAN merombak atau generate ulang semua konsep dari awal tanpa alasan.
-- Berikan PENJELASAN SINGKAT bagian yang berubah + KODE HTML LENGKAP TER-UPDATE (agar preview iframe tetap bisa me-render file utuh).`;
+      systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
+- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks).
+- PERINGATAN INTEGRITAS FUNGSIONAL: Anda WAJIB mempertahankan SEMUA kode JavaScript yang sudah berfungsi sebelumnya (array data 3-5 item contoh, render(), tambahItem, editItem, hapusItem, modal, event listener).
+- DILARANG KERAS menghilangkan fungsi-fungsi JavaScript atau mengosongkan tag <script> saat melakukan revisi styling CSS atau HTML.
+- Berikan KODE HTML UTUH LENGKAP (termasuk tag <style> dan <script> utuh yang 100% berfungsi) di dalam blok \`\`\`html ... \`\`\`.`;
     } else if (stage === 'TAHAP_6_TROUBLESHOOTING') {
       systemPrompt += `\n\nATURAN TAHAP 6 (PENANGANAN KENDALA):
 - Pengguna melaporkan error/blank/masalah.
@@ -88,6 +89,12 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
       });
     }
 
+    // Susun Prompt dengan Konteks Kode Terkini (jika sedang dalam revisi / patch)
+    let userPromptWithContext = prompt;
+    if (stage === 'TAHAP_5_PATCH' && currentCode) {
+      userPromptWithContext = `KODE HTML & JS SAAT INI YANG SUDAH BERJALAN AKTIF:\n\`\`\`html\n${currentCode}\n\`\`\`\n\nPERMINTAAN REVISI DARI PENGGUNA: "${prompt}".\n\nINSTRUKSI KHUSUS NFR-10b (VALIDASI FUNGSIONAL LENGKAP): Terapkan perubahan yang diminta pengguna di atas, namun TETAP PERTAHANKAN seluruh fungsi JavaScript, array data 3-5 item dummy, tombol Tambah/Edit/Hapus, dan render() agar tetap 100% berfungsi. Kembalikan KODE HTML LENGKAP UTUH di dalam blok \`\`\`html ... \`\`\`.`;
+    }
+
     // OpenAI Server-Side Dynamic API Call
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -95,7 +102,7 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
         role: m.sender === 'USER' ? 'user' : 'assistant',
         content: m.text
       })),
-      { role: 'user', content: prompt }
+      { role: 'user', content: userPromptWithContext }
     ];
 
     let response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -108,7 +115,7 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
         model: 'gpt-4o-mini',
         messages,
         max_tokens: 3500,
-        temperature: 0.6
+        temperature: 0.5
       })
     });
 
@@ -116,18 +123,16 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
     let assistantMessage = data.choices?.[0]?.message?.content || '';
     let finishReason = data.choices?.[0]?.finish_reason;
 
-    // ANTI-CUTOFF 2 LAPIS (DIPERBAIKI: Menggunakan hitungan backtick genap/ganjil untuk mencegah false-positive retry loop)
+    // ANTI-CUTOFF 2 LAPIS
     let retryCount = 0;
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
       const isFinishReasonLength = finishReason === 'length';
       
-      // Cek apakah ada blok kode html yang belum tertutup
       const backtickMatches = assistantMessage.match(/```/g) || [];
       const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
 
-      // Jika tidak ada cutoff dan blok kode sudah tertutup, keluar dari loop
       if (!isFinishReasonLength && !isCodeBlockUnclosed) {
         break;
       }
@@ -158,7 +163,6 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
       const contText = contData.choices?.[0]?.message?.content || '';
       finishReason = contData.choices?.[0]?.finish_reason;
 
-      // Jika AI menolak/tidak bisa melanjutkan (misal sudah selesai), jangan append duplikasi kalimat penolakan
       if (contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
         break;
       }
@@ -174,18 +178,58 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
       htmlCode = match[1].trim();
     }
 
-    const validated = htmlCode ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
+    // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan di Awal dan Setiap Revisi)
+    let validated = htmlCode ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
+
+    // NFR-10b: Pemeriksaan Integritas Fungsionalitas Otomatis
+    if (validated && validated.repairedCode && validated.repairedCode.html) {
+      const finalHtml = validated.repairedCode.html;
+      const hasScriptTag = finalHtml.includes('<script>') || finalHtml.includes('<script ');
+      const hasRenderFunction = finalHtml.includes('function render') || finalHtml.includes('render()');
+      
+      // Jika saat revisi script JS tidak sengaja hilang, coba minta perbaikan satu kali (NFR-10b)
+      if (currentCode && (!hasScriptTag || !hasRenderFunction)) {
+        console.warn('NFR-10b triggered: Script was dropped during revision, requesting immediate AI functional recovery.');
+        const repairPrompt = [
+          ...messages,
+          { role: 'assistant', content: assistantMessage },
+          { role: 'user', content: 'PERINGATAN NFR-10b: Kode yang Anda berikan tidak menyertakan script JavaScript fungsional (<script> atau render()). Mohon gabungkan kembali perubahan styling/HTML tersebut dengan seluruh script JavaScript interaktif (array data 3-5 item, tambah, edit, hapus, modal) dan berikan kode HTML utuh dalam ```html ... ```.' }
+        ];
+
+        const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: repairPrompt,
+            max_tokens: 3500,
+            temperature: 0.3
+          })
+        });
+
+        const repairData = await repairRes.json();
+        const repairMsg = repairData.choices?.[0]?.message?.content || '';
+        const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
+        if (repairMatch) {
+          htmlCode = repairMatch[1].trim();
+          assistantMessage = repairMsg;
+          validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+        }
+      }
+    }
+
     const hasValidCode = Boolean(validated && validated.repairedCode && validated.repairedCode.html && validated.repairedCode.html.trim().length > 0);
 
     // Format Pesan Teks Chat Bersih & Jujur
     let cleanReplyText = '';
     if (match) {
       if (hasValidCode) {
-        // Ganti blok kode di chat dengan notifikasi sukses yang informatif
-        cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil dibangun dan telah dimuat langsung ke Canvas Preview di panel kanan.**').trim();
+        cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil diperbarui dan dimuat langsung ke Canvas Preview.**').trim();
       } else {
-        // Jika kode kosong / gagal divalidasi, laporkan dengan jujur
-        cleanReplyText = 'Maaf, prototipe kode belum berhasil dibuat dengan lengkap. Silakan kirimkan instruksi ulang.';
+        cleanReplyText = 'Maaf, pembuatan/pembaruan kode belum berhasil memenuhi standar validasi fungsional. Silakan kirimkan instruksi ulang.';
       }
     } else {
       cleanReplyText = assistantMessage.trim();
