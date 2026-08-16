@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { validateAndRepairGeneratedCode } from '@/lib/codeValidator';
 import { checkRateLimit } from '@/lib/rateLimiter';
 
-export const maxDuration = 60; // Max timeout for Next.js Serverless Function
+export const maxDuration = 300; // 300 detik (5 menit) dengan Vercel Fluid Compute
 
 export async function POST(req: Request) {
   try {
@@ -115,7 +115,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages,
-        max_tokens: 2500,
+        max_tokens: 8192,
         temperature: 0.5
       })
     });
@@ -124,9 +124,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     let assistantMessage = data.choices?.[0]?.message?.content || '';
     let finishReason = data.choices?.[0]?.finish_reason;
 
-    // ANTI-CUTOFF EFISIEN (Maksimal 1 kali lanjutan cepat agar aman dari batas 60 detik)
+    // ANTI-CUTOFF 2 LAPIS LENGKAP (4 Ronde Maksimal)
     let retryCount = 0;
-    const maxRetries = 1;
+    const maxRetries = 4;
 
     while (retryCount < maxRetries) {
       const isFinishReasonLength = finishReason === 'length';
@@ -155,7 +155,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: continuationMessages,
-          max_tokens: 1800,
+          max_tokens: 4096,
           temperature: 0.3
         })
       });
