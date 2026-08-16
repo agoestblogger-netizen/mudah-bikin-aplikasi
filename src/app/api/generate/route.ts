@@ -386,24 +386,30 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         });
       }
 
-      const candidateModels = [
-        process.env.GEMINI_MODEL,
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-pro-latest',
-        'gemini-2.0-flash-exp',
-        'gemini-1.5-flash',
-        'gemini-1.5-pro'
-      ].filter(Boolean) as string[];
+      const candidateEndpoints = [
+        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || 'gemini-1.5-flash'}:generateContent`,
+        `https://generativelanguage.googleapis.com/v1/models/${process.env.GEMINI_MODEL || 'gemini-1.5-flash'}:generateContent`,
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+        'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent'
+      ];
 
       let geminiData: any = null;
-      let usedModel = '';
+      let usedEndpoint = '';
       const attemptErrors: string[] = [];
 
-      for (const modelName of candidateModels) {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
-        const res = await fetch(endpoint, {
+      for (const endpoint of candidateEndpoints) {
+        const urlWithKey = `${endpoint}?key=${geminiApiKey}`;
+        const res = await fetch(urlWithKey, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiApiKey || ''
+          },
           body: JSON.stringify({
             systemInstruction: {
               parts: [{ text: systemPrompt }]
@@ -419,10 +425,10 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         const data = await res.json();
         if (res.ok && data.candidates && data.candidates.length > 0) {
           geminiData = data;
-          usedModel = modelName;
+          usedEndpoint = endpoint;
           break;
         } else {
-          attemptErrors.push(`[${modelName}]: ${data.error?.message || res.statusText || 'unknown'}`);
+          attemptErrors.push(`[${endpoint.split('/models/')[1]}]: ${data.error?.message || res.statusText || 'unknown'}`);
         }
       }
 
@@ -435,7 +441,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       let finishReason = candidate?.finishReason;
 
       // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS')
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${usedModel}:generateContent?key=${geminiApiKey}`;
+      const geminiEndpointWithKey = `${usedEndpoint}?key=${geminiApiKey}`;
       while (retryCount < maxRetries) {
         const isFinishReasonLength = finishReason === 'MAX_TOKENS';
         const backtickMatches = assistantMessage.match(/```/g) || [];
@@ -445,7 +451,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           break;
         }
 
-        console.log(`Gemini Anti-cutoff triggered on ${usedModel} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+        console.log(`Gemini Anti-cutoff triggered on ${usedEndpoint} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
 
         const continuationContents = [
           ...geminiContents,
@@ -453,9 +459,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }] }
         ];
 
-        const contRes = await fetch(geminiEndpoint, {
+        const contRes = await fetch(geminiEndpointWithKey, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiApiKey || ''
+          },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
             contents: continuationContents,
