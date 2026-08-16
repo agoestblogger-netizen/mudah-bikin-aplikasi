@@ -73,8 +73,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       cleanDoc = `<head>${fontAndResetTag}</head>` + cleanDoc;
     }
 
-    // Masukkan JS jika belum ada
-    if (js && !cleanDoc.includes(js)) {
+    // Masukkan JS jika ada dan belum ada di dokumen
+    if (js && js.trim().length > 0 && !cleanDoc.includes(js)) {
       if (cleanDoc.includes('</body>')) {
         cleanDoc = cleanDoc.replace('</body>', `<script>\ntry {\n${js}\n} catch(e) { console.error("JS Error:", e); }\n</script></body>`);
       } else {
