@@ -56,7 +56,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - DILARANG KERAS: Memakai warna teks yang mirip dengan warna background (misal teks gelap di atas background gelap, atau teks putih di atas background putih). Semua teks WAJIB sangat kontras, tajam, dan mudah dibaca oleh siapa saja.
 13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
     - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
-    - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.`;
+    - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.
+14. ATURAN KESELARASAN DOM & EVENT HANDLER WAJIB (100% MATCH):
+    - Nama fungsi di atribut \`onclick="namaFungsi()"\` WAJIB PERSIS SAMA (termasuk besar-kecil huruf) dengan nama fungsi yang didefinisikan di \`<script>\`.
+    - ID elemen yang dipanggil lewat \`document.getElementById('xyz')\` WAJIB PERSIS SAMA dengan atribut \`id="xyz"\` pada elemen HTML terkait.
+    - Selalu gunakan perbandingan ID tipe string (contoh: \`String(item.id) !== String(id)\`) agar tidak terjadi kegagalan penghapusan/edit akibat perbedaan number vs string.
+    - SEBELUM MENYERAHKAN KODE: telusuri ulang satu per satu: setiap atribut onclick punya fungsi yang match di JS, setiap getElementById punya elemen yang match di HTML.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);
@@ -191,19 +196,29 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan di Awal dan Setiap Revisi)
     let validated = htmlCode ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
 
-    // NFR-10b: Pemeriksaan Integritas Fungsionalitas Otomatis
+    // NFR-10b: Pemeriksaan Integritas & Keselarasan DOM Otomatis
     if (validated && validated.repairedCode && validated.repairedCode.html) {
       const finalHtml = validated.repairedCode.html;
       const hasScriptTag = finalHtml.includes('<script>') || finalHtml.includes('<script ');
       const hasRenderFunction = finalHtml.includes('function render') || finalHtml.includes('render()');
+      const hasMismatches = validated.issues && validated.issues.length > 0;
       
-      // Jika saat revisi script JS tidak sengaja hilang, coba minta perbaikan satu kali (NFR-10b)
-      if (currentCode && (!hasScriptTag || !hasRenderFunction)) {
-        console.warn('NFR-10b triggered: Script was dropped during revision, requesting immediate AI functional recovery.');
+      // Jika terdeteksi ketidakselarasan handler/ID atau script hilang, picu AI auto-recovery (NFR-10b)
+      if (hasMismatches || !hasScriptTag || !hasRenderFunction) {
+        const issueList = validated.issues.join('\n- ');
+        console.warn('NFR-10b triggered with DOM alignment issues:\n', issueList);
         const repairPrompt = [
           ...messages,
           { role: 'assistant', content: assistantMessage },
-          { role: 'user', content: 'PERINGATAN NFR-10b: Kode yang Anda berikan tidak menyertakan script JavaScript fungsional (<script> atau render()). Mohon gabungkan kembali perubahan styling/HTML tersebut dengan seluruh script JavaScript interaktif (array data 3-5 item, tambah, edit, hapus, modal) dan berikan kode HTML utuh dalam ```html ... ```.' }
+          { role: 'user', content: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
+Ditemukan kendala pada kode yang Anda berikan:
+- ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
+
+INSTRUKSI PERBAIKAN WAJIB:
+1. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+2. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+3. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
+4. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }
         ];
 
         const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -215,7 +230,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: repairPrompt,
-            max_tokens: 3500,
+            max_tokens: 8192,
             temperature: 0.3
           })
         });
