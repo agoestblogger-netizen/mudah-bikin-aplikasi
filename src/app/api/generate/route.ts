@@ -98,7 +98,36 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
 16. DEFENSIVE DOM ACCESS & NULL-SAFETY WAJIB:
     - Selalu gunakan pengecekan null atau optional chaining (\`?.\`) saat mengakses dan memanipulasi elemen DOM (contoh: \`document.getElementById(id)?.classList.add('active')\` atau \`const el = document.getElementById(id); if (el) el.classList.add('active');\`).
-    - DILARANG memanggil \`.classList.add()\`, \`.value\`, atau \`.style\` secara langsung tanpa memastikan elemen tersebut ada di DOM.`;
+    - DILARANG memanggil \`.classList.add()\`, \`.value\`, atau \`.style\` secara langsung tanpa memastikan elemen tersebut ada di DOM.
+17. VALIDASI INPUT FORM WAJIB & NOTIFIKASI TOAST CUSTOM (ANTI-DATA KOSONG):
+    - Pada SEMUA fungsi penambahan atau pengeditan data (seperti \`tambahData()\`, \`tambahItem()\`, \`simpanEdit()\`), WAJIB validasi kelengkapan nilai input (\`.value.trim()\`) sebelum memanipulasi array.
+    - DILARANG KERAS memproses atau menambahkan data baru jika input wajib masih kosong!
+    - POLA CSS TOAST WAJIB:
+      .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+      .toast.error { background: #ef4444; }
+      .toast.success { background: #10b981; }
+    - POLA JS VALIDASI & TOAST WAJIB:
+      function showToast(pesan, tipe = 'error') {
+        let toast = document.getElementById('toastNotification');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'toastNotification';
+          document.body.appendChild(toast);
+        }
+        toast.className = 'toast ' + tipe;
+        toast.innerText = pesan;
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 3000);
+      }
+      function tambahItem() {
+        const input1 = document.getElementById('nama')?.value.trim();
+        if (!input1) {
+          showToast('Harap lengkapi semua kolom formulir!', 'error');
+          return; // WAJIB BERHENTI, DILARANG MENAMBAHKAN BARIS KOSONG
+        }
+        // lanjut proses penambahan data...
+      }
+    - DILARANG menggunakan alert() bawaan browser untuk notifikasi.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);
