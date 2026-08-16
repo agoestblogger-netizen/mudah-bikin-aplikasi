@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProjectState } from '@/types/app';
+import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import { Palette, Code2, Eye, Copy, ArrowRight, ShieldCheck, Sparkles, RefreshCw, Layers } from 'lucide-react';
 
 interface Stage2MockupCanvasProps {
@@ -21,6 +22,13 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
   const [jsCode, setJsCode] = useState(projectState.canvasCode.js);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Sinkronisasi state lokal saat projectState.canvasCode berubah (misal dari Tahap 1 auto-generate)
+  useEffect(() => {
+    setHtmlCode(projectState.canvasCode.html);
+    setCssCode(projectState.canvasCode.css);
+    setJsCode(projectState.canvasCode.js);
+  }, [projectState.canvasCode]);
 
   const handleGenerateFirstMockup = async () => {
     setLoading(true);
@@ -67,29 +75,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
   };
 
   const generateCombinedSrcDoc = () => {
-    return `
-      <!DOCTYPE html>
-      <html lang="id">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-        <style>
-          ${cssCode}
-        </style>
-      </head>
-      <body>
-        ${htmlCode}
-        <script>
-          try {
-            ${jsCode}
-          } catch(err) {
-            console.error("Canvas JS Error:", err);
-          }
-        </script>
-      </body>
-      </html>
-    `;
+    return buildSrcDoc({ html: htmlCode, css: cssCode, js: jsCode });
   };
 
   const handleUpdateCode = () => {

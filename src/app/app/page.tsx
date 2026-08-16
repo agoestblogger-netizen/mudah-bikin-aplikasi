@@ -11,6 +11,7 @@ import { Stage4GASBackend } from '@/components/Stage4GASBackend';
 import { Stage5FeaturePatch } from '@/components/Stage5FeaturePatch';
 import { Stage6Troubleshooter } from '@/components/Stage6Troubleshooter';
 import { supabase } from '@/lib/supabase/client';
+import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import { Eye, Code2, Download, RefreshCw, Sparkles, Layers } from 'lucide-react';
 
 export default function AppWorkspacePage() {
@@ -54,24 +55,8 @@ export default function AppWorkspacePage() {
 
   // PRD Bagian 9: Download index.html mandiri untuk deploy ke Cloudflare Pages
   const handleDownloadIndexHtml = () => {
-    const fullHtml = `<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${projectState.title}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    ${projectState.canvasCode.css}
-  </style>
-</head>
-<body>
-  ${projectState.canvasCode.html}
-  <script>
-    ${projectState.canvasCode.js}
-  </script>
-</body>
-</html>`;
+    const fullHtml = buildSrcDoc(projectState.canvasCode);
+    if (!fullHtml) return;
 
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -243,7 +228,7 @@ export default function AppWorkspacePage() {
                 {projectState.canvasCode.html ? (
                   <iframe
                     title="Live Preview Canvas"
-                    srcDoc={`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>${projectState.canvasCode.css}</style></head><body>${projectState.canvasCode.html}<script>${projectState.canvasCode.js}</script></body></html>`}
+                    srcDoc={buildSrcDoc(projectState.canvasCode)}
                     className="w-full h-full border-none"
                     sandbox="allow-scripts allow-forms allow-modals"
                   />
