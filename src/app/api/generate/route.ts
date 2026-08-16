@@ -441,56 +441,85 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
 
       if (!geminiData || !geminiData.candidates?.[0]) {
-        throw new Error('Gemini API failed: ' + attemptErrors.join(' || '));
-      }
+        if (openaiApiKey) {
+          console.warn('Gemini 3.7 Flash high demand spike. Falling back automatically to OpenAI...');
+          const messages = [
+            { role: 'system', content: systemPrompt },
+            ...recentHistory.map((m: any) => ({
+              role: m.sender === 'USER' ? 'user' : 'assistant',
+              content: m.text
+            })),
+            { role: 'user', content: userPromptWithContext }
+          ];
 
-      let candidate = geminiData.candidates?.[0];
-      assistantMessage = candidate?.content?.parts?.map((p: any) => p.text).join('') || '';
-      let finishReason = candidate?.finishReason;
+          let fallbackRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openaiApiKey}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages,
+              max_tokens: 8192,
+              temperature: 0.5
+            })
+          });
 
-      // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS')
-      const geminiEndpointWithKey = `${usedEndpoint}?key=${geminiApiKey}`;
-      while (retryCount < maxRetries) {
-        const isFinishReasonLength = finishReason === 'MAX_TOKENS';
-        const backtickMatches = assistantMessage.match(/```/g) || [];
-        const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
-
-        if (!isFinishReasonLength && !isCodeBlockUnclosed) {
-          break;
+          let fbData = await fallbackRes.json();
+          assistantMessage = fbData.choices?.[0]?.message?.content || '';
+        } else {
+          throw new Error('Gemini API failed: ' + attemptErrors.join(' || '));
         }
+      } else {
+        let candidate = geminiData.candidates?.[0];
+        assistantMessage = candidate?.content?.parts?.map((p: any) => p.text).join('') || '';
+        let finishReason = candidate?.finishReason;
 
-        console.log(`Gemini Anti-cutoff triggered on ${usedEndpoint} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+        // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS')
+        const geminiEndpointWithKey = `${usedEndpoint}?key=${geminiApiKey}`;
+        while (retryCount < maxRetries) {
+          const isFinishReasonLength = finishReason === 'MAX_TOKENS';
+          const backtickMatches = assistantMessage.match(/```/g) || [];
+          const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
 
-        const continuationContents = [
-          ...geminiContents,
-          { role: 'model', parts: [{ text: assistantMessage }] },
-          { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }] }
-        ];
+          if (!isFinishReasonLength && !isCodeBlockUnclosed) {
+            break;
+          }
 
-        const contRes = await fetch(geminiEndpointWithKey, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': geminiApiKey || ''
-          },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: continuationContents,
-            generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
-          })
-        });
+          console.log(`Gemini Anti-cutoff triggered on ${usedEndpoint} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
 
-        const contData = await contRes.json();
-        const contCandidate = contData.candidates?.[0];
-        const contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
-        finishReason = contCandidate?.finishReason;
+          const continuationContents = [
+            ...geminiContents,
+            { role: 'model', parts: [{ text: assistantMessage }] },
+            { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }] }
+          ];
 
-        if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan')) {
-          break;
+          const contRes = await fetch(geminiEndpointWithKey, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': geminiApiKey || ''
+            },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: continuationContents,
+              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
+            })
+          });
+
+          const contData = await contRes.json();
+          const contCandidate = contData.candidates?.[0];
+          const contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
+          finishReason = contCandidate?.finishReason;
+
+          if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan')) {
+            break;
+          }
+
+          assistantMessage += contText;
+          retryCount++;
         }
-
-        assistantMessage += contText;
-        retryCount++;
       }
 
     // =========================================================================
