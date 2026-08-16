@@ -41,19 +41,33 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 9. OPTIMISTIC UI DENGAN ROLLBACK: Update instan + rollback jika error.
 10. BACKEND FAILSAFE GAS: Multi-tab setup + LockService + Content-Type: text/plain.
 11. FORMAT KODE: Berikan kode HTML utuh di dalam blok: \`\`\`html ... \`\`\`.
-12. ATURAN WARNA & KONTRAS TINGGI WAJIB (DETERMINISTIK):
-    - Wajib gunakan palet warna dengan kontras tajam & jelas (Clean Modern UI):
-      * body: background: #f8fafc (putih keabuan bersih), color: #0f172a (teks gelap pekat), padding: 24px
-      * Kartu / Container: background: #ffffff, border: 1px solid #e2e8f0, border-radius: 16px, box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05)
-      * Judul (h1, h2, h3): color: #0f172a, font-weight: 700
-      * Label / Subtitle: color: #475569
-      * Header Tabel (th): background: #f1f5f9, color: #0f172a, font-weight: 700, padding: 12px, border-bottom: 2px solid #cbd5e1
-      * Isi Tabel (td): color: #1e293b, padding: 12px, border-bottom: 1px solid #f1f5f9
-      * Form Input: background: #ffffff, border: 1px solid #cbd5e1, color: #0f172a, padding: 10px 14px, border-radius: 10px
-      * Tombol Utama: background: #4f46e5 (indigo), color: #ffffff (putih terang), font-weight: 600, padding: 10px 18px, border-radius: 10px
-      * Tombol Aksi Hapus / Bahaya: background: #fee2e2, color: #b91c1c, border: 1px solid #fecaca
-      * Modal Dialog: background backdrop rgba(15, 23, 42, 0.6), modal-box background #ffffff, color #0f172a
-    - DILARANG KERAS: Memakai warna teks yang mirip dengan warna background (misal teks gelap di atas background gelap, atau teks putih di atas background putih). Semua teks WAJIB sangat kontras, tajam, dan mudah dibaca oleh siapa saja.
+12. CDN FRAMEWORK & DESIGN TOKENS WAJIB (MODERN VISUAL SYSTEM):
+    - WAJIB sertakan resource CDN modern di dalam <head>:
+      \`\`\`html
+      <!-- Tailwind CSS Play CDN -->
+      <script src="https://cdn.tailwindcss.com"></script>
+      <!-- Google Fonts: Plus Jakarta Sans -->
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+      <!-- Lucide Icons CDN -->
+      <script src="https://unpkg.com/lucide@latest"></script>
+      <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
+      \`\`\`
+    - PRIORITASKAN UTILITY CLASS TAILWIND daripada menulis CSS manual di <style>.
+    - DESIGN TOKENS WAJIB:
+      * Body: \`<body class="bg-slate-50 text-slate-900 min-h-screen p-6 md:p-10">\`
+      * Container Card: \`bg-white rounded-xl border border-slate-200/80 shadow-sm p-6 mb-6\`
+      * Typography: Judul \`text-2xl font-bold text-slate-900 mb-2\`, Subtitle \`text-sm text-slate-500 mb-6\`
+      * Tombol Utama (Accent): \`px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm transition flex items-center gap-2\`
+      * Tombol Sekunder / Edit: \`px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium rounded-lg shadow-sm transition inline-flex items-center gap-1\`
+      * Tombol Hapus (Danger): \`px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-medium rounded-lg transition inline-flex items-center gap-1\`
+      * Form Inputs: \`w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-sm\`
+      * Tabel Modern: container \`overflow-hidden rounded-xl border border-slate-200 shadow-sm\`, header \`bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider px-4 py-3.5 border-b border-slate-200\`, cell \`px-4 py-3.5 text-sm text-slate-600 border-b border-slate-100 last:border-0\`
+      * Navigasi Tab Modern: container \`flex gap-2 border-b border-slate-200 mb-6\`, tab-btn \`px-4 py-2.5 font-medium text-sm text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition -mb-[2px]\`, active \`text-indigo-600 border-indigo-600 font-semibold\`
+      * Modal Dialog: backdrop \`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4\`, box \`bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4\`
+      * Ikon SVG (Lucide): Gunakan tag \`<i data-lucide="nama-ikon" class="w-4 h-4"></i>\` dan WAJIB panggil \`lucide.createIcons();\` di akhir fungsi \`render()\`.
+      * Spacing Konsisten: Gunakan skala Tailwind murni (p-4, p-6, gap-4, gap-6, space-y-4), DILARANG nilai acak.
 13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
     - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
     - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.
