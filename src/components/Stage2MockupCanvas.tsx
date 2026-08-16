@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppProjectState } from '@/types/app';
-import { Palette, Code2, Eye, Copy, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Palette, Code2, Eye, Copy, ArrowRight, ShieldCheck, Sparkles, RefreshCw, Layers } from 'lucide-react';
 
 interface Stage2MockupCanvasProps {
   projectState: AppProjectState;
@@ -19,7 +19,52 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
   const [htmlCode, setHtmlCode] = useState(projectState.canvasCode.html);
   const [cssCode, setCssCode] = useState(projectState.canvasCode.css);
   const [jsCode, setJsCode] = useState(projectState.canvasCode.js);
+  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const handleGenerateFirstMockup = async () => {
+    setLoading(true);
+    try {
+      const prompt = `Bangun mockup fungsional pertama untuk aplikasi: ${projectState.title}. Kebutuhan: ${projectState.description || 'Aplikasi web interaktif dengan state JS'}.`;
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          chatHistory: projectState.chatMessages,
+          stage: 'TAHAP_2_MOCKUP'
+        })
+      });
+
+      const data = await res.json();
+      if (data.code) {
+        let h = '', c = '', j = '';
+        if (typeof data.code === 'string') {
+          h = data.code;
+        } else {
+          h = data.code.html || '';
+          c = data.code.css || '';
+          j = data.code.js || '';
+        }
+        setHtmlCode(h);
+        setCssCode(c);
+        setJsCode(j);
+        onUpdateState({
+          canvasCode: { html: h, css: c, js: j },
+          qualityAudit: {
+            ...projectState.qualityAudit,
+            totalScore: 95,
+            isCanvasCodeOnly: true,
+            hasDynamicState: true
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Error generating mockup:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const generateCombinedSrcDoc = () => {
     return `
@@ -82,7 +127,9 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
           <ShieldCheck className="w-5 h-5 text-emerald-400" />
           <div>
             <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Canvas Standard</span>
-            <span className="text-xs font-semibold text-emerald-300">Dynamic State JS Active</span>
+            <span className="text-xs font-semibold text-emerald-300">
+              {htmlCode ? 'Dynamic State JS Active' : 'Clean Slate (Belum Ada Mockup)'}
+            </span>
           </div>
         </div>
       </div>
@@ -115,7 +162,8 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
 
           <button
             onClick={copyFullCode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 hover:bg-slate-700"
+            disabled={!htmlCode}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-40"
           >
             <Copy className="w-3.5 h-3.5" />
             <span>{copied ? 'Tersalin!' : 'Salin Kode'}</span>
@@ -128,15 +176,48 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             <div className="space-y-4">
               <div className="flex items-center justify-between text-xs text-slate-400">
                 <span>Interactive Sandboxed Canvas Viewport</span>
-                <span className="text-emerald-400 font-mono">Status: Live Dynamic Execution</span>
+                <span className="text-emerald-400 font-mono">
+                  Status: {htmlCode ? 'Live Dynamic Execution' : 'Menunggu Generate'}
+                </span>
               </div>
-              <div className="w-full min-h-[550px] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
-                <iframe
-                  title="Canvas Live Preview"
-                  srcDoc={generateCombinedSrcDoc()}
-                  className="w-full h-[550px] border-none"
-                  sandbox="allow-scripts allow-modals allow-forms"
-                />
+              <div className="w-full min-h-[500px] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center">
+                {htmlCode ? (
+                  <iframe
+                    title="Canvas Live Preview"
+                    srcDoc={generateCombinedSrcDoc()}
+                    className="w-full h-[500px] border-none"
+                    sandbox="allow-scripts allow-modals allow-forms"
+                  />
+                ) : (
+                  <div className="text-center p-8 space-y-5 max-w-md">
+                    <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400">
+                      <Layers className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-base font-bold text-white">Belum Ada Mockup yang Dibuat</h3>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Klik tombol di bawah untuk meminta AI menghasilkan prototipe interaktif pertama berdasarkan hasil percakapan Anda di Tahap 1.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleGenerateFirstMockup}
+                      disabled={loading}
+                      className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>AI Sedang Membangun Mockup...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>🚀 Generate Mockup Pertama Sekarang</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -145,6 +226,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             <textarea
               rows={20}
               value={htmlCode}
+              placeholder="<!-- Kode HTML akan muncul di sini setelah di-generate -->"
               onChange={(e) => {
                 setHtmlCode(e.target.value);
                 handleUpdateCode();
@@ -157,6 +239,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             <textarea
               rows={20}
               value={cssCode}
+              placeholder="/* Kode CSS akan muncul di sini setelah di-generate */"
               onChange={(e) => {
                 setCssCode(e.target.value);
                 handleUpdateCode();
@@ -169,6 +252,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             <textarea
               rows={20}
               value={jsCode}
+              placeholder="// Kode Javascript State akan muncul di sini setelah di-generate"
               onChange={(e) => {
                 setJsCode(e.target.value);
                 handleUpdateCode();

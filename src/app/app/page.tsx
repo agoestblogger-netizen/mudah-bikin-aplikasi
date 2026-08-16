@@ -239,23 +239,45 @@ export default function AppWorkspacePage() {
             )}
 
             {rightPanelTab === 'PREVIEW' ? (
-              <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner">
-                <iframe
-                  title="Live Preview Canvas"
-                  srcDoc={`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>${projectState.canvasCode.css}</style></head><body>${projectState.canvasCode.html}<script>${projectState.canvasCode.js}</script></body></html>`}
-                  className="w-full h-full border-none"
-                  sandbox="allow-scripts allow-forms allow-modals"
-                />
+              <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
+                {projectState.canvasCode.html ? (
+                  <iframe
+                    title="Live Preview Canvas"
+                    srcDoc={`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"/><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>${projectState.canvasCode.css}</style></head><body>${projectState.canvasCode.html}<script>${projectState.canvasCode.js}</script></body></html>`}
+                    className="w-full h-full border-none"
+                    sandbox="allow-scripts allow-forms allow-modals"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500">
+                    <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-indigo-400/60 shadow-inner">
+                      <Layers className="w-8 h-8 text-indigo-400" />
+                    </div>
+                    <div className="space-y-1.5 max-w-sm">
+                      <h4 className="text-sm font-bold text-white">Canvas Preview Kosong</h4>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Selesaikan wawancara singkat di <strong>Tahap 1</strong>, lalu masuk ke <strong>Tahap 2</strong> untuk melihat prototipe interaktif aplikasi Anda dibuat secara live di sini.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="w-full h-full flex flex-col space-y-2">
-                <span className="text-[11px] font-mono text-slate-400">code.gs (Google Apps Script)</span>
-                <textarea
-                  rows={20}
-                  readOnly
-                  value={projectState.gasConfig.scriptCode}
-                  className="w-full flex-1 p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300 focus:outline-none"
-                />
+              <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 p-4 overflow-y-auto font-mono text-xs text-emerald-400">
+                {projectState.gasConfig.scriptCode ? (
+                  <pre className="whitespace-pre-wrap">{projectState.gasConfig.scriptCode}</pre>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500 font-sans">
+                    <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400/60 shadow-inner">
+                      <Code2 className="w-8 h-8 text-emerald-400" />
+                    </div>
+                    <div className="space-y-1.5 max-w-sm">
+                      <h4 className="text-sm font-bold text-white">Backend Google Apps Script Belum Dibuat</h4>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Kode <code>code.gs</code> dan struktur kolom Google Sheets akan dibuat di <strong>Tahap 4</strong> setelah kebutuhan fitur dikunci di Tahap 3.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
