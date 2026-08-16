@@ -387,11 +387,11 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
 
       const candidateEndpoints = [
-        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || 'gemini-2.5-pro'}:generateContent`,
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-thinking-exp-01-21:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview:generateContent'
+        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || 'gemini-3.7-flash'}:generateContent`,
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash-latest:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash-001:generateContent',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash-preview:generateContent'
       ];
 
       let geminiData: any = null;
