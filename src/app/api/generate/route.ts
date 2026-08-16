@@ -62,24 +62,40 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - ID elemen yang dipanggil lewat \`document.getElementById('xyz')\` WAJIB PERSIS SAMA dengan atribut \`id="xyz"\` pada elemen HTML terkait.
     - Selalu gunakan perbandingan ID tipe string (contoh: \`String(item.id) !== String(id)\`) agar tidak terjadi kegagalan penghapusan/edit akibat perbedaan number vs string.
     - SEBELUM MENYERAHKAN KODE: telusuri ulang satu per satu: setiap atribut onclick punya fungsi yang match di JS, setiap getElementById punya elemen yang match di HTML.
-15. KEPATUHAN POLA UI SPESIFIK & CONTOH POLA TAB BAKU (WAJIB DIIKUTI):
-    - Jika pengguna meminta navigasi tab (misal: Daftar, Formulir Tambah, Edit), WAJIB implementasikan pola antarmuka tab tersebut secara fungsional.
-    - DILARANG KERAS mengganti tab dengan tombol biasa atau form inline.
-    - POLA TAB BAKU YANG WAJIB DIGUNAKAN (AGAR TIDAK CRASH):
-      * Beri setiap tombol tab id: \`id="tab-btn-daftarSiswa"\`, \`id="tab-btn-editSiswa"\`, class="tab-btn".
-      * Beri setiap konten tab id: \`id="daftarSiswa"\`, \`id="editSiswa"\`, class="tab-content".
-      * Gunakan fungsi \`showTab(tabId)\` persis dengan pola:
-        \`function showTab(tabId) {
-          document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
-          const target = document.getElementById(tabId);
-          if (target) target.classList.add('active');
-          const targetBtn = document.getElementById('tab-btn-' + tabId);
-          if (targetBtn) targetBtn.classList.add('active');
-          render();
-        }\`
-      * DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
-      * Saat tombol Edit di tabel diklik, fungsi \`showEditForm(id)\` mengisi input form lalu memanggil \`showTab('editSiswa')\` sehingga layar berpindah ke tab edit.
+15. KEPATUHAN POLA UI SPESIFIK & POLA TAB BAKU (CSS + HTML + JS WAJIB):
+    - Jika pengguna meminta navigasi tab (misal: Daftar, Formulir Tambah, Edit), WAJIB gunakan styling tab bernavigasi modern dengan garis highlight bawah aktif (BUKAN tombol kotak aksi biasa).
+    - POLA CSS WAJIB UNTUK TAB:
+      .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; }
+      .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 15px; font-weight: 500; transition: all 0.2s; }
+      .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; font-weight: 600; }
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+    - POLA HTML WAJIB UNTUK TAB:
+      <div class="tab-nav">
+        <button type="button" id="tab-btn-daftar" class="tab-btn active" onclick="showTab('daftar')">Daftar</button>
+        <button type="button" id="tab-btn-tambah" class="tab-btn" onclick="showTab('tambah')">Tambah</button>
+        <button type="button" id="tab-btn-edit" class="tab-btn" onclick="showTab('edit')">Edit</button>
+      </div>
+      <div id="daftar" class="tab-content active">...</div>
+      <div id="tambah" class="tab-content">...</div>
+      <div id="edit" class="tab-content">...</div>
+    - POLA JAVASCRIPT WAJIB UNTUK TAB:
+      function showTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+        document.getElementById(tabId)?.classList.add('active');
+        document.getElementById('tab-btn-' + tabId)?.classList.add('active');
+        render();
+      }
+      function showEditForm(id) {
+        const item = items.find(i => String(i.id) === String(id));
+        if (item) {
+          document.getElementById('editId').value = item.id;
+          // isi nilai input lainnya...
+          showTab('edit');
+        }
+      }
+    - DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
 16. DEFENSIVE DOM ACCESS & NULL-SAFETY WAJIB:
     - Selalu gunakan pengecekan null atau optional chaining (\`?.\`) saat mengakses dan memanipulasi elemen DOM (contoh: \`document.getElementById(id)?.classList.add('active')\` atau \`const el = document.getElementById(id); if (el) el.classList.add('active');\`).
     - DILARANG memanggil \`.classList.add()\`, \`.value\`, atau \`.style\` secara langsung tanpa memastikan elemen tersebut ada di DOM.`;
