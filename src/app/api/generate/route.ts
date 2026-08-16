@@ -63,31 +63,11 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
     }
 
     if (!apiKey) {
-      // Fallback Dynamic Response Simulator saat API Key belum diisi
-      console.log('OPENAI_API_KEY not configured, using stage-aware dynamic engine.');
-
-      let replyText = '';
-      let generatedCode = null;
-
-      if (stage === 'TAHAP_1_PEMBUKAAN') {
-        const historyLen = (chatHistory || []).length;
-        if (historyLen <= 2) {
-          replyText = `Aplikasi "${prompt}" terdengar sangat bermanfaat! Untuk siapa aplikasi ini terutama dirancang, dan apakah butuh login khusus (misal Admin vs Pengguna Biasa)?`;
-        } else {
-          replyText = `Sip, kebutuhan dasar sudah jelas! Saya telah merancang prototipe fungsional untuk "${prompt}". Mari kita lihat di Tahap 2 Mockup Canvas.`;
-        }
-      } else if (stage === 'TAHAP_5_PATCH') {
-        replyText = `Pembaruan fitur "${prompt}" berhasil diterapkan pada kode. Bagian yang diperbarui: penambahan state handler dan render loop baru pada elemen terkait.`;
-      } else if (stage === 'TAHAP_6_TROUBLESHOOTING') {
-        replyText = `Untuk menganalisa kendala "${prompt}", mohon buka Console Browser (tekan F12 -> tab Console) dan salin pesan error warna merah yang muncul di sana agar saya bisa memberikan solusi yang tepat sasaran.`;
-      } else {
-        replyText = `Berikut adalah kode prototipe fungsional sesuai kebutuhan Anda.`;
-      }
-
       return NextResponse.json({
-        success: true,
-        replyText,
-        code: generatedCode,
+        success: false,
+        error: 'OPENAI_API_KEY belum dikonfigurasi di server.',
+        replyText: 'Kunci OpenAI API belum dipasang di environment server.',
+        code: null,
         isContinued: false
       });
     }
@@ -120,17 +100,23 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
     let assistantMessage = data.choices?.[0]?.message?.content || '';
     let finishReason = data.choices?.[0]?.finish_reason;
 
-    // ANTI-CUTOFF 2 LAPIS
+    // ANTI-CUTOFF 2 LAPIS (DIPERBAIKI: Menggunakan hitungan backtick genap/ganjil untuk mencegah false-positive retry loop)
     let retryCount = 0;
-    const maxRetries = 4;
+    const maxRetries = 3;
 
     while (retryCount < maxRetries) {
       const isFinishReasonLength = finishReason === 'length';
-      const isCodeBlockMissingClosing = assistantMessage.includes('```html') && !assistantMessage.endsWith('```');
+      
+      // Cek apakah ada blok kode html yang belum tertutup
+      const backtickMatches = assistantMessage.match(/```/g) || [];
+      const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
 
-      if (!isFinishReasonLength && !isCodeBlockMissingClosing) {
+      // Jika tidak ada cutoff dan blok kode sudah tertutup, keluar dari loop
+      if (!isFinishReasonLength && !isCodeBlockUnclosed) {
         break;
       }
+
+      console.log(`Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}, backticks: ${backtickMatches.length}`);
 
       const continuationMessages = [
         ...messages,
@@ -148,7 +134,7 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
           model: 'gpt-4o-mini',
           messages: continuationMessages,
           max_tokens: 2500,
-          temperature: 0.4
+          temperature: 0.3
         })
       });
 
@@ -156,10 +142,16 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
       const contText = contData.choices?.[0]?.message?.content || '';
       finishReason = contData.choices?.[0]?.finish_reason;
 
+      // Jika AI menolak/tidak bisa melanjutkan (misal sudah selesai), jangan append duplikasi kalimat penolakan
+      if (contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
+        break;
+      }
+
       assistantMessage += contText;
       retryCount++;
     }
 
+    // Ekstraksi Blok Kode HTML
     let htmlCode = '';
     const match = assistantMessage.match(/```html([\s\S]*?)```/);
     if (match) {
@@ -167,11 +159,26 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
     }
 
     const validated = htmlCode ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
+    const hasValidCode = Boolean(validated && validated.repairedCode && validated.repairedCode.html && validated.repairedCode.html.trim().length > 0);
+
+    // Format Pesan Teks Chat Bersih & Jujur
+    let cleanReplyText = '';
+    if (match) {
+      if (hasValidCode) {
+        // Ganti blok kode di chat dengan notifikasi sukses yang informatif
+        cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil dibangun dan telah dimuat langsung ke Canvas Preview di panel kanan.**').trim();
+      } else {
+        // Jika kode kosong / gagal divalidasi, laporkan dengan jujur
+        cleanReplyText = 'Maaf, prototipe kode belum berhasil dibuat dengan lengkap. Silakan kirimkan instruksi ulang.';
+      }
+    } else {
+      cleanReplyText = assistantMessage.trim();
+    }
 
     return NextResponse.json({
       success: true,
-      replyText: assistantMessage.replace(/```html[\s\S]*?```/, '').trim(),
-      code: validated ? validated.repairedCode : null,
+      replyText: cleanReplyText,
+      code: hasValidCode && validated ? validated.repairedCode : null,
       isContinued: retryCount > 0
     });
 
