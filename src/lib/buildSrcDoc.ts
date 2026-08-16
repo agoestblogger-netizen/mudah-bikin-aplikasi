@@ -1,6 +1,6 @@
 /**
- * Helper untuk menyusun HTML yang valid, modern, dan aman untuk iframe srcDoc.
- * Mengintegrasikan Tailwind CSS CDN, Google Fonts (Plus Jakarta Sans), dan Lucide Icons.
+ * Helper untuk menyusun HTML yang valid, modern, dan mandiri (Zero-Dependency) untuk iframe srcDoc.
+ * Memastikan styling tajam, ber-kontras tinggi, dan kebal dari restriksi sandbox tanpa CDN CSS eksternal.
  */
 export function buildSrcDoc(canvasCode: { html: string; css: string; js: string }): string {
   if (!canvasCode || !canvasCode.html) return '';
@@ -8,18 +8,21 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   const { html, css = '', js = '' } = canvasCode;
   const isFullDoc = html.includes('<!DOCTYPE') || html.includes('<html') || html.includes('<body');
 
-  const cdnHeader = `
-  <!-- Tailwind CSS Play CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  const baseHeaders = `
   <!-- Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <!-- Lucide Icons CDN -->
+  <!-- Lucide Icons (Pure DOM SVG Parser) -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      min-height: 100vh;
+      padding: 24px;
     }
     ${css}
   </style>
@@ -28,14 +31,17 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   if (isFullDoc) {
     let cleanDoc = html;
 
-    // Masukkan CDN Header ke dalam <head> jika belum ada
-    if (!cleanDoc.includes('cdn.tailwindcss.com')) {
+    // Bersihkan script Tailwind CDN Play jika ada agar tidak memicu SecurityError
+    cleanDoc = cleanDoc.replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '');
+
+    // Masukkan Google Fonts dan Base Resets ke dalam <head> jika belum ada
+    if (!cleanDoc.includes('Plus+Jakarta+Sans')) {
       if (cleanDoc.includes('<head>')) {
-        cleanDoc = cleanDoc.replace('<head>', `<head>${cdnHeader}`);
+        cleanDoc = cleanDoc.replace('<head>', `<head>${baseHeaders}`);
       } else if (cleanDoc.includes('<html>')) {
-        cleanDoc = cleanDoc.replace('<html>', `<html><head>${cdnHeader}</head>`);
+        cleanDoc = cleanDoc.replace('<html>', `<html><head>${baseHeaders}</head>`);
       } else {
-        cleanDoc = `<head>${cdnHeader}</head>` + cleanDoc;
+        cleanDoc = `<head>${baseHeaders}</head>` + cleanDoc;
       }
     }
 
@@ -57,9 +63,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  ${cdnHeader}
+  ${baseHeaders}
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen p-6">
+<body>
   ${html}
   ${js ? `<script>\ntry {\n${js}\n} catch(e) { console.error("JS Error:", e); }\n</script>` : ''}
 </body>

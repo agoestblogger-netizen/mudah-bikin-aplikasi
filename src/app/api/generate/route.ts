@@ -41,33 +41,71 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 9. OPTIMISTIC UI DENGAN ROLLBACK: Update instan + rollback jika error.
 10. BACKEND FAILSAFE GAS: Multi-tab setup + LockService + Content-Type: text/plain.
 11. FORMAT KODE: Berikan kode HTML utuh di dalam blok: \`\`\`html ... \`\`\`.
-12. CDN FRAMEWORK & DESIGN TOKENS WAJIB (MODERN VISUAL SYSTEM):
-    - WAJIB sertakan resource CDN modern di dalam <head>:
-      \`\`\`html
-      <!-- Tailwind CSS Play CDN -->
-      <script src="https://cdn.tailwindcss.com"></script>
-      <!-- Google Fonts: Plus Jakarta Sans -->
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-      <!-- Lucide Icons CDN -->
-      <script src="https://unpkg.com/lucide@latest"></script>
-      <style>body { font-family: 'Plus Jakarta Sans', sans-serif; }</style>
+12. ZERO-DEPENDENCY MODERN DESIGN SYSTEM DI <style> (WAJIB DITERAPKAN):
+    - DILARANG menggunakan compiler JavaScript eksternal seperti cdn.tailwindcss.com (karena diblokir di sandbox iframe).
+    - WAJIB gunakan CSS murni di dalam tag <style> dengan Design Tokens bernilai konkret berikut:
+      \`\`\`css
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background-color: #f8fafc;
+        color: #0f172a;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        min-height: 100vh;
+        padding: 24px;
+      }
+      .container { max-width: 1000px; margin: 0 auto; }
+      .card {
+        background: #ffffff;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+      .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+      .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+      .btn-primary {
+        background: #4f46e5; color: #ffffff; font-weight: 600; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 8px;
+      }
+      .btn-primary:hover { background: #4338ca; }
+      .btn-secondary {
+        background: #ffffff; color: #334155; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
+      }
+      .btn-secondary:hover { background: #f1f5f9; }
+      .btn-danger {
+        background: #fff1f2; color: #e11d48; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
+      }
+      .btn-danger:hover { background: #ffe4e6; }
+      .form-group { margin-bottom: 16px; }
+      .form-label { display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+      .form-input {
+        width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      .form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+      .table-container {
+        overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); background: #ffffff; margin-top: 16px;
+      }
+      table { width: 100%; border-collapse: collapse; text-align: left; }
+      th {
+        background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 16px; border-bottom: 1px solid #e2e8f0;
+      }
+      td { color: #334155; font-size: 14px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+      tr:last-child td { border-bottom: none; }
+      .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; }
+      .tab-btn {
+        padding: 10px 18px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px;
+      }
+      .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; }
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+      .modal {
+        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
+      }
+      .modal-box {
+        background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-width: 480px; width: 100%; padding: 24px;
+      }
       \`\`\`
-    - PRIORITASKAN UTILITY CLASS TAILWIND daripada menulis CSS manual di <style>.
-    - DESIGN TOKENS WAJIB:
-      * Body: \`<body class="bg-slate-50 text-slate-900 min-h-screen p-6 md:p-10">\`
-      * Container Card: \`bg-white rounded-xl border border-slate-200/80 shadow-sm p-6 mb-6\`
-      * Typography: Judul \`text-2xl font-bold text-slate-900 mb-2\`, Subtitle \`text-sm text-slate-500 mb-6\`
-      * Tombol Utama (Accent): \`px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm transition flex items-center gap-2\`
-      * Tombol Sekunder / Edit: \`px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-medium rounded-lg shadow-sm transition inline-flex items-center gap-1\`
-      * Tombol Hapus (Danger): \`px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-medium rounded-lg transition inline-flex items-center gap-1\`
-      * Form Inputs: \`w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-sm\`
-      * Tabel Modern: container \`overflow-hidden rounded-xl border border-slate-200 shadow-sm\`, header \`bg-slate-50 text-slate-700 text-xs font-semibold uppercase tracking-wider px-4 py-3.5 border-b border-slate-200\`, cell \`px-4 py-3.5 text-sm text-slate-600 border-b border-slate-100 last:border-0\`
-      * Navigasi Tab Modern: container \`flex gap-2 border-b border-slate-200 mb-6\`, tab-btn \`px-4 py-2.5 font-medium text-sm text-slate-500 hover:text-slate-700 border-b-2 border-transparent transition -mb-[2px]\`, active \`text-indigo-600 border-indigo-600 font-semibold\`
-      * Modal Dialog: backdrop \`fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4\`, box \`bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4\`
-      * Ikon SVG (Lucide): Gunakan tag \`<i data-lucide="nama-ikon" class="w-4 h-4"></i>\` dan WAJIB panggil \`lucide.createIcons();\` di akhir fungsi \`render()\`.
-      * Spacing Konsisten: Gunakan skala Tailwind murni (p-4, p-6, gap-4, gap-6, space-y-4), DILARANG nilai acak.
+    - Lucide Icons & Google Fonts: Diizinkan di <head> (menggunakan tag <link> font dan <script src="https://unpkg.com/lucide@latest"></script>). Panggil \`lucide.createIcons();\` di fungsi \`render()\`.
 13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
     - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
     - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.
