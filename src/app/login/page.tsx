@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Sparkles, Lock, Mail, ArrowRight, AlertTriangle } from 'lucide-react';
+import { GoogleOAuthButton, OAuthDivider } from '@/components/GoogleOAuthButton';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -61,7 +62,11 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Login Form */}
+        {/* Tombol Google OAuth (tersembunyi sampai NEXT_PUBLIC_GOOGLE_OAUTH_ENABLED=true) */}
+        <GoogleOAuthButton label="Masuk dengan Google" />
+        <OAuthDivider />
+
+        {/* Login Form Email/Password — TETAP ADA */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">Email Pengguna</label>
