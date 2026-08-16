@@ -312,7 +312,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 - Berikan diagnosa akar penyebab dan langkah solusi spesifik.`;
     }
 
-    const aiProvider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+    const aiProvider = (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
     const geminiApiKey = process.env.GEMINI_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
 
