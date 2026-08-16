@@ -58,13 +58,22 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
     - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.`;
 
+    // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
+    const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);
+    const userMessageCount = (chatHistory || []).filter((m: any) => m.sender === 'USER').length;
+
     // ATURAN KHUSUS TAHAP:
     if (stage === 'TAHAP_1_PEMBUKAAN') {
-      systemPrompt += `\n\nATURAN TAHAP 1 (PEMBUKAAN SINGKAT):
-- Gali SEDIKIT detail minimal untuk membangun mockup pertama (jenis aplikasi, target user, 2-3 fitur inti).
-- SATU pertanyaan per giliran, maksimal 2-4 pertanyaan fokus singkat secara dinamis.
-- JANGAN langsung tampilkan checklist formal di awal.
-- ATURAN KHUSUS "BUATKAN LANGSUNG": Jika pengguna mengatakan "buatkan saja", "terserah kamu", "kamu putuskan sendiri", "buatkan langsung", "tanpa tanya lagi", atau sejenisnya di tengah percakapan, AI WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP DALAM BLOK \`\`\`html ... \`\`\`. DILARANG KERAS menanyakan pertanyaan lanjutan atau hanya memberikan teks ringkasan!`;
+      if (isFastForward || userMessageCount >= 2) {
+        systemPrompt += `\n\nATURAN TAHAP 1 (JALUR CEPAT / GENERATE MOCKUP):
+- Pengguna meminta untuk langsung membuatkan aplikasi atau wawancara singkat sudah cukup.
+- AI WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP DALAM BLOK \`\`\`html ... \`\`\` dengan 13 Prinsip Wajib di atas (data awal 3-5 item contoh, tombol Tambah/Edit/Hapus aktif di memori, warna kontras tinggi).`;
+      } else {
+        systemPrompt += `\n\nATURAN TAHAP 1 (JALUR NORMAL - WAWANCARA AWAL):
+- DILARANG KERAS menghasilkan blok kode \`\`\`html ... \`\`\` pada giliran ini!
+- Pengguna sedang memberikan ide awal biasa. Tugas Anda adalah menyapa dengan ramah dan menanyakan TEPAT SATU pertanyaan singkat yang fokus untuk menggali kebutuhan aplikasi (misal: siapa target penggunanya, atau apa 2-3 alur fitur utama yang diinginkan).
+- JANGAN langsung membuat kode sebelum pengguna menjawab atau meminta dibuatkan langsung.`;
+      }
     } else if (stage === 'TAHAP_5_PATCH') {
       systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
 - Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks).
