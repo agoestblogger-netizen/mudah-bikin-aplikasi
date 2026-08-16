@@ -65,8 +65,33 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         })
       });
 
+      if (!res.ok) {
+        let errorMsg = 'Terjadi kesalahan pada server saat memproses permintaan.';
+        if (res.status === 504) {
+          errorMsg = '⏱️ Batas waktu server tercapai (Timeout 504). Proses generate/revisi memakan waktu lebih dari 60 detik. Silakan coba kembali atau sederhanakan instruksi.';
+        } else if (res.status === 429) {
+          errorMsg = '⏳ Batas kuota request tercapai. Mohon tunggu beberapa detik sebelum mencoba kembali.';
+        } else {
+          try {
+            const errData = await res.json();
+            if (errData.error) errorMsg = `⚠️ ${errData.error}`;
+          } catch (_) {}
+        }
+
+        const errorAiMsg: ChatMessage = {
+          id: 'msg-' + (Date.now() + 1),
+          sender: 'AI',
+          text: errorMsg,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        };
+        const finalMessages = [...updatedMessages, errorAiMsg];
+        setMessages(finalMessages);
+        onUpdateState({ chatMessages: finalMessages });
+        return;
+      }
+
       const data = await res.json();
-      const aiReply = data.replyText || 'Pesan diterima.';
+      const aiReply = data.replyText || (data.success ? '✨ Perubahan berhasil diproses.' : '⚠️ Permintaan tidak dapat diproses.');
 
       const aiMsg: ChatMessage = {
         id: 'msg-' + (Date.now() + 1),
@@ -97,8 +122,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       }
 
       onUpdateState(stateUpdates);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error in chat generation:', err);
+      const networkErrorMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: `⚠️ Gagal terhubung ke server (${err.message || 'Network error'}). Silakan periksa koneksi internet Anda dan coba lagi.`,
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      };
+      const finalMessages = [...updatedMessages, networkErrorMsg];
+      setMessages(finalMessages);
+      onUpdateState({ chatMessages: finalMessages });
     } finally {
       setIsGenerating(false);
     }

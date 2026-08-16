@@ -95,10 +95,11 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       userPromptWithContext = `KODE HTML & JS SAAT INI YANG SUDAH BERJALAN AKTIF:\n\`\`\`html\n${currentCode}\n\`\`\`\n\nPERMINTAAN REVISI DARI PENGGUNA: "${prompt}".\n\nINSTRUKSI KHUSUS NFR-10b (VALIDASI FUNGSIONAL LENGKAP): Terapkan perubahan yang diminta pengguna di atas, namun TETAP PERTAHANKAN seluruh fungsi JavaScript, array data 3-5 item dummy, tombol Tambah/Edit/Hapus, dan render() agar tetap 100% berfungsi. Kembalikan KODE HTML LENGKAP UTUH di dalam blok \`\`\`html ... \`\`\`.`;
     }
 
-    // OpenAI Server-Side Dynamic API Call
+    // OpenAI Server-Side Dynamic API Call (dioptimalkan untuk kecepatan & keamanan limit Vercel)
+    const recentHistory = (chatHistory || []).slice(-6);
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...(chatHistory || []).map((m: any) => ({
+      ...recentHistory.map((m: any) => ({
         role: m.sender === 'USER' ? 'user' : 'assistant',
         content: m.text
       })),
@@ -114,7 +115,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages,
-        max_tokens: 3500,
+        max_tokens: 2500,
         temperature: 0.5
       })
     });
@@ -123,9 +124,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     let assistantMessage = data.choices?.[0]?.message?.content || '';
     let finishReason = data.choices?.[0]?.finish_reason;
 
-    // ANTI-CUTOFF 2 LAPIS
+    // ANTI-CUTOFF EFISIEN (Maksimal 1 kali lanjutan cepat agar aman dari batas 60 detik)
     let retryCount = 0;
-    const maxRetries = 3;
+    const maxRetries = 1;
 
     while (retryCount < maxRetries) {
       const isFinishReasonLength = finishReason === 'length';
@@ -154,7 +155,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: continuationMessages,
-          max_tokens: 2500,
+          max_tokens: 1800,
           temperature: 0.3
         })
       });
