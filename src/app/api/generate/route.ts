@@ -79,7 +79,10 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           render();
         }\`
       * DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
-      * Saat tombol Edit di tabel diklik, fungsi \`showEditForm(id)\` mengisi input form lalu memanggil \`showTab('editSiswa')\` sehingga layar berpindah ke tab edit.`;
+      * Saat tombol Edit di tabel diklik, fungsi \`showEditForm(id)\` mengisi input form lalu memanggil \`showTab('editSiswa')\` sehingga layar berpindah ke tab edit.
+16. DEFENSIVE DOM ACCESS & NULL-SAFETY WAJIB:
+    - Selalu gunakan pengecekan null atau optional chaining (\`?.\`) saat mengakses dan memanipulasi elemen DOM (contoh: \`document.getElementById(id)?.classList.add('active')\` atau \`const el = document.getElementById(id); if (el) el.classList.add('active');\`).
+    - DILARANG memanggil \`.classList.add()\`, \`.value\`, atau \`.style\` secara langsung tanpa memastikan elemen tersebut ada di DOM.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);

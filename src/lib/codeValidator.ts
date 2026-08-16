@@ -101,7 +101,18 @@ export function validateAndRepairGeneratedCode(
     repairedJs = repairedJs.replace(/document\.querySelector\([^)]*\[onclick=[^)]*\)\.classList\.add\([^)]*\);?/g, '// active tab highlight sanitized');
   }
 
-  // 7. Pastikan Anti-Reload pada Form
+  // 7. Defensive Null-Safety Transformer: Ubah akses classList/style langsung menjadi safe optional chaining (?.)
+  repairedHtml = repairedHtml.replace(/document\.getElementById\(([^)]+)\)\.classList/g, 'document.getElementById($1)?.classList');
+  repairedHtml = repairedHtml.replace(/document\.querySelector\(([^)]+)\)\.classList/g, 'document.querySelector($1)?.classList');
+  repairedHtml = repairedHtml.replace(/document\.getElementById\(([^)]+)\)\.style/g, 'document.getElementById($1)?.style');
+  repairedHtml = repairedHtml.replace(/document\.querySelector\(([^)]+)\)\.style/g, 'document.querySelector($1)?.style');
+
+  repairedJs = repairedJs.replace(/document\.getElementById\(([^)]+)\)\.classList/g, 'document.getElementById($1)?.classList');
+  repairedJs = repairedJs.replace(/document\.querySelector\(([^)]+)\)\.classList/g, 'document.querySelector($1)?.classList');
+  repairedJs = repairedJs.replace(/document\.getElementById\(([^)]+)\)\.style/g, 'document.getElementById($1)?.style');
+  repairedJs = repairedJs.replace(/document\.querySelector\(([^)]+)\)\.style/g, 'document.querySelector($1)?.style');
+
+  // 8. Pastikan Anti-Reload pada Form
   if (repairedHtml.includes('<form') && !repairedHtml.includes('preventDefault')) {
     repairedHtml = repairedHtml.replace(/<form([^>]*)>/gi, (match) => {
       if (match.includes('onsubmit')) return match;
