@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
-import { Bot, Send, User, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Bot, Send, User, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
 
 interface Stage1InterviewAIProps {
   projectState: AppProjectState;
@@ -17,12 +17,11 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
-  const [questionCount, setQuestionCount] = useState(1);
+  const [loading, setLoading] = useState(false);
 
-  // Simulated AI response generator based on user input
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || input;
-    if (!query.trim()) return;
+    if (!query.trim() || loading) return;
 
     const userMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
@@ -34,76 +33,42 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput('');
+    setLoading(true);
 
-    // Generate next dynamic question from AI (Max 3-4 focused questions)
-    setTimeout(() => {
-      let aiText = '';
-      let suggestions: string[] = [];
+    try {
+      // Panggilan nyata ke /api/generate secara server-side
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: query,
+          chatHistory: updatedMessages,
+          stage: 'TAHAP_1_PEMBUKAAN'
+        })
+      });
 
-      if (questionCount === 1) {
-        aiText = `Bagus sekali! Aplikasi "${query}" menarik sekali.\n\nPertanyaan 2 dari 3: Siapa target pengguna utama aplikasi ini, dan apakah aplikasi memerlukan fitur Login (termasuk Role Admin untuk kelola user)?`;
-        suggestions = [
-          'Memerlukan Login & Role Admin (Fitur Tambah User)',
-          'Hanya Login Sederhana (Satu Jenis User)',
-          'Publik (Tanpa Login)'
-        ];
-        setQuestionCount(2);
-
-        // Dynamically update specs
-        onUpdateState({
-          title: query,
-          mandatorySpecs: {
-            ...projectState.mandatorySpecs,
-            appType: query
-          }
-        });
-      } else if (questionCount === 2) {
-        aiText = `Dicatat! Proteksi autentikasi sudah diset.\n\nPertanyaan 3 dari 3: Apa saja 3-5 tombol aksi atau alur kerja paling penting yang wajib ada di aplikasi ini? (Contoh: Tambah Barang, Proses Kasir, Cetak Laporan)`;
-        suggestions = [
-          'Tambah Barang, Transaksi POS, Cetak Struk, Tambah User Admin',
-          'Input Data, Filter Kategori, Export Excel',
-          'Formulir Pendaftaran, Verifikasi Data, Cetak Kartu'
-        ];
-        setQuestionCount(3);
-
-        const requiresLogin = !query.toLowerCase().includes('tanpa login');
-        const hasAdminRole = query.toLowerCase().includes('admin');
-
-        onUpdateState({
-          mandatorySpecs: {
-            ...projectState.mandatorySpecs,
-            targetUsers: query,
-            requiresLogin,
-            hasAdminRole,
-            hasUserManagement: hasAdminRole
-          }
-        });
-      } else {
-        aiText = `Terima kasih banyak! Semua kebutuhan utama untuk Tahap 1 sudah lengkap.\n\nSpesifikasi aplikasi Anda siap ditransformasikan secara instan ke Tahap 2 (Mockup Canvas & Dynamic State JS). Klik tombol di bawah untuk melanjutkan!`;
-        suggestions = [];
-        setQuestionCount(4);
-
-        const actions = query.split(',').map((s) => s.trim());
-        onUpdateState({
-          mandatorySpecs: {
-            ...projectState.mandatorySpecs,
-            keyButtonsActions: actions
-          }
-        });
-      }
+      const data = await res.json();
+      const aiReply = data.replyText || 'Terima kasih, informasi telah dicatat.';
 
       const aiMsg: ChatMessage = {
         id: 'msg-' + (Date.now() + 1),
         sender: 'AI',
-        text: aiText,
-        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        suggestedOptions: suggestions
+        text: aiReply,
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
       };
 
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
-      onUpdateState({ chatMessages: finalMessages });
-    }, 600);
+
+      onUpdateState({
+        title: query.length < 30 ? query : projectState.title,
+        chatMessages: finalMessages
+      });
+    } catch (err) {
+      console.error('Error calling /api/generate:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -115,14 +80,14 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
             <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 1 PRD: Pembukaan Singkat (Interaktif Chat AI)</h2>
-            <p className="text-xs text-slate-400">AI menentukan pertanyaan berikutnya secara dinamis berdasarkan respon Anda (2-4 pertanyaan fokus).</p>
+            <h2 className="text-xl font-bold text-white">Tahap 1 PRD: Pembukaan Singkat (AI Dynamic Chat)</h2>
+            <p className="text-xs text-slate-400">Memanggil /api/generate secara dinamis untuk menentukan respon & pertanyaan berikutnya.</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-800/40 px-3 py-1.5 rounded-full text-xs text-indigo-300 font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Progres Wawancara: {Math.min(questionCount * 25, 100)}%</span>
+          <span>Interaksi Chat Aktif</span>
         </div>
       </div>
 
@@ -172,6 +137,13 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
               </div>
             </div>
           ))}
+
+          {loading && (
+            <div className="flex items-center gap-2 text-indigo-400 text-xs py-2">
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span>AI sedang berpikir & menyusun pertanyaan...</span>
+            </div>
+          )}
         </div>
 
         {/* Input Bar */}
@@ -186,7 +158,8 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
           />
           <button
             onClick={() => handleSendMessage()}
-            className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all"
+            disabled={loading}
+            className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
           >
             <span>Kirim</span>
             <Send className="w-3.5 h-3.5" />

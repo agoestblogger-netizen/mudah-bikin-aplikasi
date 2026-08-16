@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppProjectState, FeaturePatchRequest } from '@/types/app';
-import { Wrench, Sparkles, CheckCircle2, Plus, Clock, Code2, ArrowRight } from 'lucide-react';
+import { Wrench, Sparkles, Plus, Clock, ArrowRight, RefreshCw } from 'lucide-react';
 
 interface Stage5FeaturePatchProps {
   projectState: AppProjectState;
@@ -18,26 +18,49 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
   const [patchDesc, setPatchDesc] = useState('');
   const [targetComp, setTargetComp] = useState('Dashboard & State JS');
   const [patchHistory, setPatchHistory] = useState<FeaturePatchRequest[]>(projectState.patchHistory);
+  const [loading, setLoading] = useState(false);
 
-  const handleApplyPatch = () => {
-    if (!patchDesc.trim()) return;
+  const handleApplyPatch = async () => {
+    if (!patchDesc.trim() || loading) return;
+    setLoading(true);
 
-    const newPatch: FeaturePatchRequest = {
-      id: 'patch-' + Date.now(),
-      requestedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      description: patchDesc,
-      targetComponent: targetComp,
-      status: 'APPLIED',
-      patchSummary: `AI Patch berhasil diterapkan pada ${targetComp}: kode Canvas & JS disesuaikan.`
-    };
+    try {
+      // Panggil API Route dengan stage: TAHAP_5_PATCH (Instruksi: jangan generate ulang semua, cukup jelaskan + kirim bagian yang berubah)
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Terapkan pembaruan fitur pada ${targetComp}: ${patchDesc}`,
+          stage: 'TAHAP_5_PATCH',
+          currentCode: projectState.canvasCode
+        })
+      });
 
-    const updated = [newPatch, ...patchHistory];
-    setPatchHistory(updated);
-    setPatchDesc('');
+      const data = await res.json();
+      const patchSummary = data.replyText || `Patch pada ${targetComp} berhasil diterapkan.`;
 
-    onUpdateState({
-      patchHistory: updated
-    });
+      const newPatch: FeaturePatchRequest = {
+        id: 'patch-' + Date.now(),
+        requestedAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        description: patchDesc,
+        targetComponent: targetComp,
+        status: 'APPLIED',
+        patchSummary
+      };
+
+      const updatedHistory = [newPatch, ...patchHistory];
+      setPatchHistory(updatedHistory);
+      setPatchDesc('');
+
+      onUpdateState({
+        patchHistory: updatedHistory,
+        canvasCode: data.code || projectState.canvasCode
+      });
+    } catch (err) {
+      console.error('Error applying patch:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -50,13 +73,13 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">Tahap 5 PRD: Pembaruan Fitur (Patch System)</h2>
-            <p className="text-xs text-slate-400">Terapkan revisi & penambahan fitur baru secara inkremental tanpa merusak data atau alur lama.</p>
+            <p className="text-xs text-slate-400">Terapkan revisi fitur secara inkremental (penjelasan bagian berubah + kode HTML ter-update).</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-800/40 px-3 py-1.5 rounded-full text-xs text-amber-300 font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Total Patch Diterapkan: {patchHistory.length}</span>
+          <span>Total Patch: {patchHistory.length}</span>
         </div>
       </div>
 
@@ -74,7 +97,7 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
               rows={4}
               value={patchDesc}
               onChange={(e) => setPatchDesc(e.target.value)}
-              placeholder="Contoh: Tambahkan tombol Export PDF pada laporan transaksi, dan tambahkan filter pencarian berdasarkan tanggal..."
+              placeholder="Contoh: Tambahkan tombol Export PDF pada laporan transaksi..."
               className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 focus:outline-none"
             />
           </div>
@@ -94,10 +117,20 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
 
           <button
             onClick={handleApplyPatch}
-            className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <Wrench className="w-4 h-4" />
-            <span>Terapkan Patch ke Kode Canvas</span>
+            {loading ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>AI Sedang Menerapkan Patch...</span>
+              </>
+            ) : (
+              <>
+                <Wrench className="w-4 h-4" />
+                <span>Terapkan Patch ke Kode Canvas</span>
+              </>
+            )}
           </button>
         </div>
 

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppProjectState, TroubleshootIssue } from '@/types/app';
-import { ShieldAlert, AlertTriangle, CheckCircle2, RefreshCw, HelpCircle, ArrowRight, Play, Sparkles } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, CheckCircle2, Send, HelpCircle, ArrowRight, RefreshCw, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface Stage6TroubleshooterProps {
@@ -13,6 +13,33 @@ export const Stage6Troubleshooter: React.FC<Stage6TroubleshooterProps> = ({ proj
   const [selectedIssue, setSelectedIssue] = useState<TroubleshootIssue | null>(
     projectState.troubleshootIssues[0] || null
   );
+  const [customError, setCustomError] = useState('');
+  const [aiDiagnosis, setAiDiagnosis] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleDiagnoseError = async () => {
+    if (!customError.trim() || loading) return;
+    setLoading(true);
+
+    try {
+      // Panggil API Route dengan stage: TAHAP_6_TROUBLESHOOTING (Instruksi: minta error dari Console dulu sebelum kasih solusi)
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: customError,
+          stage: 'TAHAP_6_TROUBLESHOOTING'
+        })
+      });
+
+      const data = await res.json();
+      setAiDiagnosis(data.replyText || 'Diagnosa selesai.');
+    } catch (err) {
+      console.error('Error in troubleshooting:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const triggerCelebration = () => {
     confetti({
@@ -32,7 +59,7 @@ export const Stage6Troubleshooter: React.FC<Stage6TroubleshooterProps> = ({ proj
           </div>
           <div>
             <h2 className="text-xl font-bold text-white">Tahap 6 PRD: Penanganan Kendala (Troubleshooting Suite)</h2>
-            <p className="text-xs text-slate-400">Asisten analisa error & diagnosa kendala teknis (CORS, Apps Script, Login Admin, Validation Error).</p>
+            <p className="text-xs text-slate-400">Asisten analisa error & diagnosa kendala teknis (minta error dari Console F12 sebelum beri solusi).</p>
           </div>
         </div>
 
@@ -58,7 +85,10 @@ export const Stage6Troubleshooter: React.FC<Stage6TroubleshooterProps> = ({ proj
             {projectState.troubleshootIssues.map((issue) => (
               <button
                 key={issue.id}
-                onClick={() => setSelectedIssue(issue)}
+                onClick={() => {
+                  setSelectedIssue(issue);
+                  setAiDiagnosis('');
+                }}
                 className={`w-full p-4 rounded-2xl border text-left transition-all ${
                   selectedIssue?.id === issue.id
                     ? 'bg-rose-950/30 border-rose-500 text-white shadow-lg shadow-rose-500/10'
@@ -73,11 +103,36 @@ export const Stage6Troubleshooter: React.FC<Stage6TroubleshooterProps> = ({ proj
               </button>
             ))}
           </div>
+
+          {/* Tanya Masalah Kustom ke AI */}
+          <div className="pt-4 border-t border-slate-800 space-y-3">
+            <h4 className="text-xs font-bold text-slate-300">Punya Error Lain? Tanyakan AI</h4>
+            <textarea
+              rows={3}
+              value={customError}
+              onChange={(e) => setCustomError(e.target.value)}
+              placeholder="Jelaskan error atau paste log dari Console (F12)..."
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-rose-500 focus:outline-none"
+            />
+            <button
+              onClick={handleDiagnoseError}
+              disabled={loading}
+              className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              <span>Analisa Error</span>
+            </button>
+          </div>
         </div>
 
         {/* Issue Details & Diagnostic Solution */}
         <div className="lg:col-span-2 bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-6">
-          {selectedIssue ? (
+          {aiDiagnosis ? (
+            <div className="p-5 rounded-2xl bg-slate-950 border border-rose-800/60 space-y-3">
+              <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Hasil Analisa AI Troubleshooter:</span>
+              <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-line">{aiDiagnosis}</p>
+            </div>
+          ) : selectedIssue ? (
             <div className="space-y-6">
               <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-rose-400">Diagnosa Kendala</span>
