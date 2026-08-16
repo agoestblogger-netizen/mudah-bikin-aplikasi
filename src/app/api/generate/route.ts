@@ -182,9 +182,113 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - DILARANG menggunakan alert() bawaan browser untuk notifikasi.
 18. ATURAN PEMETAAN AKSI TABEL KETAT (ANTI-AKSI TERTUKAR & WAJIB STYLING):
     - Pada baris tabel di dalam fungsi \`render()\`, SETIAP tombol aksi WAJIB dipetakan ke fungsinya secara tepat dan menggunakan class tombol:
-      * Tombol Edit: \`<button type="button" class="btn-secondary" onclick="showEditForm('\${item.id}')">Edit</button>\` (DILARANG KERAS memanggil fungsi hapus di tombol Edit!).
-      * Tombol Hapus: \`<button type="button" class="btn-danger" onclick="hapusItem('\${item.id}')">Hapus</button>\` (DILARANG KERAS memanggil fungsi edit di tombol Hapus!).
-    - DILARANG menulis tombol aksi tabel tanpa class atau membiarkannya polos default HTML.`;
+      * Tombol Edit: \`<button type="button" class="btn-secondary" onclick="bukaModalEdit('\${item.id}')">Edit</button>\` (DILARANG KERAS memanggil fungsi hapus di tombol Edit!).
+      * Tombol Hapus: \`<button type="button" class="btn-danger" onclick="bukaModalHapus('\${item.id}')">Hapus</button>\` (DILARANG KERAS memanggil fungsi edit di tombol Hapus!).
+    - DILARANG menulis tombol aksi tabel tanpa class atau membiarkannya polos default HTML.
+19. ARSITEKTUR REUSABLE MODAL/POPUP WAJIB (CRUD POPUP PATTERN):
+    - Form Tambah & Edit DILARANG nempel/inline di halaman. WAJIB menggunakan 1 MODAL FORM TUNGGAL yang dipakai ulang (reusable) untuk Tambah & Edit, serta 1 MODAL KONFIRMASI HAPUS.
+    - POLA HTML MODAL WAJIB:
+      \`\`\`html
+      <!-- MODAL FORM (TAMBAH & EDIT) -->
+      <div id="modalForm" class="modal">
+        <div class="modal-box">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h3 id="modalTitle" class="title" style="font-size:18px; margin-bottom:0;">Tambah Data</h3>
+            <button type="button" class="btn-secondary" onclick="tutupModalForm()" style="padding:4px 8px;">✕</button>
+          </div>
+          <form id="formData" onsubmit="event.preventDefault(); simpanForm();">
+            <input type="hidden" id="editId" value="">
+            <div class="form-group">
+              <label class="form-label" for="inputNama">Nama</label>
+              <input type="text" id="inputNama" class="form-input" placeholder="Masukkan nama...">
+            </div>
+            <!-- field input lainnya sesuai aplikasi -->
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+              <button type="button" class="btn-secondary" onclick="tutupModalForm()">Batal</button>
+              <button type="button" class="btn-primary" onclick="simpanForm()">Simpan</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- MODAL KONFIRMASI HAPUS -->
+      <div id="modalHapus" class="modal">
+        <div class="modal-box">
+          <h3 class="title" style="font-size:18px;">Konfirmasi Hapus</h3>
+          <p class="subtitle" style="margin-bottom:20px;">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+          <input type="hidden" id="hapusId" value="">
+          <div style="display:flex; justify-content:flex-end; gap:8px;">
+            <button type="button" class="btn-secondary" onclick="tutupModalHapus()">Batal</button>
+            <button type="button" class="btn-danger" onclick="eksekusiHapus()">Hapus</button>
+          </div>
+        </div>
+      </div>
+      \`\`\`
+    - POLA JAVASCRIPT MODAL WAJIB:
+      \`\`\`javascript
+      let editId = null;
+
+      function bukaModalTambah() {
+        editId = null;
+        document.getElementById('modalTitle').innerText = 'Tambah Data';
+        document.getElementById('editId').value = '';
+        document.getElementById('inputNama').value = '';
+        // reset form input lainnya...
+        document.getElementById('modalForm').style.display = 'flex';
+      }
+
+      function bukaModalEdit(id) {
+        editId = String(id);
+        const item = items.find(i => String(i.id) === String(id));
+        if (!item) return;
+        document.getElementById('modalTitle').innerText = 'Edit Data';
+        document.getElementById('editId').value = item.id;
+        document.getElementById('inputNama').value = item.nama;
+        // isi input lainnya...
+        document.getElementById('modalForm').style.display = 'flex';
+      }
+
+      function tutupModalForm() {
+        document.getElementById('modalForm').style.display = 'none';
+      }
+
+      function simpanForm() {
+        const nama = document.getElementById('inputNama')?.value.trim();
+        if (!nama) {
+          showToast('Harap lengkapi semua kolom formulir!', 'error');
+          return;
+        }
+        if (editId) {
+          // UPDATE DATA EXISTING
+          items = items.map(item => String(item.id) === String(editId) ? { ...item, nama } : item);
+          showToast('Data berhasil diperbarui!', 'success');
+        } else {
+          // TAMBAH DATA BARU
+          const newItem = { id: String(Date.now()), nama };
+          items.push(newItem);
+          showToast('Data baru berhasil ditambahkan!', 'success');
+        }
+        tutupModalForm();
+        render();
+      }
+
+      function bukaModalHapus(id) {
+        document.getElementById('hapusId').value = String(id);
+        document.getElementById('modalHapus').style.display = 'flex';
+      }
+
+      function tutupModalHapus() {
+        document.getElementById('modalHapus').style.display = 'none';
+      }
+
+      function eksekusiHapus() {
+        const id = document.getElementById('hapusId').value;
+        items = items.filter(item => String(item.id) !== String(id));
+        tutupModalHapus();
+        showToast('Data berhasil dihapus!', 'success');
+        render();
+      }
+      \`\`\``;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);
