@@ -47,7 +47,8 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
       systemPrompt += `\n\nATURAN TAHAP 1 (PEMBUKAAN SINGKAT):
 - Gali SEDIKIT detail minimal untuk membangun mockup pertama (jenis aplikasi, target user, 2-3 fitur inti).
 - SATU pertanyaan per giliran, maksimal 2-4 pertanyaan fokus singkat secara dinamis.
-- JANGAN langsung tampilkan checklist formal di awal.`;
+- JANGAN langsung tampilkan checklist formal di awal.
+- ATURAN KHUSUS "BUATKAN LANGSUNG": Jika pengguna mengatakan "buatkan saja", "terserah kamu", "kamu putuskan sendiri", "buatkan langsung", "tanpa tanya lagi", atau sejenisnya di tengah percakapan, AI WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP DALAM BLOK \`\`\`html ... \`\`\`. DILARANG KERAS menanyakan pertanyaan lanjutan atau hanya memberikan teks ringkasan!`;
     } else if (stage === 'TAHAP_5_PATCH') {
       systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / PATCH):
 - Pengguna meminta penambahan/revisi fitur baru.

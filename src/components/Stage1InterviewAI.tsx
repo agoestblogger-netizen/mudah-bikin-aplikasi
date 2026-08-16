@@ -60,10 +60,40 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
 
-      onUpdateState({
-        title: query.length < 30 ? query : projectState.title,
-        chatMessages: finalMessages
-      });
+      if (data.code) {
+        // AI langsung menghasilkan kode mockup (misal user minta "buatkan saja / terserah kamu")
+        let h = '', c = '', j = '';
+        if (typeof data.code === 'string') {
+          h = data.code;
+        } else if (typeof data.code === 'object') {
+          h = data.code.html || '';
+          c = data.code.css || '';
+          j = data.code.js || '';
+        }
+
+        onUpdateState({
+          title: query.length < 30 ? query : projectState.title,
+          chatMessages: finalMessages,
+          canvasCode: { html: h, css: c, js: j },
+          currentStage: 'TAHAP_2_MOCKUP',
+          qualityAudit: {
+            ...projectState.qualityAudit,
+            totalScore: 92,
+            isCanvasCodeOnly: true,
+            hasDynamicState: true
+          }
+        });
+
+        // Langsung lompat ke Tahap 2
+        setTimeout(() => {
+          onNextStage();
+        }, 600);
+      } else {
+        onUpdateState({
+          title: query.length < 30 ? query : projectState.title,
+          chatMessages: finalMessages
+        });
+      }
     } catch (err) {
       console.error('Error calling /api/generate:', err);
     } finally {
