@@ -1,10 +1,26 @@
 import { NextResponse } from 'next/server';
 import { validateAndRepairGeneratedCode } from '@/lib/codeValidator';
+import { checkRateLimit } from '@/lib/rateLimiter';
 
 export const maxDuration = 60; // Max timeout for Next.js Serverless Function
 
 export async function POST(req: Request) {
   try {
+    // 1. Rate Limiting Check (PRD Bagian 10)
+    const forwardedFor = req.headers.get('x-forwarded-for');
+    const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : '127.0.0.1';
+    const rateLimit = checkRateLimit(clientIp);
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Batas kuota request tercapai (${clientIp}). Mohon tunggu ${rateLimit.resetInSeconds} detik sebelum mencoba kembali.`
+        },
+        { status: 429 }
+      );
+    }
+
     const { prompt, chatHistory, stage, currentCode } = await req.json();
 
     const apiKey = process.env.OPENAI_API_KEY;

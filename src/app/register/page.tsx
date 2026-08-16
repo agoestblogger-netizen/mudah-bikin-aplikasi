@@ -4,19 +4,21 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
-import { Sparkles, Lock, Mail, ArrowRight, UserPlus } from 'lucide-react';
+import { Sparkles, Lock, Mail, ArrowRight, UserPlus, AlertTriangle } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMsg('');
+    setErrorMsg('');
+    setSuccessMsg('');
 
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -25,15 +27,18 @@ export default function RegisterPage() {
       });
 
       if (error) {
-        // Fallback for demo mode
-        router.push('/app');
+        setErrorMsg(`Gagal Mendaftar: ${error.message}`);
         return;
       }
 
-      setMsg('Registrasi berhasil! Mengalihkan ke workspace...');
-      setTimeout(() => router.push('/app'), 1000);
+      if (data.user) {
+        setSuccessMsg('Registrasi berhasil! Silakan periksa email Anda atau masuk dengan akun baru.');
+        setTimeout(() => router.push('/login'), 2000);
+      } else {
+        setErrorMsg('Gagal membuat user di database Supabase.');
+      }
     } catch (err: any) {
-      router.push('/app');
+      setErrorMsg(`Kendala Koneksi Database: ${err.message || 'Layanan Supabase Auth belum terhubung'}`);
     } finally {
       setLoading(false);
     }
@@ -51,9 +56,16 @@ export default function RegisterPage() {
           <p className="text-xs text-slate-400">Buat akun platform Mudah Bikin Aplikasi (Supabase Auth)</p>
         </div>
 
-        {msg && (
-          <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800 text-xs text-emerald-300 text-center">
-            {msg}
+        {errorMsg && (
+          <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-300 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-800 text-xs text-emerald-300 text-center">
+            {successMsg}
           </div>
         )}
 
@@ -92,9 +104,9 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <span>{loading ? 'Mendaftarkan...' : 'Daftar & Mulai'}</span>
+            <span>{loading ? 'Mendaftarkan...' : 'Daftar & Buat Akun'}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>

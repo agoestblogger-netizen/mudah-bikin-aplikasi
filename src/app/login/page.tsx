@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
-import { Sparkles, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Sparkles, Lock, Mail, ArrowRight, AlertTriangle } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,18 +25,18 @@ export default function LoginPage() {
       });
 
       if (error) {
-        // Safe fallback for demo mode if Supabase URL is placeholder
-        if (email && password) {
-          router.push('/app');
-          return;
-        }
-        setErrorMsg(error.message);
-      } else if (data.session) {
+        // Strict: Tampilkan error autentikasi sungguhan dari Supabase
+        setErrorMsg(`Gagal Masuk: ${error.message}`);
+        return;
+      }
+
+      if (data && data.session) {
         router.push('/app');
+      } else {
+        setErrorMsg('Sesi login tidak valid. Pastikan akun Anda sudah terverifikasi.');
       }
     } catch (err: any) {
-      // Demo fallback mode
-      router.push('/app');
+      setErrorMsg(`Kendala Koneksi Database: ${err.message || 'Layanan Supabase Auth belum terhubung'}`);
     } finally {
       setLoading(false);
     }
@@ -55,8 +55,9 @@ export default function LoginPage() {
         </div>
 
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-300 text-center">
-            {errorMsg}
+          <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-300 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
@@ -95,7 +96,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <span>{loading ? 'Memverifikasi...' : 'Masuk Aplikasi'}</span>
             <ArrowRight className="w-4 h-4" />
