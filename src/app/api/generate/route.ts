@@ -30,9 +30,9 @@ export async function POST(req: Request) {
 Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
 
 11 PRINSIP TERVALIDASI WAJIB:
-1. ARSITEKTUR STATE: Semua data (maksimal 3-5 item contoh) di 1 array/object JS di memori. Render via render().
-2. FUNGSIONAL PENUH: Tombol aksi memanipulasi state asli dan memanggil render() di baris terakhir. Tipe data ID konsisten string.
-3. ANTI-CUTOFF: Render loop .map(), 3-5 item dummy.
+1. ARSITEKTUR STATE & DATA AWAL WAJIB (DILARANG ARRAY KOSONG): Variabel state array DILARANG KERAS diinisialisasi kosong (misal: \`let items = [];\`). State WAJIB langsung memiliki 3-5 item dummy contoh realistis lengkap (contoh: \`let items = [{ id: '1', nama: 'Kopi Susu', kategori: 'Minuman', harga: 15000 }, { id: '2', nama: 'Roti Bakar', kategori: 'Makanan', harga: 12000 }, { id: '3', nama: 'Teh Manis', kategori: 'Minuman', harga: 6000 }];\`). Selalu render tampilan melalui fungsi \`render()\`.
+2. FUNGSIONAL PENUH: Tombol aksi (Tambah, Edit, Hapus) WAJIB berfungsi nyata memanipulasi array state di memori dan memanggil \`render()\` di baris terakhir. Tipe data ID konsisten string.
+3. ANTI-CUTOFF: Render loop .map() pada tabel / kartu list dari 3-5 item dummy tersebut. Jangan hardcode baris tabel secara manual di HTML, render melalui JS loop.
 4. 3 CHECKLIST EKSPLISIT: Data, Tombol/Aksi, Login/Akses.
 5. FITUR ADMIN DI-GATE: Fitur Tambah User aktif tapi tersembunyi di balik role Admin.
 6. LOGIN TANPA KREDENSIAL DEFAULT: Dilarang pakai admin/123 global.
