@@ -22,52 +22,48 @@ export function validateAndRepairGeneratedCode(
   let repairedHtml = html;
   let repairedJs = js;
 
-  // 1. Cek & Perbaiki Larangan `confirm()`, `alert()`, dan `prompt()` (PRD Bagian 7 Syarat 3b)
+  // 1. Ekstrak JavaScript dari dalam tag <script> di HTML jika ada
+  let inlineJs = '';
+  const scriptMatches = repairedHtml.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi);
+  if (scriptMatches) {
+    inlineJs = scriptMatches.map(s => s.replace(/<\/?script[\s\S]*?>/gi, '')).join('\n');
+  }
+
+  const combinedJs = (inlineJs + '\n' + repairedJs).trim();
+
+  // 2. Cek & Perbaiki Larangan `confirm()`, `alert()`, dan `prompt()` (PRD Bagian 7 Syarat 3b)
   const forbiddenApis = ['confirm(', 'alert(', 'prompt('];
   forbiddenApis.forEach((api) => {
-    if (repairedJs.includes(api)) {
+    if (repairedHtml.includes(api) || repairedJs.includes(api)) {
       issues.push(`Ditemukan pemanggilan API bawaan browser berisiko: ${api}`);
-      // Replace confirm(...) dengan true (skip confirm dialog iframe)
-      if (api === 'confirm(') {
-        repairedJs = repairedJs.replace(/if\s*\(\s*!*confirm\([^)]*\)\s*\)\s*return;/g, '// confirm dialog replaced for iframe safety');
-        repairedJs = repairedJs.replace(/confirm\([^)]*\)/g, 'true');
-      }
-      if (api === 'alert(') {
-        repairedJs = repairedJs.replace(/alert\(([^)]*)\)/g, 'console.log("Notifikasi:", $1)');
-      }
+      
+      // Sanitasi di dalam HTML
+      repairedHtml = repairedHtml.replace(/if\s*\(\s*!*confirm\([^)]*\)\s*\)\s*return;/g, '// confirm bypassed');
+      repairedHtml = repairedHtml.replace(/confirm\([^)]*\)/g, 'true');
+      repairedHtml = repairedHtml.replace(/alert\(([^)]*)\)/g, 'console.log("Notifikasi:", $1)');
+      repairedHtml = repairedHtml.replace(/prompt\(([^)]*)\)/g, '""');
+
+      // Sanitasi di dalam JS terpisah
+      repairedJs = repairedJs.replace(/if\s*\(\s*!*confirm\([^)]*\)\s*\)\s*return;/g, '// confirm bypassed');
+      repairedJs = repairedJs.replace(/confirm\([^)]*\)/g, 'true');
+      repairedJs = repairedJs.replace(/alert\(([^)]*)\)/g, 'console.log("Notifikasi:", $1)');
+      repairedJs = repairedJs.replace(/prompt\(([^)]*)\)/g, '""');
     }
   });
 
-  // 2. Cek `.filter()` / `.map()` tanpa reassign ke variabel state (PRD Bagian 5 Validasi Otomatis)
-  const filterMatches = repairedJs.match(/(\w+)\.filter\(/g);
-  if (filterMatches) {
-    filterMatches.forEach((m) => {
-      const varName = m.split('.')[0];
-      const reassignPattern = new RegExp(`${varName}\\s*=\\s*${varName}\\.filter`);
-      if (!reassignPattern.test(repairedJs)) {
-        issues.push(`Variabel state "${varName}" di-filter tetapi hasilnya tidak di-assign ulang.`);
+  // 3. Cek form submit yang berpotensi me-reload iframe tanpa preventDefault
+  if (repairedHtml.includes('<form') && !repairedHtml.includes('preventDefault')) {
+    // Ubah form onsubmit untuk mencegah reload halaman iframe
+    repairedHtml = repairedHtml.replace(/<form([^>]*)>/gi, (match) => {
+      if (match.includes('onsubmit')) {
+        return match;
       }
+      return match.replace('<form', '<form onsubmit="event.preventDefault();"');
     });
   }
 
-  // 3. Cek fungsi onclick pada HTML dipastikan ada definisinya di JS
-  const onclickMatches = repairedHtml.match(/onclick=["'](\w+)\(/g);
-  if (onclickMatches) {
-    onclickMatches.forEach((match) => {
-      const funcName = match.replace(/onclick=["']/, '').replace('(', '');
-      const funcDefPattern = new RegExp(`function\\s+${funcName}|const\\s+${funcName}\\s*=|let\\s+${funcName}\\s*=`);
-      if (!funcDefPattern.test(repairedJs)) {
-        issues.push(`Fungsi "${funcName}" dipanggil pada atribut onclick tetapi tidak ditemukan di kode JavaScript.`);
-        // Auto-fix stub definition
-        repairedJs += `\nfunction ${funcName}() { console.warn("Stub auto-fix for ${funcName}"); }`;
-      }
-    });
-  }
-
-  // 4. Cek fungsi render dipanggil di dalam fungsi mutasi
-  if (repairedJs.includes('function delete') && !repairedJs.includes('render')) {
-    issues.push('Fungsi penghapusan item tidak memanggil fungsi render di dalamnya.');
-  }
+  // 4. Pastikan tombol di dalam form default ke type="button" agar tidak reload
+  repairedHtml = repairedHtml.replace(/<button(?![^>]*type=)([^>]*)>/gi, '<button type="button"$1>');
 
   return {
     isValid: issues.length === 0,
@@ -75,7 +71,7 @@ export function validateAndRepairGeneratedCode(
     repairedCode: {
       html: repairedHtml,
       css,
-      js: repairedJs
+      js: repairedJs // JANGAN inject stub function dummy yang menimpa fungsi asli!
     }
   };
 }

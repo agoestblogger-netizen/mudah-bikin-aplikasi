@@ -53,7 +53,10 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
       * Tombol Utama: background: #4f46e5 (indigo), color: #ffffff (putih terang), font-weight: 600, padding: 10px 18px, border-radius: 10px
       * Tombol Aksi Hapus / Bahaya: background: #fee2e2, color: #b91c1c, border: 1px solid #fecaca
       * Modal Dialog: background backdrop rgba(15, 23, 42, 0.6), modal-box background #ffffff, color #0f172a
-    - DILARANG KERAS: Memakai warna teks yang mirip dengan warna background (misal teks gelap di atas background gelap, atau teks putih di atas background putih). Semua teks WAJIB sangat kontras, tajam, dan mudah dibaca oleh siapa saja.`;
+    - DILARANG KERAS: Memakai warna teks yang mirip dengan warna background (misal teks gelap di atas background gelap, atau teks putih di atas background putih). Semua teks WAJIB sangat kontras, tajam, dan mudah dibaca oleh siapa saja.
+13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
+    - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
+    - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.`;
 
     // ATURAN KHUSUS PER TAHAP SESUAI PRD:
     if (stage === 'TAHAP_1_PEMBUKAAN') {
