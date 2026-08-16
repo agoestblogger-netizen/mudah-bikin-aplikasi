@@ -65,7 +65,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 15. KEPATUHAN POLA UI SPESIFIK & ANTI-SIMPLIFIKASI (TAB, MODAL, ACCORDION, SIDEBAR, DROPDOWN):
     - Jika pengguna meminta pola UI SPESIFIK (seperti: navigasi tab, modal dialog pop-up, dropdown menu, accordion, sidebar navigasi, toast notification, filter list, dsb), WAJIB implementasikan PERSIS pola antarmuka tersebut secara fungsional.
     - DILARANG KERAS mengganti pola UI yang diminta dengan pola lain yang dianggap "cukup mirip" atau "lebih mudah dibuat" (misal: mengganti tab navigasi dengan tombol biasa, atau mengganti modal pop-up dengan form inline biasa).
-    - Khusus navigasi tab: wajib buatkan container tab-bar interaktif dengan visual tab yang jelas (active tab highlight) dan konten tab yang berganti secara dinamis saat tab diklik.
+    - Khusus navigasi tab: wajib buatkan container tab-bar interaktif dengan visual tab yang jelas (active tab highlight class 'active') dan konten yang berganti secara dinamis saat tab diklik. DILARANG menggunakan syntax jQuery seperti \`:contains()\`, gunakan Vanilla JS murni.
     - Jika istilah yang diminta pengguna ambigu atau tidak jelas jenis UI-nya, WAJIB tanyakan klarifikasi singkat terlebih dahulu, JANGAN menebak dan langsung generate sembarangan.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal

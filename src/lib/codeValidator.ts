@@ -91,7 +91,13 @@ export function validateAndRepairGeneratedCode(
     }
   });
 
-  // 6. Pastikan Anti-Reload pada Form
+  // 6. Sanitasi Larangan jQuery `:contains()` pada vanilla JS querySelector
+  if (repairedHtml.includes(':contains(') || repairedJs.includes(':contains(')) {
+    repairedHtml = repairedHtml.replace(/document\.querySelector\([^)]*:contains[^)]*\)\.classList\.add\([^)]*\);?/g, '// active tab handled by render');
+    repairedJs = repairedJs.replace(/document\.querySelector\([^)]*:contains[^)]*\)\.classList\.add\([^)]*\);?/g, '// active tab handled by render');
+  }
+
+  // 7. Pastikan Anti-Reload pada Form
   if (repairedHtml.includes('<form') && !repairedHtml.includes('preventDefault')) {
     repairedHtml = repairedHtml.replace(/<form([^>]*)>/gi, (match) => {
       if (match.includes('onsubmit')) return match;
