@@ -397,6 +397,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       let geminiData: any = null;
       let usedModel = '';
+      const attemptErrors: string[] = [];
 
       for (const modelName of candidateModels) {
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
@@ -421,12 +422,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           usedModel = modelName;
           break;
         } else {
-          console.warn(`Gemini model ${modelName} attempt failed:`, data.error?.message);
+          attemptErrors.push(`[${modelName}]: ${data.error?.message || res.statusText || 'unknown'}`);
         }
       }
 
       if (!geminiData || !geminiData.candidates?.[0]) {
-        throw new Error('Semua model Gemini yang dicoba gagal merespons. Pastikan GEMINI_API_KEY valid di Google AI Studio.');
+        throw new Error('Gemini API failed: ' + attemptErrors.join(' || '));
       }
 
       let candidate = geminiData.candidates?.[0];
