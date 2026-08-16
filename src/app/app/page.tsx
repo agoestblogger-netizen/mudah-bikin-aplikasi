@@ -1,18 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
-import { AppProjectState, PRDStage } from '@/types/app';
+import React, { useState, useEffect } from 'react';
+import { AppProjectState } from '@/types/app';
 import { initialProjectState } from '@/lib/defaultState';
 import { Navbar } from '@/components/Navbar';
-import { Stage1InterviewAI } from '@/components/Stage1InterviewAI';
-import { Stage2MockupCanvas } from '@/components/Stage2MockupCanvas';
-import { Stage3BriefLock } from '@/components/Stage3BriefLock';
-import { Stage4GASBackend } from '@/components/Stage4GASBackend';
-import { Stage5FeaturePatch } from '@/components/Stage5FeaturePatch';
-import { Stage6Troubleshooter } from '@/components/Stage6Troubleshooter';
+import { ChatPanel } from '@/components/ChatPanel';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
-import { Eye, Code2, Download, RefreshCw, Sparkles, Layers } from 'lucide-react';
+import { Eye, Code2, Download, RefreshCw, Layers } from 'lucide-react';
 
 export default function AppWorkspacePage() {
   const [projectState, setProjectState] = useState<AppProjectState>(initialProjectState);
@@ -22,7 +17,7 @@ export default function AppWorkspacePage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // Pemeriksaan Sesi Supabase Auth Ketat (PRD Bagian 11)
-  React.useEffect(() => {
+  useEffect(() => {
     async function verifyAuthSession() {
       try {
         const { data } = await supabase.auth.getSession();
@@ -46,11 +41,12 @@ export default function AppWorkspacePage() {
     }));
   };
 
-  const handleSelectStage = (stage: PRDStage) => {
-    setProjectState((prev) => ({
-      ...prev,
-      currentStage: stage
-    }));
+  const handleNewSession = () => {
+    setProjectState({
+      ...initialProjectState,
+      id: 'proj-' + Date.now(),
+      updatedAt: new Date().toISOString()
+    });
   };
 
   // PRD Bagian 9: Download index.html mandiri untuk deploy ke Cloudflare Pages
@@ -81,7 +77,7 @@ export default function AppWorkspacePage() {
           <div className="space-y-2">
             <h2 className="text-2xl font-extrabold text-white">Akses Terkunci: Sedang Dalam Pemeliharaan</h2>
             <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
-              Gerbang autentikasi aktif. Sesuai PRD Bagian 11, Anda wajib masuk dengan akun Supabase yang valid untuk mengakses workspace generator. Layanan saat ini sedang dalam proses konfigurasi database Supabase.
+              Gerbang autentikasi aktif. Sesuai PRD Bagian 11, Anda wajib masuk dengan akun Supabase yang valid untuk mengakses workspace generator.
             </p>
           </div>
 
@@ -117,66 +113,25 @@ export default function AppWorkspacePage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white flex flex-col">
-      {/* Top Navbar */}
-      <Navbar
-        currentStage={projectState.currentStage}
-        onSelectStage={handleSelectStage}
-        projectTitle={projectState.title}
-        auditScore={projectState.qualityAudit.totalScore}
-      />
+      {/* Top Navbar Minimalis (PRD FR-09) */}
+      <Navbar onNewSession={handleNewSession} />
 
-      {/* Main 2-Panel Workspace (PRD Bagian 9) */}
+      {/* Main 2-Panel Workspace Murni Sesuai PRD FR-09 */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* LEFT PANEL (7 Cols): Chat History & 6 PRD Stage Controls */}
-        <div className="lg:col-span-7 flex flex-col space-y-4">
-          {projectState.currentStage === 'TAHAP_1_PEMBUKAAN' && (
-            <Stage1InterviewAI
-              projectState={projectState}
-              onUpdateState={handleUpdateState}
-              onNextStage={() => handleSelectStage('TAHAP_2_MOCKUP')}
-            />
-          )}
-
-          {projectState.currentStage === 'TAHAP_2_MOCKUP' && (
-            <Stage2MockupCanvas
-              projectState={projectState}
-              onUpdateState={handleUpdateState}
-              onNextStage={() => handleSelectStage('TAHAP_3_KUNCI_KEBUTUHAN')}
-            />
-          )}
-
-          {projectState.currentStage === 'TAHAP_3_KUNCI_KEBUTUHAN' && (
-            <Stage3BriefLock
-              projectState={projectState}
-              onNextStage={() => handleSelectStage('TAHAP_4_BACKEND')}
-            />
-          )}
-
-          {projectState.currentStage === 'TAHAP_4_BACKEND' && (
-            <Stage4GASBackend
-              projectState={projectState}
-              onUpdateState={handleUpdateState}
-              onNextStage={() => handleSelectStage('TAHAP_5_PATCH')}
-            />
-          )}
-
-          {projectState.currentStage === 'TAHAP_5_PATCH' && (
-            <Stage5FeaturePatch
-              projectState={projectState}
-              onUpdateState={handleUpdateState}
-              onNextStage={() => handleSelectStage('TAHAP_6_TROUBLESHOOTING')}
-            />
-          )}
-
-          {projectState.currentStage === 'TAHAP_6_TROUBLESHOOTING' && (
-            <Stage6Troubleshooter projectState={projectState} />
-          )}
+        {/* PANEL KIRI (6 Kolom): Percakapan AI Penuh */}
+        <div className="lg:col-span-6 flex flex-col">
+          <ChatPanel
+            projectState={projectState}
+            onUpdateState={handleUpdateState}
+            isGenerating={isGenerating}
+            setIsGenerating={setIsGenerating}
+          />
         </div>
 
-        {/* RIGHT PANEL (5 Cols): Live Preview Iframe + GAS Script + Download index.html */}
-        <div className="lg:col-span-5 flex flex-col bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)]">
-          {/* Header & Controls */}
+        {/* PANEL KANAN (6 Kolom): Pratinjau (Live Preview) & Backend Apps Script */}
+        <div className="lg:col-span-6 flex flex-col bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)]">
+          {/* Header Kontrol Panel Kanan */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-950/60 shrink-0">
             <div className="flex items-center gap-2">
               <button
@@ -204,32 +159,26 @@ export default function AppWorkspacePage() {
               </button>
             </div>
 
-            {/* Download index.html button (PRD Bagian 9) */}
+            {/* Tombol Download index.html (PRD FR-11 & FR-12) */}
             <button
               onClick={handleDownloadIndexHtml}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20"
+              disabled={!projectState.canvasCode.html}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-40"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
             </button>
           </div>
 
-          {/* Panel Content */}
+          {/* Isi Viewport Live Preview / Script */}
           <div className="flex-1 overflow-hidden p-4 relative">
-            {isGenerating && (
-              <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center gap-3 text-indigo-300 text-xs font-semibold">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>AI Sedang Memproses & Melakukan Anti-Cutoff...</span>
-              </div>
-            )}
-
             {rightPanelTab === 'PREVIEW' ? (
               <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
                 {projectState.canvasCode.html ? (
                   <iframe
                     title="Live Preview Canvas"
                     srcDoc={buildSrcDoc(projectState.canvasCode)}
-                    className="w-full h-full border-none"
+                    className="w-full h-full border-none bg-slate-50"
                     sandbox="allow-scripts allow-forms allow-modals"
                   />
                 ) : (
@@ -238,9 +187,9 @@ export default function AppWorkspacePage() {
                       <Layers className="w-8 h-8 text-indigo-400" />
                     </div>
                     <div className="space-y-1.5 max-w-sm">
-                      <h4 className="text-sm font-bold text-white">Canvas Preview Kosong</h4>
+                      <h4 className="text-sm font-bold text-white">Pratinjau Aplikasi Akan Muncul Di Sini</h4>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        Selesaikan wawancara singkat di <strong>Tahap 1</strong>, lalu masuk ke <strong>Tahap 2</strong> untuk melihat prototipe interaktif aplikasi Anda dibuat secara live di sini.
+                        Mulai percakapan dengan AI di panel kiri untuk mendeskripsikan aplikasi yang ingin Anda bangun. Mockup interaktif akan langsung dirender secara real-time di sini.
                       </p>
                     </div>
                   </div>
@@ -258,7 +207,7 @@ export default function AppWorkspacePage() {
                     <div className="space-y-1.5 max-w-sm">
                       <h4 className="text-sm font-bold text-white">Backend Google Apps Script Belum Dibuat</h4>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        Kode <code>code.gs</code> dan struktur kolom Google Sheets akan dibuat di <strong>Tahap 4</strong> setelah kebutuhan fitur dikunci di Tahap 3.
+                        Minta AI di panel kiri: <em>"Buatkan script Google Apps Script untuk menghubungkan aplikasi ke Google Sheets"</em>.
                       </p>
                     </div>
                   </div>
