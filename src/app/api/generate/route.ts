@@ -351,7 +351,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     // JALUR 1: GEMINI API (GEMINI 3.7 FLASH / GEMINI 2.5 FLASH)
     // =========================================================================
     if (aiProvider === 'gemini') {
-      const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
       const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
 
       // Susun Contents dengan Aturan Role Bergantian (user / model)
@@ -555,7 +555,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         
         // Auto-Recovery Prompt sesuai Provider yang Aktif
         if (aiProvider === 'gemini' && geminiApiKey) {
-          const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+          const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
           const repairRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
