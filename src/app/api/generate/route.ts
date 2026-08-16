@@ -61,7 +61,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - Nama fungsi di atribut \`onclick="namaFungsi()"\` WAJIB PERSIS SAMA (termasuk besar-kecil huruf) dengan nama fungsi yang didefinisikan di \`<script>\`.
     - ID elemen yang dipanggil lewat \`document.getElementById('xyz')\` WAJIB PERSIS SAMA dengan atribut \`id="xyz"\` pada elemen HTML terkait.
     - Selalu gunakan perbandingan ID tipe string (contoh: \`String(item.id) !== String(id)\`) agar tidak terjadi kegagalan penghapusan/edit akibat perbedaan number vs string.
-    - SEBELUM MENYERAHKAN KODE: telusuri ulang satu per satu: setiap atribut onclick punya fungsi yang match di JS, setiap getElementById punya elemen yang match di HTML.`;
+    - SEBELUM MENYERAHKAN KODE: telusuri ulang satu per satu: setiap atribut onclick punya fungsi yang match di JS, setiap getElementById punya elemen yang match di HTML.
+15. KEPATUHAN POLA UI SPESIFIK & ANTI-SIMPLIFIKASI (TAB, MODAL, ACCORDION, SIDEBAR, DROPDOWN):
+    - Jika pengguna meminta pola UI SPESIFIK (seperti: navigasi tab, modal dialog pop-up, dropdown menu, accordion, sidebar navigasi, toast notification, filter list, dsb), WAJIB implementasikan PERSIS pola antarmuka tersebut secara fungsional.
+    - DILARANG KERAS mengganti pola UI yang diminta dengan pola lain yang dianggap "cukup mirip" atau "lebih mudah dibuat" (misal: mengganti tab navigasi dengan tombol biasa, atau mengganti modal pop-up dengan form inline biasa).
+    - Khusus navigasi tab: wajib buatkan container tab-bar interaktif dengan visual tab yang jelas (active tab highlight) dan konten tab yang berganti secara dinamis saat tab diklik.
+    - Jika istilah yang diminta pengguna ambigu atau tidak jelas jenis UI-nya, WAJIB tanyakan klarifikasi singkat terlebih dahulu, JANGAN menebak dan langsung generate sembarangan.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);
@@ -72,7 +77,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       if (isFastForward || userMessageCount >= 2) {
         systemPrompt += `\n\nATURAN TAHAP 1 (JALUR CEPAT / GENERATE MOCKUP):
 - Pengguna meminta untuk langsung membuatkan aplikasi atau wawancara singkat sudah cukup.
-- AI WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP DALAM BLOK \`\`\`html ... \`\`\` dengan 13 Prinsip Wajib di atas (data awal 3-5 item contoh, tombol Tambah/Edit/Hapus aktif di memori, warna kontras tinggi).`;
+- AI WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP DALAM BLOK \`\`\`html ... \`\`\` dengan 15 Prinsip Wajib di atas (data awal 3-5 item contoh, tombol Tambah/Edit/Hapus aktif di memori, warna kontras tinggi, pola UI persis).`;
       } else {
         systemPrompt += `\n\nATURAN TAHAP 1 (JALUR NORMAL - WAWANCARA AWAL):
 - DILARANG KERAS menghasilkan blok kode \`\`\`html ... \`\`\` pada giliran ini!
@@ -81,7 +86,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
     } else if (stage === 'TAHAP_5_PATCH') {
       systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
-- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks).
+- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, tambah tab/modal).
+- KEPATUHAN POLA UI SPESIFIK (PRINSIP 15): Jika pengguna meminta pola UI spesifik (misal: tab navigasi), WAJIB implementasikan PERSIS pola tab tersebut (bukan tombol biasa pengganti tab).
 - PERINGATAN INTEGRITAS FUNGSIONAL: Anda WAJIB mempertahankan SEMUA kode JavaScript yang sudah berfungsi sebelumnya (array data 3-5 item contoh, render(), tambahItem, editItem, hapusItem, modal, event listener).
 - DILARANG KERAS menghilangkan fungsi-fungsi JavaScript atau mengosongkan tag <script> saat melakukan revisi styling CSS atau HTML.
 - Berikan KODE HTML UTUH LENGKAP (termasuk tag <style> dan <script> utuh yang 100% berfungsi) di dalam blok \`\`\`html ... \`\`\`.`;
