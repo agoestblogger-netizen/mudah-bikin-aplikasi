@@ -351,9 +351,6 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     // JALUR 1: GEMINI API (GEMINI 3.7 FLASH / GEMINI 2.5 FLASH)
     // =========================================================================
     if (aiProvider === 'gemini') {
-      const geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
-
       // Susun Contents dengan Aturan Role Bergantian (user / model)
       const rawContents: { role: string; text: string }[] = [];
       recentHistory.forEach((m: any) => {
@@ -389,25 +386,47 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         });
       }
 
-      let geminiRes = await fetch(geminiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          contents: geminiContents,
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 8192
-          }
-        })
-      });
+      const candidateModels = [
+        process.env.GEMINI_MODEL,
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-pro-latest',
+        'gemini-2.0-flash-exp',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro'
+      ].filter(Boolean) as string[];
 
-      let geminiData = await geminiRes.json();
-      if (!geminiRes.ok) {
-        console.error('Gemini API Error:', geminiData);
-        throw new Error(geminiData.error?.message || 'Gemini API call failed');
+      let geminiData: any = null;
+      let usedModel = '';
+
+      for (const modelName of candidateModels) {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: geminiContents,
+            generationConfig: {
+              temperature: 0.4,
+              maxOutputTokens: 8192
+            }
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.candidates && data.candidates.length > 0) {
+          geminiData = data;
+          usedModel = modelName;
+          break;
+        } else {
+          console.warn(`Gemini model ${modelName} attempt failed:`, data.error?.message);
+        }
+      }
+
+      if (!geminiData || !geminiData.candidates?.[0]) {
+        throw new Error('Semua model Gemini yang dicoba gagal merespons. Pastikan GEMINI_API_KEY valid di Google AI Studio.');
       }
 
       let candidate = geminiData.candidates?.[0];
@@ -415,6 +434,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       let finishReason = candidate?.finishReason;
 
       // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS')
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${usedModel}:generateContent?key=${geminiApiKey}`;
       while (retryCount < maxRetries) {
         const isFinishReasonLength = finishReason === 'MAX_TOKENS';
         const backtickMatches = assistantMessage.match(/```/g) || [];
@@ -424,7 +444,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           break;
         }
 
-        console.log(`Gemini Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+        console.log(`Gemini Anti-cutoff triggered on ${usedModel} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
 
         const continuationContents = [
           ...geminiContents,
