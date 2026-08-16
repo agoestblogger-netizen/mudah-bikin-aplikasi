@@ -62,11 +62,24 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - ID elemen yang dipanggil lewat \`document.getElementById('xyz')\` WAJIB PERSIS SAMA dengan atribut \`id="xyz"\` pada elemen HTML terkait.
     - Selalu gunakan perbandingan ID tipe string (contoh: \`String(item.id) !== String(id)\`) agar tidak terjadi kegagalan penghapusan/edit akibat perbedaan number vs string.
     - SEBELUM MENYERAHKAN KODE: telusuri ulang satu per satu: setiap atribut onclick punya fungsi yang match di JS, setiap getElementById punya elemen yang match di HTML.
-15. KEPATUHAN POLA UI SPESIFIK & ANTI-SIMPLIFIKASI (TAB, MODAL, ACCORDION, SIDEBAR, DROPDOWN):
-    - Jika pengguna meminta pola UI SPESIFIK (seperti: navigasi tab, modal dialog pop-up, dropdown menu, accordion, sidebar navigasi, toast notification, filter list, dsb), WAJIB implementasikan PERSIS pola antarmuka tersebut secara fungsional.
-    - DILARANG KERAS mengganti pola UI yang diminta dengan pola lain yang dianggap "cukup mirip" atau "lebih mudah dibuat" (misal: mengganti tab navigasi dengan tombol biasa, atau mengganti modal pop-up dengan form inline biasa).
-    - Khusus navigasi tab: wajib buatkan container tab-bar interaktif dengan visual tab yang jelas (active tab highlight class 'active') dan konten yang berganti secara dinamis saat tab diklik. DILARANG menggunakan syntax jQuery seperti \`:contains()\`, gunakan Vanilla JS murni.
-    - Jika istilah yang diminta pengguna ambigu atau tidak jelas jenis UI-nya, WAJIB tanyakan klarifikasi singkat terlebih dahulu, JANGAN menebak dan langsung generate sembarangan.`;
+15. KEPATUHAN POLA UI SPESIFIK & CONTOH POLA TAB BAKU (WAJIB DIIKUTI):
+    - Jika pengguna meminta navigasi tab (misal: Daftar, Formulir Tambah, Edit), WAJIB implementasikan pola antarmuka tab tersebut secara fungsional.
+    - DILARANG KERAS mengganti tab dengan tombol biasa atau form inline.
+    - POLA TAB BAKU YANG WAJIB DIGUNAKAN (AGAR TIDAK CRASH):
+      * Beri setiap tombol tab id: \`id="tab-btn-daftarSiswa"\`, \`id="tab-btn-editSiswa"\`, class="tab-btn".
+      * Beri setiap konten tab id: \`id="daftarSiswa"\`, \`id="editSiswa"\`, class="tab-content".
+      * Gunakan fungsi \`showTab(tabId)\` persis dengan pola:
+        \`function showTab(tabId) {
+          document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+          const target = document.getElementById(tabId);
+          if (target) target.classList.add('active');
+          const targetBtn = document.getElementById('tab-btn-' + tabId);
+          if (targetBtn) targetBtn.classList.add('active');
+          render();
+        }\`
+      * DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
+      * Saat tombol Edit di tabel diklik, fungsi \`showEditForm(id)\` mengisi input form lalu memanggil \`showTab('editSiswa')\` sehingga layar berpindah ke tab edit.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);
@@ -252,7 +265,13 @@ INSTRUKSI PERBAIKAN WAJIB:
       }
     }
 
-    const hasValidCode = Boolean(validated && validated.repairedCode && validated.repairedCode.html && validated.repairedCode.html.trim().length > 0);
+    const hasValidCode = Boolean(
+      validated &&
+      validated.isValid &&
+      validated.repairedCode &&
+      validated.repairedCode.html &&
+      validated.repairedCode.html.trim().length > 0
+    );
 
     // Format Pesan Teks Chat Bersih & Jujur
     let cleanReplyText = '';
@@ -260,7 +279,7 @@ INSTRUKSI PERBAIKAN WAJIB:
       if (hasValidCode) {
         cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil diperbarui dan dimuat langsung ke Canvas Preview.**').trim();
       } else {
-        cleanReplyText = 'Maaf, pembuatan/pembaruan kode belum berhasil memenuhi standar validasi fungsional. Silakan kirimkan instruksi ulang.';
+        cleanReplyText = 'Maaf, pembuatan/pembaruan kode belum berhasil memenuhi standar validasi fungsional DOM & event handler. Mohon kirimkan instruksi kembali.';
       }
     } else {
       cleanReplyText = assistantMessage.trim();
