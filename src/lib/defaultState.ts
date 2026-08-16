@@ -9,7 +9,7 @@ export const initialProjectState: AppProjectState = {
     {
       id: 'msg-1',
       sender: 'AI',
-      text: 'Halo! Selamat datang di Mudah Bikin Aplikasi (Gem AI). Saya akan memandu Anda membuat aplikasi lengkap siap pakai.\n\nMari kita mulai Tahap 1: Jenis aplikasi apa yang ingin Anda buat hari ini, dan untuk siapa aplikasi ini dirancang?',
+      text: 'Halo! Selamat datang di Mudah Bikin Aplikasi. Saya akan memandu Anda membuat aplikasi web fungsional siap pakai.\n\nMari kita mulai Tahap 1: Jenis aplikasi apa yang ingin Anda buat hari ini, dan untuk siapa aplikasi ini dirancang?',
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       suggestedOptions: [
         'Aplikasi Kasir & Inventaris Toko',

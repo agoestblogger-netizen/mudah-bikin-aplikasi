@@ -14,9 +14,9 @@ CREATE TABLE IF NOT EXISTS public.app_projects (
     app_type VARCHAR(50) DEFAULT 'web_app', -- 'web_app', 'dashboard', 'form_crud', 'landing_page'
     status VARCHAR(50) DEFAULT 'draft', -- 'draft', 'canvas_active', 'brief_completed', 'deployed'
     
-    -- Visual DNA & Theme
-    theme_colors JSONB DEFAULT '{"primary": "#6366f1", "secondary": "#8b5cf6", "background": "#0f172a", "card": "#1e293b", "text": "#f8fafc"}'::jsonb,
-    visual_dna JSONB DEFAULT '{}'::jsonb,
+    -- Styling & Theme
+    theme_palette JSONB DEFAULT '{"primary": "#6366f1", "mode": "dark"}'::jsonb,
+    styling_config JSONB DEFAULT '{}'::jsonb,
     
     -- Checklists & Brief Data
     feature_checklist JSONB DEFAULT '[]'::jsonb,

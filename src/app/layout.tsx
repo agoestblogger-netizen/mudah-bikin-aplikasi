@@ -8,8 +8,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Mudah Bikin Aplikasi - Gem AI Studio",
-  description: "Platform Generator Aplikasi, Analisis Visual DNA, Live Canvas Studio & Backend Google Apps Script.",
+  title: "Mudah Bikin Aplikasi - Generator Web App AI",
+  description: "Platform web untuk membantu non-programmer membuat aplikasi web fungsional melalui percakapan AI, live preview mockup interaktif, dan backend Google Sheets.",
 };
 
 export default function RootLayout({
