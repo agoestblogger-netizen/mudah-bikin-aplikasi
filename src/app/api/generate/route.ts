@@ -122,15 +122,13 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; font-weight: 600; }
       .tab-content { display: none; }
       .tab-content.active { display: block; }
-    - POLA HTML WAJIB UNTUK TAB:
+    - POLA HTML WAJIB UNTUK TAB (Kategori/Halaman):
       <div class="tab-nav">
-        <button type="button" id="tab-btn-daftar" class="tab-btn active" onclick="showTab('daftar')">Daftar</button>
-        <button type="button" id="tab-btn-tambah" class="tab-btn" onclick="showTab('tambah')">Tambah</button>
-        <button type="button" id="tab-btn-edit" class="tab-btn" onclick="showTab('edit')">Edit</button>
+        <button type="button" id="tab-btn-semua" class="tab-btn active" onclick="showTab('semua')">Semua Data</button>
+        <button type="button" id="tab-btn-kategori1" class="tab-btn" onclick="showTab('kategori1')">Kategori A</button>
       </div>
-      <div id="daftar" class="tab-content active">...</div>
-      <div id="tambah" class="tab-content">...</div>
-      <div id="edit" class="tab-content">...</div>
+      <div id="semua" class="tab-content active">...</div>
+      <div id="kategori1" class="tab-content">...</div>
     - POLA JAVASCRIPT WAJIB UNTUK TAB:
       function showTab(tabId) {
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -139,14 +137,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         document.getElementById('tab-btn-' + tabId)?.classList.add('active');
         render();
       }
-      function showEditForm(id) {
-        const item = items.find(i => String(i.id) === String(id));
-        if (item) {
-          document.getElementById('editId').value = item.id;
-          // isi nilai input lainnya...
-          showTab('edit');
-        }
-      }
+    - DILARANG KERAS membuat formulir Tambah/Edit sebagai tab terpisah (Formulir Tambah & Edit WAJIB menggunakan Modal Popup sesuai Prinsip 19).
     - DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
 16. DEFENSIVE DOM ACCESS & NULL-SAFETY WAJIB:
     - Selalu gunakan pengecekan null atau optional chaining (\`?.\`) saat mengakses dan memanipulasi elemen DOM (contoh: \`document.getElementById(id)?.classList.add('active')\` atau \`const el = document.getElementById(id); if (el) el.classList.add('active');\`).
