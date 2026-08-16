@@ -312,7 +312,21 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 - Berikan diagnosa akar penyebab dan langkah solusi spesifik.`;
     }
 
-    if (!apiKey) {
+    const aiProvider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+
+    if (aiProvider === 'gemini' && !geminiApiKey) {
+      return NextResponse.json({
+        success: false,
+        error: 'GEMINI_API_KEY belum dikonfigurasi di server.',
+        replyText: 'Kunci Gemini API belum dipasang di environment server.',
+        code: null,
+        isContinued: false
+      });
+    }
+
+    if (aiProvider === 'openai' && !openaiApiKey) {
       return NextResponse.json({
         success: false,
         error: 'OPENAI_API_KEY belum dikonfigurasi di server.',
@@ -328,81 +342,193 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       userPromptWithContext = `KODE HTML & JS SAAT INI YANG SUDAH BERJALAN AKTIF:\n\`\`\`html\n${currentCode}\n\`\`\`\n\nPERMINTAAN REVISI DARI PENGGUNA: "${prompt}".\n\nINSTRUKSI KHUSUS NFR-10b (VALIDASI FUNGSIONAL LENGKAP): Terapkan perubahan yang diminta pengguna di atas, namun TETAP PERTAHANKAN seluruh fungsi JavaScript, array data 3-5 item dummy, tombol Tambah/Edit/Hapus, dan render() agar tetap 100% berfungsi. Kembalikan KODE HTML LENGKAP UTUH di dalam blok \`\`\`html ... \`\`\`.`;
     }
 
-    // OpenAI Server-Side Dynamic API Call (dioptimalkan untuk kecepatan & keamanan limit Vercel)
-    const recentHistory = (chatHistory || []).slice(-6);
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      ...recentHistory.map((m: any) => ({
-        role: m.sender === 'USER' ? 'user' : 'assistant',
-        content: m.text
-      })),
-      { role: 'user', content: userPromptWithContext }
-    ];
-
-    let response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages,
-        max_tokens: 8192,
-        temperature: 0.5
-      })
-    });
-
-    let data = await response.json();
-    let assistantMessage = data.choices?.[0]?.message?.content || '';
-    let finishReason = data.choices?.[0]?.finish_reason;
-
-    // ANTI-CUTOFF 2 LAPIS LENGKAP (4 Ronde Maksimal)
+    let assistantMessage = '';
     let retryCount = 0;
     const maxRetries = 4;
+    const recentHistory = (chatHistory || []).slice(-6);
 
-    while (retryCount < maxRetries) {
-      const isFinishReasonLength = finishReason === 'length';
-      
-      const backtickMatches = assistantMessage.match(/```/g) || [];
-      const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
+    // =========================================================================
+    // JALUR 1: GEMINI API (GEMINI 3.7 FLASH / GEMINI 2.5 FLASH)
+    // =========================================================================
+    if (aiProvider === 'gemini') {
+      const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
 
-      if (!isFinishReasonLength && !isCodeBlockUnclosed) {
-        break;
+      // Susun Contents dengan Aturan Role Bergantian (user / model)
+      const rawContents: { role: string; text: string }[] = [];
+      recentHistory.forEach((m: any) => {
+        rawContents.push({
+          role: m.sender === 'AI' ? 'model' : 'user',
+          text: m.text
+        });
+      });
+      rawContents.push({
+        role: 'user',
+        text: userPromptWithContext
+      });
+
+      // Gabungkan pesan berurutan dengan role yang sama
+      const geminiContents: { role: string; parts: { text: string }[] }[] = [];
+      for (const item of rawContents) {
+        const last = geminiContents[geminiContents.length - 1];
+        if (last && last.role === item.role) {
+          last.parts[0].text += '\n\n' + item.text;
+        } else {
+          geminiContents.push({
+            role: item.role,
+            parts: [{ text: item.text }]
+          });
+        }
       }
 
-      console.log(`Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}, backticks: ${backtickMatches.length}`);
+      // Pastikan pesan pertama ber-role 'user'
+      if (geminiContents.length > 0 && geminiContents[0].role !== 'user') {
+        geminiContents.unshift({
+          role: 'user',
+          parts: [{ text: 'Halo' }]
+        });
+      }
 
-      const continuationMessages = [
-        ...messages,
-        { role: 'assistant', content: assistantMessage },
-        { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }
-      ];
-
-      const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      let geminiRes = await fetch(geminiEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: continuationMessages,
-          max_tokens: 4096,
-          temperature: 0.3
+          systemInstruction: {
+            parts: [{ text: systemPrompt }]
+          },
+          contents: geminiContents,
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 8192
+          }
         })
       });
 
-      const contData = await contResponse.json();
-      const contText = contData.choices?.[0]?.message?.content || '';
-      finishReason = contData.choices?.[0]?.finish_reason;
-
-      if (contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
-        break;
+      let geminiData = await geminiRes.json();
+      if (!geminiRes.ok) {
+        console.error('Gemini API Error:', geminiData);
+        throw new Error(geminiData.error?.message || 'Gemini API call failed');
       }
 
-      assistantMessage += contText;
-      retryCount++;
+      let candidate = geminiData.candidates?.[0];
+      assistantMessage = candidate?.content?.parts?.map((p: any) => p.text).join('') || '';
+      let finishReason = candidate?.finishReason;
+
+      // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS')
+      while (retryCount < maxRetries) {
+        const isFinishReasonLength = finishReason === 'MAX_TOKENS';
+        const backtickMatches = assistantMessage.match(/```/g) || [];
+        const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
+
+        if (!isFinishReasonLength && !isCodeBlockUnclosed) {
+          break;
+        }
+
+        console.log(`Gemini Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+
+        const continuationContents = [
+          ...geminiContents,
+          { role: 'model', parts: [{ text: assistantMessage }] },
+          { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }] }
+        ];
+
+        const contRes = await fetch(geminiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: continuationContents,
+            generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
+          })
+        });
+
+        const contData = await contRes.json();
+        const contCandidate = contData.candidates?.[0];
+        const contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
+        finishReason = contCandidate?.finishReason;
+
+        if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan')) {
+          break;
+        }
+
+        assistantMessage += contText;
+        retryCount++;
+      }
+
+    // =========================================================================
+    // JALUR 2: OPENAI API (GPT-4o mini / GPT-5.4 mini)
+    // =========================================================================
+    } else {
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...recentHistory.map((m: any) => ({
+          role: m.sender === 'USER' ? 'user' : 'assistant',
+          content: m.text
+        })),
+        { role: 'user', content: userPromptWithContext }
+      ];
+
+      let response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiApiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages,
+          max_tokens: 8192,
+          temperature: 0.5
+        })
+      });
+
+      let data = await response.json();
+      assistantMessage = data.choices?.[0]?.message?.content || '';
+      let finishReason = data.choices?.[0]?.finish_reason;
+
+      // ANTI-CUTOFF OPENAI (finish_reason === 'length')
+      while (retryCount < maxRetries) {
+        const isFinishReasonLength = finishReason === 'length';
+        const backtickMatches = assistantMessage.match(/```/g) || [];
+        const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
+
+        if (!isFinishReasonLength && !isCodeBlockUnclosed) {
+          break;
+        }
+
+        console.log(`OpenAI Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+
+        const continuationMessages = [
+          ...messages,
+          { role: 'assistant', content: assistantMessage },
+          { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }
+        ];
+
+        const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${openaiApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: continuationMessages,
+            max_tokens: 4096,
+            temperature: 0.3
+          })
+        });
+
+        const contData = await contResponse.json();
+        const contText = contData.choices?.[0]?.message?.content || '';
+        finishReason = contData.choices?.[0]?.finish_reason;
+
+        if (contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
+          break;
+        }
+
+        assistantMessage += contText;
+        retryCount++;
+      }
     }
 
     // Ekstraksi Blok Kode HTML
@@ -426,10 +552,49 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       if (hasMismatches || !hasScriptTag || !hasRenderFunction) {
         const issueList = validated.issues.join('\n- ');
         console.warn('NFR-10b triggered with DOM alignment issues:\n', issueList);
-        const repairPrompt = [
-          ...messages,
-          { role: 'assistant', content: assistantMessage },
-          { role: 'user', content: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
+        
+        // Auto-Recovery Prompt sesuai Provider yang Aktif
+        if (aiProvider === 'gemini' && geminiApiKey) {
+          const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+          const repairRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [
+                { role: 'user', parts: [{ text: userPromptWithContext }] },
+                { role: 'model', parts: [{ text: assistantMessage }] },
+                { role: 'user', parts: [{ text: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
+Ditemukan kendala pada kode yang Anda berikan:
+- ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
+
+INSTRUKSI PERBAIKAN WAJIB:
+1. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+2. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+3. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
+4. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }] }
+              ],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+            })
+          });
+          const repairData = await repairRes.json();
+          const repairMsg = repairData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+          const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
+          if (repairMatch) {
+            htmlCode = repairMatch[1].trim();
+            assistantMessage = repairMsg;
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+          }
+        } else if (openaiApiKey) {
+          const repairPrompt = [
+            { role: 'system', content: systemPrompt },
+            ...recentHistory.map((m: any) => ({
+              role: m.sender === 'USER' ? 'user' : 'assistant',
+              content: m.text
+            })),
+            { role: 'user', content: userPromptWithContext },
+            { role: 'assistant', content: assistantMessage },
+            { role: 'user', content: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
 Ditemukan kendala pada kode yang Anda berikan:
 - ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
 
@@ -438,29 +603,30 @@ INSTRUKSI PERBAIKAN WAJIB:
 2. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
 3. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 4. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }
-        ];
+          ];
 
-        const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: repairPrompt,
-            max_tokens: 8192,
-            temperature: 0.3
-          })
-        });
+          const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openaiApiKey}`
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: repairPrompt,
+              max_tokens: 8192,
+              temperature: 0.3
+            })
+          });
 
-        const repairData = await repairRes.json();
-        const repairMsg = repairData.choices?.[0]?.message?.content || '';
-        const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
-        if (repairMatch) {
-          htmlCode = repairMatch[1].trim();
-          assistantMessage = repairMsg;
-          validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+          const repairData = await repairRes.json();
+          const repairMsg = repairData.choices?.[0]?.message?.content || '';
+          const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
+          if (repairMatch) {
+            htmlCode = repairMatch[1].trim();
+            assistantMessage = repairMsg;
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+          }
         }
       }
     }
@@ -487,6 +653,7 @@ INSTRUKSI PERBAIKAN WAJIB:
 
     return NextResponse.json({
       success: true,
+      provider: aiProvider,
       replyText: cleanReplyText,
       code: hasValidCode && validated ? validated.repairedCode : null,
       isContinued: retryCount > 0
