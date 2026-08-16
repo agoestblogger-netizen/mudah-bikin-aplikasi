@@ -4,14 +4,14 @@ import React, { useState } from 'react';
 import { AppProjectState } from '@/types/app';
 import { FileText, CheckSquare, ShieldCheck, Database, Download, CheckCircle2, ArrowRight } from 'lucide-react';
 
-interface Phase3BriefContractProps {
+interface Stage3BriefLockProps {
   projectState: AppProjectState;
-  onNextPhase: () => void;
+  onNextStage: () => void;
 }
 
-export const Phase3BriefContract: React.FC<Phase3BriefContractProps> = ({
+export const Stage3BriefLock: React.FC<Stage3BriefLockProps> = ({
   projectState,
-  onNextPhase
+  onNextStage
 }) => {
   const [downloaded, setDownloaded] = useState(false);
 
@@ -19,7 +19,6 @@ export const Phase3BriefContract: React.FC<Phase3BriefContractProps> = ({
     return `# BRIEF KONTRAK KEBUTUHAN APLIKASI
 **Proyek**: ${projectState.title}
 **Tanggal Finalisasi**: ${new Date().toLocaleDateString('id-ID')}
-**Status Quality Audit**: ${projectState.qualityAudit.totalScore}% (Lolos Verifikasi Canvas)
 
 ---
 
@@ -28,24 +27,19 @@ ${projectState.featureChecklist.map((f) => `- [x] **[${f.category}]** ${f.title}
 
 ---
 
-## 2. CHECKLIST ROLE & HAK AKSES
+## 2. HAK AKSES ROLE ADMIN & MANAJEMEN USER
 ${projectState.rolePermissions
   .map(
     (r) =>
       `- **Role ${r.roleName}**:
   - Scope Access: ${r.accessScope}
-  - Fitur Tambah User: ${r.canAddUser ? '✅ TERKUNCI KHUSUS ADMIN' : '❌ TIDAK MEMILIKI AKSES'}
-  - Edit Data: ${r.canEditData ? 'Ya' : 'Tidak'}`
+  - Fitur Tambah User: ${r.canAddUser ? '✅ TERKUNCI KHUSUS ADMIN' : '🔒 TIDAK MEMILIKI AKSES'}`
   )
   .join('\n')}
 
 ---
 
-## 3. CHECKLIST STRUKTUR DATA & ATURAN VALIDASI
-### Kolom Tabel Data:
-${projectState.dataColumns.map((c) => `- \`${c.columnName}\` (${c.dataType}) - ${c.description} ${c.isRequired ? '[Wajib]' : ''}`).join('\n')}
-
-### Aturan Validasi Karakter:
+## 3. ATURAN VALIDASI INPUT & SKEMA DATA
 ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n')}
 `;
   };
@@ -56,7 +50,7 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Brief_Kontrak_${projectState.title.replace(/\s+/g, '_')}.md`);
+    link.setAttribute('download', `Brief_Kunci_Kebutuhan_${projectState.title.replace(/\s+/g, '_')}.md`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -73,8 +67,8 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">FASE 3: Finalisasi Brief Kebutuhan (Kontrak Mengikat)</h2>
-            <p className="text-xs text-slate-400">Ringkasan final 3 Checklist sebelum melangkah ke integrasi Backend Google Apps Script.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 3 PRD: Kunci Kebutuhan (Finalisasi Brief)</h2>
+            <p className="text-xs text-slate-400">Konfirmasi final fitur utama, role admin (Tambah User terkunci), dan aturan validasi input.</p>
           </div>
         </div>
 
@@ -87,13 +81,13 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
         </button>
       </div>
 
-      {/* 3 Checklists */}
+      {/* 3 Main Sections */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Checklist 1: Fitur Utama */}
+        {/* Fitur Utama */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
             <CheckSquare className="w-5 h-5 text-indigo-400" />
-            <h3 className="font-bold text-white text-base">Checklist 1: Fitur Utama</h3>
+            <h3 className="font-bold text-white text-base">Fitur Utama</h3>
           </div>
           <div className="space-y-3">
             {projectState.featureChecklist.map((f) => (
@@ -109,11 +103,11 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
           </div>
         </div>
 
-        {/* Checklist 2: Role & Akses */}
+        {/* Role Admin & Hak Akses */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
             <ShieldCheck className="w-5 h-5 text-purple-400" />
-            <h3 className="font-bold text-white text-base">Checklist 2: Role & Hak Akses</h3>
+            <h3 className="font-bold text-white text-base">Role Admin & Tambah User</h3>
           </div>
           <div className="space-y-3">
             {projectState.rolePermissions.map((r, i) => (
@@ -122,31 +116,30 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
                   <span className="text-xs font-bold text-purple-300">Role {r.roleName}</span>
                   {r.canAddUser && (
                     <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full font-semibold">
-                      Admin Access
+                      Admin Locked
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-slate-300">{r.accessScope}</p>
                 <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
-                  Fitur Tambah User: {r.canAddUser ? '✅ Akses Penuh' : '🔒 Terkunci (Non-Admin)'}
+                  Fitur Tambah User: {r.canAddUser ? '✅ Terkunci Khusus Admin' : '🔒 Terkunci (Non-Admin)'}
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Checklist 3: Data & Validasi */}
+        {/* Validasi Karakter & Schema */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
             <Database className="w-5 h-5 text-pink-400" />
-            <h3 className="font-bold text-white text-base">Checklist 3: Skema Data</h3>
+            <h3 className="font-bold text-white text-base">Validasi & Skema Data</h3>
           </div>
           <div className="space-y-2">
-            <span className="text-xs text-slate-400 font-semibold block">Kolom Google Sheets / Database:</span>
-            {projectState.dataColumns.map((c, i) => (
-              <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                <code className="text-pink-300 font-mono">{c.columnName}</code>
-                <span className="text-[10px] text-slate-400 font-mono">[{c.dataType}]</span>
+            <span className="text-xs text-slate-400 font-semibold block">Aturan Validasi Form:</span>
+            {projectState.mandatorySpecs.basicValidationRules.map((val, idx) => (
+              <div key={idx} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-pink-300">
+                ✓ {val}
               </div>
             ))}
           </div>
@@ -156,10 +149,10 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
       {/* Footer Navigation */}
       <div className="flex justify-end pt-2">
         <button
-          onClick={onNextPhase}
+          onClick={onNextStage}
           className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 hover:scale-[1.02] transition-all"
         >
-          <span>Lanjut ke Backend Google Apps Script (Fase 4)</span>
+          <span>Lanjut ke Tahap 4: Backend & Sambungkan (GAS)</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

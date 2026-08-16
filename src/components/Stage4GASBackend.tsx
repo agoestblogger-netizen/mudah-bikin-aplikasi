@@ -2,21 +2,20 @@
 
 import React, { useState } from 'react';
 import { AppProjectState } from '@/types/app';
-import { Database, Code2, Copy, CheckCircle2, ExternalLink, RefreshCw, ArrowRight } from 'lucide-react';
+import { Database, Code2, Copy, CheckCircle2, ExternalLink, ArrowRight } from 'lucide-react';
 
-interface Phase4GASBuilderProps {
+interface Stage4GASBackendProps {
   projectState: AppProjectState;
   onUpdateState: (updated: Partial<AppProjectState>) => void;
-  onNextPhase: () => void;
+  onNextStage: () => void;
 }
 
-export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
+export const Stage4GASBackend: React.FC<Stage4GASBackendProps> = ({
   projectState,
   onUpdateState,
-  onNextPhase
+  onNextStage
 }) => {
   const [webAppUrl, setWebAppUrl] = useState(projectState.gasConfig.webAppUrl);
-  const [sheetId, setSheetId] = useState(projectState.gasConfig.sheetId);
   const [copied, setCopied] = useState(false);
 
   const scriptCode = projectState.gasConfig.scriptCode;
@@ -32,7 +31,6 @@ export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
       gasConfig: {
         ...projectState.gasConfig,
         webAppUrl,
-        sheetId,
         isConnected: webAppUrl.trim().length > 0
       }
     });
@@ -47,20 +45,19 @@ export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">FASE 4: Backend Google Apps Script & Google Sheets</h2>
-            <p className="text-xs text-slate-400">Kode backend yang telah diuji penuh untuk menyimpan dan mengambil data dari Google Sheets.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 4 PRD: Backend & Sambungkan (Google Apps Script)</h2>
+            <p className="text-xs text-slate-400">Hubungkan prototipe Canvas dengan database Google Sheets via backend Google Apps Script teruji.</p>
           </div>
         </div>
       </div>
 
-      {/* Step by Step Guide */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column: Script Code & Setup */}
+        {/* Code GS Editor */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Code2 className="w-4 h-4 text-emerald-400" />
-              <h3 className="font-bold text-white text-sm">1. Script Code (code.gs)</h3>
+              <h3 className="font-bold text-white text-sm">1. Kode Apps Script (code.gs)</h3>
             </div>
             <button
               onClick={handleCopyScript}
@@ -71,10 +68,6 @@ export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
             </button>
           </div>
 
-          <p className="text-xs text-slate-400">
-            Salin kode di bawah ini ke <strong>Extensions $\rightarrow$ Apps Script</strong> di Google Sheets Anda:
-          </p>
-
           <textarea
             rows={16}
             readOnly
@@ -83,16 +76,13 @@ export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
           />
         </div>
 
-        {/* Right Column: Google Sheets Setup & Connection URL */}
+        {/* Setup & Connection */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-6">
-          <div className="space-y-4">
+          <div className="space-y-3">
             <h3 className="font-bold text-white text-sm flex items-center gap-2">
               <Database className="w-4 h-4 text-purple-400" />
-              2. Kolom Header Google Sheets (Wajib Sesuai)
+              2. Kolom Header Google Sheets
             </h3>
-            <p className="text-xs text-slate-400">
-              Buat Sheet baru di Google Sheets dengan header kolom pada Baris 1:
-            </p>
             <div className="flex flex-wrap gap-2 p-3 bg-slate-950 border border-slate-800 rounded-2xl font-mono text-xs text-purple-300">
               {projectState.dataColumns.map((col, idx) => (
                 <span key={idx} className="bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg">
@@ -107,26 +97,21 @@ export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
               <ExternalLink className="w-4 h-4 text-indigo-400" />
               3. Web App Deployment URL
             </h3>
-            <p className="text-xs text-slate-400">
-              Setelah deploy Web App di Apps Script (Access: <em>Anyone</em>), tempelkan Web App URL di sini:
-            </p>
 
-            <div className="space-y-3">
-              <input
-                type="text"
-                value={webAppUrl}
-                onChange={(e) => setWebAppUrl(e.target.value)}
-                onBlur={handleSaveGAS}
-                placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
-                className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-emerald-500 focus:outline-none"
-              />
+            <input
+              type="text"
+              value={webAppUrl}
+              onChange={(e) => setWebAppUrl(e.target.value)}
+              onBlur={handleSaveGAS}
+              placeholder="https://script.google.com/macros/s/AKfycbx.../exec"
+              className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-emerald-500 focus:outline-none"
+            />
 
-              <div className="flex items-center gap-2 text-xs">
-                <CheckCircle2 className={`w-4 h-4 ${webAppUrl ? 'text-emerald-400' : 'text-slate-600'}`} />
-                <span className={webAppUrl ? 'text-emerald-300' : 'text-slate-500'}>
-                  {webAppUrl ? 'GAS Web App URL Terkonfirmasi Terhubung' : 'Masukkan Web App URL di atas'}
-                </span>
-              </div>
+            <div className="flex items-center gap-2 text-xs">
+              <CheckCircle2 className={`w-4 h-4 ${webAppUrl ? 'text-emerald-400' : 'text-slate-600'}`} />
+              <span className={webAppUrl ? 'text-emerald-300' : 'text-slate-500'}>
+                {webAppUrl ? 'GAS Web App URL Terkonfirmasi Terhubung' : 'Masukkan Web App URL di atas'}
+              </span>
             </div>
           </div>
         </div>
@@ -137,11 +122,11 @@ export const Phase4GASBuilder: React.FC<Phase4GASBuilderProps> = ({
         <button
           onClick={() => {
             handleSaveGAS();
-            onNextPhase();
+            onNextStage();
           }}
           className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 hover:scale-[1.02] transition-all"
         >
-          <span>Lanjut ke Deploy & Audit Suite (Fase 5)</span>
+          <span>Lanjut ke Tahap 5: Pembaruan Fitur (Patch)</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

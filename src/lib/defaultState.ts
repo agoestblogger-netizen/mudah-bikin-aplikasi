@@ -3,23 +3,26 @@ import { AppProjectState } from '@/types/app';
 export const initialProjectState: AppProjectState = {
   id: 'proj-' + Date.now(),
   title: 'Aplikasi Kasir & Inventaris Toko',
-  description: 'Aplikasi manajemen stok barang, penjualan kasir, dan laporan keuangan harian.',
-  currentPhase: 'FASE_0_WELCOME',
-  inputMode: 'TEXT',
-  imageSubCase: 'SCREENSHOT_REF',
-  visualDNA: {
-    themeName: 'Midnight Neon Glass',
-    primaryColor: '#6366f1',
-    secondaryColor: '#8b5cf6',
-    backgroundColor: '#0f172a',
-    cardColor: '#1e293b',
-    textColor: '#f8fafc',
-    accentColor: '#38bdf8',
-    borderRadius: '16px',
-    fontStyle: 'Outfit, sans-serif',
-    visualMood: 'Glassmorphism',
-  },
+  description: 'Aplikasi manajemen stok barang, transaksi kasir, dan laporan keuangan harian.',
+  currentStage: 'TAHAP_1_PEMBUKAAN',
+  chatMessages: [
+    {
+      id: 'msg-1',
+      sender: 'AI',
+      text: 'Halo! Selamat datang di Mudah Bikin Aplikasi (Gem AI). Saya akan memandu Anda membuat aplikasi lengkap siap pakai.\n\nMari kita mulai Tahap 1: Jenis aplikasi apa yang ingin Anda buat hari ini, dan untuk siapa aplikasi ini dirancang?',
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      suggestedOptions: [
+        'Aplikasi Kasir & Inventaris Toko',
+        'Sistem Catat Peminjaman Barang / Posyandu',
+        'Formulir Pendaftaran & Data Anggota',
+        'Dashboard Laporan Keuangan Harian'
+      ]
+    }
+  ],
   mandatorySpecs: {
+    appType: 'Aplikasi Kasir & Inventaris',
+    appGoal: 'Mempercepat pencatatan transaksi harian dan mencegah kebobolan stok barang.',
+    targetUsers: 'Kasir toko, Pemilik Usaha / Admin Inventaris',
     requiresLogin: true,
     loginType: 'ROLE_BASED',
     hasAdminRole: true,
@@ -36,9 +39,7 @@ export const initialProjectState: AppProjectState = {
       'Harga barang harus angka positif',
       'Stok barang berkurang otomatis saat transaksi selesai',
       'Tambah User hanya bisa dilakukan oleh Role Admin'
-    ],
-    targetUsers: 'Kasir toko, Pemilik Usaha / Admin Inventaris',
-    appGoal: 'Mempercepat pencatatan transaksi harian dan mencegah kebobolan stok barang.'
+    ]
   },
   featureChecklist: [
     {
@@ -58,7 +59,7 @@ export const initialProjectState: AppProjectState = {
     {
       id: 'f-3',
       category: 'Core Workflow',
-      title: 'POS Kasir & Hitung Total otomatis',
+      title: 'POS Kasir & Hitung Total Otomatis',
       description: 'Pencarian produk, keranjang belanja, kalkulasi otomatis, dan kembalian.',
       status: 'COMPLETED'
     },
@@ -154,7 +155,7 @@ export const initialProjectState: AppProjectState = {
     </section>
   </main>
 </div>`,
-    css: `/* Midnight Glassmorphism Palette */
+    css: `/* Glassmorphism Palette */
 :root {
   --primary: #6366f1;
   --primary-hover: #4f46e5;
@@ -218,6 +219,13 @@ body {
   box-shadow: 0 20px 40px rgba(0,0,0,0.4);
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
 .form-group {
   margin-bottom: 20px;
 }
@@ -248,9 +256,17 @@ input, select {
   font-weight: 600;
   font-size: 16px;
   cursor: pointer;
-  transition: all 0.2s ease;
 }
-.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-success {
+  padding: 10px 18px;
+  background: #10b981;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
 
 .error-text {
   color: #f87171;
@@ -364,7 +380,6 @@ function doPost(e) {
     const contents = JSON.parse(e.postData.contents);
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     
-    // Append baris baru ke Google Sheets
     sheet.appendRow([
       contents.id || "ID-" + new Date().getTime(),
       new Date(),
@@ -386,6 +401,45 @@ function doPost(e) {
 }`,
     isConnected: true
   },
+  patchHistory: [
+    {
+      id: 'patch-1',
+      requestedAt: '16:00',
+      description: 'Penambahan tombol Export Laporan dan Filter Kategori pada Tabel Inventaris',
+      targetComponent: 'Dashboard Table & State JS',
+      status: 'APPLIED',
+      patchSummary: 'Ditambahkan fungsi filterCategory() dan exportToExcel() pada Canvas JS.'
+    }
+  ],
+  troubleshootIssues: [
+    {
+      id: 'tb-1',
+      category: 'CORS_GAS',
+      title: 'Error CORS saat Fetching ke Google Apps Script',
+      symptom: 'Access to fetch at script.google.com has been blocked by CORS policy',
+      rootCause: 'Setelan deployment Apps Script belum diset ke "Who has access: Anyone".',
+      solutionSteps: [
+        'Buka Google Apps Script Editor',
+        'Klik Deploy -> Manage Deployments -> Edit',
+        'Ubah "Who has access" dari "Only Myself" menjadi "Anyone"',
+        'Klik Deploy ulang dan perbarui Web App URL'
+      ],
+      status: 'RESOLVED'
+    },
+    {
+      id: 'tb-2',
+      category: 'ADMIN_AUTH',
+      title: 'Fitur Tambah User Tidak Terkunci',
+      symptom: 'User biasa dapat melihat dan menekan tombol + Tambah User',
+      rootCause: 'Pemeriksaan currentUser.role pada State JS belum diterapkan saat render',
+      solutionSteps: [
+        'Buka Canvas JS Editor di Tahap 2',
+        'Pastikan elemen #btnAddUser memiliki display:none secara default',
+        'Buka display tombol hanya jika currentUser.role === "admin"'
+      ],
+      status: 'RESOLVED'
+    }
+  ],
   qualityAudit: {
     isCanvasCodeOnly: true,
     hasDynamicState: true,
@@ -396,9 +450,10 @@ function doPost(e) {
     totalScore: 100,
     warnings: [],
     recommendations: [
-      'Semua aturan mutlak telah terpenuhi 100%',
-      'Kode ditampilkan penuh dalam Canvas preview',
-      'Fitur Tambah User Admin sudah terkunci di balik autentikasi'
+      'Semua 6 Tahap Resmi PRD terpetakan 100%',
+      'Percakapan AI Wawancara Dinamis (Tahap 1) aktif',
+      'Fitur Tambah User Admin sudah terkunci di balik autentikasi',
+      'Modul Troubleshooting (Tahap 6) siap membantu penanganan kendala'
     ]
   },
   updatedAt: new Date().toISOString()

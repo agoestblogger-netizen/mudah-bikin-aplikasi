@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AppProjectState, AppPhase } from '@/types/app';
+import { AppProjectState, PRDStage } from '@/types/app';
 import { initialProjectState } from '@/lib/defaultState';
 import { Navbar } from '@/components/Navbar';
-import { Phase0Welcome } from '@/components/Phase0Welcome';
-import { Phase1Interview } from '@/components/Phase1Interview';
-import { Phase2CanvasStudio } from '@/components/Phase2CanvasStudio';
-import { Phase3BriefContract } from '@/components/Phase3BriefContract';
-import { Phase4GASBuilder } from '@/components/Phase4GASBuilder';
-import { Phase5DeployAudit } from '@/components/Phase5DeployAudit';
+import { Stage1InterviewAI } from '@/components/Stage1InterviewAI';
+import { Stage2MockupCanvas } from '@/components/Stage2MockupCanvas';
+import { Stage3BriefLock } from '@/components/Stage3BriefLock';
+import { Stage4GASBackend } from '@/components/Stage4GASBackend';
+import { Stage5FeaturePatch } from '@/components/Stage5FeaturePatch';
+import { Stage6Troubleshooter } from '@/components/Stage6Troubleshooter';
 
 export default function Home() {
   const [projectState, setProjectState] = useState<AppProjectState>(initialProjectState);
@@ -22,10 +22,10 @@ export default function Home() {
     }));
   };
 
-  const handleSelectPhase = (phase: AppPhase) => {
+  const handleSelectStage = (stage: PRDStage) => {
     setProjectState((prev) => ({
       ...prev,
-      currentPhase: phase
+      currentStage: stage
     }));
   };
 
@@ -33,54 +33,55 @@ export default function Home() {
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
       {/* Top Navbar */}
       <Navbar
-        currentPhase={projectState.currentPhase}
-        onSelectPhase={handleSelectPhase}
+        currentStage={projectState.currentStage}
+        onSelectStage={handleSelectStage}
         projectTitle={projectState.title}
         auditScore={projectState.qualityAudit.totalScore}
       />
 
-      {/* Main Content Area */}
+      {/* Main Content Area: 6 Official PRD Stages */}
       <main className="max-w-7xl mx-auto px-4 lg:px-8 py-8">
-        {projectState.currentPhase === 'FASE_0_WELCOME' && (
-          <Phase0Welcome
-            projectState={projectState}
-            onNavigatePhase={handleSelectPhase}
-          />
-        )}
-
-        {projectState.currentPhase === 'FASE_1_INTERVIEW' && (
-          <Phase1Interview
+        {projectState.currentStage === 'TAHAP_1_PEMBUKAAN' && (
+          <Stage1InterviewAI
             projectState={projectState}
             onUpdateState={handleUpdateState}
-            onNextPhase={() => handleSelectPhase('FASE_2_CANVAS')}
+            onNextStage={() => handleSelectStage('TAHAP_2_MOCKUP')}
           />
         )}
 
-        {projectState.currentPhase === 'FASE_2_CANVAS' && (
-          <Phase2CanvasStudio
+        {projectState.currentStage === 'TAHAP_2_MOCKUP' && (
+          <Stage2MockupCanvas
             projectState={projectState}
             onUpdateState={handleUpdateState}
-            onNextPhase={() => handleSelectPhase('FASE_3_BRIEF')}
+            onNextStage={() => handleSelectStage('TAHAP_3_KUNCI_KEBUTUHAN')}
           />
         )}
 
-        {projectState.currentPhase === 'FASE_3_BRIEF' && (
-          <Phase3BriefContract
+        {projectState.currentStage === 'TAHAP_3_KUNCI_KEBUTUHAN' && (
+          <Stage3BriefLock
             projectState={projectState}
-            onNextPhase={() => handleSelectPhase('FASE_4_GAS_BACKEND')}
+            onNextStage={() => handleSelectStage('TAHAP_4_BACKEND')}
           />
         )}
 
-        {projectState.currentPhase === 'FASE_4_GAS_BACKEND' && (
-          <Phase4GASBuilder
+        {projectState.currentStage === 'TAHAP_4_BACKEND' && (
+          <Stage4GASBackend
             projectState={projectState}
             onUpdateState={handleUpdateState}
-            onNextPhase={() => handleSelectPhase('FASE_5_DEPLOY')}
+            onNextStage={() => handleSelectStage('TAHAP_5_PATCH')}
           />
         )}
 
-        {projectState.currentPhase === 'FASE_5_DEPLOY' && (
-          <Phase5DeployAudit projectState={projectState} />
+        {projectState.currentStage === 'TAHAP_5_PATCH' && (
+          <Stage5FeaturePatch
+            projectState={projectState}
+            onUpdateState={handleUpdateState}
+            onNextStage={() => handleSelectStage('TAHAP_6_TROUBLESHOOTING')}
+          />
+        )}
+
+        {projectState.currentStage === 'TAHAP_6_TROUBLESHOOTING' && (
+          <Stage6Troubleshooter projectState={projectState} />
         )}
       </main>
     </div>

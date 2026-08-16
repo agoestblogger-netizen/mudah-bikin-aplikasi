@@ -1,29 +1,29 @@
 'use client';
 
 import React from 'react';
-import { AppPhase } from '@/types/app';
-import { Sparkles, MessageSquareCode, Palette, FileText, Database, Rocket, ShieldCheck } from 'lucide-react';
+import { PRDStage } from '@/types/app';
+import { Sparkles, Bot, Palette, FileText, Database, Wrench, ShieldAlert, ShieldCheck } from 'lucide-react';
 
 interface NavbarProps {
-  currentPhase: AppPhase;
-  onSelectPhase: (phase: AppPhase) => void;
+  currentStage: PRDStage;
+  onSelectStage: (stage: PRDStage) => void;
   projectTitle: string;
   auditScore: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentPhase,
-  onSelectPhase,
+  currentStage,
+  onSelectStage,
   projectTitle,
   auditScore
 }) => {
-  const phases: { id: AppPhase; label: string; icon: React.ReactNode }[] = [
-    { id: 'FASE_0_WELCOME', label: 'FASE 0: Overview', icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'FASE_1_INTERVIEW', label: 'FASE 1: Wawancara & DNA', icon: <MessageSquareCode className="w-4 h-4" /> },
-    { id: 'FASE_2_CANVAS', label: 'FASE 2: Canvas Studio', icon: <Palette className="w-4 h-4" /> },
-    { id: 'FASE_3_BRIEF', label: 'FASE 3: Brief Contract', icon: <FileText className="w-4 h-4" /> },
-    { id: 'FASE_4_GAS_BACKEND', label: 'FASE 4: GAS Backend', icon: <Database className="w-4 h-4" /> },
-    { id: 'FASE_5_DEPLOY', label: 'FASE 5: Deploy & Audit', icon: <Rocket className="w-4 h-4" /> }
+  const stages: { id: PRDStage; label: string; icon: React.ReactNode }[] = [
+    { id: 'TAHAP_1_PEMBUKAAN', label: 'Tahap 1: Wawancara AI', icon: <Bot className="w-4 h-4" /> },
+    { id: 'TAHAP_2_MOCKUP', label: 'Tahap 2: Mockup Canvas', icon: <Palette className="w-4 h-4" /> },
+    { id: 'TAHAP_3_KUNCI_KEBUTUHAN', label: 'Tahap 3: Kunci Kebutuhan', icon: <FileText className="w-4 h-4" /> },
+    { id: 'TAHAP_4_BACKEND', label: 'Tahap 4: Backend GAS', icon: <Database className="w-4 h-4" /> },
+    { id: 'TAHAP_5_PATCH', label: 'Tahap 5: Pembaruan Fitur', icon: <Wrench className="w-4 h-4" /> },
+    { id: 'TAHAP_6_TROUBLESHOOTING', label: 'Tahap 6: Kendala & Solusi', icon: <ShieldAlert className="w-4 h-4" /> }
   ];
 
   return (
@@ -37,7 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <h1 className="font-bold text-white text-base leading-tight tracking-tight">
-                Mudah Bikin Aplikasi <span className="text-xs font-normal text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full ml-1">Gem AI</span>
+                Mudah Bikin Aplikasi <span className="text-xs font-normal text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full ml-1">PRD 6 Tahap</span>
               </h1>
               <p className="text-xs text-slate-400 truncate max-w-[200px]">{projectTitle}</p>
             </div>
@@ -49,22 +49,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Phase Navigation Tabs */}
+        {/* 6 Official PRD Stage Navigation Tabs */}
         <nav className="flex items-center gap-1 bg-slate-950/60 p-1.5 rounded-2xl border border-slate-800 overflow-x-auto max-w-full no-scrollbar">
-          {phases.map((p) => {
-            const isActive = currentPhase === p.id;
+          {stages.map((s) => {
+            const isActive = currentStage === s.id;
             return (
               <button
-                key={p.id}
-                onClick={() => onSelectPhase(p.id)}
+                key={s.id}
+                onClick={() => onSelectStage(s.id)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 whitespace-nowrap ${
                   isActive
                     ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/30'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                 }`}
               >
-                {p.icon}
-                <span>{p.label}</span>
+                {s.icon}
+                <span>{s.label}</span>
               </button>
             );
           })}

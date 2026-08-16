@@ -1,20 +1,17 @@
-export type AppPhase = 'FASE_0_WELCOME' | 'FASE_1_INTERVIEW' | 'FASE_2_CANVAS' | 'FASE_3_BRIEF' | 'FASE_4_GAS_BACKEND' | 'FASE_5_DEPLOY';
+export type PRDStage =
+  | 'TAHAP_1_PEMBUKAAN'
+  | 'TAHAP_2_MOCKUP'
+  | 'TAHAP_3_KUNCI_KEBUTUHAN'
+  | 'TAHAP_4_BACKEND'
+  | 'TAHAP_5_PATCH'
+  | 'TAHAP_6_TROUBLESHOOTING';
 
-export type InputMode = 'TEXT' | 'IMAGE_VISUAL_DNA';
-
-export type ImageSubCase = 'SKETCH_UI' | 'SCREENSHOT_REF' | 'COLOR_PALETTE' | 'ARCH_DIAGRAM';
-
-export interface VisualDNA {
-  themeName: string;
-  primaryColor: string;
-  secondaryColor: string;
-  backgroundColor: string;
-  cardColor: string;
-  textColor: string;
-  accentColor: string;
-  borderRadius: string;
-  fontStyle: string;
-  visualMood: 'Glassmorphism' | 'Minimalist Modern' | 'Vibrant Tech' | 'Dark Futuristic' | 'Corporate Elegant';
+export interface ChatMessage {
+  id: string;
+  sender: 'AI' | 'USER';
+  text: string;
+  timestamp: string;
+  suggestedOptions?: string[];
 }
 
 export interface MandatorySpecs {
@@ -26,6 +23,7 @@ export interface MandatorySpecs {
   basicValidationRules: string[];
   targetUsers: string;
   appGoal: string;
+  appType: string;
 }
 
 export interface FeatureChecklistItem {
@@ -51,6 +49,25 @@ export interface DataColumn {
   description: string;
 }
 
+export interface FeaturePatchRequest {
+  id: string;
+  requestedAt: string;
+  description: string;
+  targetComponent: string;
+  status: 'APPLIED' | 'PENDING';
+  patchSummary: string;
+}
+
+export interface TroubleshootIssue {
+  id: string;
+  category: 'CORS_GAS' | 'ADMIN_AUTH' | 'FORM_VALIDATION' | 'STATE_JS' | 'DEPLOYMENT';
+  title: string;
+  symptom: string;
+  rootCause: string;
+  solutionSteps: string[];
+  status: 'RESOLVED' | 'UNRESOLVED';
+}
+
 export interface QualityAuditResult {
   isCanvasCodeOnly: boolean;
   hasDynamicState: boolean;
@@ -67,10 +84,8 @@ export interface AppProjectState {
   id: string;
   title: string;
   description: string;
-  currentPhase: AppPhase;
-  inputMode: InputMode;
-  imageSubCase?: ImageSubCase;
-  visualDNA: VisualDNA;
+  currentStage: PRDStage;
+  chatMessages: ChatMessage[];
   mandatorySpecs: MandatorySpecs;
   featureChecklist: FeatureChecklistItem[];
   rolePermissions: RolePermission[];
@@ -86,6 +101,8 @@ export interface AppProjectState {
     scriptCode: string;
     isConnected: boolean;
   };
+  patchHistory: FeaturePatchRequest[];
+  troubleshootIssues: TroubleshootIssue[];
   qualityAudit: QualityAuditResult;
   updatedAt: string;
 }
