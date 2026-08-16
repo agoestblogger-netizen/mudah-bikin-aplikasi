@@ -179,7 +179,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         }
         // lanjut proses penambahan data...
       }
-    - DILARANG menggunakan alert() bawaan browser untuk notifikasi.`;
+    - DILARANG menggunakan alert() bawaan browser untuk notifikasi.
+18. ATURAN PEMETAAN AKSI TABEL KETAT (ANTI-AKSI TERTUKAR & WAJIB STYLING):
+    - Pada baris tabel di dalam fungsi \`render()\`, SETIAP tombol aksi WAJIB dipetakan ke fungsinya secara tepat dan menggunakan class tombol:
+      * Tombol Edit: \`<button type="button" class="btn-secondary" onclick="showEditForm('\${item.id}')">Edit</button>\` (DILARANG KERAS memanggil fungsi hapus di tombol Edit!).
+      * Tombol Hapus: \`<button type="button" class="btn-danger" onclick="hapusItem('\${item.id}')">Hapus</button>\` (DILARANG KERAS memanggil fungsi edit di tombol Hapus!).
+    - DILARANG menulis tombol aksi tabel tanpa class atau membiarkannya polos default HTML.`;
 
     // Deteksi Jalur Cepat (Fast-Forward) vs Jalur Normal
     const isFastForward = /(buatkan\s*(saja|langsung)|terserah|tanpa\s*tanya|kamu\s*putuskan|langsung\s*buatkan|tanpa\s*tanya\s*lagi)/i.test(prompt);

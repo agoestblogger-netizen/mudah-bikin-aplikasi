@@ -73,6 +73,24 @@ export function validateAndRepairGeneratedCode(
     }
   });
 
+  // 4. Deteksi Kritis: Aksi Tertukar (Action Swap Detector)
+  // Mencegah tombol Edit memanggil fungsi hapus, atau tombol Hapus memanggil fungsi edit
+  const editButtonHapusRegex = /<button[^>]*onclick=["'][^"']*(?:hapus|delete|remove)[^"']*["'][^>]*>\s*(?:<[^>]+>\s*)*(?:Edit|Ubah)/gi;
+  if (editButtonHapusRegex.test(repairedHtml)) {
+    issues.push(`CRITICAL_ACTION_SWAP: Terdeteksi tombol dengan teks "Edit" memanggil fungsi HAPUS!`);
+  }
+
+  const hapusButtonEditRegex = /<button[^>]*onclick=["'][^"']*(?:edit|ubah|update|showEdit)[^"']*["'][^>]*>\s*(?:<[^>]+>\s*)*(?:Hapus|Delete)/gi;
+  if (hapusButtonEditRegex.test(repairedHtml)) {
+    issues.push(`CRITICAL_ACTION_SWAP: Terdeteksi tombol dengan teks "Hapus" memanggil fungsi EDIT!`);
+  }
+
+  // 5. Auto-Inject Styling untuk Tombol Aksi Tabel (Mencegah tombol polos default)
+  // Pastikan tombol Edit memiliki class="btn-secondary" jika belum ada
+  repairedHtml = repairedHtml.replace(/<button(?![^>]*class=)([^>]*onclick=["'][^"']*(?:edit|ubah|showEdit)[^"']*["'][^>]*)>/gi, '<button class="btn-secondary"$1>');
+  // Pastikan tombol Hapus memiliki class="btn-danger" jika belum ada
+  repairedHtml = repairedHtml.replace(/<button(?![^>]*class=)([^>]*onclick=["'][^"']*(?:hapus|delete|remove|openModal)[^"']*["'][^>]*)>/gi, '<button class="btn-danger"$1>');
+
   // 4. Perbaikan Otomatis Perbandingan ID (Stringified Guard)
   // Ubah `item.id !== id` atau `item.id != id` menjadi `String(item.id) !== String(id)`
   if (repairedHtml.includes('.id !==') || repairedHtml.includes('.id !=') || repairedHtml.includes('.id ===') || repairedHtml.includes('.id ==')) {
