@@ -69,7 +69,16 @@ export function validateAndRepairGeneratedCode(
 
   referencedElementIds.forEach(elemId => {
     if (!existingHtmlIds.has(elemId)) {
-      issues.push(`MISMATCH_DOM_ID: JavaScript memanggil document.getElementById('${elemId}'), tetapi elemen dengan id="${elemId}" TIDAK ditemukan di struktur HTML.`);
+      if (elemId === 'toastNotification' || elemId.toLowerCase().includes('toast')) {
+        if (repairedHtml.includes('</body>')) {
+          repairedHtml = repairedHtml.replace('</body>', `  <div id="${elemId}" class="toast"></div>\n</body>`);
+        } else {
+          repairedHtml += `\n<div id="${elemId}" class="toast"></div>`;
+        }
+        existingHtmlIds.add(elemId);
+      } else {
+        issues.push(`MISMATCH_DOM_ID: JavaScript memanggil document.getElementById('${elemId}'), tetapi elemen dengan id="${elemId}" TIDAK ditemukan di struktur HTML.`);
+      }
     }
   });
 
@@ -119,18 +128,19 @@ export function validateAndRepairGeneratedCode(
     repairedJs = repairedJs.replace(/document\.querySelector\([^)]*\[onclick=[^)]*\)\.classList\.add\([^)]*\);?/g, '// active tab highlight sanitized');
   }
 
-  // 7. Defensive Null-Safety Transformer: Ubah akses classList/style langsung menjadi safe optional chaining (?.)
+  // 7. Defensive Null-Safety Transformer: Ubah akses classList langsung menjadi safe optional chaining (?.) dan amankan .style
+  repairedHtml = repairedHtml.replace(/\?\.\s*style/g, '.style');
+  repairedJs = repairedJs.replace(/\?\.\s*style/g, '.style');
   repairedHtml = repairedHtml.replace(/document\.getElementById\(([^)]+)\)\.classList/g, 'document.getElementById($1)?.classList');
   repairedHtml = repairedHtml.replace(/document\.querySelector\(([^)]+)\)\.classList/g, 'document.querySelector($1)?.classList');
-  repairedHtml = repairedHtml.replace(/document\.getElementById\(([^)]+)\)\.style/g, 'document.getElementById($1)?.style');
-  repairedHtml = repairedHtml.replace(/document\.querySelector\(([^)]+)\)\.style/g, 'document.querySelector($1)?.style');
-
   repairedJs = repairedJs.replace(/document\.getElementById\(([^)]+)\)\.classList/g, 'document.getElementById($1)?.classList');
   repairedJs = repairedJs.replace(/document\.querySelector\(([^)]+)\)\.classList/g, 'document.querySelector($1)?.classList');
-  repairedJs = repairedJs.replace(/document\.getElementById\(([^)]+)\)\.style/g, 'document.getElementById($1)?.style');
-  repairedJs = repairedJs.replace(/document\.querySelector\(([^)]+)\)\.style/g, 'document.querySelector($1)?.style');
 
-  // 8. Pastikan Anti-Reload pada Form
+  // 8. Defensive Icon & Resource Safety: Pastikan pemanggilan lucide.createIcons() aman jika CDN sedang loading
+  repairedHtml = repairedHtml.replace(/lucide\.createIcons\(\);?/g, 'if (typeof lucide !== "undefined" && lucide?.createIcons) lucide.createIcons();');
+  repairedJs = repairedJs.replace(/lucide\.createIcons\(\);?/g, 'if (typeof lucide !== "undefined" && lucide?.createIcons) lucide.createIcons();');
+
+  // 9. Pastikan Anti-Reload pada Form
   if (repairedHtml.includes('<form') && !repairedHtml.includes('preventDefault')) {
     repairedHtml = repairedHtml.replace(/<form([^>]*)>/gi, (match) => {
       if (match.includes('onsubmit')) return match;

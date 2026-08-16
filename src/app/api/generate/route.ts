@@ -2,6 +2,15 @@ import { NextResponse } from 'next/server';
 import { validateAndRepairGeneratedCode } from '@/lib/codeValidator';
 import { checkRateLimit } from '@/lib/rateLimiter';
 
+// =============================================================================
+// KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
+// =============================================================================
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.7-flash';
+export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+
+export const getGeminiModel = (): string => process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+export const getOpenAIModel = (): string => process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
+
 export const maxDuration = 300; // 300 detik (5 menit) dengan Vercel Fluid Compute
 
 export async function POST(req: Request) {
@@ -22,8 +31,6 @@ export async function POST(req: Request) {
     }
 
     const { prompt, chatHistory, stage, currentCode } = await req.json();
-
-    const apiKey = process.env.OPENAI_API_KEY;
 
     // BASE SYSTEM PROMPT DENGAN 13 PRINSIP TERVALIDASI
     let systemPrompt = `Anda adalah AI Generator Aplikasi dari platform "Mudah Bikin Aplikasi" (Basic Tier / MVP).
@@ -105,7 +112,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-width: 480px; width: 100%; padding: 24px;
       }
       \`\`\`
-    - Lucide Icons & Google Fonts: Diizinkan di <head> (menggunakan tag <link> font dan <script src="https://unpkg.com/lucide@latest"></script>). Panggil \`lucide.createIcons();\` di fungsi \`render()\`.
+    - Lucide Icons & Google Fonts: Diizinkan di <head> (menggunakan tag <link> font dan <script src="https://unpkg.com/lucide@latest"></script>). Panggil \`if (typeof lucide !== 'undefined' && lucide?.createIcons) lucide.createIcons();\` di fungsi \`render()\`.
 13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
     - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
     - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.
@@ -315,6 +322,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     const aiProvider = (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
     const geminiApiKey = process.env.GEMINI_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
+    const activeGeminiModel = getGeminiModel();
+    const activeOpenAIModel = getOpenAIModel();
 
     if (aiProvider === 'gemini' && !geminiApiKey) {
       return NextResponse.json({
@@ -347,8 +356,10 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     const maxRetries = 4;
     const recentHistory = (chatHistory || []).slice(-6);
 
+    let actualProviderUsed = aiProvider;
+
     // =========================================================================
-    // JALUR 1: GEMINI API (GEMINI 3.7 FLASH / GEMINI 2.5 FLASH)
+    // JALUR 1: GEMINI API (DIPENGARUHI OLEH getGeminiModel())
     // =========================================================================
     if (aiProvider === 'gemini') {
       // Susun Contents dengan Aturan Role Bergantian (user / model)
@@ -386,13 +397,15 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         });
       }
 
-      const candidateEndpoints = [
-        `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || 'gemini-3.7-flash'}:generateContent`,
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash-latest:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash-001:generateContent',
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash-preview:generateContent'
-      ];
+      const candidateModels = [
+        activeGeminiModel,
+        'gemini-3.6-flash',
+        'gemini-3.1-flash-lite'
+      ].filter((m, idx, self) => self.indexOf(m) === idx);
+
+      const candidateEndpoints = candidateModels.map(
+        m => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`
+      );
 
       let geminiData: any = null;
       let usedEndpoint = '';
@@ -428,9 +441,18 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
             break;
           } else {
             const msg = data.error?.message || res.statusText || 'unknown';
-            if ((msg.toLowerCase().includes('high demand') || res.status === 429 || res.status === 503) && attempts < 3) {
-              console.log(`Gemini ${endpoint.split('/models/')[1]} high demand, retrying in ${1200 * attempts}ms...`);
-              await new Promise(r => setTimeout(r, 1200 * attempts));
+            const isRateLimitOrDemand = res.status === 429 || res.status === 503 || msg.toLowerCase().includes('high demand') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate');
+            if (isRateLimitOrDemand && attempts < 4) {
+              let delayMs = 1500 * attempts;
+              const retryInfo = data.error?.details?.find((d: any) => d['@type']?.includes('RetryInfo'));
+              if (retryInfo?.retryDelay) {
+                const parsedSec = parseInt(retryInfo.retryDelay, 10);
+                if (!isNaN(parsedSec) && parsedSec > 0 && parsedSec <= 35) {
+                  delayMs = (parsedSec + 1) * 1000;
+                }
+              }
+              console.log(`Gemini ${endpoint.split('/models/')[1]} wait/cooldown: waiting ${delayMs}ms before attempt ${attempts + 1}...`);
+              await new Promise(r => setTimeout(r, delayMs));
               continue;
             }
             attemptErrors.push(`[${endpoint.split('/models/')[1]}]: ${msg}`);
@@ -442,7 +464,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       if (!geminiData || !geminiData.candidates?.[0]) {
         if (openaiApiKey) {
-          console.warn('Gemini 3.7 Flash high demand spike. Falling back automatically to OpenAI...');
+          console.warn(`Gemini (${activeGeminiModel}) high demand spike. Falling back automatically to OpenAI (${activeOpenAIModel})...`);
+          actualProviderUsed = 'openai';
           const messages = [
             { role: 'system', content: systemPrompt },
             ...recentHistory.map((m: any) => ({
@@ -459,9 +482,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
               Authorization: `Bearer ${openaiApiKey}`
             },
             body: JSON.stringify({
-              model: 'gpt-4o-mini',
+              model: activeOpenAIModel,
               messages,
-              max_tokens: 8192,
+              max_completion_tokens: 8192,
               temperature: 0.5
             })
           });
@@ -523,7 +546,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
 
     // =========================================================================
-    // JALUR 2: OPENAI API (GPT-4o mini / GPT-5.4 mini)
+    // JALUR 2: OPENAI API (DIPENGARUHI OLEH getOpenAIModel())
     // =========================================================================
     } else {
       const messages = [
@@ -542,9 +565,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           Authorization: `Bearer ${openaiApiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: activeOpenAIModel,
           messages,
-          max_tokens: 8192,
+          max_completion_tokens: 8192,
           temperature: 0.5
         })
       });
@@ -578,9 +601,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
             Authorization: `Bearer ${openaiApiKey}`
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: activeOpenAIModel,
             messages: continuationMessages,
-            max_tokens: 4096,
+            max_completion_tokens: 4096,
             temperature: 0.3
           })
         });
@@ -620,18 +643,19 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         const issueList = validated.issues.join('\n- ');
         console.warn('NFR-10b triggered with DOM alignment issues:\n', issueList);
         
+        let repairSuccess = false;
         // Auto-Recovery Prompt sesuai Provider yang Aktif
-        if (aiProvider === 'gemini' && geminiApiKey) {
-          const geminiModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-          const repairRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: [
-                { role: 'user', parts: [{ text: userPromptWithContext }] },
-                { role: 'model', parts: [{ text: assistantMessage }] },
-                { role: 'user', parts: [{ text: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
+        if (actualProviderUsed === 'gemini' && geminiApiKey) {
+          try {
+            const repairRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:generateContent?key=${geminiApiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [
+                  { role: 'user', parts: [{ text: userPromptWithContext }] },
+                  { role: 'model', parts: [{ text: assistantMessage }] },
+                  { role: 'user', parts: [{ text: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
 Ditemukan kendala pada kode yang Anda berikan:
 - ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
 
@@ -640,19 +664,25 @@ INSTRUKSI PERBAIKAN WAJIB:
 2. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
 3. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 4. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }] }
-              ],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-            })
-          });
-          const repairData = await repairRes.json();
-          const repairMsg = repairData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
-          const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
-          if (repairMatch) {
-            htmlCode = repairMatch[1].trim();
-            assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+                ],
+                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+              })
+            });
+            const repairData = await repairRes.json();
+            const repairMsg = repairData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+            const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
+            if (repairMatch) {
+              htmlCode = repairMatch[1].trim();
+              assistantMessage = repairMsg;
+              validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+              repairSuccess = true;
+            }
+          } catch (e) {
+            console.warn('Gemini auto-repair failed, will attempt OpenAI repair fallback...', e);
           }
-        } else if (openaiApiKey) {
+        }
+        
+        if (!repairSuccess && openaiApiKey) {
           const repairPrompt = [
             { role: 'system', content: systemPrompt },
             ...recentHistory.map((m: any) => ({
@@ -679,9 +709,9 @@ INSTRUKSI PERBAIKAN WAJIB:
               Authorization: `Bearer ${openaiApiKey}`
             },
             body: JSON.stringify({
-              model: 'gpt-4o-mini',
+              model: activeOpenAIModel,
               messages: repairPrompt,
-              max_tokens: 8192,
+              max_completion_tokens: 8192,
               temperature: 0.3
             })
           });
@@ -700,7 +730,6 @@ INSTRUKSI PERBAIKAN WAJIB:
 
     const hasValidCode = Boolean(
       validated &&
-      validated.isValid &&
       validated.repairedCode &&
       validated.repairedCode.html &&
       validated.repairedCode.html.trim().length > 0
@@ -720,7 +749,7 @@ INSTRUKSI PERBAIKAN WAJIB:
 
     return NextResponse.json({
       success: true,
-      provider: aiProvider,
+      provider: actualProviderUsed,
       replyText: cleanReplyText,
       code: hasValidCode && validated ? validated.repairedCode : null,
       isContinued: retryCount > 0
