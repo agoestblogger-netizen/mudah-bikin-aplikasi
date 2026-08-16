@@ -40,7 +40,20 @@ Tugas Anda adalah memandu pengguna non-programmer melalui 6 Tahap Sesi Mockup.
 8. DUMMY DATA BARRIER: Data contoh mockup tidak dikirim ke Google Sheets sungguhan.
 9. OPTIMISTIC UI DENGAN ROLLBACK: Update instan + rollback jika error.
 10. BACKEND FAILSAFE GAS: Multi-tab setup + LockService + Content-Type: text/plain.
-11. FORMAT KODE: Berikan kode HTML utuh di dalam blok: \`\`\`html ... \`\`\`.`;
+11. FORMAT KODE: Berikan kode HTML utuh di dalam blok: \`\`\`html ... \`\`\`.
+12. ATURAN WARNA & KONTRAS TINGGI WAJIB (DETERMINISTIK):
+    - Wajib gunakan palet warna dengan kontras tajam & jelas (Clean Modern UI):
+      * body: background: #f8fafc (putih keabuan bersih), color: #0f172a (teks gelap pekat), padding: 24px
+      * Kartu / Container: background: #ffffff, border: 1px solid #e2e8f0, border-radius: 16px, box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05)
+      * Judul (h1, h2, h3): color: #0f172a, font-weight: 700
+      * Label / Subtitle: color: #475569
+      * Header Tabel (th): background: #f1f5f9, color: #0f172a, font-weight: 700, padding: 12px, border-bottom: 2px solid #cbd5e1
+      * Isi Tabel (td): color: #1e293b, padding: 12px, border-bottom: 1px solid #f1f5f9
+      * Form Input: background: #ffffff, border: 1px solid #cbd5e1, color: #0f172a, padding: 10px 14px, border-radius: 10px
+      * Tombol Utama: background: #4f46e5 (indigo), color: #ffffff (putih terang), font-weight: 600, padding: 10px 18px, border-radius: 10px
+      * Tombol Aksi Hapus / Bahaya: background: #fee2e2, color: #b91c1c, border: 1px solid #fecaca
+      * Modal Dialog: background backdrop rgba(15, 23, 42, 0.6), modal-box background #ffffff, color #0f172a
+    - DILARANG KERAS: Memakai warna teks yang mirip dengan warna background (misal teks gelap di atas background gelap, atau teks putih di atas background putih). Semua teks WAJIB sangat kontras, tajam, dan mudah dibaca oleh siapa saja.`;
 
     // ATURAN KHUSUS PER TAHAP SESUAI PRD:
     if (stage === 'TAHAP_1_PEMBUKAAN') {

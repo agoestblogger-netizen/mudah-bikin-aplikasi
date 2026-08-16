@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppProjectState } from '@/types/app';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
-import { Palette, Code2, Eye, Copy, ArrowRight, ShieldCheck, Sparkles, RefreshCw, Layers } from 'lucide-react';
+import { Palette, Code2, Eye, Copy, ArrowRight, ShieldCheck, Sparkles, RefreshCw, Layers, CheckCircle2, FileCode } from 'lucide-react';
 
 interface Stage2MockupCanvasProps {
   projectState: AppProjectState;
@@ -16,14 +16,14 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
   onUpdateState,
   onNextStage
 }) => {
-  const [activeTab, setActiveTab] = useState<'PREVIEW' | 'HTML' | 'CSS' | 'JS'>('PREVIEW');
+  const [activeTab, setActiveTab] = useState<'HTML' | 'CSS' | 'JS' | 'SUMMARY'>('HTML');
   const [htmlCode, setHtmlCode] = useState(projectState.canvasCode.html);
   const [cssCode, setCssCode] = useState(projectState.canvasCode.css);
   const [jsCode, setJsCode] = useState(projectState.canvasCode.js);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Sinkronisasi state lokal saat projectState.canvasCode berubah (misal dari Tahap 1 auto-generate)
+  // Sinkronisasi state lokal saat projectState.canvasCode berubah
   useEffect(() => {
     setHtmlCode(projectState.canvasCode.html);
     setCssCode(projectState.canvasCode.css);
@@ -74,10 +74,6 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
     }
   };
 
-  const generateCombinedSrcDoc = () => {
-    return buildSrcDoc({ html: htmlCode, css: cssCode, js: jsCode });
-  };
-
   const handleUpdateCode = () => {
     onUpdateState({
       canvasCode: {
@@ -89,7 +85,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
   };
 
   const copyFullCode = () => {
-    const full = `<!-- HTML -->\n${htmlCode}\n\n/* CSS */\n${cssCode}\n\n// JS\n${jsCode}`;
+    const full = buildSrcDoc({ html: htmlCode, css: cssCode, js: jsCode });
     navigator.clipboard.writeText(full);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -104,8 +100,8 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             <Palette className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 2 PRD: Mockup & Preview Canvas</h2>
-            <p className="text-xs text-slate-400">Visualisasi prototipe interaktif langsung dalam Canvas dengan State JS hidup.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 2 PRD: Mockup & Canvas Inspector</h2>
+            <p className="text-xs text-slate-400">Inspeksi & penyesuaian kode prototipe. Live visual aktif di panel kanan.</p>
           </div>
         </div>
 
@@ -114,7 +110,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
           <div>
             <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Canvas Standard</span>
             <span className="text-xs font-semibold text-emerald-300">
-              {htmlCode ? 'Dynamic State JS Active' : 'Clean Slate (Belum Ada Mockup)'}
+              {htmlCode ? 'Dynamic State JS Active' : 'Menunggu Generate'}
             </span>
           </div>
         </div>
@@ -126,10 +122,10 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
         <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800 bg-slate-950/60">
           <div className="flex items-center gap-2">
             {[
-              { id: 'PREVIEW', label: 'Live Preview Canvas', icon: <Eye className="w-4 h-4" /> },
-              { id: 'HTML', label: 'HTML Structure', icon: <Code2 className="w-4 h-4 text-orange-400" /> },
-              { id: 'CSS', label: 'CSS Design System', icon: <Code2 className="w-4 h-4 text-cyan-400" /> },
-              { id: 'JS', label: 'Dynamic JS State', icon: <Code2 className="w-4 h-4 text-yellow-400" /> }
+              { id: 'HTML', label: 'HTML Structure', icon: <FileCode className="w-4 h-4 text-orange-400" /> },
+              { id: 'CSS', label: 'CSS Styles', icon: <Code2 className="w-4 h-4 text-cyan-400" /> },
+              { id: 'JS', label: 'Dynamic JS State', icon: <Code2 className="w-4 h-4 text-yellow-400" /> },
+              { id: 'SUMMARY', label: 'Ringkasan Mockup', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> }
             ].map((t) => (
               <button
                 key={t.id}
@@ -152,99 +148,113 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-40"
           >
             <Copy className="w-3.5 h-3.5" />
-            <span>{copied ? 'Tersalin!' : 'Salin Kode'}</span>
+            <span>{copied ? 'Tersalin!' : 'Salin Semua Kode'}</span>
           </button>
         </div>
 
         {/* Tab Contents */}
         <div className="p-6">
-          {activeTab === 'PREVIEW' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Interactive Sandboxed Canvas Viewport</span>
-                <span className="text-emerald-400 font-mono">
-                  Status: {htmlCode ? 'Live Dynamic Execution' : 'Menunggu Generate'}
-                </span>
+          {!htmlCode && (
+            <div className="text-center p-8 space-y-5 max-w-md mx-auto">
+              <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400">
+                <Layers className="w-8 h-8" />
               </div>
-              <div className="w-full min-h-[500px] bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center">
-                {htmlCode ? (
-                  <iframe
-                    title="Canvas Live Preview"
-                    srcDoc={generateCombinedSrcDoc()}
-                    className="w-full h-[500px] border-none"
-                    sandbox="allow-scripts allow-modals allow-forms"
-                  />
+              <div className="space-y-2">
+                <h3 className="text-base font-bold text-white">Belum Ada Mockup yang Dibuat</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Klik tombol di bawah untuk meminta AI menghasilkan prototipe interaktif pertama berdasarkan percakapan Anda di Tahap 1.
+                </p>
+              </div>
+              <button
+                onClick={handleGenerateFirstMockup}
+                disabled={loading}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+              >
+                {loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>AI Sedang Membangun Mockup...</span>
+                  </>
                 ) : (
-                  <div className="text-center p-8 space-y-5 max-w-md">
-                    <div className="w-16 h-16 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400">
-                      <Layers className="w-8 h-8" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="text-base font-bold text-white">Belum Ada Mockup yang Dibuat</h3>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        Klik tombol di bawah untuk meminta AI menghasilkan prototipe interaktif pertama berdasarkan hasil percakapan Anda di Tahap 1.
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleGenerateFirstMockup}
-                      disabled={loading}
-                      className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:opacity-90 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
-                    >
-                      {loading ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>AI Sedang Membangun Mockup...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          <span>🚀 Generate Mockup Pertama Sekarang</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>🚀 Generate Mockup Pertama Sekarang</span>
+                  </>
                 )}
-              </div>
+              </button>
             </div>
           )}
 
-          {activeTab === 'HTML' && (
-            <textarea
-              rows={20}
-              value={htmlCode}
-              placeholder="<!-- Kode HTML akan muncul di sini setelah di-generate -->"
-              onChange={(e) => {
-                setHtmlCode(e.target.value);
-                handleUpdateCode();
-              }}
-              className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-emerald-300 focus:outline-none focus:border-indigo-500"
-            />
+          {htmlCode && activeTab === 'HTML' && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px] text-slate-400">
+                <span>Struktur Markup & Form Input</span>
+                <span className="text-emerald-400 font-mono">Tersinkron dengan Live Preview</span>
+              </div>
+              <textarea
+                rows={18}
+                value={htmlCode}
+                onChange={(e) => {
+                  setHtmlCode(e.target.value);
+                  handleUpdateCode();
+                }}
+                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-orange-300 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
           )}
 
-          {activeTab === 'CSS' && (
-            <textarea
-              rows={20}
-              value={cssCode}
-              placeholder="/* Kode CSS akan muncul di sini setelah di-generate */"
-              onChange={(e) => {
-                setCssCode(e.target.value);
-                handleUpdateCode();
-              }}
-              className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-300 focus:outline-none focus:border-indigo-500"
-            />
+          {htmlCode && activeTab === 'CSS' && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px] text-slate-400">
+                <span>Design System & Aturan Kontras UI</span>
+                <span className="text-cyan-400 font-mono">High Contrast Clean UI</span>
+              </div>
+              <textarea
+                rows={18}
+                value={cssCode}
+                placeholder="/* CSS tambahan terisolasi */"
+                onChange={(e) => {
+                  setCssCode(e.target.value);
+                  handleUpdateCode();
+                }}
+                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-300 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
           )}
 
-          {activeTab === 'JS' && (
-            <textarea
-              rows={20}
-              value={jsCode}
-              placeholder="// Kode Javascript State akan muncul di sini setelah di-generate"
-              onChange={(e) => {
-                setJsCode(e.target.value);
-                handleUpdateCode();
-              }}
-              className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-yellow-300 focus:outline-none focus:border-indigo-500"
-            />
+          {htmlCode && activeTab === 'JS' && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px] text-slate-400">
+                <span>State Manajemen Memori & Handler Mutasi</span>
+                <span className="text-yellow-400 font-mono">Dynamic Execution Active</span>
+              </div>
+              <textarea
+                rows={18}
+                value={jsCode}
+                placeholder="// Logika JS interaktif"
+                onChange={(e) => {
+                  setJsCode(e.target.value);
+                  handleUpdateCode();
+                }}
+                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-yellow-300 focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          )}
+
+          {htmlCode && activeTab === 'SUMMARY' && (
+            <div className="space-y-4 text-xs text-slate-300">
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Kepatuhan Standar Mockup PRD Terpenuhi</span>
+                </div>
+                <ul className="space-y-2 text-slate-400 list-disc list-inside">
+                  <li><strong>Arsitektur State:</strong> Data disimpan dalam memori lokal dan di-render ulang dinamis saat ada mutasi.</li>
+                  <li><strong>Kontras Tajam:</strong> Teks, tabel, dan tombol dirancang menggunakan palet bersih kontras tinggi.</li>
+                  <li><strong>Iframe Preview Terpadu:</strong> Visual interaktif aktif secara real-time di panel kanan.</li>
+                </ul>
+              </div>
+            </div>
           )}
         </div>
       </div>
