@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppProjectState } from '@/types/app';
 import { initialProjectState } from '@/lib/defaultState';
 import { Navbar } from '@/components/Navbar';
@@ -11,6 +12,7 @@ import Link from 'next/link';
 import { Eye, Code2, Download, RefreshCw, Layers } from 'lucide-react';
 
 export default function AppWorkspacePage() {
+  const router = useRouter();
   const [projectState, setProjectState] = useState<AppProjectState>(initialProjectState);
   const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT'>('PREVIEW');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -18,23 +20,85 @@ export default function AppWorkspacePage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
 
-  // Pemeriksaan Sesi Supabase Auth Ketat (PRD Bagian 11)
+  // Pemeriksaan Sesi Supabase Auth Ketat
   useEffect(() => {
+    let isMounted = true;
+
     async function verifyAuthSession() {
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash;
+        const search = window.location.search;
+
+        // Cek jika ada error di Hash / Search (misal: link expired / used)
+        if (hash && (hash.includes('error=') || hash.includes('error_description='))) {
+          const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash);
+          const desc = hashParams.get('error_description') || hashParams.get('error');
+          if (desc) {
+            router.push(`/login?error_msg=${encodeURIComponent('Link konfirmasi email tidak valid atau sudah kedaluwarsa. Silakan minta link baru atau coba masuk.')}`);
+            return;
+          }
+        }
+
+        // Cek jika ada code PKCE di query
+        const searchParams = new URLSearchParams(search);
+        const code = searchParams.get('code');
+        if (code) {
+          try {
+            const { data: codeData, error } = await supabase.auth.exchangeCodeForSession(code);
+            if (!error && codeData.session?.user) {
+              if (isMounted) {
+                setIsAuthenticated(true);
+                setUserEmail(codeData.session.user.email);
+              }
+              return;
+            }
+          } catch (err) {
+            // Lanjut ke getSession fallback
+          }
+        }
+      }
+
       try {
         const { data } = await supabase.auth.getSession();
         if (data && data.session && data.session.user) {
-          setIsAuthenticated(true);
-          setUserEmail(data.session.user.email);
+          if (isMounted) {
+            setIsAuthenticated(true);
+            setUserEmail(data.session.user.email);
+          }
         } else {
-          setIsAuthenticated(false);
+          if (isMounted) {
+            setIsAuthenticated(false);
+          }
         }
       } catch (err) {
-        setIsAuthenticated(false);
+        if (isMounted) {
+          setIsAuthenticated(false);
+        }
       }
     }
+
     verifyAuthSession();
-  }, []);
+
+    // Dengarkan perubahan state auth secara live
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && session.user) {
+        if (isMounted) {
+          setIsAuthenticated(true);
+          setUserEmail(session.user.email);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setUserEmail(undefined);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, [router]);
 
   const handleUpdateState = (updated: Partial<AppProjectState>) => {
     setProjectState((prev) => ({

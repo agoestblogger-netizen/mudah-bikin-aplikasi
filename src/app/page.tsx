@@ -1,10 +1,149 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Sparkles, ArrowRight, Play, CheckCircle2, ShieldCheck, Database, Rocket, Layers, Code2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Sparkles, ArrowRight, CheckCircle2, Database, Rocket, Code2, Loader2, AlertTriangle } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
 
 export default function LandingPage() {
+  const router = useRouter();
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function handleAuthRedirect() {
+      if (typeof window === 'undefined') return;
+
+      const hash = window.location.hash;
+      const search = window.location.search;
+
+      // 1. Cek jika ada error di Hash Fragment (misal: link expired / used)
+      if (hash && (hash.includes('error=') || hash.includes('error_description='))) {
+        const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash);
+        const errDesc = hashParams.get('error_description') || hashParams.get('error') || 'Link konfirmasi tidak valid atau sudah kedaluwarsa.';
+        const cleanMsg = errDesc.replace(/\+/g, ' ');
+        if (isMounted) {
+          setAuthError(cleanMsg);
+        }
+        setTimeout(() => {
+          router.push(`/login?error_msg=${encodeURIComponent('Link konfirmasi email tidak valid atau sudah kedaluwarsa. Silakan minta link baru atau coba masuk.')}`);
+        }, 2500);
+        return;
+      }
+
+      // 2. Cek jika ada error di Query Params
+      if (search && (search.includes('error=') || search.includes('error_description='))) {
+        const searchParams = new URLSearchParams(search);
+        const errDesc = searchParams.get('error_description') || searchParams.get('error') || 'Link konfirmasi tidak valid atau sudah kedaluwarsa.';
+        const cleanMsg = errDesc.replace(/\+/g, ' ');
+        if (isMounted) {
+          setAuthError(cleanMsg);
+        }
+        setTimeout(() => {
+          router.push(`/login?error_msg=${encodeURIComponent('Link konfirmasi email tidak valid atau sudah kedaluwarsa. Silakan minta link baru atau coba masuk.')}`);
+        }, 2500);
+        return;
+      }
+
+      // 3. Cek jika ada PKCE code di Query Param
+      const searchParams = new URLSearchParams(search);
+      const code = searchParams.get('code');
+      if (code) {
+        if (isMounted) setIsVerifyingAuth(true);
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!error) {
+            router.push('/app');
+            return;
+          } else {
+            if (isMounted) {
+              setAuthError('Gagal menukar kode autentikasi. Silakan masuk secara manual.');
+              setIsVerifyingAuth(false);
+            }
+            setTimeout(() => router.push('/login'), 2000);
+            return;
+          }
+        } catch (err) {
+          if (isMounted) setIsVerifyingAuth(false);
+        }
+      }
+
+      // 4. Cek jika ada access_token di Hash Fragment (Implicit flow)
+      if (hash && hash.includes('access_token')) {
+        if (isMounted) setIsVerifyingAuth(true);
+        const { data } = await supabase.auth.getSession();
+        if (data && data.session) {
+          router.push('/app');
+          return;
+        }
+      }
+
+      // 5. Dengarkan event auth state change (jika token sedang diproses di background)
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
+          if (hash.includes('access_token') || search.includes('code') || isVerifyingAuth) {
+            router.push('/app');
+          }
+        }
+      });
+
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
+
+    handleAuthRedirect();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router, isVerifyingAuth]);
+
+  // Layar Verifikasi Loading Saat Menukar Token
+  if (isVerifyingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 font-sans selection:bg-indigo-500 selection:text-white">
+        <div className="text-center space-y-4 max-w-sm">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center mx-auto shadow-xl shadow-indigo-500/20 animate-pulse">
+            <Loader2 className="w-7 h-7 text-white animate-spin" />
+          </div>
+          <h2 className="text-xl font-bold text-white tracking-tight">Memverifikasi Konfirmasi Akun...</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Email Anda berhasil dikonfirmasi. Sedang menyiapkan sesi login dan mengalihkan Anda ke workspace...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Layar Error Jika Link Invalid / Expired
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 font-sans selection:bg-indigo-500 selection:text-white">
+        <div className="w-full max-w-md p-8 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto text-rose-400">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-white tracking-tight">Link Konfirmasi Kedaluwarsa</h2>
+          <p className="text-xs text-rose-300 bg-rose-950/50 border border-rose-800/60 p-3 rounded-xl">
+            {authError}
+          </p>
+          <p className="text-xs text-slate-400">
+            Mengalihkan Anda ke halaman login dalam beberapa detik...
+          </p>
+          <Link
+            href="/login"
+            className="inline-block px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 transition-all"
+          >
+            Ke Halaman Masuk Sekarang
+          </Link>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white">
       {/* Top Bar */}

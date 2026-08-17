@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
@@ -16,6 +16,49 @@ export default function LoginPage() {
   const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
   const [resendStatus, setResendStatus] = useState('');
+
+  // Periksa sesi aktif atau parameter error di URL saat halaman dimuat
+  useEffect(() => {
+    async function checkExistingAuthOrErrors() {
+      if (typeof window === 'undefined') return;
+
+      const search = window.location.search;
+      const hash = window.location.hash;
+
+      // Cek error dari Query Param
+      if (search) {
+        const params = new URLSearchParams(search);
+        const customError = params.get('error_msg');
+        const desc = params.get('error_description');
+        if (customError) {
+          setErrorMsg(decodeURIComponent(customError));
+        } else if (desc) {
+          setErrorMsg(desc.replace(/\+/g, ' '));
+        }
+      }
+
+      // Cek error dari Hash
+      if (hash && (hash.includes('error=') || hash.includes('error_description='))) {
+        const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.substring(1) : hash);
+        const desc = hashParams.get('error_description') || hashParams.get('error');
+        if (desc) {
+          setErrorMsg('Link konfirmasi email tidak valid atau sudah kedaluwarsa. Silakan minta link baru atau coba masuk.');
+        }
+      }
+
+      // Cek apakah user sudah punya sesi aktif
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data && data.session && data.session.user) {
+          router.push('/app');
+        }
+      } catch (err) {
+        // Abaikan
+      }
+    }
+
+    checkExistingAuthOrErrors();
+  }, [router]);
 
   const handleResendConfirmation = async () => {
     if (!unconfirmedEmail || resending) return;
