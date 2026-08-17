@@ -18,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" className={`${outfit.variable} dark`}>
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
+    <html lang="id" className={`${outfit.variable} dark`} suppressHydrationWarning>
+      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white" suppressHydrationWarning>
         {children}
       </body>
     </html>
