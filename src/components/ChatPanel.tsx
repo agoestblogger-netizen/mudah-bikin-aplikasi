@@ -18,8 +18,8 @@ const BRAINSTORMING_LOADING_TEXTS = [
   'Bentar ya, lagi saya rangkai tanggapannya...'
 ];
 
-function getContextualLoadingText(query: string, hasCode: boolean): string {
-  const lower = query.toLowerCase();
+function getContextualLoadingText(query: string, hasCode: boolean, hasBrief: boolean): string {
+  const lower = query.toLowerCase().trim();
 
   // Jika terkait perbaikan kendala / error
   if (lower.includes('error') || lower.includes('bug') || lower.includes('rusak') || lower.includes('kendala') || lower.includes('kenapa')) {
@@ -39,8 +39,11 @@ function getContextualLoadingText(query: string, hasCode: boolean): string {
     return 'AI sedang memperbarui aplikasi...';
   }
 
-  // Jika instruksi eksplisit membuat/generate aplikasi di awal
-  if (lower.includes('buatkan') || lower.includes('generate') || lower.includes('bikin aplikasi') || lower.includes('buat aplikasi') || lower.includes('rancang mockup')) {
+  // Jika konfirmasi persetujuan setelah Brief Kebutuhan atau instruksi eksplisit generate mockup
+  if (
+    (hasBrief && /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas)($|\b)/i.test(lower)) ||
+    lower.includes('buatkan') || lower.includes('generate') || lower.includes('bikin aplikasi') || lower.includes('buat aplikasi') || lower.includes('rancang mockup')
+  ) {
     return 'AI sedang membangun aplikasi...';
   }
 
@@ -74,8 +77,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     const query = textToSend || input;
     if (!query.trim() || isGenerating) return;
 
+    const hasBrief = messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'));
     // Tentukan teks status loading kontekstual
-    const contextualText = getContextualLoadingText(query, Boolean(projectState.canvasCode?.html));
+    const contextualText = getContextualLoadingText(query, Boolean(projectState.canvasCode?.html), hasBrief);
     setLoadingText(contextualText);
 
     const userMsg: ChatMessage = {
