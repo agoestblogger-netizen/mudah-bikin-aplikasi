@@ -16,14 +16,16 @@ export default function AppWorkspacePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
 
   // Pemeriksaan Sesi Supabase Auth Ketat (PRD Bagian 11)
   useEffect(() => {
     async function verifyAuthSession() {
       try {
         const { data } = await supabase.auth.getSession();
-        if (data && data.session) {
+        if (data && data.session && data.session.user) {
           setIsAuthenticated(true);
+          setUserEmail(data.session.user.email);
         } else {
           setIsAuthenticated(false);
         }
@@ -120,7 +122,7 @@ export default function AppWorkspacePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white flex flex-col">
       {/* Top Navbar Minimalis (PRD FR-09) */}
-      <Navbar onNewSession={handleNewSession} />
+      <Navbar userEmail={userEmail} onNewSession={handleNewSession} />
 
       {/* Main 2-Panel Workspace Murni Sesuai PRD FR-09 */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
