@@ -557,26 +557,74 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           const continuationContents = [
             ...geminiContents,
             { role: 'model', parts: [{ text: assistantMessage }] },
-            { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript tersambung dengan benar tanpa terpotong.' }] }
+            { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript dan HTML ditutup dengan lengkap.' }] }
           ];
 
-          const contRes = await fetch(geminiEndpointWithKey, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': geminiApiKey || ''
-            },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: continuationContents,
-              generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
-            })
-          });
+          let contText = '';
+          try {
+            const contRes = await fetch(geminiEndpointWithKey, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': geminiApiKey || ''
+              },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: continuationContents,
+                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+              })
+            });
 
-          const contData = await contRes.json();
-          const contCandidate = contData.candidates?.[0];
-          let contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
-          finishReason = contCandidate?.finishReason;
+            if (contRes.ok) {
+              const contData = await contRes.json();
+              const contCandidate = contData.candidates?.[0];
+              contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
+              finishReason = contCandidate?.finishReason;
+            } else {
+              console.warn(`Gemini continuation failed with status ${contRes.status}: ${contRes.statusText}`);
+            }
+          } catch (contErr) {
+            console.warn('Gemini continuation fetch error:', contErr);
+          }
+
+          // Jika Gemini continuation gagal atau kosong, fallback ke OpenAI continuation
+          if (!contText && openaiApiKey) {
+            console.log('Falling back to OpenAI for continuation...');
+            try {
+              const contMessages = [
+                { role: 'system', content: systemPrompt },
+                ...recentHistory.map((m: any) => ({
+                  role: m.sender === 'USER' ? 'user' : 'assistant',
+                  content: m.text
+                })),
+                { role: 'user', content: userPromptWithContext },
+                { role: 'assistant', content: assistantMessage },
+                { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan seluruh script JavaScript dan penutup tag HTML lengkap.' }
+              ];
+
+              const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${openaiApiKey}`
+                },
+                body: JSON.stringify({
+                  model: activeOpenAIModel,
+                  messages: contMessages,
+                  max_completion_tokens: 8192,
+                  temperature: 0.2
+                })
+              });
+
+              if (contResponse.ok) {
+                const contData = await contResponse.json();
+                contText = contData.choices?.[0]?.message?.content || '';
+                finishReason = contData.choices?.[0]?.finish_reason;
+              }
+            } catch (openAiContErr) {
+              console.warn('OpenAI continuation fallback error:', openAiContErr);
+            }
+          }
 
           if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan')) {
             break;
@@ -641,25 +689,32 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript tersambung dengan benar tanpa terpotong.' }
         ];
 
-        const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openaiApiKey}`
-          },
-          body: JSON.stringify({
-            model: activeOpenAIModel,
-            messages: continuationMessages,
-            max_completion_tokens: 4096,
-            temperature: 0.2
-          })
-        });
+        let contText = '';
+        try {
+          const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${openaiApiKey}`
+            },
+            body: JSON.stringify({
+              model: activeOpenAIModel,
+              messages: continuationMessages,
+              max_completion_tokens: 8192,
+              temperature: 0.2
+            })
+          });
 
-        const contData = await contResponse.json();
-        let contText = contData.choices?.[0]?.message?.content || '';
-        finishReason = contData.choices?.[0]?.finish_reason;
+          if (contResponse.ok) {
+            const contData = await contResponse.json();
+            contText = contData.choices?.[0]?.message?.content || '';
+            finishReason = contData.choices?.[0]?.finish_reason;
+          }
+        } catch (openAiErr) {
+          console.warn('OpenAI continuation error:', openAiErr);
+        }
 
-        if (contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
+        if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
           break;
         }
 
@@ -673,111 +728,127 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
     }
 
-    // Ekstraksi Blok Kode HTML
+    // Ekstraksi Blok Kode HTML (Mendukung fence lengkap maupun unclosed jika terpotong)
     let htmlCode = '';
     const match = assistantMessage.match(/```html([\s\S]*?)```/);
     if (match) {
       htmlCode = match[1].trim();
+    } else if (assistantMessage.includes('```html')) {
+      // Jika blok ```html dibuka tapi belum sempat ditutup karena cutoff
+      const parts = assistantMessage.split('```html');
+      htmlCode = parts[parts.length - 1].replace(/```[\s\S]*$/, '').trim();
+    } else if (assistantMessage.includes('<!DOCTYPE') || assistantMessage.includes('<html') || assistantMessage.includes('<body')) {
+      htmlCode = assistantMessage.trim();
     }
 
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan di Awal dan Setiap Revisi)
     let validated = htmlCode ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
 
-    // NFR-10b: Pemeriksaan Integritas, Sintaks JavaScript, & Keselarasan DOM Otomatis
-    if (validated && validated.repairedCode && validated.repairedCode.html) {
-      const finalHtml = validated.repairedCode.html;
-      const hasScriptTag = finalHtml.includes('<script>') || finalHtml.includes('<script ');
-      const hasRenderFunction = finalHtml.includes('function render') || finalHtml.includes('render()');
-      const hasMismatchesOrSyntaxErrors = validated.issues && validated.issues.length > 0;
+    // NFR-10b: Pemeriksaan Integritas, Kelengkapan Tag, Sintaks JavaScript, & Keselarasan DOM Otomatis
+    const isCodeIncomplete = !htmlCode || !htmlCode.includes('</html>') || !htmlCode.includes('</script>');
+    const hasScriptTag = Boolean(htmlCode && (htmlCode.includes('<script>') || htmlCode.includes('<script ')));
+    const hasRenderFunction = Boolean(htmlCode && (htmlCode.includes('function render') || htmlCode.includes('render()')));
+    const hasMismatchesOrSyntaxErrors = Boolean(validated && validated.issues && validated.issues.length > 0);
+    
+    // Jika terdeteksi kode tidak lengkap, SyntaxError JS, ketidakselarasan handler/ID, atau script hilang, picu AI auto-recovery (NFR-10b)
+    if (isCodeIncomplete || !validated || !validated.isValid || hasMismatchesOrSyntaxErrors || !hasScriptTag || !hasRenderFunction) {
+      const issueList = validated && validated.issues && validated.issues.length > 0
+        ? validated.issues.join('\n- ')
+        : (isCodeIncomplete ? 'Kode HTML/JS terpotong dan tidak memiliki tag penutup </html> atau </script>' : 'Tag <script> atau fungsi render() tidak ditemukan.');
       
-      // Jika terdeteksi SyntaxError JS, ketidakselarasan handler/ID, atau script hilang, picu AI auto-recovery (NFR-10b)
-      if (hasMismatchesOrSyntaxErrors || !hasScriptTag || !hasRenderFunction) {
-        const issueList = validated.issues.join('\n- ');
-        console.warn('NFR-10b triggered with DOM alignment or JS Syntax issues:\n', issueList);
-        
-        let repairSuccess = false;
-        // Auto-Recovery Prompt sesuai Provider yang Aktif
-        if (actualProviderUsed === 'gemini' && geminiApiKey) {
-          try {
-            const repairRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:generateContent?key=${geminiApiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: [
-                  { role: 'user', parts: [{ text: userPromptWithContext }] },
-                  { role: 'model', parts: [{ text: assistantMessage }] },
-                  { role: 'user', parts: [{ text: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KESELARASAN DOM):
-Ditemukan kendala serius pada kode yang Anda berikan:
-- ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
-
-INSTRUKSI PERBAIKAN WAJIB:
-1. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
-2. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
-3. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-4. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
-5. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }] }
-                ],
-                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
-              })
-            });
-            const repairData = await repairRes.json();
-            const repairMsg = repairData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
-            const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
-            if (repairMatch) {
-              htmlCode = repairMatch[1].trim();
-              assistantMessage = repairMsg;
-              validated = validateAndRepairGeneratedCode(htmlCode, '', '');
-              repairSuccess = true;
-            }
-          } catch (e) {
-            console.warn('Gemini auto-repair failed, will attempt OpenAI repair fallback...', e);
-          }
-        }
-        
-        if (!repairSuccess && openaiApiKey) {
-          const repairPrompt = [
-            { role: 'system', content: systemPrompt },
-            ...recentHistory.map((m: any) => ({
-              role: m.sender === 'USER' ? 'user' : 'assistant',
-              content: m.text
-            })),
-            { role: 'user', content: userPromptWithContext },
-            { role: 'assistant', content: assistantMessage },
-            { role: 'user', content: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KESELARASAN DOM):
-Ditemukan kendala serius pada kode yang Anda berikan:
-- ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
-
-INSTRUKSI PERBAIKAN WAJIB:
-1. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
-2. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
-3. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-4. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
-5. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }
-          ];
-
-          const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      console.warn('NFR-10b triggered with DOM alignment, completeness, or JS Syntax issues:\n', issueList);
+      
+      let repairSuccess = false;
+      // Auto-Recovery Prompt sesuai Provider yang Aktif
+      if (actualProviderUsed === 'gemini' && geminiApiKey) {
+        try {
+          const repairRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:generateContent?key=${geminiApiKey}`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openaiApiKey}`
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: activeOpenAIModel,
-              messages: repairPrompt,
-              max_completion_tokens: 8192,
-              temperature: 0.2
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [
+                { role: 'user', parts: [{ text: userPromptWithContext }] },
+                { role: 'model', parts: [{ text: assistantMessage }] },
+                { role: 'user', parts: [{ text: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KELENGKAPAN KODE):
+Ditemukan kendala serius pada kode yang Anda berikan:
+- ${issueList}
+
+INSTRUKSI PERBAIKAN WAJIB:
+1. Hasilkan KODE HTML LENGKAP DAN UTUH dari <!DOCTYPE html> sampai </html> di dalam blok \`\`\`html ... \`\`\`.
+2. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
+3. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+4. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+5. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }] }
+              ],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
             })
           });
-
           const repairData = await repairRes.json();
-          const repairMsg = repairData.choices?.[0]?.message?.content || '';
+          const repairMsg = repairData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
           const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
           if (repairMatch) {
             htmlCode = repairMatch[1].trim();
             assistantMessage = repairMsg;
             validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+            repairSuccess = true;
+          } else if (repairMsg.includes('```html')) {
+            htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
+            assistantMessage = repairMsg;
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+            repairSuccess = true;
           }
+        } catch (e) {
+          console.warn('Gemini auto-repair failed, will attempt OpenAI repair fallback...', e);
+        }
+      }
+      
+      if (!repairSuccess && openaiApiKey) {
+        const repairPrompt = [
+          { role: 'system', content: systemPrompt },
+          ...recentHistory.map((m: any) => ({
+            role: m.sender === 'USER' ? 'user' : 'assistant',
+            content: m.text
+          })),
+          { role: 'user', content: userPromptWithContext },
+          { role: 'assistant', content: assistantMessage },
+          { role: 'user', content: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KELENGKAPAN KODE):
+Ditemukan kendala serius pada kode yang Anda berikan:
+- ${issueList}
+
+INSTRUKSI PERBAIKAN WAJIB:
+1. Hasilkan KODE HTML LENGKAP DAN UTUH dari <!DOCTYPE html> sampai </html> di dalam blok \`\`\`html ... \`\`\`.
+2. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
+3. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+4. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+5. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
+        ];
+
+        const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${openaiApiKey}`
+          },
+          body: JSON.stringify({
+            model: activeOpenAIModel,
+            messages: repairPrompt,
+            max_completion_tokens: 8192,
+            temperature: 0.2
+          })
+        });
+
+        const repairData = await repairRes.json();
+        const repairMsg = repairData.choices?.[0]?.message?.content || '';
+        const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
+        if (repairMatch) {
+          htmlCode = repairMatch[1].trim();
+          assistantMessage = repairMsg;
+          validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+        } else if (repairMsg.includes('```html')) {
+          htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
+          assistantMessage = repairMsg;
+          validated = validateAndRepairGeneratedCode(htmlCode, '', '');
         }
       }
     }
