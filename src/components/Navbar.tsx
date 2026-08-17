@@ -47,18 +47,6 @@ export const Navbar: React.FC<NavbarProps> = ({ userEmail, onNewSession }) => {
             </button>
           )}
 
-          {/* User Email & Avatar Badge */}
-          {userEmail && (
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-800/60 border border-slate-700/60">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500/30 to-purple-500/30 border border-indigo-500/40 flex items-center justify-center text-xs font-bold text-indigo-300">
-                {initial}
-              </div>
-              <span className="text-xs text-slate-300 font-medium hidden sm:inline max-w-[180px] truncate">
-                {userEmail}
-              </span>
-            </div>
-          )}
-
           <button
             onClick={handleLogout}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-semibold border border-rose-500/20 transition-all"
@@ -66,6 +54,16 @@ export const Navbar: React.FC<NavbarProps> = ({ userEmail, onNewSession }) => {
             <LogOut className="w-3.5 h-3.5" />
             <span>Keluar</span>
           </button>
+
+          {/* Avatar/Icon di sebelah kanan tombol Keluar (tanpa teks email) */}
+          <div
+            title={userEmail || 'Akun Pengguna'}
+            className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-600 p-[1.5px] flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0 cursor-default"
+          >
+            <div className="w-full h-full rounded-full bg-slate-900 flex items-center justify-center text-xs font-bold text-white">
+              {initial}
+            </div>
+          </div>
         </div>
       </div>
     </header>
