@@ -74,12 +74,12 @@ export function validateAndRepairGeneratedCode(
     // Abaikan fungsi bawaan seperti event.preventDefault, console.log, dll
     if (['preventDefault', 'stopPropagation', 'alert', 'confirm', 'prompt', 'render'].includes(fn)) return;
     if (!definedFunctions.has(fn)) {
-      // Cek apakah ada alias yang cocok
+      // Cek apakah ada alias yang cocok dengan fungsi nyata yang sudah terdefinisi di script
       let resolved = false;
       const aliases = commonAliases[fn] || [];
       for (const alias of aliases) {
         if (definedFunctions.has(alias)) {
-          // Auto-repair: tambahkan jembatan fungsi alias ke script
+          // Rekonsiliasi alias valid: arahkan panggilan ke fungsi nyata yang memang ada
           if (repairedHtml.includes('</script>')) {
             repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { if (typeof ${alias} === 'function') ${alias}(...args); }\n</script>`);
             definedFunctions.add(fn);
@@ -89,17 +89,7 @@ export function validateAndRepairGeneratedCode(
         }
       }
 
-      if (!resolved) {
-        // Jika fungsi pembantu non-kritis (seperti filter/sort/tab), auto-stub agar tidak terjadi Uncaught ReferenceError
-        if (fn.startsWith('setFilter') || fn.startsWith('filter') || fn.startsWith('sort') || fn.startsWith('cari') || fn.startsWith('search') || fn.startsWith('toggle') || fn.startsWith('tutup') || fn.startsWith('close')) {
-          if (repairedHtml.includes('</script>')) {
-            repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { console.log('Action: ${fn}', ...args); if (typeof render === 'function') render(); }\n</script>`);
-            definedFunctions.add(fn);
-            resolved = true;
-          }
-        }
-      }
-
+      // Jika tidak ada fungsi nyata yang cocok, WAJIB catat sebagai issue agar memicu NFR-10b AI Auto-Recovery (DILARANG STUBBING KOSONG)
       if (!resolved) {
         issues.push(`MISMATCH_HANDLER: Fungsi "${fn}" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.`);
       }
