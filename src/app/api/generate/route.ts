@@ -380,15 +380,16 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
-    const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || allHistoryText.includes('Nama App:') || allHistoryText.includes('Fitur Utama (V1)');
+    const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
     
     // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan
-    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|buatkan mockup|bikin aplikasinya|gas|mantap|kerjakan|buatkan saja|terserah)($|\b)/i.test(prompt.trim());
+    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan)($|\b)/i.test(prompt.trim());
     
-    // Deteksi Apakah Prompt Awal Pengguna SUDAH SANGAT DETAIL (lengkap target user, masalah, dan daftar fitur)
-    const isVeryDetailedInitialPrompt = prompt.length > 120 && (
-      (prompt.toLowerCase().includes('fitur') || prompt.toLowerCase().includes('masalah') || prompt.toLowerCase().includes('target') || prompt.toLowerCase().includes('role') || prompt.toLowerCase().includes('layanan')) &&
-      (prompt.toLowerCase().includes('antrian') || prompt.toLowerCase().includes('klinik') || prompt.toLowerCase().includes('toko') || prompt.toLowerCase().includes('kasir') || prompt.toLowerCase().includes('crm') || prompt.toLowerCase().includes('manajemen') || prompt.toLowerCase().includes('inventaris') || prompt.length > 250)
+    // Deteksi Apakah Prompt Awal Pengguna BENAR-BENAR SANGAT DETAIL:
+    // WAJIB panjang > 200 karakter DAN secara eksplisit merinci target peran/user/masalah DAN daftar fitur/alur secara bersamaan.
+    const isVeryDetailedInitialPrompt = prompt.length > 200 && (
+      (prompt.toLowerCase().includes('target') || prompt.toLowerCase().includes('user') || prompt.toLowerCase().includes('pengguna') || prompt.toLowerCase().includes('pasien') || prompt.toLowerCase().includes('petugas') || prompt.toLowerCase().includes('admin') || prompt.toLowerCase().includes('masalah')) &&
+      (prompt.toLowerCase().includes('fitur') || prompt.toLowerCase().includes('alur') || prompt.toLowerCase().includes('menu') || prompt.toLowerCase().includes('tabel') || prompt.toLowerCase().includes('layanan'))
     );
     const userMessageCount = (chatHistory || []).filter((m: any) => m.sender === 'USER').length;
 
@@ -398,12 +399,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         // KONDISI 1: PENGGUNA SUDAH MENYETUJUI BRIEF KEBUTUHAN -> GENERATE MOCKUP (TAHAP 2)
         systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
 - Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
-- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 15 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
+- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 20 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, Role Gating fungsional nyata, styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
       } else if (hasBriefPresented && !isConfirmationApproval) {
-        // KONDISI 2: PENGGUNA MEMBERIKAN REVISI KECIL / PENYESUAIAN PADA BRIEF KEBUTUHAN
+        // KONDISI 2: BRIEF KEBUTUHAN SUDAH TAMPIL, PENGGUNA MEMBERIKAN REVISI KECIL / DETAIL
         systemPrompt += `\n\nATURAN TAHAP 1 (SESI KONFIRMASI & PENYESUAIAN BRIEF KEBUTUHAN):
-- DILARANG KERAS menghasilkan blok kode \`\`\`html ... \`\`\` pada giliran ini!
+- PERATURAN MUTLAK: DILARANG KERAS MENGHASILKAN BLOK KODE \`\`\`html ... \`\`\` PADA GILIRAN INI!
 - Pengguna memberikan revisi/penyesuaian detail terhadap lembar Brief Kebutuhan sebelumnya.
 - Tugas Anda:
   1. Akui dan terapkan revisi penyesuaian yang diminta pengguna secara ramah.
@@ -416,12 +417,12 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      - **Roadmap Lanjutan (V2/V3)**: [fitur yang didorong ke "🚀 Coming Soon" karena di luar kemampuan stack Google Sheets + Apps Script]
      - **Fitur Unik (USP)**: [kalau ada, opsional]
   3. Lakukan SESI KONFIRMASI (Sub-langkah 6): Tanyakan eksplisit di baris terakhir:
-     "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail yang ingin diubah?"
+     "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail yang ingin diubah sebelum saya buatkan prototipenya?"
   - DILARANG membuat kode sebelum pengguna menyatakan OK/Setuju/Lanjut.`;
-      } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2) {
-        // KONDISI 3: PROMPT AWAL SUDAH SANGAT DETAIL ATAU SUDAH DISKUSI 2-3 PUTARAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
+      } else if (isVeryDetailedInitialPrompt || userMessageCount >= 3) {
+        // KONDISI 3: PROMPT AWAL SUDAH SANGAT DETAIL (>200 chars) ATAU SUDAH DISKUSI 3 PUTARAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
         systemPrompt += `\n\nATURAN TAHAP 1 (PENYUSUNAN BRIEF KEBUTUHAN & SESI KONFIRMASI - SUB-LANGKAH 5 & 6):
-- DILARANG KERAS menghasilkan blok kode \`\`\`html ... \`\`\` pada giliran ini!
+- PERATURAN MUTLAK: DILARANG KERAS MENGHASILKAN BLOK KODE \`\`\`html ... \`\`\` PADA GILIRAN INI!
 - Informasi kebutuhan aplikasi sudah cukup jelas dari penjelasan detail pengguna atau dari putaran diskusi sebelumnya.
 - Tugas Anda:
   1. Berikan apresiasi dan rangkuman singkat pemahaman Anda dalam bahasa yang ramah dan alami.
@@ -437,15 +438,15 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan, atau ada yang mau ditambah/diubah sebelum saya buatkan prototipenya?"
   - DILARANG membuat kode mockup sampai pengguna memberikan persetujuan (OK/Setuju/Lanjut).`;
       } else {
-        // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE -> JALANI SUB-LANGKAH 1-4 BERTAHAP (1 PERTANYAAN PER GILIRAN)
+        // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE (contoh: "ingin buat aplikasi klinik") -> JALANI SUB-LANGKAH 1-4 BERTAHAP (1 PERTANYAAN PER GILIRAN)
         systemPrompt += `\n\nATURAN TAHAP 1 (EKSPLORASI IDE BERTAHAP - SUB-LANGKAH 1 SAMPAI 4):
-- DILARANG KERAS menghasilkan blok kode \`\`\`html ... \`\`\` pada giliran ini!
-- JANGAN langsung menampilkan Brief Kebutuhan jika ide pengguna masih sangat singkat/vague (misal cuma "aplikasi klinik" atau "buat CRM").
+- PERATURAN MUTLAK: DILARANG KERAS MENGHASILKAN BLOK KODE \`\`\`html ... \`\`\` ATAU LEMBAR BRIEF KEBUTUHAN PADA GILIRAN INI!
+- Ide pengguna masih singkat/awal (misal: "ingin buat aplikasi klinik").
 - Jalankan penggalian ide bertahap:
-  1. Akui ide awal pengguna dengan ramah dan antusias.
-  2. DALAMI & PERTAJAM (Sub-langkah 2): Berikan masukan/ide proaktif (misal: "Selain fitur X, biasanya untuk aplikasi ini juga sangat terbantu jika ada fitur Y untuk memudahkan Z, bagaimana menurut Anda?").
-  3. AJUKAN TEPAT SATU PERTANYAAN FOKUS (DILARANG borongan banyak pertanyaan sekaligus): Tanyakan satu aspek kunci berikutnya (misal target alur pengguna atau prioritas fitur utama).
-- JANGAN buat kode mockup di tahap ini.`;
+  1. Akui ide pengguna dengan ramah dan antusias.
+  2. DALAMI & PERTAJAM (Sub-langkah 2): Berikan masukan/ide proaktif (misal: "Untuk aplikasi klinik, biasanya sangat membantu jika ada pemisahan peran antara Pasien yang mengambil antrian dan Petugas loket yang memanggil nomor, atau apakah ada alur khusus yang Anda inginkan?").
+  3. AJUKAN TEPAT SATU PERTANYAAN FOKUS (DILARANG borongan banyak pertanyaan sekaligus): Tanyakan satu pertanyaan spesifik untuk memperjelas kebutuhan.
+- DILARANG membuat kode mockup atau lembar form di tahap ini.`;
       }
     } else if (stage === 'TAHAP_5_PATCH') {
       systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
@@ -952,7 +953,11 @@ INSTRUKSI PERBAIKAN WAJIB:
       }
     }
 
+    // PERLINDUNGAN TAHAP 1 MUTLAK: DILARANG mengirimkan kode sebelum Brief Kebutuhan disetujui pengguna!
+    const isStage1AwaitingConfirmation = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
+
     const hasValidCode = Boolean(
+      !isStage1AwaitingConfirmation &&
       validated &&
       validated.isValid &&
       validated.repairedCode &&
@@ -963,7 +968,10 @@ INSTRUKSI PERBAIKAN WAJIB:
 
     // Format Pesan Teks Chat Bersih & Jujur
     let cleanReplyText = '';
-    if (match) {
+    if (isStage1AwaitingConfirmation) {
+      // Jika AI sempat menghasilkan code fence sebelum konfirmasi disetujui, bersihkan total dari teks chat
+      cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
+    } else if (match) {
       if (hasValidCode) {
         cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil diperbarui dan dimuat langsung ke Canvas Preview.**').trim();
       } else {

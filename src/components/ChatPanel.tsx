@@ -39,11 +39,8 @@ function getContextualLoadingText(query: string, hasCode: boolean, hasBrief: boo
     return 'AI sedang memperbarui aplikasi...';
   }
 
-  // Jika konfirmasi persetujuan setelah Brief Kebutuhan atau instruksi eksplisit generate mockup
-  if (
-    (hasBrief && /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas)($|\b)/i.test(lower)) ||
-    lower.includes('buatkan') || lower.includes('generate') || lower.includes('bikin aplikasi') || lower.includes('buat aplikasi') || lower.includes('rancang mockup')
-  ) {
+  // Hanya jika SUDAH ADA Brief Kebutuhan dan pengguna mengonfirmasi persetujuan untuk mulai generate mockup
+  if (hasBrief && /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan)($|\b)/i.test(lower)) {
     return 'AI sedang membangun aplikasi...';
   }
 
