@@ -30,6 +30,17 @@ export function validateAndRepairGeneratedCode(
   }
   const combinedJs = (inlineJs + '\n' + repairedJs).trim();
 
+  // 1.5 VALIDASI SINTAKS JAVASCRIPT PALING AWAL (PRD NFR-10b / Step 10)
+  // Menolak dan menangkap SyntaxError (misal: unexpected identifier, unclosed string, syntax error token)
+  if (combinedJs) {
+    try {
+      // Validasi parsing sintaks JS tanpa mengeksekusi side effects runtime
+      new Function(combinedJs);
+    } catch (syntaxErr: any) {
+      issues.push(`SYNTAX_ERROR: JavaScript SyntaxError pada script: ${syntaxErr.message}`);
+    }
+  }
+
   // 2. Pemeriksaan Keselarasan Event Handler (onclick="..." vs JS Function Definitions)
   const onclickFunctionNames: string[] = [];
   const onclickRegex = /onclick=["']\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;

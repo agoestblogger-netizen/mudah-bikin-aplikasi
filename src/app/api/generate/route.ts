@@ -13,6 +13,50 @@ export const getOpenAIModel = (): string => process.env.OPENAI_MODEL || DEFAULT_
 
 export const maxDuration = 300; // 300 detik (5 menit) dengan Vercel Fluid Compute
 
+// Helper: Memverifikasi apakah output kode AI terpotong atau mengalami syntax error di titik potong
+function isCodeTruncatedOrBroken(text: string): boolean {
+  if (!text) return true;
+
+  // 1. Cek penutup blok kode markdown
+  const backtickMatches = text.match(/```/g) || [];
+  if (text.includes('```html') && (backtickMatches.length % 2 !== 0)) {
+    return true;
+  }
+
+  // 2. Cek tag penutup HTML mendasar
+  if (text.includes('<html') && !text.includes('</html>')) {
+    return true;
+  }
+  if (text.includes('<body') && !text.includes('</body>')) {
+    return true;
+  }
+  if (text.includes('<script') && !text.includes('</script>')) {
+    return true;
+  }
+
+  // 3. Ekstrak HTML dan verifikasi sintaks JS di dalam <script>
+  const match = text.match(/```html([\s\S]*?)```/);
+  const htmlContent = match ? match[1] : (text.includes('<!DOCTYPE') ? text : '');
+  if (htmlContent) {
+    const scriptMatches = htmlContent.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi);
+    if (scriptMatches) {
+      for (const s of scriptMatches) {
+        const cleanJs = s.replace(/<\/?script[\s\S]*?>/gi, '').trim();
+        if (cleanJs) {
+          try {
+            new Function(cleanJs);
+          } catch (err) {
+            // JS syntax error menandakan ada string/kode terpotong di tengah statement
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Rate Limiting Check (PRD Bagian 10)
@@ -498,23 +542,22 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         assistantMessage = candidate?.content?.parts?.map((p: any) => p.text).join('') || '';
         let finishReason = candidate?.finishReason;
 
-        // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS')
+        // ANTI-CUTOFF GEMINI (finishReason === 'MAX_TOKENS' atau kode terpotong / SyntaxError)
         const geminiEndpointWithKey = `${usedEndpoint}?key=${geminiApiKey}`;
         while (retryCount < maxRetries) {
           const isFinishReasonLength = finishReason === 'MAX_TOKENS';
-          const backtickMatches = assistantMessage.match(/```/g) || [];
-          const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
+          const isTruncatedOrBroken = isCodeTruncatedOrBroken(assistantMessage);
 
-          if (!isFinishReasonLength && !isCodeBlockUnclosed) {
+          if (!isFinishReasonLength && !isTruncatedOrBroken) {
             break;
           }
 
-          console.log(`Gemini Anti-cutoff triggered on ${usedEndpoint} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+          console.log(`Gemini Anti-cutoff triggered on ${usedEndpoint} (Attempt ${retryCount + 1}). Finish reason: ${finishReason}, isBroken: ${isTruncatedOrBroken}`);
 
           const continuationContents = [
             ...geminiContents,
             { role: 'model', parts: [{ text: assistantMessage }] },
-            { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }] }
+            { role: 'user', parts: [{ text: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript tersambung dengan benar tanpa terpotong.' }] }
           ];
 
           const contRes = await fetch(geminiEndpointWithKey, {
@@ -526,18 +569,24 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemPrompt }] },
               contents: continuationContents,
-              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
+              generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
             })
           });
 
           const contData = await contRes.json();
           const contCandidate = contData.candidates?.[0];
-          const contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
+          let contText = contCandidate?.content?.parts?.map((p: any) => p.text).join('') || '';
           finishReason = contCandidate?.finishReason;
 
           if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan')) {
             break;
           }
+
+          // Bersihkan jika model mengulang pembuka code fence di awal sambungan
+          if (contText.startsWith('```html\n')) contText = contText.slice(8);
+          else if (contText.startsWith('```html')) contText = contText.slice(7);
+          else if (contText.startsWith('```\n')) contText = contText.slice(4);
+          else if (contText.startsWith('```')) contText = contText.slice(3);
 
           assistantMessage += contText;
           retryCount++;
@@ -575,22 +624,21 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       assistantMessage = data.choices?.[0]?.message?.content || '';
       let finishReason = data.choices?.[0]?.finish_reason;
 
-      // ANTI-CUTOFF OPENAI (finish_reason === 'length')
+      // ANTI-CUTOFF OPENAI (finish_reason === 'length' atau kode terpotong / SyntaxError)
       while (retryCount < maxRetries) {
         const isFinishReasonLength = finishReason === 'length';
-        const backtickMatches = assistantMessage.match(/```/g) || [];
-        const isCodeBlockUnclosed = assistantMessage.includes('```html') && (backtickMatches.length % 2 !== 0);
+        const isTruncatedOrBroken = isCodeTruncatedOrBroken(assistantMessage);
 
-        if (!isFinishReasonLength && !isCodeBlockUnclosed) {
+        if (!isFinishReasonLength && !isTruncatedOrBroken) {
           break;
         }
 
-        console.log(`OpenAI Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}`);
+        console.log(`OpenAI Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}, isBroken: ${isTruncatedOrBroken}`);
 
         const continuationMessages = [
           ...messages,
           { role: 'assistant', content: assistantMessage },
-          { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal.' }
+          { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript tersambung dengan benar tanpa terpotong.' }
         ];
 
         const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -603,17 +651,22 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
             model: activeOpenAIModel,
             messages: continuationMessages,
             max_completion_tokens: 4096,
-            temperature: 0.3
+            temperature: 0.2
           })
         });
 
         const contData = await contResponse.json();
-        const contText = contData.choices?.[0]?.message?.content || '';
+        let contText = contData.choices?.[0]?.message?.content || '';
         finishReason = contData.choices?.[0]?.finish_reason;
 
         if (contText.toLowerCase().includes('tidak dapat melanjutkan') || contText.toLowerCase().includes('cannot continue')) {
           break;
         }
+
+        if (contText.startsWith('```html\n')) contText = contText.slice(8);
+        else if (contText.startsWith('```html')) contText = contText.slice(7);
+        else if (contText.startsWith('```\n')) contText = contText.slice(4);
+        else if (contText.startsWith('```')) contText = contText.slice(3);
 
         assistantMessage += contText;
         retryCount++;
@@ -630,17 +683,17 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan di Awal dan Setiap Revisi)
     let validated = htmlCode ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
 
-    // NFR-10b: Pemeriksaan Integritas & Keselarasan DOM Otomatis
+    // NFR-10b: Pemeriksaan Integritas, Sintaks JavaScript, & Keselarasan DOM Otomatis
     if (validated && validated.repairedCode && validated.repairedCode.html) {
       const finalHtml = validated.repairedCode.html;
       const hasScriptTag = finalHtml.includes('<script>') || finalHtml.includes('<script ');
       const hasRenderFunction = finalHtml.includes('function render') || finalHtml.includes('render()');
-      const hasMismatches = validated.issues && validated.issues.length > 0;
+      const hasMismatchesOrSyntaxErrors = validated.issues && validated.issues.length > 0;
       
-      // Jika terdeteksi ketidakselarasan handler/ID atau script hilang, picu AI auto-recovery (NFR-10b)
-      if (hasMismatches || !hasScriptTag || !hasRenderFunction) {
+      // Jika terdeteksi SyntaxError JS, ketidakselarasan handler/ID, atau script hilang, picu AI auto-recovery (NFR-10b)
+      if (hasMismatchesOrSyntaxErrors || !hasScriptTag || !hasRenderFunction) {
         const issueList = validated.issues.join('\n- ');
-        console.warn('NFR-10b triggered with DOM alignment issues:\n', issueList);
+        console.warn('NFR-10b triggered with DOM alignment or JS Syntax issues:\n', issueList);
         
         let repairSuccess = false;
         // Auto-Recovery Prompt sesuai Provider yang Aktif
@@ -654,15 +707,16 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
                 contents: [
                   { role: 'user', parts: [{ text: userPromptWithContext }] },
                   { role: 'model', parts: [{ text: assistantMessage }] },
-                  { role: 'user', parts: [{ text: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
-Ditemukan kendala pada kode yang Anda berikan:
+                  { role: 'user', parts: [{ text: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KESELARASAN DOM):
+Ditemukan kendala serius pada kode yang Anda berikan:
 - ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
 
 INSTRUKSI PERBAIKAN WAJIB:
-1. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
-2. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-3. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
-4. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }] }
+1. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
+2. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+3. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+4. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
+5. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }] }
                 ],
                 generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
               })
@@ -690,15 +744,16 @@ INSTRUKSI PERBAIKAN WAJIB:
             })),
             { role: 'user', content: userPromptWithContext },
             { role: 'assistant', content: assistantMessage },
-            { role: 'user', content: `PERINGATAN NFR-10b (VALIDASI KESELARASAN DOM):
-Ditemukan kendala pada kode yang Anda berikan:
+            { role: 'user', content: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KESELARASAN DOM):
+Ditemukan kendala serius pada kode yang Anda berikan:
 - ${issueList || 'Tag <script> atau fungsi render() tidak ditemukan.'}
 
 INSTRUKSI PERBAIKAN WAJIB:
-1. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
-2. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-3. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
-4. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }
+1. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
+2. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+3. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+4. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
+5. Berikan KODE HTML UTUH LENGKAP di dalam blok \`\`\`html ... \`\`\`.` }
           ];
 
           const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -711,7 +766,7 @@ INSTRUKSI PERBAIKAN WAJIB:
               model: activeOpenAIModel,
               messages: repairPrompt,
               max_completion_tokens: 8192,
-              temperature: 0.3
+              temperature: 0.2
             })
           });
 
@@ -729,9 +784,11 @@ INSTRUKSI PERBAIKAN WAJIB:
 
     const hasValidCode = Boolean(
       validated &&
+      validated.isValid &&
       validated.repairedCode &&
       validated.repairedCode.html &&
-      validated.repairedCode.html.trim().length > 0
+      validated.repairedCode.html.trim().length > 0 &&
+      !validated.issues.some(i => i.startsWith('SYNTAX_ERROR'))
     );
 
     // Format Pesan Teks Chat Bersih & Jujur
