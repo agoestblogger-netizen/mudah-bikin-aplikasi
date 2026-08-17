@@ -330,6 +330,52 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         showToast('Data berhasil dihapus!', 'success');
         render();
       }
+      \`\`\`
+20. ATURAN ROLE SWITCHER & PEMBATASAN AKSES NYATA WAJIB (REAL FUNCTIONAL ROLE GATING):
+    - Jika aplikasi memiliki fitur multi-peran / akses bertingkat (misal: Pasien / Petugas / Admin, atau User / Kasir / Manager, atau Tamu / Anggota / Pengurus):
+    - DILARANG KERAS membuat Role Switcher yang hanya mengubah teks label/badge tanpa membatasi akses tampilan secara nyata!
+    - IMPLEMENTASI ROLE GATING WAJIB MEMENUHI 3 SYARAT FUNGSIONAL NYATA:
+      1. VISIBILITAS TAB / MENU TERBATAS: Tab/menu yang tidak sesuai hak akses role WAJIB disembunyikan total (style.display = 'none' atau tidak di-render).
+         * Role Pasien / Publik: Hanya melihat tab publik (misal: Tab Layar Antrian / Ambil Nomor). Tab Loket Petugas dan Tab Master Layanan Admin WAJIB DISEMBUNYIKAN (style.display = 'none').
+         * Role Petugas / Operator: Melihat tab publik dan tab loket pemanggil. Tab Master Layanan / Pengaturan Admin WAJIB DISEMBUNYIKAN (style.display = 'none').
+         * Role Admin: Melihat SELURUH tab (Layar Antrian, Loket Pemanggil, dan Master Layanan).
+      2. VISIBILITAS TOMBOL AKSI TERBATAS: Tombol aksi sensitif (seperti tombol "Panggil Nomor", "Selesai", "Tambah/Edit/Hapus Layanan") WAJIB disembunyikan (style.display = 'none') atau di-disable untuk role yang tidak berhak.
+      3. AUTO-REDIRECT TAB AKTIF SAAT GANTI ROLE: Jika pengguna mengganti peran saat sedang berada di tab yang tidak diizinkan untuk peran baru, fungsi switchRole(role) WAJIB secara otomatis mengalihkan tab aktif ke tab yang aman/publik (misal tab antrian).
+    - POLA JAVASCRIPT ROLE SWITCHER WAJIB:
+      \`\`\`javascript
+      let currentRole = 'Pasien'; // default awal
+
+      function switchRole(role) {
+        currentRole = role;
+        // Redirect tab aktif jika tidak diizinkan untuk role baru
+        if (role === 'Pasien' && (activeTab === 'loket' || activeTab === 'master')) {
+          showTab('antrian');
+        } else if (role === 'Petugas' && activeTab === 'master') {
+          showTab('antrian');
+        }
+        render();
+        showToast('Mode beralih ke: ' + role, 'success');
+      }
+
+      function render() {
+        // 1. Update Badge Peran
+        const badge = document.getElementById('currentRoleBadge');
+        if (badge) badge.innerText = currentRole;
+
+        // 2. Kontrol Visibilitas Tab Sesuai Role
+        const btnLoket = document.getElementById('tab-btn-loket');
+        const btnMaster = document.getElementById('tab-btn-master');
+        if (btnLoket) btnLoket.style.display = (currentRole === 'Petugas' || currentRole === 'Admin') ? 'block' : 'none';
+        if (btnMaster) btnMaster.style.display = (currentRole === 'Admin') ? 'block' : 'none';
+
+        // 3. Kontrol Visibilitas Tombol Aksi Sensitif
+        document.querySelectorAll('.admin-only').forEach(el => {
+          el.style.display = (currentRole === 'Admin') ? 'inline-flex' : 'none';
+        });
+        document.querySelectorAll('.petugas-only').forEach(el => {
+          el.style.display = (currentRole === 'Petugas' || currentRole === 'Admin') ? 'inline-flex' : 'none';
+        });
+      }
       \`\`\``;
 
     // Analisis Riwayat & Konteks Percakapan Tahap 1

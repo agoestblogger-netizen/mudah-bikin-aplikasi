@@ -160,6 +160,18 @@ export function validateAndRepairGeneratedCode(
   }
   repairedHtml = repairedHtml.replace(/<button(?![^>]*type=)([^>]*)>/gi, '<button type="button"$1>');
 
+  // 10. Pemeriksaan Integritas Pembatasan Akses Role Switcher (Section 13)
+  // Jika kode memiliki variabel/fungsi terkait role, pastikan ada logika kondisional yang membatasi tampilan (style.display, hidden, dsb)
+  const hasRoleLogic = /currentRole|userRole|activeRole|switchRole|toggleRole|gantiRole|changeRole/i.test(combinedJs);
+  if (hasRoleLogic) {
+    const hasRoleConditionInJs = /currentRole\s*===|userRole\s*===|activeRole\s*===|role\s*===|switchRole\s*\(|toggleRole\s*\(/i.test(combinedJs);
+    const hasRoleVisibilityControl = /style\.display|\.classList\.(?:add|remove|toggle)|\.hidden|disabled\s*=/i.test(combinedJs);
+    
+    if (hasRoleConditionInJs && !hasRoleVisibilityControl) {
+      issues.push(`ROLE_GATING_MISSING: Terdeteksi variabel/fungsi Role Switcher, tetapi TIDAK ADA logika kondisional yang membatasi visibilitas tab atau tombol aksi secara nyata.`);
+    }
+  }
+
   return {
     isValid: issues.length === 0,
     issues,
