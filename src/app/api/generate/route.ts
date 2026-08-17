@@ -399,8 +399,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       const candidateModels = [
         activeGeminiModel,
-        'gemini-3.6-flash',
-        'gemini-3.1-flash-lite'
+        'gemini-3.6-flash'
       ].filter((m, idx, self) => self.indexOf(m) === idx);
 
       const candidateEndpoints = candidateModels.map(
