@@ -77,10 +77,10 @@ export default function AppWorkspacePage() {
         <div className="w-full max-w-md text-center space-y-8 relative z-10">
           <div className="space-y-3">
             <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-              Akses Terkunci: Sedang Dalam Pemeliharaan
+              Masuk Dulu untuk Lanjut
             </h1>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Silakan masuk dengan akun Anda untuk mengakses workspace generator.
+              Untuk keamanan dan menyimpan progres pembuatan aplikasi, Anda perlu masuk ke akun Anda terlebih dahulu.
             </p>
           </div>
 
@@ -111,7 +111,7 @@ export default function AppWorkspacePage() {
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
         <div className="flex items-center gap-3 text-indigo-400 text-xs font-semibold">
           <RefreshCw className="w-5 h-5 animate-spin" />
-          <span>Memverifikasi Gerbang Autentikasi Supabase...</span>
+          <span>Memverifikasi status login...</span>
         </div>
       </div>
     );

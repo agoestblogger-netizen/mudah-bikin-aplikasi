@@ -67,8 +67,8 @@ ${projectState.mandatorySpecs.basicValidationRules.map((v) => `- ${v}`).join('\n
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 3 PRD: Kunci Kebutuhan (Finalisasi Brief)</h2>
-            <p className="text-xs text-slate-400">Konfirmasi final fitur utama, role admin (Tambah User terkunci), dan aturan validasi input.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 3: Ringkasan & Kunci Kebutuhan Fitur</h2>
+            <p className="text-xs text-slate-400">Konfirmasi ringkasan fitur utama, alur kerja, dan aturan validasi input aplikasi.</p>
           </div>
         </div>
 

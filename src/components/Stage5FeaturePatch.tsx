@@ -72,14 +72,14 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
             <Wrench className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 5 PRD: Pembaruan Fitur (Patch System)</h2>
-            <p className="text-xs text-slate-400">Terapkan revisi fitur secara inkremental (penjelasan bagian berubah + kode HTML ter-update).</p>
+            <h2 className="text-xl font-bold text-white">Tahap 5: Revisi & Tambah Fitur</h2>
+            <p className="text-xs text-slate-400">Sampaikan perubahan atau penambahan fitur yang Anda inginkan untuk memperbarui aplikasi.</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-800/40 px-3 py-1.5 rounded-full text-xs text-amber-300 font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Total Patch: {patchHistory.length}</span>
+          <span>Total Revisi: {patchHistory.length}</span>
         </div>
       </div>
 

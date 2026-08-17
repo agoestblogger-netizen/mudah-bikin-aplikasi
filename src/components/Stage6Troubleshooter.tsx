@@ -58,8 +58,8 @@ export const Stage6Troubleshooter: React.FC<Stage6TroubleshooterProps> = ({ proj
             <ShieldAlert className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 6 PRD: Penanganan Kendala (Troubleshooting Suite)</h2>
-            <p className="text-xs text-slate-400">Asisten analisa error & diagnosa kendala teknis (minta error dari Console F12 sebelum beri solusi).</p>
+            <h2 className="text-xl font-bold text-white">Tahap 6: Panduan & Perbaikan Kendala</h2>
+            <p className="text-xs text-slate-400">Pusat bantuan interaktif untuk mendiagnosa dan memperbaiki kendala pada aplikasi Anda.</p>
           </div>
         </div>
 

@@ -45,8 +45,8 @@ export const Stage4GASBackend: React.FC<Stage4GASBackendProps> = ({
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 4 PRD: Backend & Sambungkan (Google Apps Script)</h2>
-            <p className="text-xs text-slate-400">Hubungkan prototipe Canvas dengan database Google Sheets via backend Google Apps Script teruji.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 4: Sambungkan Database (Google Sheets)</h2>
+            <p className="text-xs text-slate-400">Hubungkan aplikasi Anda ke Google Sheets sebagai database online mandiri.</p>
           </div>
         </div>
       </div>

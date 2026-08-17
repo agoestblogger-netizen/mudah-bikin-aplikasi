@@ -37,7 +37,7 @@ export default function LoginPage() {
         setErrorMsg('Sesi login tidak valid. Pastikan akun Anda sudah terverifikasi.');
       }
     } catch (err: any) {
-      setErrorMsg(`Kendala Koneksi Database: ${err.message || 'Layanan Supabase Auth belum terhubung'}`);
+      setErrorMsg('Terjadi kendala saat menghubungkan ke server. Silakan periksa koneksi internet Anda dan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ export default function LoginPage() {
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-white">Masuk ke Akun Anda</h2>
-          <p className="text-xs text-slate-400">Autentikasi Supabase terproteksi (Organisasi Supabase Baru)</p>
+          <p className="text-xs text-slate-400">Masuk untuk melanjutkan ke workspace generator aplikasi</p>
         </div>
 
         {errorMsg && (

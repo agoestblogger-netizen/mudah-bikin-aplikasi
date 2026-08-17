@@ -36,10 +36,10 @@ export default function RegisterPage() {
         setSuccessMsg('Registrasi berhasil! Silakan periksa email Anda atau masuk dengan akun baru.');
         setTimeout(() => router.push('/login'), 2000);
       } else {
-        setErrorMsg('Gagal membuat user di database Supabase.');
+        setErrorMsg('Gagal mendaftarkan akun. Silakan coba beberapa saat lagi.');
       }
     } catch (err: any) {
-      setErrorMsg(`Kendala Koneksi Database: ${err.message || 'Layanan Supabase Auth belum terhubung'}`);
+      setErrorMsg('Terjadi kendala saat menghubungkan ke server. Silakan periksa koneksi internet Anda dan coba lagi.');
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,7 @@ export default function RegisterPage() {
             <UserPlus className="w-6 h-6 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-white">Daftar Akun Baru</h2>
-          <p className="text-xs text-slate-400">Buat akun platform Mudah Bikin Aplikasi (Supabase Auth)</p>
+          <p className="text-xs text-slate-400">Buat akun baru untuk mulai membuat aplikasi web</p>
         </div>
 
         {errorMsg && (

@@ -100,17 +100,17 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
             <Palette className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 2 PRD: Mockup & Canvas Inspector</h2>
-            <p className="text-xs text-slate-400">Inspeksi & penyesuaian kode prototipe. Live visual aktif di panel kanan.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 2: Editor Prototipe & Kode</h2>
+            <p className="text-xs text-slate-400">Inspeksi dan sesuaikan kode prototipe aplikasi Anda secara langsung.</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl">
           <ShieldCheck className="w-5 h-5 text-emerald-400" />
           <div>
-            <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Canvas Standard</span>
+            <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Status Prototipe</span>
             <span className="text-xs font-semibold text-emerald-300">
-              {htmlCode ? 'Dynamic State JS Active' : 'Menunggu Generate'}
+              {htmlCode ? 'Prototipe Siap Digunakan' : 'Menunggu Generate'}
             </span>
           </div>
         </div>
@@ -125,7 +125,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
               { id: 'HTML', label: 'HTML Structure', icon: <FileCode className="w-4 h-4 text-orange-400" /> },
               { id: 'CSS', label: 'CSS Styles', icon: <Code2 className="w-4 h-4 text-cyan-400" /> },
               { id: 'JS', label: 'Dynamic JS State', icon: <Code2 className="w-4 h-4 text-yellow-400" /> },
-              { id: 'SUMMARY', label: 'Ringkasan Mockup', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> }
+              { id: 'SUMMARY', label: 'Ringkasan Prototipe', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> }
             ].map((t) => (
               <button
                 key={t.id}
@@ -143,12 +143,11 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
           </div>
 
           <button
-            onClick={copyFullCode}
-            disabled={!htmlCode}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+            onClick={handleUpdateCode}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-all shadow-md shadow-indigo-600/20"
           >
-            <Copy className="w-3.5 h-3.5" />
-            <span>{copied ? 'Tersalin!' : 'Salin Semua Kode'}</span>
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Terapkan Perubahan Kode</span>
           </button>
         </div>
 
@@ -187,51 +186,40 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
 
           {htmlCode && activeTab === 'HTML' && (
             <div className="space-y-2">
-              <div className="flex justify-between items-center text-[11px] text-slate-400">
-                <span>Struktur Markup & Form Input</span>
-                <span className="text-emerald-400 font-mono">Tersinkron dengan Live Preview</span>
-              </div>
+              <label className="text-xs font-medium text-slate-300">Struktur HTML (Struktur Elemen & Form UI)</label>
               <textarea
-                rows={18}
+                rows={14}
                 value={htmlCode}
                 onChange={(e) => {
                   setHtmlCode(e.target.value);
                   handleUpdateCode();
                 }}
-                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-orange-300 focus:outline-none focus:border-indigo-500"
+                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-indigo-300 focus:outline-none focus:border-indigo-500"
               />
             </div>
           )}
 
           {htmlCode && activeTab === 'CSS' && (
             <div className="space-y-2">
-              <div className="flex justify-between items-center text-[11px] text-slate-400">
-                <span>Design System & Aturan Kontras UI</span>
-                <span className="text-cyan-400 font-mono">High Contrast Clean UI</span>
-              </div>
+              <label className="text-xs font-medium text-slate-300">Custom CSS Styles</label>
               <textarea
-                rows={18}
+                rows={14}
                 value={cssCode}
-                placeholder="/* CSS tambahan terisolasi */"
                 onChange={(e) => {
                   setCssCode(e.target.value);
                   handleUpdateCode();
                 }}
-                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-cyan-300 focus:outline-none focus:border-indigo-500"
+                className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs text-purple-300 focus:outline-none focus:border-indigo-500"
               />
             </div>
           )}
 
           {htmlCode && activeTab === 'JS' && (
             <div className="space-y-2">
-              <div className="flex justify-between items-center text-[11px] text-slate-400">
-                <span>State Manajemen Memori & Handler Mutasi</span>
-                <span className="text-yellow-400 font-mono">Dynamic Execution Active</span>
-              </div>
+              <label className="text-xs font-medium text-slate-300">Logika JavaScript Dinamis</label>
               <textarea
-                rows={18}
+                rows={14}
                 value={jsCode}
-                placeholder="// Logika JS interaktif"
                 onChange={(e) => {
                   setJsCode(e.target.value);
                   handleUpdateCode();
@@ -246,12 +234,12 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
               <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3">
                 <div className="flex items-center gap-2 text-emerald-400 font-semibold">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Kepatuhan Standar Mockup PRD Terpenuhi</span>
+                  <span>Standar Kualitas Prototipe Terpenuhi</span>
                 </div>
                 <ul className="space-y-2 text-slate-400 list-disc list-inside">
-                  <li><strong>Arsitektur State:</strong> Data disimpan dalam memori lokal dan di-render ulang dinamis saat ada mutasi.</li>
-                  <li><strong>Kontras Tajam:</strong> Teks, tabel, dan tombol dirancang menggunakan palet bersih kontras tinggi.</li>
-                  <li><strong>Iframe Preview Terpadu:</strong> Visual interaktif aktif secara real-time di panel kanan.</li>
+                  <li><strong>Arsitektur Interaktif:</strong> Data disimpan dalam memori lokal dan diperbarui secara dinamis saat ada aksi.</li>
+                  <li><strong>Tampilan Bersih:</strong> Teks, tabel, dan tombol dirancang menggunakan tata letak modern dan jelas.</li>
+                  <li><strong>Pratinjau Langsung:</strong> Tampilan aplikasi aktif secara real-time di panel pratinjau.</li>
                 </ul>
               </div>
             </div>
@@ -265,7 +253,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
           onClick={onNextStage}
           className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 hover:scale-[1.02] transition-all"
         >
-          <span>Lanjut ke Tahap 3: Kunci Kebutuhan & Admin Lock</span>
+          <span>Lanjut ke Tahap 3: Kunci Kebutuhan Fitur</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

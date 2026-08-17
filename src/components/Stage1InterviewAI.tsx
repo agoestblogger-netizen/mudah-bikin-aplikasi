@@ -110,8 +110,8 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
             <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Tahap 1 PRD: Pembukaan Singkat (AI Dynamic Chat)</h2>
-            <p className="text-xs text-slate-400">Memanggil /api/generate secara dinamis untuk menentukan respon & pertanyaan berikutnya.</p>
+            <h2 className="text-xl font-bold text-white">Tahap 1: Eksplorasi Ide Aplikasi</h2>
+            <p className="text-xs text-slate-400">Ceritakan kebutuhan aplikasi Anda kepada AI untuk memulai pembuatan prototipe.</p>
           </div>
         </div>
 

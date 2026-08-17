@@ -16,7 +16,7 @@ export default function LandingPage() {
             </div>
             <div>
               <span className="font-extrabold text-white text-lg tracking-tight">Mudah Bikin Aplikasi</span>
-              <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full ml-2">MVP Basic Tier</span>
+              <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full ml-2">AI Generator</span>
             </div>
           </div>
 
@@ -73,7 +73,7 @@ export default function LandingPage() {
                   <Code2 className="w-6 h-6" />
                 </div>
                 <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full">
-                  Basic Tier MVP
+                  Generator Instan
                 </span>
               </div>
 
