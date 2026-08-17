@@ -1,15 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppProjectState } from '@/types/app';
 import { initialProjectState } from '@/lib/defaultState';
 import { Navbar } from '@/components/Navbar';
 import { ChatPanel } from '@/components/ChatPanel';
+import { BuildBadge } from '@/components/BuildBadge';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import Link from 'next/link';
 import { Eye, Code2, Download, RefreshCw, Layers } from 'lucide-react';
+
+// Urutan langkah progress yang ditampilkan di preview saat generate kode batch
+const GENERATE_PROGRESS_STEPS = [
+  { label: 'Menganalisa kebutuhan aplikasi...', pct: 10 },
+  { label: 'Menyusun struktur HTML & layout...', pct: 28 },
+  { label: 'Menulis komponen & fungsi JavaScript...', pct: 52 },
+  { label: 'Menyempurnakan interaksi & tampilan...', pct: 72 },
+  { label: 'Memvalidasi kode & logika...', pct: 88 },
+  { label: 'Menyelesaikan & menyiapkan preview...', pct: 97 },
+];
 
 export default function AppWorkspacePage() {
   const router = useRouter();
@@ -253,6 +264,9 @@ export default function AppWorkspacePage() {
                     className="w-full h-full border-none bg-slate-50"
                     sandbox="allow-scripts allow-forms allow-modals"
                   />
+                ) : isGenerating ? (
+                  // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===
+                  <GeneratingSkeletonPreview />
                 ) : (
                   <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500">
                     <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-indigo-400/60 shadow-inner">
@@ -290,6 +304,80 @@ export default function AppWorkspacePage() {
         </div>
 
       </main>
+
+      {/* Poin 17: Build version badge (pojok kanan bawah) */}
+      <BuildBadge />
+    </div>
+  );
+}
+
+// =============================================================================
+// POIN 16: KOMPONEN SKELETON PREVIEW SAAT AI MEMBANGUN APLIKASI (BATCH PIPELINE)
+// Menampilkan langkah-langkah perkiraan tahapan secara berurutan, jujur dilabeli
+// sebagai perkiraan (bukan real-time progress sesungguhnya). Animasi shimmer estetis.
+// =============================================================================
+function GeneratingSkeletonPreview() {
+  const [stepIdx, setStepIdx] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Maju 1 langkah setiap ~8 detik (6 langkah × 8s = 48s, lalu freeze di step terakhir)
+    intervalRef.current = setInterval(() => {
+      setStepIdx(prev => Math.min(prev + 1, GENERATE_PROGRESS_STEPS.length - 1));
+    }, 8000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const currentStep = GENERATE_PROGRESS_STEPS[stepIdx];
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center p-6 gap-6">
+      {/* Animasi icon */}
+      <div className="relative">
+        <div className="w-16 h-16 rounded-2xl bg-indigo-900/40 border border-indigo-500/30 flex items-center justify-center shadow-lg shadow-indigo-500/10">
+          <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" style={{ animationDuration: '1.5s' }} />
+        </div>
+        <div className="absolute inset-0 rounded-2xl bg-indigo-500/10 animate-ping" style={{ animationDuration: '2s' }} />
+      </div>
+
+      {/* Label tahapan */}
+      <div className="text-center space-y-1 max-w-xs">
+        <p className="text-xs font-semibold text-indigo-300">{currentStep.label}</p>
+        <p className="text-[10px] text-slate-500 italic">*perkiraan tahapan, bukan progress real-time</p>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full max-w-xs">
+        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-[2000ms] ease-out"
+            style={{ width: `${currentStep.pct}%` }}
+          />
+        </div>
+        <p className="text-right text-[10px] text-slate-500 mt-1">{currentStep.pct}%</p>
+      </div>
+
+      {/* Skeleton baris konten palsu */}
+      <div className="w-full max-w-xs space-y-2.5 mt-2">
+        {/* Skeleton "header" aplikasi */}
+        <div className="h-6 rounded-lg bg-slate-800 animate-pulse w-3/4" />
+        <div className="h-4 rounded-lg bg-slate-800/70 animate-pulse w-full" />
+        <div className="h-4 rounded-lg bg-slate-800/70 animate-pulse w-5/6" />
+        {/* Skeleton "tabel" */}
+        <div className="mt-3 space-y-1.5">
+          <div className="h-5 rounded bg-slate-800 animate-pulse w-full" />
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-4 rounded bg-slate-800/50 animate-pulse w-full" style={{ animationDelay: `${i * 150}ms` }} />
+          ))}
+        </div>
+        {/* Skeleton "tombol" */}
+        <div className="flex gap-2 pt-1">
+          <div className="h-7 rounded-lg bg-indigo-900/50 animate-pulse w-20" />
+          <div className="h-7 rounded-lg bg-slate-800/50 animate-pulse w-16" />
+        </div>
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Sparkles, ArrowRight, CheckCircle2, Database, Rocket, Code2, Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { BuildBadge } from '@/components/BuildBadge';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -272,6 +273,9 @@ export default function LandingPage() {
           <p className="font-medium text-slate-400">Product By: Agus Han (AHY Store)</p>
         </div>
       </footer>
+
+      {/* Poin 17: Build version badge */}
+      <BuildBadge />
     </div>
   );
 }
