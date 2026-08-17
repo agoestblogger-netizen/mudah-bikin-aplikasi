@@ -11,6 +11,44 @@ interface ChatPanelProps {
   setIsGenerating: (val: boolean) => void;
 }
 
+const BRAINSTORMING_LOADING_TEXTS = [
+  'Sedang mikirin ide kamu...',
+  'Lagi nyimak, bentar ya...',
+  'Oke, saya proses dulu...',
+  'Bentar ya, lagi saya rangkai tanggapannya...'
+];
+
+function getContextualLoadingText(query: string, hasCode: boolean): string {
+  const lower = query.toLowerCase();
+
+  // Jika terkait perbaikan kendala / error
+  if (lower.includes('error') || lower.includes('bug') || lower.includes('rusak') || lower.includes('kendala') || lower.includes('kenapa')) {
+    return 'AI sedang menganalisa kendala...';
+  }
+
+  // Jika terkait backend / spreadsheet
+  if (lower.includes('backend') || lower.includes('spreadsheet') || lower.includes('sheet') || lower.includes('gas') || lower.includes('database')) {
+    return 'AI sedang menyiapkan backend...';
+  }
+
+  // Jika sudah ada kode aplikasi (tahap revisi/patch)
+  if (hasCode) {
+    if (lower.includes('tambah') || lower.includes('ganti') || lower.includes('ubah') || lower.includes('revisi') || lower.includes('warna') || lower.includes('tombol')) {
+      return 'AI sedang menerapkan revisi...';
+    }
+    return 'AI sedang memperbarui aplikasi...';
+  }
+
+  // Jika instruksi eksplisit membuat/generate aplikasi di awal
+  if (lower.includes('buatkan') || lower.includes('generate') || lower.includes('bikin aplikasi') || lower.includes('buat aplikasi') || lower.includes('rancang mockup')) {
+    return 'AI sedang membangun aplikasi...';
+  }
+
+  // Tahap diskusi / brainstorming awal santai (rotasi acak)
+  const randomIndex = Math.floor(Math.random() * BRAINSTORMING_LOADING_TEXTS.length);
+  return BRAINSTORMING_LOADING_TEXTS[randomIndex];
+}
+
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   projectState,
   onUpdateState,
@@ -19,6 +57,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
+  const [loadingText, setLoadingText] = useState('Sedang mikirin ide kamu...');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto scroll ke bawah saat pesan baru tiba
@@ -34,6 +73,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || input;
     if (!query.trim() || isGenerating) return;
+
+    // Tentukan teks status loading kontekstual
+    const contextualText = getContextualLoadingText(query, Boolean(projectState.canvasCode?.html));
+    setLoadingText(contextualText);
 
     const userMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
@@ -213,9 +256,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4 text-indigo-400 animate-pulse" />
             </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl rounded-tl-none p-4 text-xs text-slate-400 flex items-center gap-2">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl rounded-tl-none p-4 text-xs text-slate-300 flex items-center gap-2 shadow-inner">
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-              <span>AI sedang memproses dan membangun aplikasi...</span>
+              <span>{loadingText}</span>
             </div>
           </div>
         )}

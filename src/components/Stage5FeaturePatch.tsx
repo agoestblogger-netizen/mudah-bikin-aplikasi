@@ -123,7 +123,7 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
             {loading ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>AI Sedang Menerapkan Patch...</span>
+                <span>AI sedang menerapkan revisi...</span>
               </>
             ) : (
               <>

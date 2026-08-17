@@ -10,6 +10,13 @@ interface Stage1InterviewAIProps {
   onNextStage: () => void;
 }
 
+const BRAINSTORMING_LOADING_TEXTS = [
+  'Sedang mikirin ide kamu...',
+  'Lagi nyimak, bentar ya...',
+  'Oke, saya proses dulu...',
+  'Bentar ya, lagi saya rangkai tanggapannya...'
+];
+
 export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
   projectState,
   onUpdateState,
@@ -18,6 +25,7 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Sedang mikirin ide kamu...');
 
   const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || input;
@@ -33,6 +41,8 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput('');
+    const randomTxt = BRAINSTORMING_LOADING_TEXTS[Math.floor(Math.random() * BRAINSTORMING_LOADING_TEXTS.length)];
+    setLoadingText(randomTxt);
     setLoading(true);
 
     try {
@@ -171,7 +181,7 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
           {loading && (
             <div className="flex items-center gap-2 text-indigo-400 text-xs py-2">
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>AI sedang berpikir & menyusun pertanyaan...</span>
+              <span>{loadingText}</span>
             </div>
           )}
         </div>
