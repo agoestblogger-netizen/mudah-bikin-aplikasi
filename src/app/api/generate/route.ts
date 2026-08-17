@@ -113,6 +113,10 @@ ATURAN MUTLAK PERCAKAPAN:
    - **Fitur Utama (V1)**: [daftar bernomor, ringkas per fitur]
    - **Roadmap Lanjutan (V2/V3)**: [fitur yang didorong ke "🚀 Coming Soon" karena di luar kemampuan stack Google Sheets + Apps Script]
    - **Fitur Unik (USP)**: [kalau ada, opsional]
+   - **Job Description per Role** (WAJIB diisi jika aplikasi punya 2+ role/akses bertingkat, kosongkan jika single-user):
+     * [Role 1 — misal: Admin]: [1-2 kalimat tugas utama + halaman/tab default saat login]
+     * [Role 2 — misal: Kasir]: [1-2 kalimat tugas utama + halaman/tab default saat login]
+     * [dst untuk setiap role yang ada]
 4. Tanyakan konfirmasi eksplisit di baris terakhir:
    "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail yang ingin diubah sebelum saya buatkan prototipenya?"`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 3) {
@@ -131,6 +135,10 @@ ATURAN MUTLAK PERCAKAPAN:
    - **Fitur Utama (V1)**: [daftar bernomor ringkas per fitur inti yang disepakati]
    - **Roadmap Lanjutan (V2/V3)**: [daftar fitur yang didorong ke "🚀 Coming Soon" karena di luar batasan stack GAS]
    - **Fitur Unik (USP)**: [keunikan aplikasi, jika ada]
+   - **Job Description per Role** (WAJIB diisi jika aplikasi punya 2+ role/akses bertingkat; kosongkan jika single-user):
+     * [Role 1 — misal: Admin]: [tugas utama harian + tab/halaman default yang relevan saat login]
+     * [Role 2 — misal: Kasir]: [tugas utama harian + tab/halaman default yang relevan saat login]
+     * [dst — proaktif sarankan job desc yang masuk akal bila user belum menyebutkan]
 4. WAJIB tanyakan konfirmasi di baris terakhir:
    "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan, atau ada yang mau ditambah/diubah sebelum saya buatkan prototipenya?"`;
       } else {
@@ -142,9 +150,10 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
 1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
 2. DILARANG KERAS menyebutkan kata-kata teknis seperti "saya akan berikan kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun tentang pembuatan kode!
 3. Format respons WAJIB MURNI TEKS PERCAKAPAN SANTAI & RAMAH (2-4 kalimat singkat dan nyaman dibaca):
-   - Sapa dan akui ide pengguna dengan antusias (contoh: "Wah, ide bagus! Aplikasi laundry sangat membantu untuk operasional harian.").
-   - DALAMI & PERTAJAM (Sub-langkah 2): Berikan 1 masukan/saran ide fitur yang proaktif dan relevan (contoh: "Biasanya untuk laundry, fitur pelacakan status cucian kiloan/satuan dan cetak nota kasir sangat penting.").
-   - AJUKAN TEPAT SATU PERTANYAAN FOKUS (DILARANG borongan banyak pertanyaan sekaligus): Tanyakan satu aspek penting berikutnya (contoh: "Apakah Anda ingin fokus ke pencatatan kasir operasional atau juga ada portal cek status untuk pelanggan?").
+   - Sapa dan akui ide pengguna dengan antusias.
+   - DALAMI & PERTAJAM (Sub-langkah 2): Berikan 1 masukan/saran fitur proaktif yang relevan.
+   - TANYAKAN ROLE/AKSES JIKA RELEVAN: Jika aplikasi kemungkinan punya multi-role (misal laundry punya Kasir+Washer+Admin, klinik punya Dokter+Pasien+Admin), PROAKTIF tanyakan atau sarankan pembagian tugas tiap role — contoh: "Untuk laundry seperti ini, biasanya ada 3 peran: Admin (kelola data master), Kasir (terima pesanan & pembayaran), dan Washer (lihat antrian cucian yang perlu dikerjakan). Apakah Anda ingin aplikasinya mendukung ketiga peran ini?"
+   - AJUKAN TEPAT SATU PERTANYAAN FOKUS (DILARANG borongan banyak pertanyaan sekaligus).
 4. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
       }
     } else {
@@ -448,12 +457,30 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           el.style.display = (currentRole === 'Petugas' || currentRole === 'Admin') ? 'inline-flex' : 'none';
         });
       }
-      \`\`\``;
+      \`\`\`
+21. DESAIN UI PER ROLE BERDASARKAN JOB DESCRIPTION (ROLE-AWARE UX — WAJIB DITERAPKAN JIKA ADA MULTI-ROLE):
+    - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA, bukan 1 dashboard generik yang sebagian tabnya disembunyikan.
+    - ATURAN WAJIB:
+      a. TAB/HALAMAN DEFAULT SAAT LOGIN BERBEDA PER ROLE: Fungsi switchRole() WAJIB mengatur tab awal yang sesuai job desc role tersebut. Contoh:
+         - Role Washer / Operator Lapangan → default ke tab "Antrian Kerja" atau "Tugas Hari Ini", BUKAN tab "Ringkasan" atau "Laporan".
+         - Role Kasir / Keuangan → default ke tab "Input Pesanan" atau "Pembayaran".
+         - Role Admin / Manager → default ke tab "Ringkasan" atau "Dashboard".
+      b. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan. Contoh:
+         - Tabel pesanan untuk role Washer: tampilkan [No Order, Nama Pelanggan, Jenis Cuci, Status Cuci] — JANGAN tampilkan kolom [Harga, Diskon, Status Pembayaran, Lunas/Belum].
+         - Tabel pesanan untuk role Kasir: tampilkan [No Order, Nama Pelanggan, Total Harga, Metode Bayar, Status Pembayaran] — kolom teknis operasional cuci tidak perlu.
+         - Tabel pesanan untuk role Admin: tampilkan SEMUA kolom.
+         - IMPLEMENTASI: gunakan conditional rendering di dalam loop render() — \`\${currentRole !== 'Washer' ? '<td>'+item.harga+'</td>' : ''}\`
+      c. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut:
+         - Role Washer: tampilkan kartu "Antrian Menunggu", "Sedang Dikerjakan", "Selesai Hari Ini" — JANGAN tampilkan "Total Pendapatan" atau "Nilai Order".
+         - Role Kasir: tampilkan kartu "Order Masuk Hari Ini", "Belum Dibayar", "Total Pendapatan Hari Ini".
+         - Role Admin: tampilkan SEMUA kartu metrik bisnis (pendapatan, order, efisiensi operasional, dsb).
+         - IMPLEMENTASI: gunakan conditional rendering \`\${currentRole === 'Washer' ? '<div class="stat-card">Antrian: '+antrian+'</div>' : ''}\`
+      d. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom yang dirender di UI. DILARANG membuat array data terpisah per role.`;
 
       if (stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) {
         systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
 - Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
-- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 20 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, Role Gating fungsional nyata, styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
+- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 21 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, Role Gating fungsional nyata [Prinsip 20], Role-Aware UX sesuai Job Description [Prinsip 21 — tab default per role, kolom tabel berbeda, kartu statistik berbeda], styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
       } else if (stage === 'TAHAP_5_PATCH') {
         systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
