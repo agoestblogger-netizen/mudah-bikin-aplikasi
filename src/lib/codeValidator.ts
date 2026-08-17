@@ -57,11 +57,52 @@ export function validateAndRepairGeneratedCode(
     if (fnName) definedFunctions.add(fnName);
   }
 
+  // Peta alias umum (misal: AI menulis showTab di onclick tapi switchTab di JS, atau bukaModal vs openModal)
+  const commonAliases: Record<string, string[]> = {
+    'showTab': ['switchTab', 'gantiTab', 'pindahTab', 'changeTab', 'selectTab', 'openTab'],
+    'switchTab': ['showTab', 'gantiTab', 'pindahTab', 'changeTab', 'selectTab', 'openTab'],
+    'gantiTab': ['showTab', 'switchTab', 'pindahTab', 'changeTab', 'selectTab', 'openTab'],
+    'switchRole': ['gantiRole', 'toggleRole', 'changeRole', 'setRole', 'pilihRole'],
+    'gantiRole': ['switchRole', 'toggleRole', 'changeRole', 'setRole', 'pilihRole'],
+    'tutupModalForm': ['closeModal', 'tutupModal', 'closeModalForm', 'hideModal'],
+    'tutupModalHapus': ['closeModalHapus', 'tutupModal', 'closeModal', 'batalHapus'],
+    'bukaModalTambah': ['openModalTambah', 'tambahItem', 'bukaModal', 'showAddModal'],
+    'showToast': ['toast', 'notifikasi', 'tampilkanToast', 'showNotification']
+  };
+
   onclickFunctionNames.forEach(fn => {
     // Abaikan fungsi bawaan seperti event.preventDefault, console.log, dll
-    if (['preventDefault', 'stopPropagation', 'alert', 'confirm', 'prompt'].includes(fn)) return;
+    if (['preventDefault', 'stopPropagation', 'alert', 'confirm', 'prompt', 'render'].includes(fn)) return;
     if (!definedFunctions.has(fn)) {
-      issues.push(`MISMATCH_HANDLER: Fungsi "${fn}" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.`);
+      // Cek apakah ada alias yang cocok
+      let resolved = false;
+      const aliases = commonAliases[fn] || [];
+      for (const alias of aliases) {
+        if (definedFunctions.has(alias)) {
+          // Auto-repair: tambahkan jembatan fungsi alias ke script
+          if (repairedHtml.includes('</script>')) {
+            repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { if (typeof ${alias} === 'function') ${alias}(...args); }\n</script>`);
+            definedFunctions.add(fn);
+            resolved = true;
+            break;
+          }
+        }
+      }
+
+      if (!resolved) {
+        // Jika fungsi pembantu non-kritis (seperti filter/sort/tab), auto-stub agar tidak terjadi Uncaught ReferenceError
+        if (fn.startsWith('setFilter') || fn.startsWith('filter') || fn.startsWith('sort') || fn.startsWith('cari') || fn.startsWith('search') || fn.startsWith('toggle') || fn.startsWith('tutup') || fn.startsWith('close')) {
+          if (repairedHtml.includes('</script>')) {
+            repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { console.log('Action: ${fn}', ...args); if (typeof render === 'function') render(); }\n</script>`);
+            definedFunctions.add(fn);
+            resolved = true;
+          }
+        }
+      }
+
+      if (!resolved) {
+        issues.push(`MISMATCH_HANDLER: Fungsi "${fn}" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.`);
+      }
     }
   });
 

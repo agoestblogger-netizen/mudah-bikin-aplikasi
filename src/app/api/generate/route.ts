@@ -1169,7 +1169,12 @@ INSTRUKSI PERBAIKAN WAJIB:
       if (hasValidCode) {
         cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil diperbarui dan dimuat langsung ke Canvas Preview.**').trim();
       } else {
-        cleanReplyText = 'Maaf, pembuatan/pembaruan kode belum berhasil memenuhi standar validasi fungsional DOM & event handler. Mohon kirimkan instruksi kembali.';
+        // Pesan kegagalan yang ACTIONABLE dan informatif
+        const topIssues = validated?.issues && validated.issues.length > 0
+          ? validated.issues.slice(0, 2).join('; ')
+          : (isCodeIncomplete ? 'Kode HTML/JS terpotong di tengah jalan' : 'Pemeriksaan DOM ID & event handler tidak lolos');
+        
+        cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
       }
     } else {
       cleanReplyText = assistantMessage.trim();
