@@ -13,11 +13,45 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState('');
+
+  const handleResendConfirmation = async () => {
+    if (!unconfirmedEmail || resending) return;
+    setResending(true);
+    setResendStatus('');
+    try {
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/callback?next=/app`
+        : 'https://mudah-bikin-aplikasi.vercel.app/auth/callback?next=/app';
+
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: unconfirmedEmail,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
+      });
+
+      if (error) {
+        setResendStatus(`⚠️ Gagal mengirim ulang: ${error.message}`);
+      } else {
+        setResendStatus('✓ Link konfirmasi baru telah dikirimkan ke email Anda.');
+      }
+    } catch (err: any) {
+      setResendStatus('⚠️ Gagal mengirim ulang. Silakan coba lagi nanti.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+    setUnconfirmedEmail(null);
+    setResendStatus('');
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -26,8 +60,15 @@ export default function LoginPage() {
       });
 
       if (error) {
-        // Strict: Tampilkan error autentikasi sungguhan dari Supabase
-        setErrorMsg(`Gagal Masuk: ${error.message}`);
+        const msg = error.message.toLowerCase();
+        if (msg.includes('email not confirmed') || msg.includes('not verified')) {
+          setUnconfirmedEmail(email);
+          setErrorMsg('Email Anda belum dikonfirmasi. Silakan buka kotak masuk email Anda dan klik link konfirmasi untuk mengaktifkan akun sebelum masuk.');
+        } else if (msg.includes('invalid login credentials')) {
+          setErrorMsg('Email atau password yang Anda masukkan salah. Silakan periksa kembali.');
+        } else {
+          setErrorMsg(`Gagal Masuk: ${error.message}`);
+        }
         return;
       }
 
@@ -56,9 +97,29 @@ export default function LoginPage() {
         </div>
 
         {errorMsg && (
-          <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-300 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <span>{errorMsg}</span>
+          <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-300 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
+            </div>
+            {unconfirmedEmail && (
+              <div className="pt-1 border-t border-rose-900/60">
+                <button
+                  type="button"
+                  onClick={handleResendConfirmation}
+                  disabled={resending}
+                  className="text-xs text-rose-300 hover:text-white underline font-semibold disabled:opacity-50"
+                >
+                  {resending ? 'Mengirim ulang...' : 'Kirim Ulang Link Konfirmasi ke Email'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {resendStatus && (
+          <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 text-center">
+            {resendStatus}
           </div>
         )}
 

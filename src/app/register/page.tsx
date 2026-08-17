@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
-import { Sparkles, Lock, Mail, ArrowRight, UserPlus, AlertTriangle } from 'lucide-react';
+import { Sparkles, Lock, Mail, ArrowRight, UserPlus, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { GoogleOAuthButton, OAuthDivider } from '@/components/GoogleOAuthButton';
 
 export default function RegisterPage() {
@@ -13,18 +13,26 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState('');
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
-    setSuccessMsg('');
 
     try {
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/callback?next=/app`
+        : 'https://mudah-bikin-aplikasi.vercel.app/auth/callback?next=/app';
+
       const { data, error } = await supabase.auth.signUp({
         email,
-        password
+        password,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
       });
 
       if (error) {
@@ -33,8 +41,7 @@ export default function RegisterPage() {
       }
 
       if (data.user) {
-        setSuccessMsg('Registrasi berhasil! Silakan periksa email Anda atau masuk dengan akun baru.');
-        setTimeout(() => router.push('/login'), 2000);
+        setIsSubmitted(true);
       } else {
         setErrorMsg('Gagal mendaftarkan akun. Silakan coba beberapa saat lagi.');
       }
@@ -44,6 +51,90 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
+  const handleResendConfirmation = async () => {
+    if (!email || resending) return;
+    setResending(true);
+    setResendStatus('');
+    try {
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/callback?next=/app`
+        : 'https://mudah-bikin-aplikasi.vercel.app/auth/callback?next=/app';
+
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
+      });
+
+      if (error) {
+        setResendStatus(`⚠️ Gagal mengirim ulang: ${error.message}`);
+      } else {
+        setResendStatus('✓ Link konfirmasi baru telah dikirimkan ke email Anda.');
+      }
+    } catch (err: any) {
+      setResendStatus('⚠️ Terjadi kendala saat mengirim ulang. Silakan coba lagi nanti.');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  // State Tampilan Cek Email (Setelah Submit Registrasi)
+  if (isSubmitted) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 py-12 selection:bg-indigo-500 selection:text-white relative overflow-hidden font-sans">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-tr from-purple-600/15 via-pink-600/15 to-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="w-full max-w-md space-y-6 bg-slate-900/90 border border-slate-800 p-8 rounded-3xl backdrop-blur-xl shadow-2xl relative z-10 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center mx-auto text-purple-400 shadow-lg shadow-purple-500/10">
+            <Mail className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold text-white tracking-tight">Cek Email Anda</h1>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+              Link konfirmasi telah dikirimkan ke:
+            </p>
+            <p className="text-xs font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/60 py-1.5 px-3 rounded-xl break-all">
+              {email}
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed pt-2">
+              Silakan buka kotak masuk email Anda dan klik link konfirmasi untuk mengaktifkan akun sebelum masuk ke aplikasi.
+            </p>
+          </div>
+
+          {resendStatus && (
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+              {resendStatus}
+            </div>
+          )}
+
+          <div className="space-y-3 pt-2">
+            <Link
+              href="/login"
+              className="w-full block py-3.5 px-6 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-600 hover:opacity-90 text-xs font-bold text-white transition-all shadow-lg shadow-purple-600/30 text-center"
+            >
+              Ke Halaman Masuk / Login
+            </Link>
+
+            <div>
+              <button
+                type="button"
+                onClick={handleResendConfirmation}
+                disabled={resending}
+                className="text-xs text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {resending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                <span>Belum menerima email? <strong>Kirim Ulang Link</strong></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 py-12 selection:bg-indigo-500 selection:text-white">
@@ -61,12 +152,6 @@ export default function RegisterPage() {
           <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-xs text-rose-300 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-800 text-xs text-emerald-300 text-center">
-            {successMsg}
           </div>
         )}
 
