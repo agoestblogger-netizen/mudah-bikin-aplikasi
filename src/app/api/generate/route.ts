@@ -503,10 +503,169 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       userPromptWithContext = `KODE HTML & JS SAAT INI YANG SUDAH BERJALAN AKTIF:\n\`\`\`html\n${currentCode}\n\`\`\`\n\nPERMINTAAN REVISI DARI PENGGUNA: "${prompt}".\n\nINSTRUKSI KHUSUS NFR-10b (VALIDASI FUNGSIONAL LENGKAP): Terapkan perubahan yang diminta pengguna di atas, namun TETAP PERTAHANKAN seluruh fungsi JavaScript, array data 3-5 item dummy, tombol Tambah/Edit/Hapus, dan render() agar tetap 100% berfungsi. Kembalikan KODE HTML LENGKAP UTUH di dalam blok \`\`\`html ... \`\`\`.`;
     }
 
+    const recentHistory = (chatHistory || []).slice(-6);
+
+    // =========================================================================
+    // JALUR STREAMING (SSE) — KHUSUS UNTUK MODE IDEATION (Sub-langkah 1-4)
+    // Short-circuit sebelum pipeline berat berjalan. Return ReadableStream
+    // dengan Content-Type: text/event-stream agar token muncul token-per-token
+    // di frontend tanpa menunggu seluruh respons selesai.
+    // =========================================================================
+    if (isIdeationMode) {
+      const encoder = new TextEncoder();
+
+      const buildGeminiContents = () => {
+        const rawContents: { role: string; text: string }[] = [];
+        recentHistory.forEach((m: any) => {
+          rawContents.push({ role: m.sender === 'AI' ? 'model' : 'user', text: m.text });
+        });
+        rawContents.push({ role: 'user', text: prompt });
+        const contents: { role: string; parts: { text: string }[] }[] = [];
+        for (const item of rawContents) {
+          const last = contents[contents.length - 1];
+          if (last && last.role === item.role) {
+            last.parts[0].text += '\n\n' + item.text;
+          } else {
+            contents.push({ role: item.role, parts: [{ text: item.text }] });
+          }
+        }
+        if (contents.length > 0 && contents[0].role !== 'user') {
+          contents.unshift({ role: 'user', parts: [{ text: 'Halo' }] });
+        }
+        return contents;
+      };
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (data: object) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          };
+
+          let fullText = '';
+          let streamSuccess = false;
+
+          // --- GEMINI STREAMING ---
+          if (aiProvider === 'gemini' && geminiApiKey) {
+            const geminiStreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:streamGenerateContent?alt=sse&key=${geminiApiKey}`;
+            try {
+              const geminiRes = await fetch(geminiStreamUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
+                  contents: buildGeminiContents(),
+                  generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+                })
+              });
+
+              if (geminiRes.ok && geminiRes.body) {
+                const reader = geminiRes.body.getReader();
+                const dec = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += dec.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+                  for (const line of lines) {
+                    if (!line.startsWith('data:')) continue;
+                    const raw = line.slice(5).trim();
+                    if (raw === '[DONE]') continue;
+                    try {
+                      const parsed = JSON.parse(raw);
+                      const chunk: string = parsed.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+                      if (chunk) {
+                        fullText += chunk;
+                        send({ type: 'chunk', text: chunk });
+                      }
+                    } catch (_) {}
+                  }
+                }
+                streamSuccess = true;
+              }
+            } catch (geminiStreamErr) {
+              console.warn('Gemini streaming error, will fallback:', geminiStreamErr);
+            }
+          }
+
+          // --- OPENAI STREAMING (primary atau fallback dari Gemini) ---
+          if (!streamSuccess && openaiApiKey) {
+            const oaiMessages = [
+              { role: 'system', content: systemPrompt },
+              ...recentHistory.map((m: any) => ({ role: m.sender === 'USER' ? 'user' : 'assistant', content: m.text })),
+              { role: 'user', content: prompt }
+            ];
+            try {
+              const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiApiKey}` },
+                body: JSON.stringify({
+                  model: activeOpenAIModel,
+                  messages: oaiMessages,
+                  max_completion_tokens: 1024,
+                  temperature: 0.7,
+                  stream: true
+                })
+              });
+
+              if (oaiRes.ok && oaiRes.body) {
+                const reader = oaiRes.body.getReader();
+                const dec = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += dec.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+                  for (const line of lines) {
+                    if (!line.startsWith('data:')) continue;
+                    const raw = line.slice(5).trim();
+                    if (raw === '[DONE]') continue;
+                    try {
+                      const parsed = JSON.parse(raw);
+                      const chunk: string = parsed.choices?.[0]?.delta?.content || '';
+                      if (chunk) {
+                        fullText += chunk;
+                        send({ type: 'chunk', text: chunk });
+                      }
+                    } catch (_) {}
+                  }
+                }
+                streamSuccess = true;
+              }
+            } catch (oaiStreamErr) {
+              console.warn('OpenAI streaming error:', oaiStreamErr);
+            }
+          }
+
+          // Bersihkan kode fence jika model sempat menghasilkan (guard tahap 1)
+          const cleanReplyText = fullText.replace(/```html[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
+
+          // Event DONE: kirim teks final yang sudah bersih dan signal selesai
+          send({ type: 'done', replyText: cleanReplyText, code: null });
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+          'Connection': 'keep-alive'
+        }
+      });
+    }
+
+    // =========================================================================
+    // BATCH PIPELINE — NON-IDEATION (Generate Kode Tahap 2-6)
+    // =========================================================================
     let assistantMessage = '';
     let retryCount = 0;
     const maxRetries = 4;
-    const recentHistory = (chatHistory || []).slice(-6);
 
     let actualProviderUsed = aiProvider;
 

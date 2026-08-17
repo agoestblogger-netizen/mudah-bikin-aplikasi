@@ -58,12 +58,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
   const [loadingText, setLoadingText] = useState('Sedang mikirin ide kamu...');
+  // streamingText: teks ghost bubble yang sedang di-stream (null = tidak streaming)
+  const [streamingText, setStreamingText] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto scroll ke bawah saat pesan baru tiba
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isGenerating]);
+  }, [messages, isGenerating, streamingText]);
 
   // Sinkronisasi pesan jika state luar berubah (misal reset project)
   useEffect(() => {
@@ -90,6 +92,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setMessages(updatedMessages);
     setInput('');
     setIsGenerating(true);
+    setStreamingText(null);
 
     try {
       // Tentukan stage percakapan secara dinamis
@@ -134,6 +137,77 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         return;
       }
 
+      const contentType = res.headers.get('Content-Type') || '';
+
+      // =====================================================================
+      // PATH A: SSE STREAMING (Ideation mode — text/event-stream)
+      // Token muncul satu per satu di ghost bubble, tanpa menunggu full response
+      // =====================================================================
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buffer = '';
+        let accumulated = '';
+        let finalReplyText = '';
+        let finalCode: any = null;
+
+        // Mulai tampilkan ghost bubble segera (kosong dulu)
+        setStreamingText('');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += dec.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            const raw = line.slice(5).trim();
+            if (raw === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed.type === 'chunk' && parsed.text) {
+                accumulated += parsed.text;
+                setStreamingText(accumulated);
+              } else if (parsed.type === 'done') {
+                finalReplyText = parsed.replyText || accumulated;
+                finalCode = parsed.code || null;
+              }
+            } catch (_) {}
+          }
+        }
+
+        // Selesai streaming: ghost bubble → pesan permanen
+        setStreamingText(null);
+
+        const aiMsg: ChatMessage = {
+          id: 'msg-' + (Date.now() + 1),
+          sender: 'AI',
+          text: finalReplyText || accumulated,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        const finalMessages = [...updatedMessages, aiMsg];
+        setMessages(finalMessages);
+
+        const stateUpdates: Partial<AppProjectState> = { chatMessages: finalMessages };
+        if (finalCode) {
+          let h = '', c = '', j = '';
+          if (typeof finalCode === 'string') { h = finalCode; }
+          else if (typeof finalCode === 'object') { h = finalCode.html || ''; c = finalCode.css || ''; j = finalCode.js || ''; }
+          stateUpdates.canvasCode = { html: h, css: c, js: j };
+          stateUpdates.title = query.length < 30 ? query : projectState.title;
+        }
+        onUpdateState(stateUpdates);
+        return;
+      }
+
+      // =====================================================================
+      // PATH B: BATCH JSON (Generate kode / Tahap 2-6 — application/json)
+      // Tidak berubah dari implementasi sebelumnya
+      // =====================================================================
       const data = await res.json();
       const aiReply = data.replyText || (data.success ? '✨ Perubahan berhasil diproses.' : '⚠️ Permintaan tidak dapat diproses.');
 
@@ -178,6 +252,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       setMessages(finalMessages);
       onUpdateState({ chatMessages: finalMessages });
     } finally {
+      setStreamingText(null);
       setIsGenerating(false);
     }
   };
@@ -252,7 +327,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           </div>
         ))}
 
-        {isGenerating && (
+        {/* Ghost Bubble — SSE Streaming (Ideation Mode) */}
+        {streamingText !== null && (
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4 text-indigo-400 animate-pulse" />
+            </div>
+            <div className="max-w-[82%] bg-slate-950 border border-indigo-500/30 rounded-2xl rounded-tl-none p-4 text-xs text-slate-200 shadow-inner leading-relaxed">
+              <p className="whitespace-pre-wrap">
+                {streamingText}
+                <span className="inline-block w-1.5 h-3.5 bg-indigo-400 ml-0.5 animate-pulse rounded-sm align-middle" />
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Loading Spinner — Batch Pipeline (Generate Kode) */}
+        {isGenerating && streamingText === null && (
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4 text-indigo-400 animate-pulse" />
@@ -265,6 +356,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         )}
 
         <div ref={messagesEndRef} />
+
       </div>
 
       {/* Input Area */}
