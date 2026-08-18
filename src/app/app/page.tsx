@@ -10,7 +10,7 @@ import { BuildBadge } from '@/components/BuildBadge';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import Link from 'next/link';
-import { Eye, Code2, Download, RefreshCw, Layers } from 'lucide-react';
+import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2 } from 'lucide-react';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -30,6 +30,19 @@ export default function AppWorkspacePage() {
   const [downloaded, setDownloaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+
+  // Shortcut Keyboard Esc untuk keluar dari Fullscreen (Poin 37)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPreviewFullscreen) {
+        setIsPreviewFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPreviewFullscreen]);
+
 
   // Pemeriksaan Sesi Supabase Auth Ketat
   useEffect(() => {
@@ -212,96 +225,132 @@ export default function AppWorkspacePage() {
           />
         </div>
 
-        {/* PANEL KANAN (6 Kolom): Pratinjau (Live Preview) & Backend Apps Script */}
-        <div className="lg:col-span-6 flex flex-col bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)]">
-          {/* Header Kontrol Panel Kanan */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-950/60 shrink-0">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setRightPanelTab('PREVIEW')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                  rightPanelTab === 'PREVIEW'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>Live Preview</span>
-              </button>
+        {/* PANEL KANAN: Pratinjau (Live Preview) & Backend Apps Script (Mendukung Fullscreen Poin 37) */}
+        <div
+          className={
+            isPreviewFullscreen
+              ? 'fixed inset-0 z-50 p-3 sm:p-5 bg-slate-950/95 backdrop-blur-2xl flex flex-col transition-all duration-300 ease-in-out'
+              : 'lg:col-span-6 flex flex-col bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)] transition-all duration-300 ease-in-out'
+          }
+        >
+          <div className={isPreviewFullscreen ? 'flex-1 flex flex-col bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-full' : 'flex-1 flex flex-col h-full overflow-hidden'}>
+            {/* Header Kontrol Panel Kanan */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-950/60 shrink-0 gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRightPanelTab('PREVIEW')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    rightPanelTab === 'PREVIEW'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Live Preview</span>
+                </button>
 
-              <button
-                onClick={() => setRightPanelTab('GAS_SCRIPT')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                  rightPanelTab === 'GAS_SCRIPT'
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Code2 className="w-3.5 h-3.5" />
-                <span>Backend Apps Script</span>
-              </button>
+                <button
+                  onClick={() => setRightPanelTab('GAS_SCRIPT')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    rightPanelTab === 'GAS_SCRIPT'
+                      ? 'bg-emerald-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  <span>Backend Apps Script</span>
+                </button>
+              </div>
+
+              {/* Aksi Kanan: Download index.html & Fullscreen Toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadIndexHtml}
+                  disabled={!projectState.canvasCode.html}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-40"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
+                  <span className="sm:hidden">Download</span>
+                </button>
+
+                {/* Tombol Fullscreen Expand / Collapse (Poin 37) */}
+                <button
+                  onClick={() => setIsPreviewFullscreen(prev => !prev)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                    isPreviewFullscreen
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+                      : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title={isPreviewFullscreen ? 'Tutup Fullscreen (Esc)' : 'Perbesar Fullscreen'}
+                  aria-label={isPreviewFullscreen ? 'Tutup Fullscreen' : 'Perbesar Fullscreen'}
+                >
+                  {isPreviewFullscreen ? (
+                    <>
+                      <Minimize2 className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Tutup Fullscreen</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Fullscreen</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Tombol Download index.html (PRD FR-11 & FR-12) */}
-            <button
-              onClick={handleDownloadIndexHtml}
-              disabled={!projectState.canvasCode.html}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-40"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
-            </button>
-          </div>
-
-          {/* Isi Viewport Live Preview / Script */}
-          <div className="flex-1 overflow-hidden p-4 relative">
-            {rightPanelTab === 'PREVIEW' ? (
-              <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
-                {projectState.canvasCode.html ? (
-                  <iframe
-                    title="Live Preview Canvas"
-                    srcDoc={buildSrcDoc(projectState.canvasCode)}
-                    className="w-full h-full border-none bg-slate-50"
-                    sandbox="allow-scripts allow-forms allow-modals"
-                  />
-                ) : isGenerating ? (
-                  // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===
-                  <GeneratingSkeletonPreview />
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500">
-                    <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-indigo-400/60 shadow-inner">
-                      <Layers className="w-8 h-8 text-indigo-400" />
+            {/* Isi Viewport Live Preview / Script */}
+            <div className="flex-1 overflow-hidden p-4 relative">
+              {rightPanelTab === 'PREVIEW' ? (
+                <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
+                  {projectState.canvasCode.html ? (
+                    <iframe
+                      title="Live Preview Canvas"
+                      srcDoc={buildSrcDoc(projectState.canvasCode)}
+                      className="w-full h-full border-none bg-slate-50"
+                      sandbox="allow-scripts allow-forms allow-modals"
+                    />
+                  ) : isGenerating ? (
+                    // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===
+                    <GeneratingSkeletonPreview />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500">
+                      <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-indigo-400/60 shadow-inner">
+                        <Layers className="w-8 h-8 text-indigo-400" />
+                      </div>
+                      <div className="space-y-1.5 max-w-sm">
+                        <h4 className="text-sm font-bold text-white">Pratinjau Aplikasi Akan Muncul Di Sini</h4>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Mulai percakapan dengan AI di panel kiri untuk mendeskripsikan aplikasi yang ingin Anda bangun. Mockup interaktif akan langsung dirender secara real-time di sini.
+                        </p>
+                      </div>
                     </div>
-                    <div className="space-y-1.5 max-w-sm">
-                      <h4 className="text-sm font-bold text-white">Pratinjau Aplikasi Akan Muncul Di Sini</h4>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        Mulai percakapan dengan AI di panel kiri untuk mendeskripsikan aplikasi yang ingin Anda bangun. Mockup interaktif akan langsung dirender secara real-time di sini.
-                      </p>
+                  )}
+                </div>
+              ) : (
+                <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 p-4 overflow-y-auto font-mono text-xs text-emerald-400">
+                  {projectState.gasConfig.scriptCode ? (
+                    <pre className="whitespace-pre-wrap">{projectState.gasConfig.scriptCode}</pre>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500 font-sans">
+                      <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400/60 shadow-inner">
+                        <Code2 className="w-8 h-8 text-emerald-400" />
+                      </div>
+                      <div className="space-y-1.5 max-w-sm">
+                        <h4 className="text-sm font-bold text-white">Backend Google Apps Script Belum Dibuat</h4>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Minta AI di panel kiri: <em>"Buatkan script Google Apps Script untuk menghubungkan aplikasi ke Google Sheets"</em>.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 p-4 overflow-y-auto font-mono text-xs text-emerald-400">
-                {projectState.gasConfig.scriptCode ? (
-                  <pre className="whitespace-pre-wrap">{projectState.gasConfig.scriptCode}</pre>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500 font-sans">
-                    <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400/60 shadow-inner">
-                      <Code2 className="w-8 h-8 text-emerald-400" />
-                    </div>
-                    <div className="space-y-1.5 max-w-sm">
-                      <h4 className="text-sm font-bold text-white">Backend Google Apps Script Belum Dibuat</h4>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        Minta AI di panel kiri: <em>"Buatkan script Google Apps Script untuk menghubungkan aplikasi ke Google Sheets"</em>.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
 
       </main>
 
