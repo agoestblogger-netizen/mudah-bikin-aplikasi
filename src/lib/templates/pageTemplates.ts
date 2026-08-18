@@ -554,7 +554,10 @@ ${templatesText}
     5 ATURAN IMPLEMENTASI UI:
     a. Gunakan pola Page Template di atas untuk menyusun layout tab yang sesuai — contoh: tab antrian wajib memiliki kartu status panggilan & daftar tunggu (bukan sekadar tabel polos); tab kasir wajib memiliki area katalog + ringkasan pesanan.
     b. Wujudkan setiap section yang disepakati di Brief Kebutuhan sebagai blok visual/kartu yang nyata dan rapi.
-    c. Perbedaan antar role diwujudkan melalui selektivitas tampilan tab dan hak akses tombol (Prinsip 20 & 21), BUKAN menduplikasi file/template secara terpisah.
+    c. KEPATUHAN DEFAULT TAB & VISIBILITAS TAB PER ROLE (PRINSIP 20 & 21):
+       - Saat switchRole(role) dipanggil: Admin WAJIB landing di Dashboard; Kasir WAJIB landing di Kasir/Input Pesanan; Petugas/Washer WAJIB landing di Antrian Kerja; Pelanggan WAJIB landing di Lacak Status.
+       - Di fungsi render(): Tab Dashboard HANYA boleh tampil untuk Admin (WAJIB style.display='none' untuk Kasir, Washer, dan Pelanggan jika tidak dideklarasikan).
     d. Setiap elemen interaktif (tombol panggil, filter status, form pesanan, tab ganti role) WAJIB 100% berfungsi aktif di memori dengan JavaScript selaras.`;
 }
+
 

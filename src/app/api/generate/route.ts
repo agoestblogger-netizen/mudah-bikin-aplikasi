@@ -452,7 +452,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
          * Role Admin: Melihat SELURUH tab (Layar Antrian, Loket Pemanggil, dan Master Layanan).
       2. VISIBILITAS TOMBOL AKSI TERBATAS: Tombol aksi sensitif (seperti tombol "Panggil Nomor", "Selesai", "Tambah/Edit/Hapus Layanan") WAJIB disembunyikan (style.display = 'none') atau di-disable untuk role yang tidak berhak.
       3. AUTO-REDIRECT TAB AKTIF SAAT GANTI ROLE: Jika pengguna mengganti peran saat sedang berada di tab yang tidak diizinkan untuk peran baru, fungsi switchRole(role) WAJIB secara otomatis mengalihkan tab aktif ke tab yang aman/publik (misal tab antrian).
-    - POLA JAVASCRIPT ROLE SWITCHER & TAB NAVIGASI WAJIB:
+    - POLA JAVASCRIPT ROLE SWITCHER & TAB NAVIGASI WAJIB (REAL FUNCTIONAL GATING & PER-ROLE LANDING):
       \`\`\`javascript
       let currentRole = 'Admin'; // default awal
       let activeTab = 'dashboard';
@@ -470,11 +470,17 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       function switchRole(role) {
         currentRole = role;
 
-        // Redirect tab aktif jika tidak diizinkan untuk role baru
-        if (role === 'Pasien' && (activeTab === 'loket' || activeTab === 'master')) {
-          showTab('antrian');
-        } else if (role === 'Petugas' && activeTab === 'master') {
-          showTab('antrian');
+        // WAJIB MUTLAK: Arahkan LANGSUNG tab aktif ke halaman default tiap role sesuai Brief Kebutuhan
+        if (role === 'Admin' || role === 'Owner') {
+          showTab('dashboard');
+        } else if (role === 'Kasir') {
+          showTab('kasir'); // tab Input Pesanan / Kasir POS (BUKAN Dashboard)
+        } else if (role === 'Petugas' || role === 'Washer' || role === 'Operator') {
+          showTab('antrian'); // tab Antrian Kerja Cucian (BUKAN Dashboard)
+        } else if (role === 'Pelanggan' || role === 'Customer' || role === 'Pasien') {
+          showTab('lacak'); // tab Lacak Resi / Status Cucian (BUKAN Dashboard)
+        } else {
+          showTab('dashboard');
         }
         render();
         showToast('Mode beralih ke: ' + role, 'success');
@@ -485,34 +491,46 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         const badge = document.getElementById('currentRoleBadge');
         if (badge) badge.innerText = currentRole;
 
-        // 2. Kontrol Visibilitas Tab Sesuai Role
-        const btnLoket = document.getElementById('tab-btn-loket');
-        const btnMaster = document.getElementById('tab-btn-master');
-        if (btnLoket) btnLoket.style.display = (currentRole === 'Petugas' || currentRole === 'Admin') ? 'block' : 'none';
+        // 2. Kontrol Visibilitas Tombol Tab Sesuai Role (HANYA tampilkan tab yang relevan untuk role tersebut)
+        const btnDashboard = document.getElementById('tab-btn-dashboard');
+        const btnKasir = document.getElementById('tab-btn-kasir') || document.getElementById('tab-btn-order');
+        const btnAntrian = document.getElementById('tab-btn-antrian') || document.getElementById('tab-btn-tugas');
+        const btnLacak = document.getElementById('tab-btn-lacak') || document.getElementById('tab-btn-status');
+        const btnMaster = document.getElementById('tab-btn-master') || document.getElementById('tab-btn-layanan');
+
+        // Dashboard HANYA untuk Admin (Pelanggan, Washer, dan Kasir TIDAK melihat tab Dashboard)
+        if (btnDashboard) btnDashboard.style.display = (currentRole === 'Admin') ? 'block' : 'none';
+        if (btnKasir) btnKasir.style.display = (currentRole === 'Kasir' || currentRole === 'Admin') ? 'block' : 'none';
+        if (btnAntrian) btnAntrian.style.display = (currentRole === 'Petugas' || currentRole === 'Washer' || currentRole === 'Admin') ? 'block' : 'none';
+        if (btnLacak) btnLacak.style.display = (currentRole === 'Pelanggan' || currentRole === 'Admin') ? 'block' : 'none';
         if (btnMaster) btnMaster.style.display = (currentRole === 'Admin') ? 'block' : 'none';
 
         // 3. Kontrol Visibilitas Tombol Aksi Sensitif
         document.querySelectorAll('.admin-only').forEach(el => {
           el.style.display = (currentRole === 'Admin') ? 'inline-flex' : 'none';
         });
+        document.querySelectorAll('.kasir-only').forEach(el => {
+          el.style.display = (currentRole === 'Kasir' || currentRole === 'Admin') ? 'inline-flex' : 'none';
+        });
         document.querySelectorAll('.petugas-only').forEach(el => {
-          el.style.display = (currentRole === 'Petugas' || currentRole === 'Admin') ? 'inline-flex' : 'none';
+          el.style.display = (currentRole === 'Petugas' || currentRole === 'Washer' || currentRole === 'Admin') ? 'inline-flex' : 'none';
         });
       }
       \`\`\`
 21. DESAIN UI PER ROLE BERDASARKAN JOB DESCRIPTION & STRUKTUR SECTION (ROLE-AWARE UX — WAJIB DITERAPKAN JIKA ADA MULTI-ROLE):
     - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA dan MENGIKUTI STRUKTUR HALAMAN & SECTION yang telah dideklarasikan di lembar Brief Kebutuhan:
     - ATURAN WAJIB:
-      a. TAB/HALAMAN DEFAULT SAAT LOGIN WAJIB MENGIKUTI DEKLARASI BRIEF: Fungsi switchRole(role) WAJIB mengatur tab awal sesuai yang disepakati di Brief Kebutuhan. Contoh:
-         - Role Washer / Operator Lapangan → default ke tab "Antrian Kerja" / "Tugas", BUKAN tab "Ringkasan" atau "Laporan".
-         - Role Kasir / Keuangan → default ke tab "Input Pesanan" / "Kasir".
-         - Role Admin / Manager → default ke tab "Dashboard" / "Ringkasan".
-      b. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA: Semua section yang tercantum pada breakdown Brief Kebutuhan (misal: section Ringkasan Statistik, section Form Order Baru, section Antrian Tugas, section Daftar Stok) WAJIB benar-benar ada sebagai kartu/blok terpisah yang jelas di halaman terkait (DILARANG dihilangkan atau digabung sembarangan).
-      c. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan.
-         - IMPLEMENTASI: gunakan conditional rendering di dalam loop render() — misal: currentRole !== 'Washer' ? '<td>'+item.harga+'</td>' : ''
-      d. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut.
-         - IMPLEMENTASI: gunakan conditional rendering — misal: currentRole === 'Washer' ? '<div class="stat-card">Antrian: '+antrian+'</div>' : ''
-      e. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom/section yang dirender di UI. DILARANG membuat array data terpisah per role.`;
+      a. TAB/HALAMAN DEFAULT SAAT GANTI ROLE WAJIB MENGIKUTI DEKLARASI BRIEF: Fungsi switchRole(role) WAJIB mengalihkan tab aktif ke halaman landing role tersebut secara otomatis. Contoh:
+         - Role Washer / Petugas / Operator Lapangan → WAJIB default ke tab "Antrian Kerja" / "Tugas" (PT-07 Queue), BUKAN Dashboard.
+         - Role Kasir / Keuangan → WAJIB default ke tab "Input Pesanan" / "Kasir" (PT-08 POS), BUKAN Dashboard.
+         - Role Pelanggan / Pasien / Tamu → WAJIB default ke tab "Lacak Cucian" / "Status Pesanan", BUKAN Dashboard.
+         - Role Admin / Manager / Owner → default ke tab "Dashboard" / "Ringkasan" (PT-01 Dashboard).
+      b. TAB DASHBOARD TIDAK BOLEH MUNCUL UNTUK ROLE NON-ADMIN JIKA TIDAK DIDEKLARASIKAN: Role Pelanggan atau Washer yang hanya bertugas melacak atau mencuci TIDAK BOLEH melihat tab Dashboard Admin.
+      c. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA: Semua section yang tercantum pada breakdown Brief Kebutuhan (misal: section Ringkasan Statistik, section Form Order Baru, section Antrian Tugas, section Daftar Stok) WAJIB benar-benar ada sebagai kartu/blok terpisah yang jelas di halaman terkait.
+      d. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan di loop render().
+      e. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut.
+      f. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom/section yang dirender di UI. DILARANG membuat array data terpisah per role.`;
+
 
       // Seleksi Page Template Baku Berdasarkan Brief Kebutuhan (Fase C)
       const selectivePageMappings = detectSelectivePageTemplates(prompt + '\n' + allHistoryText);
