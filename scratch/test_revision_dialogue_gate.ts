@@ -1,8 +1,3 @@
-import { config } from 'dotenv';
-import path from 'path';
-
-config({ path: path.resolve(process.cwd(), '.env.local') });
-
 async function testDialogueGate() {
   console.log('=== TEST GERBANG DIALOG REVISI SIGNIFIKAN (POIN 38) ===\n');
 
