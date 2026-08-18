@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
 import { Bot, Send, User, Sparkles, RefreshCw } from 'lucide-react';
+import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
+
 
 interface ChatPanelProps {
   projectState: AppProjectState;
@@ -300,53 +302,67 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       {/* Message History Area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`flex items-start gap-3 ${
-              m.sender === 'USER' ? 'flex-row-reverse' : ''
-            }`}
-          >
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
-                m.sender === 'USER'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                  : 'bg-slate-800 border border-slate-700 text-slate-300'
-              }`}
-            >
-              {m.sender === 'USER' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4 text-indigo-400" />}
-            </div>
+        {messages.map((m) => {
+          const briefData = m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
 
+          return (
             <div
-              className={`max-w-[82%] rounded-2xl p-4 space-y-2 text-xs leading-relaxed ${
-                m.sender === 'USER'
-                  ? 'bg-indigo-600 text-white shadow-md rounded-tr-none'
-                  : 'bg-slate-950 border border-slate-800/80 text-slate-200 shadow-inner rounded-tl-none'
+              key={m.id}
+              className={`flex items-start gap-3 ${
+                m.sender === 'USER' ? 'flex-row-reverse' : ''
               }`}
             >
-              <p className="whitespace-pre-wrap">{m.text}</p>
-              
-              {/* Opsi Saran Cepat (jika ada pada sapaan awal) */}
-              {m.suggestedOptions && m.suggestedOptions.length > 0 && messages.length <= 1 && (
-                <div className="pt-3 border-t border-slate-800/60 flex flex-wrap gap-2">
-                  {m.suggestedOptions.map((opt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleSendMessage(opt)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-[11px] font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all text-left"
-                    >
-                      {opt}
-                    </button>
-                  ))}
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
+                  m.sender === 'USER'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                    : 'bg-slate-800 border border-slate-700 text-slate-300'
+                }`}
+              >
+                {m.sender === 'USER' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4 text-indigo-400" />}
+              </div>
+
+              {briefData ? (
+                <div className="flex-1 max-w-[95%]">
+                  <BriefKebutuhanCard data={briefData} />
+                  <span className="text-[10px] block text-right pt-1 opacity-60">
+                    {m.timestamp}
+                  </span>
+                </div>
+              ) : (
+                <div
+                  className={`max-w-[82%] rounded-2xl p-4 space-y-2 text-xs leading-relaxed ${
+                    m.sender === 'USER'
+                      ? 'bg-indigo-600 text-white shadow-md rounded-tr-none'
+                      : 'bg-slate-950 border border-slate-800/80 text-slate-200 shadow-inner rounded-tl-none'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{m.text}</p>
+                  
+                  {/* Opsi Saran Cepat (jika ada pada sapaan awal) */}
+                  {m.suggestedOptions && m.suggestedOptions.length > 0 && messages.length <= 1 && (
+                    <div className="pt-3 border-t border-slate-800/60 flex flex-wrap gap-2">
+                      {m.suggestedOptions.map((opt, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSendMessage(opt)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-[11px] font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all text-left"
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <span className={`text-[10px] block text-right pt-1 opacity-60`}>
+                    {m.timestamp}
+                  </span>
                 </div>
               )}
-
-              <span className={`text-[10px] block text-right pt-1 opacity-60`}>
-                {m.timestamp}
-              </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
+
 
         {/* Ghost Bubble — SSE Streaming (Ideation Mode) */}
         {streamingText !== null && (

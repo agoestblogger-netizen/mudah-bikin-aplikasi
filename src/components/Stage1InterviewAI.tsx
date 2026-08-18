@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
 import { Bot, Send, User, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
+import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
+
 
 interface Stage1InterviewAIProps {
   projectState: AppProjectState;
@@ -135,48 +137,62 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-6 backdrop-blur-xl min-h-[450px] flex flex-col justify-between">
         {/* Message History */}
         <div className="space-y-4 max-h-[420px] overflow-y-auto pr-2 no-scrollbar">
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex items-start gap-3 ${m.sender === 'USER' ? 'flex-row-reverse' : 'flex-row'}`}
-            >
-              <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
-                  m.sender === 'AI'
-                    ? 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-md'
-                    : 'bg-slate-800 border border-slate-700 text-slate-300'
-                }`}
-              >
-                {m.sender === 'AI' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
-              </div>
+          {messages.map((m) => {
+            const briefData = m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
 
+            return (
               <div
-                className={`max-w-[80%] p-4 rounded-2xl text-xs leading-relaxed space-y-2 ${
-                  m.sender === 'AI'
-                    ? 'bg-slate-950 border border-slate-800 text-slate-200'
-                    : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                }`}
+                key={m.id}
+                className={`flex items-start gap-3 ${m.sender === 'USER' ? 'flex-row-reverse' : 'flex-row'}`}
               >
-                <p className="whitespace-pre-line">{m.text}</p>
-                <span className="text-[10px] opacity-60 block text-right">{m.timestamp}</span>
+                <div
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 ${
+                    m.sender === 'AI'
+                      ? 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-md'
+                      : 'bg-slate-800 border border-slate-700 text-slate-300'
+                  }`}
+                >
+                  {m.sender === 'AI' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                </div>
 
-                {/* Suggested Quick Options */}
-                {m.sender === 'AI' && m.suggestedOptions && m.suggestedOptions.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800/80">
-                    {m.suggestedOptions.map((opt, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleSendMessage(opt)}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-950/60 border border-indigo-800/60 text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all text-xs font-medium text-left"
-                      >
-                        + {opt}
-                      </button>
-                    ))}
+                {briefData ? (
+                  <div className="flex-1 max-w-[95%]">
+                    <BriefKebutuhanCard data={briefData} />
+                    <span className="text-[10px] block text-right pt-1 opacity-60">
+                      {m.timestamp}
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    className={`max-w-[80%] p-4 rounded-2xl text-xs leading-relaxed space-y-2 ${
+                      m.sender === 'AI'
+                        ? 'bg-slate-950 border border-slate-800 text-slate-200'
+                        : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                    }`}
+                  >
+                    <p className="whitespace-pre-line">{m.text}</p>
+                    <span className="text-[10px] opacity-60 block text-right">{m.timestamp}</span>
+
+                    {/* Suggested Quick Options */}
+                    {m.sender === 'AI' && m.suggestedOptions && m.suggestedOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800/80">
+                        {m.suggestedOptions.map((opt, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleSendMessage(opt)}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-950/60 border border-indigo-800/60 text-indigo-300 hover:bg-indigo-600 hover:text-white transition-all text-xs font-medium text-left"
+                          >
+                            + {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
+
 
           {loading && (
             <div className="flex items-center gap-2 text-indigo-400 text-xs py-2">
