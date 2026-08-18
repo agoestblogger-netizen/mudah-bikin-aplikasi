@@ -1364,7 +1364,8 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
 }
 
 /**
- * Memformat detail lengkap satu Master Template menjadi konteks terstruktur
+ * Memformat detail ringkas satu Master Template menjadi konteks terstruktur
+
  * untuk disuntikkan ke IDEATION_SYSTEM_PROMPT di Tahap 1.
  * DILARANG menyebutkan kode "MT-XX" secara eksplisit agar tidak membingungkan pengguna.
  */
@@ -1372,51 +1373,30 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
   const { template: t, matchedVariant } = match;
 
   const moduleSectionsText = t.modulDanSection
-    .map(m => `  * Modul ${m.modul}: section ${m.sections.join(', ')}`)
+    .map(m => `  * ${m.modul}: section ${m.sections.join(', ')}`)
     .join('\n');
 
-  // Ringkas permission per role dalam bahasa natural yang jelas
   const rolesSummary = t.roleDefault
-    .map(r => {
-      const perms = t.roleToModule.filter(p => p.role === r);
-      if (perms.length === 0) return `  * Role [${r}]`;
-      const permDetails = perms
-        .filter(p => p.permission !== '-')
-        .slice(0, 4) // ambil 4 modul utama untuk ringkasan
-        .map(p => `${p.modul} (${p.permission === 'CRUD' ? 'kelola penuh' : p.permission.includes('CR') ? 'input & lihat' : p.permission.includes('R') ? 'hanya lihat' : p.permission})`)
-        .join(', ');
-      return `  * Role [${r}]: ${permDetails}`;
-    })
-    .join('\n');
-
-  const workflowText = t.workflow.join('\n  ');
+    .map(r => `  * Role ${r}`)
+    .join(', ');
 
   let variantNotice = '';
   if (matchedVariant) {
     const v = t.variant?.find(item => item.nama.toLowerCase() === matchedVariant.toLowerCase());
     if (v) {
-      variantNotice = `\n- Varian Khusus Terdeteksi: "${v.nama}" (${v.deskripsi || ''})\n  Fitur/Modul Tambahan Varian: ${v.tambahan.join(', ')}`;
+      variantNotice = ` (Varian: "${v.nama}" - ${v.tambahan.join(', ')})`;
     }
-  } else if (t.variant && t.variant.length > 0) {
-    variantNotice = `\n- Varian Spesifik yang Tersedia: ${t.variant.map(v => `"${v.nama}" (tambahan: ${v.tambahan.join(', ')})`).join(' | ')}`;
   }
 
   return `
-=== ACUAN BLUEPRINT STRUKTUR BAKU (INTERNAL CONSULTANT REFERENCE) ===
-Pola Bisnis Terdeteksi: "${t.nama}" (${t.deskripsi})${variantNotice}
-
-Daftar Modul & Section Standar:
+=== ACUAN STRUKTUR BAKU (INTERNAL REFERENCE) ===
+Pola Bisnis: "${t.nama}" (${t.deskripsi})${variantNotice}
+Modul & Section:
 ${moduleSectionsText}
+Rekomendasi Role: ${rolesSummary}
+Alur Kerja: ${t.workflow.slice(0, 4).join(' → ')}
 
-Peran & Hak Akses Rekomendasi:
-${rolesSummary}
-
-Alur Kerja Operasional Baku (Workflow):
-  ${workflowText}
-
-PETUNJUK PENGGUNAAN BLUEPRINT:
-1. Gunakan daftar modul, section, dan pembagian tugas role di atas sebagai panduan terstruktur saat mengusulkan fitur atau menyusun lembar Brief Kebutuhan.
-2. DILARANG menyebutkan kode "${t.id}" atau kode permission mentah (CRUD/RU-O) kepada pengguna.
-3. Sampaikan modul dan peran dalam bahasa Indonesia yang ramah, natural, dan kontekstual.`;
+Gunakan modul & section di atas sebagai panduan menyusun fitur dan pembagian role secara natural. DILARANG menyebutkan kode internal kepada pengguna.`;
 }
+
 

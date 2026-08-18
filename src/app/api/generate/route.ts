@@ -646,53 +646,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           let fullText = '';
           let streamSuccess = false;
 
-          // --- GEMINI STREAMING ---
-          if (aiProvider === 'gemini' && geminiApiKey) {
-            const geminiStreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:streamGenerateContent?alt=sse&key=${geminiApiKey}`;
-            try {
-              const geminiRes = await fetch(geminiStreamUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
-                body: JSON.stringify({
-                  systemInstruction: { parts: [{ text: systemPrompt }] },
-                  contents: buildGeminiContents(),
-                  generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
-                })
-              });
-
-              if (geminiRes.ok && geminiRes.body) {
-                const reader = geminiRes.body.getReader();
-                const dec = new TextDecoder();
-                let buffer = '';
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  buffer += dec.decode(value, { stream: true });
-                  const lines = buffer.split('\n');
-                  buffer = lines.pop() || '';
-                  for (const line of lines) {
-                    if (!line.startsWith('data:')) continue;
-                    const raw = line.slice(5).trim();
-                    if (raw === '[DONE]') continue;
-                    try {
-                      const parsed = JSON.parse(raw);
-                      const chunk: string = parsed.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
-                      if (chunk) {
-                        fullText += chunk;
-                        send({ type: 'chunk', text: chunk });
-                      }
-                    } catch (_) {}
-                  }
-                }
-                streamSuccess = true;
-              }
-            } catch (geminiStreamErr) {
-              console.warn('Gemini streaming error, will fallback:', geminiStreamErr);
-            }
-          }
-
-          // --- OPENAI STREAMING (primary atau fallback dari Gemini) ---
-          if (!streamSuccess && openaiApiKey) {
+          // --- 1. OPENAI FAST STREAMING (TTFT < 1.5s untuk Giliran Diskusi) ---
+          if (openaiApiKey) {
             const oaiMessages = [
               { role: 'system', content: systemPrompt },
               ...recentHistory.map((m: any) => ({ role: m.sender === 'USER' ? 'user' : 'assistant', content: m.text })),
@@ -738,11 +693,57 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
                 streamSuccess = true;
               }
             } catch (oaiStreamErr) {
-              console.warn('OpenAI streaming error:', oaiStreamErr);
+              console.warn('OpenAI ideation streaming error, will fallback to Gemini:', oaiStreamErr);
+            }
+          }
+
+          // --- 2. GEMINI STREAMING (Fallback jika OpenAI tidak tersedia/error) ---
+          if (!streamSuccess && geminiApiKey) {
+            const geminiStreamUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:streamGenerateContent?alt=sse&key=${geminiApiKey}`;
+            try {
+              const geminiRes = await fetch(geminiStreamUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+                body: JSON.stringify({
+                  systemInstruction: { parts: [{ text: systemPrompt }] },
+                  contents: buildGeminiContents(),
+                  generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+                })
+              });
+
+              if (geminiRes.ok && geminiRes.body) {
+                const reader = geminiRes.body.getReader();
+                const dec = new TextDecoder();
+                let buffer = '';
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += dec.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() || '';
+                  for (const line of lines) {
+                    if (!line.startsWith('data:')) continue;
+                    const raw = line.slice(5).trim();
+                    if (raw === '[DONE]') continue;
+                    try {
+                      const parsed = JSON.parse(raw);
+                      const chunk: string = parsed.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+                      if (chunk) {
+                        fullText += chunk;
+                        send({ type: 'chunk', text: chunk });
+                      }
+                    } catch (_) {}
+                  }
+                }
+                streamSuccess = true;
+              }
+            } catch (geminiStreamErr) {
+              console.warn('Gemini streaming fallback error:', geminiStreamErr);
             }
           }
 
           // Bersihkan kode fence jika model sempat menghasilkan (guard tahap 1)
+
           const cleanReplyText = fullText.replace(/```html[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
 
           // Event DONE: kirim teks final yang sudah bersih dan signal selesai
