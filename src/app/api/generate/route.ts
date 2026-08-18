@@ -100,25 +100,22 @@ export async function POST(req: Request) {
     );
     const userMessageCount = (chatHistory || []).filter((m: any) => m.sender === 'USER').length;
 
+    // Deteksi Persetujuan Ringkas Pengguna terhadap Usulan Konsultan di Tahap Diskusi
+    const isUserAgreeingToProposal = /(^|\b)(ya|iya|sudah|pas|cocok|setuju|ok|oke|sip|lanjut|bisa|sesuai|siap|cukup|ikut saja|terserah|sop|standar|buatkan|buatkan brief|rangkum)($|\b)/i.test(prompt.trim());
+
     // Mode Diskusi / Eksplorasi Tahap 1 (Sebelum Konfirmasi Brief Kebutuhan)
     const isIdeationMode = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
 
-    // Deteksi Momen Render Brief Kebutuhan (Sub-langkah 5 atau Revisi Brief):
-    // Memerlukan budget token lebih besar (3072) agar breakdown halaman per role tidak terpotong di tengah jalan.
-    const isBriefRenderingMoment = Boolean(
-      isIdeationMode && (
-        hasBriefPresented ||
-        isVeryDetailedInitialPrompt ||
-        userMessageCount >= 3
-      )
-    );
-    const ideationMaxTokens = isBriefRenderingMoment ? 3072 : 1024;
+    // Alokasi budget token streaming ideation yang universal, aman, & anti-terpotong:
+    // Dalam protokol SSE streaming, max_completion_tokens adalah batas atas (ceiling).
+    // Pesan eksplorasi pendek (2-4 kalimat) tetap selesai instan (< 1.6s TTFT), sementara lembar Brief Kebutuhan multi-role
+    // mendapatkan ruang yang leluasa hingga 3584 tokens tanpa risiko terpotong di tengah jalan.
+    const ideationMaxTokens = 3584;
 
     // Pencocokan Blueprint Master Template (Fase B)
     const matchedMT = detectMatchingMasterTemplate(prompt + '\n' + allHistoryText);
     const catalogSummary = getConciseCatalogSummary();
     const blueprintContext = matchedMT ? formatTemplateContextForIdeation(matchedMT) : '';
-
 
     let systemPrompt = '';
 
@@ -150,10 +147,11 @@ ATURAN MUTLAK PERCAKAPAN:
        - [Halaman 1] (default): section [Section A], section [Section B]
 4. Tanyakan konfirmasi eksplisit di baris terakhir:
    "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail/section yang ingin diubah sebelum saya buatkan prototipenya?"`;
-      } else if (isVeryDetailedInitialPrompt || userMessageCount >= 3) {
-        // KONDISI 3: PROMPT AWAL SUDAH SANGAT DETAIL (>200 chars) ATAU SUDAH DISKUSI 3 PUTARAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
+      } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
+        // KONDISI 3: PROMPT AWAL SANGAT DETAIL (>200 chars) ATAU DISKUSI SUDAH 2+ PUTARAN / USER MENYETUJUI USULAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
-Tugas Anda: Merangkum kebutuhan aplikasi yang sudah sangat detail menjadi lembar resmi "Brief Kebutuhan" dan meminta konfirmasi sebelum pembuatan prototipe.
+Tugas Anda: Merangkum kebutuhan aplikasi yang sudah disepakati menjadi lembar resmi "Brief Kebutuhan" dan meminta konfirmasi sebelum pembuatan prototipe.
+
 
 ATURAN MUTLAK PERCAKAPAN:
 1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
