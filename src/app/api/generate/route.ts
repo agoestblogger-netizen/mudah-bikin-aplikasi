@@ -4,7 +4,9 @@ import { checkRateLimit } from '@/lib/rateLimiter';
 import {
   getConciseCatalogSummary,
   detectMatchingMasterTemplate,
-  formatTemplateContextForIdeation
+  formatTemplateContextForIdeation,
+  detectSelectivePageTemplates,
+  formatSelectivePageTemplatesForCodeGen
 } from '@/lib/templates';
 
 // =============================================================================
@@ -493,27 +495,29 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
          - Role Kasir / Keuangan → default ke tab "Input Pesanan" / "Kasir".
          - Role Admin / Manager → default ke tab "Dashboard" / "Ringkasan".
       b. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA: Semua section yang tercantum pada breakdown Brief Kebutuhan (misal: section Ringkasan Statistik, section Form Order Baru, section Antrian Tugas, section Daftar Stok) WAJIB benar-benar ada sebagai kartu/blok terpisah yang jelas di halaman terkait (DILARANG dihilangkan atau digabung sembarangan).
-      c. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan. Contoh:
-         - Tabel pesanan untuk role Washer: tampilkan [No Order, Nama Pelanggan, Jenis Cuci, Status Cuci] — JANGAN tampilkan kolom [Harga, Diskon, Status Pembayaran, Lunas/Belum].
-         - Tabel pesanan untuk role Kasir: tampilkan [No Order, Nama Pelanggan, Total Harga, Metode Bayar, Status Pembayaran] — kolom teknis operasional cuci tidak perlu.
-         - Tabel pesanan untuk role Admin: tampilkan SEMUA kolom.
-         - IMPLEMENTASI: gunakan conditional rendering di dalam loop render() — \`\${currentRole !== 'Washer' ? '<td>'+item.harga+'</td>' : ''}\`
-      d. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut:
-         - Role Washer: tampilkan kartu "Antrian Menunggu", "Sedang Dikerjakan", "Selesai Hari Ini" — JANGAN tampilkan "Total Pendapatan" atau "Nilai Order".
-         - Role Kasir: tampilkan kartu "Order Masuk Hari Ini", "Belum Dibayar", "Total Pendapatan Hari Ini".
-         - Role Admin: tampilkan SEMUA kartu metrik bisnis (pendapatan, order, efisiensi operasional, dsb).
-         - IMPLEMENTASI: gunakan conditional rendering \`\${currentRole === 'Washer' ? '<div class="stat-card">Antrian: '+antrian+'</div>' : ''}\`
+      c. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan.
+         - IMPLEMENTASI: gunakan conditional rendering di dalam loop render() — misal: currentRole !== 'Washer' ? '<td>'+item.harga+'</td>' : ''
+      d. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut.
+         - IMPLEMENTASI: gunakan conditional rendering — misal: currentRole === 'Washer' ? '<div class="stat-card">Antrian: '+antrian+'</div>' : ''
       e. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom/section yang dirender di UI. DILARANG membuat array data terpisah per role.`;
+
+      // Seleksi Page Template Baku Berdasarkan Brief Kebutuhan (Fase C)
+      const selectivePageMappings = detectSelectivePageTemplates(prompt + '\n' + allHistoryText);
+      const selectivePTDirective = formatSelectivePageTemplatesForCodeGen(selectivePageMappings);
+      if (selectivePTDirective) {
+        systemPrompt += `\n\n${selectivePTDirective}`;
+      }
+
 
       if (stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) {
         systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
 - Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
-- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 21 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, Role Gating fungsional nyata [Prinsip 20], Role-Aware UX & Struktur Section persis sesuai deklarasi Brief Kebutuhan [Prinsip 21 — halaman default per role, wujud fisik section per halaman, kolom tabel berbeda, kartu statistik berbeda], styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
+- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 22 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, Role Gating fungsional nyata [Prinsip 20], Role-Aware UX & Struktur Section persis sesuai deklarasi Brief Kebutuhan [Prinsip 21 — halaman default per role, wujud fisik section per halaman, kolom tabel berbeda, kartu statistik berbeda], Kepatuhan Layout Page Template Baku [Prinsip 22], styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
       } else if (stage === 'TAHAP_5_PATCH') {
         systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
 - Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, tambah tab/modal).
-- KEPATUHAN POLA UI SPESIFIK (PRINSIP 15): Jika pengguna meminta pola UI spesifik (misal: tab navigasi), WAJIB implementasikan PERSIS pola tab tersebut (bukan tombol biasa pengganti tab).
+- KEPATUHAN POLA UI SPESIFIK (PRINSIP 15 & 22): Jika pengguna meminta pola UI spesifik (misal: tab navigasi, antrian, kasir), WAJIB implementasikan PERSIS pola tersebut.
 - PERINGATAN INTEGRITAS FUNGSIONAL: Anda WAJIB mempertahankan SEMUA kode JavaScript yang sudah berfungsi sebelumnya (array data 3-5 item contoh, render(), tambahItem, editItem, hapusItem, modal, event listener).
 - DILARANG KERAS menghilangkan fungsi-fungsi JavaScript atau mengosongkan tag <script> saat melakukan revisi styling CSS atau HTML.
 - Berikan KODE HTML UTUH LENGKAP (termasuk tag <style> dan <script> utuh yang 100% berfungsi) di dalam blok \`\`\`html ... \`\`\`.`;

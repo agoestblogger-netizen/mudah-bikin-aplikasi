@@ -397,7 +397,7 @@ export const HEALTHCARE_ROLE_PAGE_MAPPINGS: RoleToPageMappingExample[] = [
 ];
 
 // =============================================================================
-// QUERY HELPERS
+// SELECTIVE CODE GENERATION INTEGRATION HELPERS (FASE C)
 // =============================================================================
 
 /**
@@ -429,3 +429,132 @@ export function getComponentsByCategory(category: string): string[] {
 export function getUIGenerationRules(): UIGenerationRule[] {
   return UI_GENERATION_RULES;
 }
+
+export interface PageMappingEntry {
+  pageName: string;
+  ptId: string;
+  template: PageTemplate;
+}
+
+/**
+ * Memetakan teks halaman/section dari Brief Kebutuhan ke Page Template (PT) unik secara selektif.
+ * Menjamin HANYA mengambil 3-6 PT-ID relevan (BUKAN seluruh 15 PT sekaligus).
+ */
+export function detectSelectivePageTemplates(text: string): PageMappingEntry[] {
+  const lower = text.toLowerCase();
+  const matchedEntries: Map<string, PageMappingEntry> = new Map();
+
+  const rules: { keywords: string[]; ptId: string; defaultName: string }[] = [
+    {
+      keywords: ['dashboard', 'ringkasan', 'overview', 'statistik', 'ikhtisar', 'beranda', 'kpi'],
+      ptId: 'PT-01',
+      defaultName: 'Dashboard & Ringkasan'
+    },
+    {
+      keywords: ['pos', 'kasir', 'order baru', 'input order', 'input pesanan', 'transaksi baru', 'pemesanan', 'keranjang'],
+      ptId: 'PT-08',
+      defaultName: 'POS / Input Pesanan'
+    },
+    {
+      keywords: ['antrian', 'antrean', 'queue', 'papan kerja', 'antrian kerja', 'cucian menunggu', 'tugas menunggu', 'loket', 'pemanggil'],
+      ptId: 'PT-07',
+      defaultName: 'Antrian & Papan Kerja'
+    },
+    {
+      keywords: ['pembayaran', 'tagihan', 'billing', 'payment', 'pelunasan', 'invoice', 'struk', 'faktur'],
+      ptId: 'PT-09',
+      defaultName: 'Tagihan & Pembayaran'
+    },
+    {
+      keywords: ['laporan', 'report', 'analitik', 'grafik', 'rekap', 'omset'],
+      ptId: 'PT-10',
+      defaultName: 'Laporan & Analitik'
+    },
+    {
+      keywords: ['kalender', 'jadwal', 'booking', 'janji temu', 'appointment', 'roster', 'shift'],
+      ptId: 'PT-06',
+      defaultName: 'Jadwal & Kalender'
+    },
+    {
+      keywords: ['kanban', 'pipeline', 'papan status', 'deal stage'],
+      ptId: 'PT-14',
+      defaultName: 'Kanban & Pipeline'
+    },
+    {
+      keywords: ['approval', 'persetujuan', 'verifikasi', 'otorisasi'],
+      ptId: 'PT-11',
+      defaultName: 'Approval & Persetujuan'
+    },
+    {
+      keywords: ['workflow', 'tahapan', 'progres kerja', 'stepper', 'status progres'],
+      ptId: 'PT-12',
+      defaultName: 'Workflow & Progres'
+    },
+    {
+      keywords: ['profil', 'biodata', 'akun', 'data saya', 'member profile'],
+      ptId: 'PT-05',
+      defaultName: 'Profil Pengguna'
+    },
+    {
+      keywords: ['settings', 'pengaturan', 'konfigurasi', 'kelola user', 'hak akses'],
+      ptId: 'PT-15',
+      defaultName: 'Pengaturan & Master Role'
+    },
+    {
+      keywords: ['daftar', 'tabel', 'master data', 'katalog', 'kelola', 'list', 'riwayat'],
+      ptId: 'PT-02',
+      defaultName: 'Daftar Data & Tabel'
+    }
+  ];
+
+  for (const r of rules) {
+    if (r.keywords.some(k => lower.includes(k))) {
+      const template = getPageTemplateById(r.ptId);
+      if (template && !matchedEntries.has(r.ptId)) {
+        matchedEntries.set(r.ptId, {
+          pageName: r.defaultName,
+          ptId: r.ptId,
+          template
+        });
+      }
+    }
+  }
+
+  // Fallback default minimal jika tidak ada match khusus: Dashboard (PT-01) + List (PT-02) + Form (PT-04)
+  if (matchedEntries.size === 0) {
+    const pt01 = getPageTemplateById('PT-01');
+    const pt02 = getPageTemplateById('PT-02');
+    if (pt01) matchedEntries.set('PT-01', { pageName: 'Dashboard', ptId: 'PT-01', template: pt01 });
+    if (pt02) matchedEntries.set('PT-02', { pageName: 'Daftar Data', ptId: 'PT-02', template: pt02 });
+  }
+
+  return Array.from(matchedEntries.values());
+}
+
+/**
+ * Menghasilkan instruksi terstruktur dan ringkas untuk disuntikkan ke
+ * CODE_GENERATION_SYSTEM_PROMPT.
+ * HANYA menyertakan PT yang relevan dan komponen yang bersesuaian.
+ */
+export function formatSelectivePageTemplatesForCodeGen(mappings: PageMappingEntry[]): string {
+  if (mappings.length === 0) return '';
+
+  const templatesText = mappings.map((m, idx) => {
+    const t = m.template;
+    return `   ${idx + 1}. Pola "${t.nama}" (${t.deskripsi}):
+      - Struktur Layout: ${t.struktur.join(' → ')}
+      - Komponen Baku: ${t.defaultComponents.slice(0, 5).join(', ')}`;
+  }).join('\n');
+
+  return `
+22. ACUAN STRUKTUR VISUAL PAGE TEMPLATE (SELEKTIF SESUAI BRIEF KEBUTUHAN):
+    Aplikasi ini mengacu pada pola layout visual standar berikut untuk tab-tab halamannya:
+${templatesText}
+
+    5 ATURAN IMPLEMENTASI UI:
+    a. Gunakan pola Page Template di atas untuk menyusun layout tab yang sesuai — contoh: tab antrian wajib memiliki kartu status panggilan & daftar tunggu (bukan sekadar tabel polos); tab kasir wajib memiliki area katalog + ringkasan pesanan.
+    b. Wujudkan setiap section yang disepakati di Brief Kebutuhan sebagai blok visual/kartu yang nyata dan rapi.
+    c. Perbedaan antar role diwujudkan melalui selektivitas tampilan tab dan hak akses tombol (Prinsip 20 & 21), BUKAN menduplikasi file/template secara terpisah.
+    d. Setiap elemen interaktif (tombol panggil, filter status, form pesanan, tab ganti role) WAJIB 100% berfungsi aktif di memori dengan JavaScript selaras.`;
+}
+
