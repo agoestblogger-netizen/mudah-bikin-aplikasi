@@ -547,8 +547,15 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       if (stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) {
         systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
 - Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
-- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 22 Prinsip Wajib yang sudah baku (data awal 3-5 item contoh realistis, tombol Tambah/Edit/Hapus aktif di memori, Role Gating fungsional nyata [Prinsip 20], Role-Aware UX & Struktur Section persis sesuai deklarasi Brief Kebutuhan [Prinsip 21 — halaman default per role, wujud fisik section per halaman, kolom tabel berbeda, kartu statistik berbeda], Kepatuhan Layout Page Template Baku [Prinsip 22], styling modern tanpa Tailwind Play CDN, event handler 100% selaras).
+- Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
+  1. Data awal 3-5 item contoh realistis (Prinsip 1).
+  2. Role Switcher & Gating Fungsional Nyata (Prinsip 20): fungsi switchRole(role) WAJIB mengarahkan tab aktif langsung ke default landing tiap role (Admin -> Dashboard, Kasir -> Kasir POS / Input Pesanan, Petugas/Washer -> Antrian Kerja Cucian, Pelanggan -> Lacak Status Resi).
+  3. Visibilitas Tab Terbatas (Prinsip 20 & 21): Tab Dashboard HANYA boleh muncul untuk Admin (style.display='none' untuk Kasir, Washer, dan Pelanggan).
+  4. Kepatuhan Layout Page Template Baku (Prinsip 22): antrian cuci berbentuk kartu antrean (PT-07), kasir berbentuk POS (PT-08), dashboard berbentuk KPI (PT-01).
+  5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
+  6. Styling CSS modern murni tanpa Tailwind Play CDN, event handler 100% selaras.
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
+
       } else if (stage === 'TAHAP_5_PATCH') {
         systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
 - Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, tambah tab/modal).
