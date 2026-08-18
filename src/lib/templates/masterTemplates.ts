@@ -1396,7 +1396,8 @@ ${moduleSectionsText}
 Rekomendasi Role: ${rolesSummary}
 Alur Kerja: ${t.workflow.slice(0, 4).join(' → ')}
 
-Gunakan modul & section di atas sebagai panduan menyusun fitur dan pembagian role secara natural. DILARANG menyebutkan kode internal kepada pengguna.`;
+Gunakan modul & section di atas untuk langsung mengusulkan peran dan fitur konkret kepada pengguna secara ramah dan proaktif. DILARANG bertanya terbuka seperti "apakah sudah Anda pikirkan", selalu berikan usulan nyata terlebih dahulu lalu minta konfirmasi. DILARANG menyebutkan kode internal kepada pengguna.`;
 }
+
 
 
