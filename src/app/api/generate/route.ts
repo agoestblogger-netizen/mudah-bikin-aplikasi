@@ -529,7 +529,11 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       c. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA: Semua section yang tercantum pada breakdown Brief Kebutuhan (misal: section Ringkasan Statistik, section Form Order Baru, section Antrian Tugas, section Daftar Stok) WAJIB benar-benar ada sebagai kartu/blok terpisah yang jelas di halaman terkait.
       d. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan di loop render().
       e. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut.
-      f. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom/section yang dirender di UI. DILARANG membuat array data terpisah per role.`;
+      f. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom/section yang dirender di UI. DILARANG membuat array data terpisah per role.
+23. EFISIENSI MODAL & KESELARASAN HANDLER JAVASCRIPT LENGKAP:
+    - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
+    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`switchRole\`, \`showTab\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`updateStatusCuci\`, \`cariResi\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
+
 
 
       // Seleksi Page Template Baku Berdasarkan Brief Kebutuhan (Fase C)

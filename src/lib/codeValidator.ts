@@ -27,8 +27,12 @@ export function validateAndRepairGeneratedCode(
   const scriptMatches = repairedHtml.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi);
   if (scriptMatches) {
     inlineJs = scriptMatches.map(s => s.replace(/<\/?script[\s\S]*?>/gi, '')).join('\n');
+  } else if (repairedHtml.includes('<script')) {
+    const parts = repairedHtml.split(/<script[\s\S]*?>/i);
+    inlineJs = parts.slice(1).join('\n').replace(/<\/script>[\s\S]*$/i, '');
   }
   const combinedJs = (inlineJs + '\n' + repairedJs).trim();
+
 
   // 1.5 VALIDASI SINTAKS JAVASCRIPT PALING AWAL (PRD NFR-10b / Step 10)
   // Menolak dan menangkap SyntaxError (misal: unexpected identifier, unclosed string, syntax error token)
