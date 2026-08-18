@@ -13,7 +13,8 @@ import {
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
 // =============================================================================
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
-export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+
 
 
 export const getGeminiModel = (): string => process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
@@ -853,17 +854,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           } else {
             const msg = data.error?.message || res.statusText || 'unknown';
             const isRateLimitOrDemand = res.status === 429 || res.status === 503 || msg.toLowerCase().includes('high demand') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate');
-            if (isRateLimitOrDemand && attempts < 4) {
-              let delayMs = 1500 * attempts;
-              const retryInfo = data.error?.details?.find((d: any) => d['@type']?.includes('RetryInfo'));
-              if (retryInfo?.retryDelay) {
-                const parsedSec = parseInt(retryInfo.retryDelay, 10);
-                if (!isNaN(parsedSec) && parsedSec > 0 && parsedSec <= 35) {
-                  delayMs = (parsedSec + 1) * 1000;
-                }
-              }
-              console.log(`Gemini ${endpoint.split('/models/')[1]} wait/cooldown: waiting ${delayMs}ms before attempt ${attempts + 1}...`);
-              await new Promise(r => setTimeout(r, delayMs));
+            if (isRateLimitOrDemand && attempts < 2) {
+              console.log(`Gemini ${endpoint.split('/models/')[1]} quick retry (attempt ${attempts + 1})...`);
+              await new Promise(r => setTimeout(r, 1000));
               continue;
             }
             attemptErrors.push(`[${endpoint.split('/models/')[1]}]: ${msg}`);
@@ -875,7 +868,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       if (!geminiData || !geminiData.candidates?.[0]) {
         if (openaiApiKey) {
-          console.warn(`Gemini (${activeGeminiModel}) high demand spike. Falling back automatically to OpenAI (${activeOpenAIModel})...`);
+          console.warn(`Gemini (${activeGeminiModel}) unavailable. Falling back instantly to OpenAI (${activeOpenAIModel})...`);
           actualProviderUsed = 'openai';
           const messages = [
             { role: 'system', content: systemPrompt },
@@ -895,8 +888,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
             body: JSON.stringify({
               model: activeOpenAIModel,
               messages,
-              max_completion_tokens: isIdeationMode ? 1024 : 8192,
-              temperature: isIdeationMode ? 0.7 : 0.5
+              max_completion_tokens: isIdeationMode ? 1024 : 16384,
+              temperature: isIdeationMode ? 0.7 : 0.4
             })
           });
 
@@ -906,6 +899,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           throw new Error('Gemini API failed: ' + attemptErrors.join(' || '));
         }
       } else {
+
         let candidate = geminiData.candidates?.[0];
         assistantMessage = candidate?.content?.parts?.map((p: any) => p.text).join('') || '';
         let finishReason = candidate?.finishReason;
