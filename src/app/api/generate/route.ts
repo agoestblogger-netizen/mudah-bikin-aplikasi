@@ -89,9 +89,21 @@ export async function POST(req: Request) {
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
     
-    // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan
-    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan)($|\b)/i.test(prompt.trim());
+    // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Eksekusi Revisi
+    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang)($|\b)/i.test(prompt.trim());
     
+    // Deteksi Pertanyaan Eksplisit dari Pengguna (Wajib dijawab dalam dialog, dilarang langsung lompat ke eksekusi - Poin 38)
+    const hasExplicitQuestion = prompt.includes('?') || /(^|\b)(apakah|apa\s+kamu\s+paham|paham\s+kah|paham\s+gak|paham\s+kan|ngerti\s+gak|ngerti\s+kan|bisa\s+kah|gimana\s+menurutmu|bagaimana\s+menurutmu|menurut\s+kamu|kenapa|mengapa|bagaimana\s+cara|tolong\s+jelaskan|apa\s+maksud|apakah\s+bisa|jelaskan)($|\b)/i.test(prompt.trim());
+
+    // Deteksi Revisi Signifikan / Perubahan Arsitektur Besar (Poin 38)
+    const isSignificantRevision = (
+      hasExplicitQuestion ||
+      /(ganti|ubah|rombak|bikin|buat)\s+(sistem\s+login|mekanisme\s+role|role\s+switcher|arsitektur|seluruh\s+role|struktur\s+utama)/i.test(prompt) ||
+      /(tambah|kurang|hapus|ganti)\s+role/i.test(prompt) ||
+      /(sistem\s+login\s+sungguhan|login\s+asli|multi\s+role\s+baru|rombak\s+total)/i.test(prompt) ||
+      (prompt.length > 220 && (prompt.toLowerCase().includes('role') || prompt.toLowerCase().includes('halaman') || prompt.toLowerCase().includes('fitur')))
+    );
+
     // Deteksi Apakah Prompt Awal Pengguna BENAR-BENAR SANGAT DETAIL:
     // WAJIB panjang > 200 karakter DAN secara eksplisit merinci target peran/user/masalah DAN daftar fitur/alur secara bersamaan.
     const isVeryDetailedInitialPrompt = prompt.length > 200 && (
@@ -103,8 +115,13 @@ export async function POST(req: Request) {
     // Deteksi Persetujuan Ringkas Pengguna terhadap Usulan Konsultan di Tahap Diskusi
     const isUserAgreeingToProposal = /(^|\b)(ya|iya|sudah|pas|cocok|setuju|ok|oke|sip|lanjut|bisa|sesuai|siap|cukup|ikut saja|terserah|sop|standar|buatkan|buatkan brief|rangkum)($|\b)/i.test(prompt.trim());
 
-    // Mode Diskusi / Eksplorasi Tahap 1 (Sebelum Konfirmasi Brief Kebutuhan)
-    const isIdeationMode = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
+    // Kapan masuk Mode Dialog/Streaming (Bukan eksekusi kode langsung):
+    // 1. Tahap 1 Ideation (belum ada kode & belum konfirmasi)
+    // 2. ATAU Tahap Revisi (sudah ada kode) TETAPI ada Pertanyaan Eksplisit atau Revisi Signifikan yang belum disetujui untuk dieksekusi (Poin 38)
+    const isIdeationMode = (
+      ((stage === 'TAHAP_1_PEMBUKAAN' || !currentCode) && !(hasBriefPresented && isConfirmationApproval)) ||
+      (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval)
+    );
 
     // Alokasi budget token streaming ideation yang universal, aman, & anti-terpotong:
     // Dalam protokol SSE streaming, max_completion_tokens adalah batas atas (ceiling).
@@ -120,7 +137,23 @@ export async function POST(req: Request) {
     let systemPrompt = '';
 
     if (isIdeationMode) {
-      if (hasBriefPresented && !isConfirmationApproval) {
+      if (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval) {
+        // KONDISI KHUSUS (POIN 38): GERBANG DIALOG UNTUK REVISI SIGNIFIKAN / PERTANYAAN EKSPLISIT SAAT MOCKUP SUDAH ADA
+        systemPrompt = `Anda adalah Konsultan Aplikasi & Asisten AI dari platform "Mudah Bikin Aplikasi".
+Pengguna memiliki aplikasi/mockup yang sudah dibuat, dan saat ini mengajukan PERTANYAAN EKSPLISIT atau REVISI BESAR/STRUKTURAL (misal: mengganti mekanisme role switcher jadi sistem login sungguhan, menambah/menghapus role, perombakan alur, dll).
+
+TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI):
+1. JAWAB PERTANYAAN EKSPLISIT PENGGUNA TERLEBIH DAHULU:
+   - Jika pengguna bertanya "apakah kamu paham?", "bagaimana menurutmu?", atau pertanyaan lain, jawab secara langsung, lugas, ramah, dan percaya diri (1-2 kalimat pembuka).
+2. RANGKUM & KONFIRMASI PEMAHAMAN ANDA TENTANG REVISI YANG AKAN DILAKUKAN:
+   - Jelaskan secara singkat dan konkret apa saja perubahan arsitektural/fitur yang akan diterapkan ke aplikasi (misal: merinci role baru, hak akses masing-masing role, atau alur login yang akan dibangun).
+   - Jika ada hal yang perlu diperjelas atau disesuaikan, tanyakan secara spesifik.
+3. AJUKAN PERTANYAAN KONFIRMASI EKSEKUSI DI AKHIR:
+   - "Apakah rencana perubahan ini sudah sesuai dan siap saya terapkan ke aplikasi Anda?"
+4. ATURAN MUTLAK:
+   - DILARANG KERAS menghasilkan blok kode HTML/JS (\`\`\`html ... \`\`\`) di giliran ini!
+   - Jangan langsung eksekusi kode sebelum pengguna mengonfirmasi persetujuannya.`;
+      } else if (hasBriefPresented && !isConfirmationApproval) {
         // KONDISI 2: BRIEF KEBUTUHAN SUDAH TAMPIL, PENGGUNA MEMBERIKAN REVISI KECIL / DETAIL
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
 Tugas Anda: Memperbarui lembar "Brief Kebutuhan" berdasarkan revisi kecil dari pengguna dan meminta konfirmasi ulang.

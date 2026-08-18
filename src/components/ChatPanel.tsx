@@ -23,6 +23,27 @@ const BRAINSTORMING_LOADING_TEXTS = [
 function getContextualLoadingText(query: string, hasCode: boolean, hasBrief: boolean): string {
   const lower = query.toLowerCase().trim();
 
+  const hasExplicitQuestion = query.includes('?') || /(^|\b)(apakah|apa\s+kamu\s+paham|paham\s+kah|paham\s+gak|paham\s+kan|ngerti\s+gak|ngerti\s+kan|bisa\s+kah|gimana\s+menurutmu|bagaimana\s+menurutmu|menurut\s+kamu|kenapa|mengapa|bagaimana\s+cara|tolong\s+jelaskan|apa\s+maksud|apakah\s+bisa|jelaskan)($|\b)/i.test(lower);
+  const isExecutionApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang)($|\b)/i.test(lower);
+  const isSignificantRevision = (
+    hasExplicitQuestion ||
+    /(ganti|ubah|rombak|bikin|buat)\s+(sistem\s+login|mekanisme\s+role|role\s+switcher|arsitektur|seluruh\s+role|struktur\s+utama)/i.test(lower) ||
+    /(tambah|kurang|hapus|ganti)\s+role/i.test(lower) ||
+    /(sistem\s+login\s+sungguhan|login\s+asli|multi\s+role\s+baru|rombak\s+total)/i.test(lower) ||
+    (query.length > 220 && (lower.includes('role') || lower.includes('halaman') || lower.includes('fitur')))
+  );
+
+  // Jika sudah ada kode aplikasi (tahap revisi/patch)
+  if (hasCode) {
+    if (isSignificantRevision && !isExecutionApproval) {
+      return 'AI sedang menyiapkan penjelasan & konfirmasi...';
+    }
+    if (lower.includes('tambah') || lower.includes('ganti') || lower.includes('ubah') || lower.includes('revisi') || lower.includes('warna') || lower.includes('tombol') || isExecutionApproval) {
+      return 'AI sedang menerapkan revisi...';
+    }
+    return 'AI sedang memperbarui aplikasi...';
+  }
+
   // Jika terkait perbaikan kendala / error
   if (lower.includes('error') || lower.includes('bug') || lower.includes('rusak') || lower.includes('kendala') || lower.includes('kenapa')) {
     return 'AI sedang menganalisa kendala...';
@@ -33,16 +54,8 @@ function getContextualLoadingText(query: string, hasCode: boolean, hasBrief: boo
     return 'AI sedang menyiapkan backend...';
   }
 
-  // Jika sudah ada kode aplikasi (tahap revisi/patch)
-  if (hasCode) {
-    if (lower.includes('tambah') || lower.includes('ganti') || lower.includes('ubah') || lower.includes('revisi') || lower.includes('warna') || lower.includes('tombol')) {
-      return 'AI sedang menerapkan revisi...';
-    }
-    return 'AI sedang memperbarui aplikasi...';
-  }
-
   // Hanya jika SUDAH ADA Brief Kebutuhan dan pengguna mengonfirmasi persetujuan untuk mulai generate mockup
-  if (hasBrief && /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan)($|\b)/i.test(lower)) {
+  if (hasBrief && isExecutionApproval) {
     return 'AI sedang membangun aplikasi...';
   }
 
