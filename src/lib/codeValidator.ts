@@ -105,6 +105,35 @@ export function validateAndRepairGeneratedCode(
         }
       }
 
+      // Rekonsiliasi semantik cerdas berbasis kata kerja aksi (HANYA jika fungsi nyata yang relevan ada di script)
+      if (!resolved) {
+        const actionPrefixes = ['simpan', 'hapus', 'bukaModal', 'tutupModal', 'update', 'lacak', 'cari', 'tambah', 'filter'];
+        for (const prefix of actionPrefixes) {
+          if (fn.toLowerCase().startsWith(prefix.toLowerCase())) {
+            for (const defFn of Array.from(definedFunctions)) {
+              const defLower = defFn.toLowerCase();
+              const prefLower = prefix.toLowerCase();
+              if (
+                defLower.startsWith(prefLower) ||
+                (prefLower === 'bukamodal' && defLower.startsWith('openmodal')) ||
+                (prefLower === 'tutupmodal' && defLower.startsWith('closemodal')) ||
+                (prefLower === 'simpan' && (defLower.startsWith('save') || defLower.startsWith('submit'))) ||
+                (prefLower === 'hapus' && (defLower.startsWith('delete') || defLower.startsWith('remove')))
+              ) {
+                if (repairedHtml.includes('</script>')) {
+                  repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { if (typeof ${defFn} === 'function') ${defFn}(...args); }\n</script>`);
+                  definedFunctions.add(fn);
+                  resolved = true;
+                  break;
+                }
+              }
+            }
+          }
+          if (resolved) break;
+        }
+      }
+
+
       // Jika tidak ada fungsi nyata yang cocok, WAJIB catat sebagai issue agar memicu NFR-10b AI Auto-Recovery (DILARANG STUBBING KOSONG)
       if (!resolved) {
         issues.push(`MISMATCH_HANDLER: Fungsi "${fn}" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.`);
