@@ -61,6 +61,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   // streamingText: teks ghost bubble yang sedang di-stream (null = tidak streaming)
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto scroll ke bawah saat pesan baru tiba
   useEffect(() => {
@@ -71,6 +72,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   useEffect(() => {
     setMessages(projectState.chatMessages);
   }, [projectState.chatMessages]);
+
+  // Auto-resize textarea mengikuti isi baris teks
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+    }
+  }, [input]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter tanpa Shift: kirim pesan
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+    // Shift+Enter: baris baru alami (tidak dicegat)
+  };
 
   const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || input;
@@ -91,6 +109,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setIsGenerating(true);
     setStreamingText(null);
 
@@ -366,20 +387,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-2xl p-2 focus-within:border-indigo-500 transition-all shadow-inner"
+          className="flex items-end gap-2 bg-slate-900 border border-slate-800 rounded-2xl p-2 focus-within:border-indigo-500 transition-all shadow-inner"
         >
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             disabled={isGenerating}
-            placeholder="Ketik instruksi aplikasi Anda di sini (misal: 'buatkan aplikasi catatan tugas')..."
-            className="flex-1 bg-transparent px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none disabled:opacity-50"
+            placeholder="Ketik instruksi aplikasi Anda di sini... (Enter untuk kirim, Shift+Enter untuk baris baru)"
+            className="flex-1 bg-transparent px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none disabled:opacity-50 resize-none max-h-40 min-h-[36px] overflow-y-auto leading-relaxed scrollbar-thin"
           />
           <button
             type="submit"
             disabled={!input.trim() || isGenerating}
-            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-30 shadow-md"
+            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-30 shadow-md shrink-0 mb-0.5"
+            aria-label="Kirim Pesan"
           >
             <Send className="w-4 h-4" />
           </button>
