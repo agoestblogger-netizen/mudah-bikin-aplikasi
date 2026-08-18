@@ -51,11 +51,12 @@ export function validateAndRepairGeneratedCode(
 
   // Cari semua nama fungsi yang didefinisikan di JS
   const definedFunctions = new Set<string>();
-  const funcDefRegex = /(?:function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:function|\([^)]*\)\s*=>|\w+\s*=>))/g;
+  const funcDefRegex = /(?:function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:function|\([^)]*\)\s*=>|\w+\s*=>)|window\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:function|\([^)]*\)\s*=>|\w+\s*=>)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*function)/g;
   while ((m = funcDefRegex.exec(combinedJs)) !== null) {
-    const fnName = m[1] || m[2];
+    const fnName = m[1] || m[2] || m[3] || m[4];
     if (fnName) definedFunctions.add(fnName);
   }
+
 
   // Peta alias umum (misal: AI menulis showTab di onclick tapi switchTab di JS, atau bukaModal vs openModal)
   const commonAliases: Record<string, string[]> = {

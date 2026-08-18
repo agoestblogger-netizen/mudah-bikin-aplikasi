@@ -12,8 +12,9 @@ import {
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
 // =============================================================================
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.7-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+
 
 export const getGeminiModel = (): string => process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
 export const getOpenAIModel = (): string => process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
@@ -451,12 +452,24 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
          * Role Admin: Melihat SELURUH tab (Layar Antrian, Loket Pemanggil, dan Master Layanan).
       2. VISIBILITAS TOMBOL AKSI TERBATAS: Tombol aksi sensitif (seperti tombol "Panggil Nomor", "Selesai", "Tambah/Edit/Hapus Layanan") WAJIB disembunyikan (style.display = 'none') atau di-disable untuk role yang tidak berhak.
       3. AUTO-REDIRECT TAB AKTIF SAAT GANTI ROLE: Jika pengguna mengganti peran saat sedang berada di tab yang tidak diizinkan untuk peran baru, fungsi switchRole(role) WAJIB secara otomatis mengalihkan tab aktif ke tab yang aman/publik (misal tab antrian).
-    - POLA JAVASCRIPT ROLE SWITCHER WAJIB:
+    - POLA JAVASCRIPT ROLE SWITCHER & TAB NAVIGASI WAJIB:
       \`\`\`javascript
-      let currentRole = 'Pasien'; // default awal
+      let currentRole = 'Admin'; // default awal
+      let activeTab = 'dashboard';
+
+      function showTab(tabName) {
+        activeTab = tabName;
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        const target = document.getElementById('tab-' + tabName);
+        if (target) target.classList.add('active');
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        const activeBtn = document.getElementById('tab-btn-' + tabName);
+        if (activeBtn) activeBtn.classList.add('active');
+      }
 
       function switchRole(role) {
         currentRole = role;
+
         // Redirect tab aktif jika tidak diizinkan untuk role baru
         if (role === 'Pasien' && (activeTab === 'loket' || activeTab === 'master')) {
           showTab('antrian');
@@ -1197,20 +1210,25 @@ INSTRUKSI PERBAIKAN WAJIB:
     if (isStage1AwaitingConfirmation) {
       // Jika AI sempat menghasilkan code fence sebelum konfirmasi disetujui, bersihkan total dari teks chat
       cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
-    } else if (match) {
-      if (hasValidCode) {
-        cleanReplyText = assistantMessage.replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil diperbarui dan dimuat langsung ke Canvas Preview.**').trim();
-      } else {
-        // Pesan kegagalan yang ACTIONABLE dan informatif
-        const topIssues = validated?.issues && validated.issues.length > 0
-          ? validated.issues.slice(0, 2).join('; ')
-          : (isCodeIncomplete ? 'Kode HTML/JS terpotong di tengah jalan' : 'Pemeriksaan DOM ID & event handler tidak lolos');
-        
-        cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
+    } else if (hasValidCode) {
+      cleanReplyText = assistantMessage
+        .replace(/```html[\s\S]*?```/, '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**')
+        .replace(/```html[\s\S]*$/, '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**')
+        .trim();
+      if (!cleanReplyText.includes('✨ **Prototipe aplikasi berhasil dibuat')) {
+        cleanReplyText += '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**';
       }
+    } else if (htmlCode || assistantMessage.includes('```html')) {
+      // Pesan kegagalan yang ACTIONABLE dan informatif
+      const topIssues = validated?.issues && validated.issues.length > 0
+        ? validated.issues.slice(0, 2).join('; ')
+        : (isCodeIncomplete ? 'Kode HTML/JS terpotong di tengah jalan' : 'Pemeriksaan DOM ID & event handler tidak lolos');
+      
+      cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
     } else {
       cleanReplyText = assistantMessage.trim();
     }
+
 
     return NextResponse.json({
       success: true,
