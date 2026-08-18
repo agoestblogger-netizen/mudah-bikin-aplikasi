@@ -1222,7 +1222,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
 ];
 
 // =============================================================================
-// QUERY HELPERS
+// QUERY & IDEATION INTEGRATION HELPERS (FASE B)
 // =============================================================================
 
 /**
@@ -1241,15 +1241,182 @@ export function getAllMasterTemplates(): MasterTemplate[] {
 }
 
 /**
- * Mencari template yang relevan berdasarkan kata kunci industri/nama
+ * Menghasilkan katalog ringkas 20 Master Template (1 baris per template)
+ * untuk disematkan di IDEATION_SYSTEM_PROMPT tanpa membebani ukuran prompt.
  */
-export function findMasterTemplatesByKeyword(keyword: string): MasterTemplate[] {
-  const kw = keyword.toLowerCase().trim();
-  if (!kw) return MASTER_TEMPLATES;
-  return MASTER_TEMPLATES.filter(t =>
-    t.id.toLowerCase().includes(kw) ||
-    t.nama.toLowerCase().includes(kw) ||
-    t.deskripsi.toLowerCase().includes(kw) ||
-    t.modulDanSection.some(m => m.modul.toLowerCase().includes(kw))
-  );
+export function getConciseCatalogSummary(): string {
+  return MASTER_TEMPLATES.map(t => `- ${t.id} (${t.nama}): ${t.deskripsi}`).join('\n');
 }
+
+export interface TemplateMatchResult {
+  template: MasterTemplate;
+  matchedVariant?: string;
+}
+
+/**
+ * Mendeteksi Master Template yang paling cocok dari teks prompt / riwayat pengguna
+ */
+export function detectMatchingMasterTemplate(text: string): TemplateMatchResult | null {
+  const lower = text.toLowerCase();
+
+  // 1. Cek Varian Khusus Terlebih Dahulu
+  if (lower.includes('barber') || lower.includes('pangkas rambut') || lower.includes('potong rambut')) {
+    const t = getMasterTemplateById('MT-04');
+    if (t) return { template: t, matchedVariant: 'Barbershop' };
+  }
+  if (lower.includes('salon')) {
+    const t = getMasterTemplateById('MT-04');
+    if (t) return { template: t, matchedVariant: 'Salon' };
+  }
+  if (lower.includes('spa') || lower.includes('massage') || lower.includes('pijat') || lower.includes('refleksi')) {
+    const t = getMasterTemplateById('MT-04');
+    if (t) return { template: t, matchedVariant: 'Spa' };
+  }
+
+  // 2. Cek Berdasarkan Kata Kunci Pola Bisnis Industri
+  const keywordMappings: { keywords: string[]; mtId: string }[] = [
+    {
+      keywords: ['laundry', 'cuci pakaian', 'cuci baju', 'cuci sepatu', 'cuci mobil', 'car wash', 'janji temu', 'appointment', 'booking service', 'grooming', 'cleaning service', 'penjahit', 'tailor'],
+      mtId: 'MT-04'
+    },
+    {
+      keywords: ['klinik', 'puskesmas', 'dokter', 'rekam medis', 'pasien', 'poli', 'apotek', 'farmasi', 'bidan', 'dokter gigi', 'optik', 'fisioterapi', 'kesehatan'],
+      mtId: 'MT-06'
+    },
+    {
+      keywords: ['restoran', 'resto', 'cafe', 'kafe', 'rumah makan', 'warung makan', 'kedai kopi', 'coffee shop', 'katering', 'catering', 'bakery', 'f&b', 'kuliner'],
+      mtId: 'MT-03'
+    },
+    {
+      keywords: ['bengkel', 'servis motor', 'servis mobil', 'mekanik', 'montir', 'sparepart', 'reparasi hp', 'service center', 'ganti oli', 'reparasi'],
+      mtId: 'MT-05'
+    },
+    {
+      keywords: ['retail', 'ritel', 'toko', 'kasir pos', 'minimarket', 'warung', 'kelontong', 'pos kasir', 'penjualan barang', 'sembako', 'butik', 'petshop'],
+      mtId: 'MT-01'
+    },
+    {
+      keywords: ['grosir', 'distributor', 'wholesale', 'gudang distribusi', 'supply chain', 'b2b sales', 'agen sembako'],
+      mtId: 'MT-02'
+    },
+    {
+      keywords: ['hotel', 'villa', 'guest house', 'homestay', 'penginapan', 'kost', 'reservasi kamar', 'booking kamar', 'glamping', 'resort'],
+      mtId: 'MT-09'
+    },
+    {
+      keywords: ['sekolah', 'bimbel', 'bimbingan belajar', 'kursus', 'les privat', 'kampus', 'universitas', 'pesantren', 'madrasah', 'rapor', 'spp siswa'],
+      mtId: 'MT-10'
+    },
+    {
+      keywords: ['gym', 'fitness', 'fitness center', 'membership', 'member card', 'sanggar senam', 'yoga studio', 'iuran member', 'langganan'],
+      mtId: 'MT-15'
+    },
+    {
+      keywords: ['ekspedisi', 'kurir', 'logistik', 'pengiriman barang', 'resi paket', 'armada kurir', 'tracking paket', 'delivery order', 'cod paket'],
+      mtId: 'MT-14'
+    },
+    {
+      keywords: ['properti', 'sewa gedung', 'sewa apartemen', 'sewa ruko', 'sewa kos', 'kontrak penyewa', 'estate management'],
+      mtId: 'MT-13'
+    },
+    {
+      keywords: ['hris', 'manajemen sdm', 'payroll gaji', 'absensi karyawan', 'cuti karyawan', 'rekrutmen karyawan', 'slip gaji', 'kpi karyawan'],
+      mtId: 'MT-16'
+    },
+    {
+      keywords: ['crm', 'sales pipeline', 'lead management', 'deal pipeline', 'follow up customer', 'prospek penjualan'],
+      mtId: 'MT-11'
+    },
+    {
+      keywords: ['akuntansi', 'pembukuan', 'buku besar', 'jurnal keuangan', 'laba rugi', 'neraca', 'kas bank', 'petty cash', 'ar ap', 'faktur pajak'],
+      mtId: 'MT-12'
+    },
+    {
+      keywords: ['pabrik', 'manufaktur', 'produksi barang', 'perakitan', 'konveksi', 'garmen', 'bill of materials', 'bom'],
+      mtId: 'MT-07'
+    },
+    {
+      keywords: ['project management', 'konsultan', 'agency', 'software house', 'kantor hukum', 'arsitek', 'timesheet', 'milestone project'],
+      mtId: 'MT-08'
+    },
+    {
+      keywords: ['pengadaan barang', 'procurement', 'purchase order', 'gudang inventori', 'stok opname', 'mutasi gudang', 'purchase request'],
+      mtId: 'MT-17'
+    },
+    {
+      keywords: ['manajemen aset', 'fixed asset', 'barcode aset', 'pemeliharaan mesin', 'preventive maintenance', 'work order teknisi'],
+      mtId: 'MT-18'
+    },
+    {
+      keywords: ['event organizer', 'seminar', 'webinar', 'workshop event', 'konser', 'tiket seminar', 'e-ticket', 'qr check-in', 'sertifikat event'],
+      mtId: 'MT-19'
+    }
+  ];
+
+  for (const mapping of keywordMappings) {
+    if (mapping.keywords.some(k => lower.includes(k))) {
+      const t = getMasterTemplateById(mapping.mtId);
+      if (t) return { template: t };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Memformat detail lengkap satu Master Template menjadi konteks terstruktur
+ * untuk disuntikkan ke IDEATION_SYSTEM_PROMPT di Tahap 1.
+ * DILARANG menyebutkan kode "MT-XX" secara eksplisit agar tidak membingungkan pengguna.
+ */
+export function formatTemplateContextForIdeation(match: TemplateMatchResult): string {
+  const { template: t, matchedVariant } = match;
+
+  const moduleSectionsText = t.modulDanSection
+    .map(m => `  * Modul ${m.modul}: section ${m.sections.join(', ')}`)
+    .join('\n');
+
+  // Ringkas permission per role dalam bahasa natural yang jelas
+  const rolesSummary = t.roleDefault
+    .map(r => {
+      const perms = t.roleToModule.filter(p => p.role === r);
+      if (perms.length === 0) return `  * Role [${r}]`;
+      const permDetails = perms
+        .filter(p => p.permission !== '-')
+        .slice(0, 4) // ambil 4 modul utama untuk ringkasan
+        .map(p => `${p.modul} (${p.permission === 'CRUD' ? 'kelola penuh' : p.permission.includes('CR') ? 'input & lihat' : p.permission.includes('R') ? 'hanya lihat' : p.permission})`)
+        .join(', ');
+      return `  * Role [${r}]: ${permDetails}`;
+    })
+    .join('\n');
+
+  const workflowText = t.workflow.join('\n  ');
+
+  let variantNotice = '';
+  if (matchedVariant) {
+    const v = t.variant?.find(item => item.nama.toLowerCase() === matchedVariant.toLowerCase());
+    if (v) {
+      variantNotice = `\n- Varian Khusus Terdeteksi: "${v.nama}" (${v.deskripsi || ''})\n  Fitur/Modul Tambahan Varian: ${v.tambahan.join(', ')}`;
+    }
+  } else if (t.variant && t.variant.length > 0) {
+    variantNotice = `\n- Varian Spesifik yang Tersedia: ${t.variant.map(v => `"${v.nama}" (tambahan: ${v.tambahan.join(', ')})`).join(' | ')}`;
+  }
+
+  return `
+=== ACUAN BLUEPRINT STRUKTUR BAKU (INTERNAL CONSULTANT REFERENCE) ===
+Pola Bisnis Terdeteksi: "${t.nama}" (${t.deskripsi})${variantNotice}
+
+Daftar Modul & Section Standar:
+${moduleSectionsText}
+
+Peran & Hak Akses Rekomendasi:
+${rolesSummary}
+
+Alur Kerja Operasional Baku (Workflow):
+  ${workflowText}
+
+PETUNJUK PENGGUNAAN BLUEPRINT:
+1. Gunakan daftar modul, section, dan pembagian tugas role di atas sebagai panduan terstruktur saat mengusulkan fitur atau menyusun lembar Brief Kebutuhan.
+2. DILARANG menyebutkan kode "${t.id}" atau kode permission mentah (CRUD/RU-O) kepada pengguna.
+3. Sampaikan modul dan peran dalam bahasa Indonesia yang ramah, natural, dan kontekstual.`;
+}
+

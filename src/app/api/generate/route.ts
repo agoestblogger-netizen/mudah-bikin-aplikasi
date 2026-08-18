@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { validateAndRepairGeneratedCode } from '@/lib/codeValidator';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import {
+  getConciseCatalogSummary,
+  detectMatchingMasterTemplate,
+  formatTemplateContextForIdeation
+} from '@/lib/templates';
 
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
@@ -94,6 +99,11 @@ export async function POST(req: Request) {
     // Mode Diskusi / Eksplorasi Tahap 1 (Sebelum Konfirmasi Brief Kebutuhan)
     const isIdeationMode = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
 
+    // Pencocokan Blueprint Master Template (Fase B)
+    const matchedMT = detectMatchingMasterTemplate(prompt + '\n' + allHistoryText);
+    const catalogSummary = getConciseCatalogSummary();
+    const blueprintContext = matchedMT ? formatTemplateContextForIdeation(matchedMT) : '';
+
     let systemPrompt = '';
 
     if (isIdeationMode) {
@@ -165,6 +175,13 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
    - TANYAKAN ROLE & USULKAN BREAKDOWN SECTION: Jika aplikasi kemungkinan punya multi-role (misal laundry punya Kasir+Washer+Admin), PROAKTIF tanyakan pembagian peran dan USULKAN halaman/section utama tiap role — contoh: "Untuk laundry seperti ini, biasanya ada 3 peran: Admin (Dashboard statistik & Kelola Master), Kasir (Input Pesanan & Pembayaran Tagihan), dan Washer (Antrian Cucian & Update Status Cuci). Apakah pembagian halaman dan tugas tiap role ini sudah pas?"
    - AJUKAN TEPAT SATU PERTANYAAN FOKUS (DILARANG borongan banyak pertanyaan sekaligus).
 4. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
+      }
+
+      // Suntikkan blueprint terstruktur atau ringkasan katalog internal untuk memandu dialog
+      if (blueprintContext) {
+        systemPrompt += `\n\n${blueprintContext}`;
+      } else {
+        systemPrompt += `\n\n=== KATALOG RINGKAS 20 BLUEPRINT INDUSTRI (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
       }
     } else {
       // MODE GENERATE KODE (User sudah menyetujui Brief Kebutuhan / Tahap 2 Mockup / Tahap 5 Patch / Tahap 6)
