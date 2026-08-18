@@ -103,10 +103,22 @@ export async function POST(req: Request) {
     // Mode Diskusi / Eksplorasi Tahap 1 (Sebelum Konfirmasi Brief Kebutuhan)
     const isIdeationMode = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
 
+    // Deteksi Momen Render Brief Kebutuhan (Sub-langkah 5 atau Revisi Brief):
+    // Memerlukan budget token lebih besar (3072) agar breakdown halaman per role tidak terpotong di tengah jalan.
+    const isBriefRenderingMoment = Boolean(
+      isIdeationMode && (
+        hasBriefPresented ||
+        isVeryDetailedInitialPrompt ||
+        userMessageCount >= 3
+      )
+    );
+    const ideationMaxTokens = isBriefRenderingMoment ? 3072 : 1024;
+
     // Pencocokan Blueprint Master Template (Fase B)
     const matchedMT = detectMatchingMasterTemplate(prompt + '\n' + allHistoryText);
     const catalogSummary = getConciseCatalogSummary();
     const blueprintContext = matchedMT ? formatTemplateContextForIdeation(matchedMT) : '';
+
 
     let systemPrompt = '';
 
@@ -660,7 +672,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
                 body: JSON.stringify({
                   model: activeOpenAIModel,
                   messages: oaiMessages,
-                  max_completion_tokens: 1024,
+                  max_completion_tokens: ideationMaxTokens,
                   temperature: 0.7,
                   stream: true
                 })
@@ -707,9 +719,10 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
                 body: JSON.stringify({
                   systemInstruction: { parts: [{ text: systemPrompt }] },
                   contents: buildGeminiContents(),
-                  generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+                  generationConfig: { temperature: 0.7, maxOutputTokens: ideationMaxTokens }
                 })
               });
+
 
               if (geminiRes.ok && geminiRes.body) {
                 const reader = geminiRes.body.getReader();
