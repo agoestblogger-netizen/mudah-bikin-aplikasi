@@ -179,14 +179,14 @@ ATURAN MUTLAK PERCAKAPAN:
      * **[Nama Role 1 — misal: Admin]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
        - [Halaman 2]: section [Section C], section [Section D]
-       - **Alur Proses**: [Aksi 1] → [Aksi 2] → [Aksi 3] → [Hasil/Status akhir] (maks 4-6 langkah, ringkas)
+       - **Alur Proses**: Klik "[Nama Tombol Aksi]" → data/status berubah jadi "[Nilai Konkret]" → Klik "[Tombol Berikutnya]" → status berubah jadi "[Nilai Akhir]" (sebutkan nama tombol pakai tanda kutip; sebutkan nilai status konkret; maks 4-6 langkah)
      * **[Nama Role 2 — misal: Kasir]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
        - [Halaman 2]: section [Section C]
-       - **Alur Proses**: [Aksi 1] → [Aksi 2] → [Aksi 3] → [Hasil]
+       - **Alur Proses**: Klik "[Nama Tombol]" → [perubahan konkret di layar] → Klik "[Tombol Konfirmasi]" → status berubah jadi "[Nilai Akhir]"
      * **[Nama Role 3 — misal: Petugas / Washer]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
-       - **Alur Proses**: [Aksi 1] → [Aksi 2] → [Hasil] (role read-only: cukup 2-3 langkah)
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (role read-only/pasif: kalau ada langkah menunggu, tulis sebagai konsekuensi aksi role lain — misal: "saat [Role Lain] klik X, status nomor ini berubah jadi Y")
 4. Tanyakan konfirmasi eksplisit di baris terakhir:
    "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail/section yang ingin diubah sebelum saya buatkan prototipenya?"`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
@@ -210,14 +210,14 @@ ATURAN MUTLAK PERCAKAPAN:
      * **[Nama Role 1 — misal: Admin]**:
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - [Halaman/Tab 2]: section [Nama Section 3], section [Nama Section 4]
-       - **Alur Proses**: [Aksi 1] → [Aksi 2] → [Aksi 3] → [Hasil/Status akhir] (maks 4-6 langkah, turunkan dari workflow bisnis nyata)
+       - **Alur Proses**: Klik "[Nama Tombol Aksi]" → [data/status berubah jadi "Nilai Konkret"] → Klik "[Tombol Berikutnya]" → status berubah jadi "[Nilai Akhir]" (WAJIB: nama tombol pakai tanda kutip, nilai status konkret, turunkan dari workflow bisnis nyata; maks 4-6 langkah)
      * **[Nama Role 2 — misal: Kasir]**:
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - [Halaman/Tab 2]: section [Nama Section 3]
-       - **Alur Proses**: [Aksi 1] → [Aksi 2] → [Aksi 3] → [Hasil]
+       - **Alur Proses**: Klik "[Nama Tombol]" → [perubahan konkret di layar, misal: item muncul di daftar] → Klik "[Tombol Konfirmasi]" → status berubah jadi "[Nilai Akhir]"
      * **[Nama Role 3 — misal: Petugas / Washer]**:
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
-       - **Alur Proses**: [Aksi 1] → [Aksi 2] → [Hasil] (role read-only atau operasional sederhana: cukup 2-3 langkah)
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (langkah menunggu pasif JANGAN ditulis sebagai aksi — tulis sebagai konsekuensi: "saat [Role Lain] klik X, status item ini berubah jadi Y")
 4. WAJIB tanyakan konfirmasi di baris terakhir:
    "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan, atau ada section/fitur yang mau ditambah/diubah sebelum saya buatkan prototipenya?"`;
       } else {
