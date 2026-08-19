@@ -118,3 +118,38 @@ export interface UIGenerationRule {
   title: string;
   ruleText: string;
 }
+
+// =============================================================================
+// 4. UX PATTERN REGISTRY SPECIFICATION (UX_Reference_Library_v1.0)
+// =============================================================================
+export type UXPatternCategory =
+  | 'Authentication'
+  | 'Customer'
+  | 'Transaction'
+  | 'Operations'
+  | 'Data'
+  | 'Analytics';
+
+export interface UXPatternInformationPriority {
+  primary: string[];
+  secondary: string[];
+  contextual: string[];
+}
+
+export interface UXPattern {
+  id: string; // e.g. "UX-CUST-04"
+  name: string; // e.g. "Patient Queue / Antrean Mandiri"
+  category: UXPatternCategory;
+  primaryUser: string;
+  userGoal: string;
+  businessContext: string;
+  informationPriority: UXPatternInformationPriority;
+  primaryAction: string[];
+  secondaryActions: string[];
+  requiredData: string[];
+  optionalData?: string[];
+  states?: string[];
+  uxRules: string[];
+  referenceProviders?: string[];
+}
+

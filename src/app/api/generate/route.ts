@@ -6,7 +6,9 @@ import {
   detectMatchingMasterTemplate,
   formatTemplateContextForIdeation,
   detectSelectivePageTemplates,
-  formatSelectivePageTemplatesForCodeGen
+  formatSelectivePageTemplatesForCodeGen,
+  findRelevantUXPatterns,
+  formatUXGuidanceForIdeation
 } from '@/lib/templates';
 
 // =============================================================================
@@ -134,6 +136,10 @@ export async function POST(req: Request) {
     const catalogSummary = getConciseCatalogSummary();
     const blueprintContext = matchedMT ? formatTemplateContextForIdeation(matchedMT) : '';
 
+    // Pencocokan UX Pattern Registry (Fase D-1)
+    const matchedUXPatterns = findRelevantUXPatterns(prompt + '\n' + allHistoryText, matchedMT?.template.id);
+    const uxGuidanceContext = formatUXGuidanceForIdeation(matchedUXPatterns);
+
     let systemPrompt = '';
 
     if (isIdeationMode) {
@@ -231,6 +237,11 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
         systemPrompt += `\n\n${blueprintContext}`;
       } else {
         systemPrompt += `\n\n=== KATALOG RINGKAS 20 BLUEPRINT INDUSTRI (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
+      }
+
+      // Suntikkan Panduan Standar UX & Prioritas Informasi (Fase D-1)
+      if (uxGuidanceContext) {
+        systemPrompt += `\n\n${uxGuidanceContext}`;
       }
     } else {
       // MODE GENERATE KODE (User sudah menyetujui Brief Kebutuhan / Tahap 2 Mockup / Tahap 5 Patch / Tahap 6)
