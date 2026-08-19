@@ -499,79 +499,84 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         render();
       }
       \`\`\`
-20. ATURAN PINTU MASUK LAYAR LOGIN SIMULASI & PEMBATASAN AKSES NYATA WAJIB (MULTI-ROLE LOGIN SCREEN GATE):
+20. ATURAN PINTU MASUK LAYAR LOGIN SIMULASI & PEMBATASAN AKSES TAB NYATA (MULTI-ROLE LOGIN SCREEN GATE — TERINTEGRASI):
     - JIKA APLIKASI MEMILIKI LEBIH DARI 1 ROLE (Multi-Role, misal: Admin / Kasir / Washer, atau Pasien / Dokter / Resepsionis):
-      1. MOCKUP WAJIB DIMULAI DARI LAYAR "LOGIN SIMULASI" (id="loginScreen") sebagai pintu masuk standar:
-         * Tampilan awal saat dibuka WAJIB berupa kartu login simulasi di tengah layar (container utama aplikasi id="appContainer" awalnya style.display = 'none').
-         * DILARANG KERAS langsung menampilkan dashboard dengan switcher instan di atas jika role > 1.
-         * Di dalam kartu login, sediakan DAFTAR PILIHAN AKUN DEMO dengan NAMA ROLE ASLI dari Brief Kebutuhan (contoh: tombol "👤 Masuk sebagai Admin", tombol "💳 Masuk sebagai Kasir", tombol "🧺 Masuk sebagai Washer").
-      2. PENGECUALIAN — AKSES PUBLIK (Pelanggan / Pasien / Tamu):
-         * Jika salah satu peran adalah akses publik tanpa akun (contoh: Pelanggan yang hanya perlu lacak resi, atau Pasien yang cek antrean mandiri):
-         * Sediakan tombol/link akses publik terpisah di layar login (misal: "🔍 Akses Publik: Lacak Pesanan / Cek Antrean Mandiri") yang langsung membuka halaman publik tanpa login.
-      3. TOMBOL KELUAR / GANTI AKUN DI HEADER (LOGOUT):
-         * Saat sudah berada di dalam aplikasi (id="appContainer"), pada header atas WAJIB selalu tersedia tombol "🚪 Keluar / Ganti Akun" (\`onclick="logout()"\`) untuk kembali ke layar login simulasi dan mencoba peran lain dengan mudah.
-      4. LANDING PAGE OTOMATIS SAAT LOGIN:
-         * Fungsi \`loginAs(role)\` WAJIB mengalihkan tab aktif langsung ke halaman landing default peran tersebut (Admin → dashboard, Kasir → kasir/pos, Washer → antrian kerja, Pelanggan → lacak resi).
-    - JIKA APLIKASI HANYA 1 ROLE (Single-User, misal: Catatan Pribadi, Kalkulator Mandiri):
-      * TIDAK ADA layar login simulasi, aplikasi langsung menampilkan halaman utama tanpa login.
-    - POLA HTML & JAVASCRIPT MULTI-ROLE LOGIN GATE WAJIB:
+
+    === BAGIAN A: LAYAR LOGIN SIMULASI ===
+      1. MOCKUP WAJIB DIMULAI DARI LAYAR "LOGIN SIMULASI" (id="loginScreen") sebagai pintu masuk:
+         * Tampilan awal: kartu login di tengah layar. Container app (id="appContainer") awalnya style.display = 'none'.
+         * DILARANG langsung menampilkan dashboard dengan tombol switcher di atas.
+         * Sediakan DAFTAR PILIHAN AKUN DEMO dengan NAMA ROLE ASLI dari Brief Kebutuhan.
+      2. TOMBOL KELUAR / GANTI AKUN:
+         * Header app WAJIB punya tombol "🚪 Keluar / Ganti Akun" (onclick="logout()").
+      3. AKSES PUBLIK (Pelanggan/Pasien/Tamu):
+         * Jika ada role publik, sediakan tombol akses langsung di layar login (tanpa login akun).
+    - JIKA APLIKASI HANYA 1 ROLE: TIDAK ADA layar login, langsung tampil ke app.
+
+    === BAGIAN B: WAJIB — DATA-ATTRIBUTE TAB GATING (GENERIK, BUKAN HARDCODED ID) ===
+    PENYEBAB REGRESI BERULANG: Dulu render() menggunakan getElementById('tab-btn-kasir') secara hardcoded —
+    jika AI membuat nama tab berbeda (misal 'tab-btn-pemeriksaan'), querySelector return null dan semua tab
+    tetap terlihat. SOLUSI PERMANEN: SETIAP tombol tab WAJIB diberi atribut data-access-roles berisi
+    daftar role yang boleh melihatnya. Fungsi render() cukup SATU loop generik — tidak peduli nama tab.
+
+    === POLA HTML WAJIB — SETIAP TOMBOL TAB HARUS PUNYA data-access-roles ===
       \`\`\`html
-      <!-- LAYAR LOGIN SIMULASI (KHUSUS MULTI-ROLE) -->
+      <!-- LAYAR LOGIN SIMULASI -->
       <div id="loginScreen" style="display: flex; min-height: 85vh; align-items: center; justify-content: center; padding: 20px;">
         <div class="card" style="max-width: 440px; width: 100%; text-align: center; padding: 32px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
           <div style="font-size: 36px; margin-bottom: 12px;">🔐</div>
           <h2 class="title" style="font-size: 22px; margin-bottom: 6px;">Pintu Masuk Aplikasi</h2>
-          <p class="subtitle" style="margin-bottom: 24px; font-size: 14px;">Silakan pilih akun peran demo untuk masuk:</p>
-          
+          <p class="subtitle" style="margin-bottom: 24px; font-size: 14px;">Pilih akun peran demo untuk masuk:</p>
           <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
-            <button type="button" class="btn-primary" onclick="loginAs('Admin')" style="justify-content: center; padding: 12px; font-size: 14px;">
-              👤 Masuk sebagai Admin
-            </button>
-            <button type="button" class="btn-secondary" onclick="loginAs('Kasir')" style="justify-content: center; padding: 12px; font-size: 14px;">
-              💳 Masuk sebagai Kasir
-            </button>
-            <button type="button" class="btn-secondary" onclick="loginAs('Washer')" style="justify-content: center; padding: 12px; font-size: 14px;">
-              🧺 Masuk sebagai Washer / Petugas
-            </button>
+            <!-- Ganti nama role sesuai Brief Kebutuhan! -->
+            <button type="button" class="btn-primary" onclick="loginAs('Admin')" style="justify-content: center; padding: 12px;">👤 Masuk sebagai Admin</button>
+            <button type="button" class="btn-secondary" onclick="loginAs('Kasir')" style="justify-content: center; padding: 12px;">💳 Masuk sebagai Kasir</button>
+            <button type="button" class="btn-secondary" onclick="loginAs('Washer')" style="justify-content: center; padding: 12px;">🧺 Masuk sebagai Washer</button>
           </div>
-
-          <!-- PINTU MASUK AKSES PUBLIK JIKA ADA -->
+          <!-- Akses Publik jika ada role tanpa login -->
           <div style="border-top: 1px solid #e2e8f0; padding-top: 16px;">
-            <button type="button" class="btn-secondary" onclick="loginAs('Pelanggan')" style="width: 100%; justify-content: center; border-style: dashed; color: #4f46e5;">
-              🔍 Akses Publik: Lacak Status / Cek Antrean
-            </button>
+            <button type="button" class="btn-secondary" onclick="loginAs('Pelanggan')" style="width: 100%; justify-content: center; border-style: dashed;">🔍 Akses Publik: Lacak Pesanan</button>
           </div>
         </div>
       </div>
 
-      <!-- KONTEN UTAMA APLIKASI (DISEMBUNYIKAN SEBELUM LOGIN) -->
+      <!-- KONTEN UTAMA APLIKASI -->
       <div id="appContainer" class="container" style="display: none;">
-        <!-- Header dengan Badge Role & Tombol Keluar/Ganti Akun -->
         <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
           <div>
             <h1 class="title" style="margin-bottom: 4px;">Nama Aplikasi</h1>
-            <p class="subtitle" style="margin-bottom: 0;">Login sebagai: <span id="currentRoleBadge" style="font-weight: 700; color: #4f46e5;">Admin</span></p>
+            <p class="subtitle" style="margin-bottom: 0;">Peran Aktif: <strong id="currentRoleBadge">-</strong></p>
           </div>
-          <button type="button" class="btn-secondary" onclick="logout()" style="padding: 8px 14px; font-size: 13px;">
-            🚪 Keluar / Ganti Akun
-          </button>
+          <button type="button" class="btn-secondary" onclick="logout()" style="padding: 8px 14px; font-size: 13px;">🚪 Keluar / Ganti Akun</button>
         </header>
 
-        <!-- Navigasi Tab Sesuai Hak Akses Role -->
+        <!-- ⚠️ WAJIB MUTLAK: SETIAP tombol tab HARUS punya atribut data-access-roles
+             berisi role yang BOLEH melihat tab ini, dipisah koma.
+             render() akan hide/show berdasarkan atribut ini — BUKAN hardcoded ID. -->
         <div class="tab-nav">
-          <button type="button" id="tab-btn-dashboard" class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
-          <button type="button" id="tab-btn-kasir" class="tab-btn" onclick="showTab('kasir')">Kasir POS</button>
-          <button type="button" id="tab-btn-antrian" class="tab-btn" onclick="showTab('antrian')">Antrian Kerja</button>
-          <button type="button" id="tab-btn-lacak" class="tab-btn" onclick="showTab('lacak')">Lacak Resi</button>
+          <button type="button" id="tab-btn-dashboard" class="tab-btn active"
+                  data-access-roles="Admin"
+                  onclick="showTab('dashboard')">📊 Dashboard</button>
+          <button type="button" id="tab-btn-kasir" class="tab-btn"
+                  data-access-roles="Admin,Kasir"
+                  onclick="showTab('kasir')">💳 Kasir POS</button>
+          <button type="button" id="tab-btn-antrian" class="tab-btn"
+                  data-access-roles="Admin,Washer"
+                  onclick="showTab('antrian')">📋 Antrian Kerja</button>
+          <button type="button" id="tab-btn-lacak" class="tab-btn"
+                  data-access-roles="Admin,Pelanggan"
+                  onclick="showTab('lacak')">🔍 Lacak Resi</button>
         </div>
-
         <!-- Konten Tab... -->
       </div>
       \`\`\`
+
+    === POLA JAVASCRIPT WAJIB — render() GENERIK dengan data-access-roles ===
       \`\`\`javascript
-      let currentRole = null; // null saat awal jika multi-role
+      let currentRole = null; // null saat awal (multi-role)
       let activeTab = 'dashboard';
 
+      // ─── MASUK SEBAGAI ROLE TERTENTU ─────────────────────────────────────────
       function loginAs(role) {
         currentRole = role;
         const loginEl = document.getElementById('loginScreen');
@@ -579,31 +584,50 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         if (loginEl) loginEl.style.display = 'none';
         if (appEl) appEl.style.display = 'block';
 
-        // Landing Tab Otomatis Mengikuti Role
-        if (role === 'Admin' || role === 'Owner') {
+        // STEP 1: Filter visibilitas tab dulu (SEBELUM showTab, agar tab landing visible)
+        filterTabsByRole(role);
+
+        // STEP 2: Arahkan ke landing tab default per role
+        if (role === 'Admin' || role === 'Owner' || role === 'Manager') {
           showTab('dashboard');
-        } else if (role === 'Kasir') {
+        } else if (role === 'Kasir' || role === 'Keuangan') {
           showTab('kasir');
-        } else if (role === 'Petugas' || role === 'Washer' || role === 'Operator') {
-          showTab('antrian');
-        } else if (role === 'Pelanggan' || role === 'Customer' || role === 'Pasien') {
-          showTab('lacak');
+        } else if (role === 'Washer' || role === 'Petugas' || role === 'Operator' || role === 'Dokter' || role === 'Teknisi') {
+          showTab('antrian'); // Sesuaikan dengan nama tab default role ini di app konkret
+        } else if (role === 'Pelanggan' || role === 'Customer' || role === 'Pasien' || role === 'Tamu') {
+          showTab('lacak'); // Tab publik
         } else {
-          showTab('dashboard');
+          // Fallback: pilih tab pertama yang VISIBLE untuk role ini
+          const firstVisible = document.querySelector('.tab-btn[style*="display: block"], .tab-btn:not([style*="display: none"])');
+          if (firstVisible) firstVisible.click();
         }
+
+        // STEP 3: Update badge & kontrol tombol aksi sensitif
         render();
         showToast('Berhasil masuk sebagai ' + role, 'success');
       }
 
+      // ─── FUNGSI UTAMA FILTER TAB (GENERIK, BERBASIS data-access-roles) ──────
+      // JANGAN GANTI dengan hardcoded getElementById per tab!
+      // Cukup set data-access-roles di setiap <button class="tab-btn"> di HTML.
+      function filterTabsByRole(role) {
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+          const allowed = (btn.getAttribute('data-access-roles') || 'Admin').split(',').map(r => r.trim());
+          btn.style.display = allowed.includes(role) ? '' : 'none';
+        });
+      }
+
+      // ─── LOGOUT / GANTI AKUN ─────────────────────────────────────────────────
       function logout() {
         currentRole = null;
         const loginEl = document.getElementById('loginScreen');
         const appEl = document.getElementById('appContainer');
         if (appEl) appEl.style.display = 'none';
         if (loginEl) loginEl.style.display = 'flex';
-        showToast('Anda telah keluar. Silakan pilih akun peran lain.', 'info');
+        showToast('Anda telah keluar. Pilih akun peran lain.', 'info');
       }
 
+      // ─── NAVIGASI TAB ─────────────────────────────────────────────────────────
       function showTab(tabName) {
         activeTab = tabName;
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -614,45 +638,46 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         if (activeBtn) activeBtn.classList.add('active');
       }
 
+      // ─── RENDER BADGE & KONTROL AKSI SENSITIF ────────────────────────────────
       function render() {
-        // Update Badge Peran
+        // Update badge peran
         const badge = document.getElementById('currentRoleBadge');
         if (badge && currentRole) badge.innerText = currentRole;
 
-        // Kontrol Visibilitas Tombol Tab Sesuai Role
-        const btnDashboard = document.getElementById('tab-btn-dashboard');
-        const btnKasir = document.getElementById('tab-btn-kasir') || document.getElementById('tab-btn-order');
-        const btnAntrian = document.getElementById('tab-btn-antrian') || document.getElementById('tab-btn-tugas');
-        const btnLacak = document.getElementById('tab-btn-lacak') || document.getElementById('tab-btn-status');
-        const btnMaster = document.getElementById('tab-btn-master') || document.getElementById('tab-btn-layanan');
-
-        if (btnDashboard) btnDashboard.style.display = (currentRole === 'Admin') ? 'block' : 'none';
-        if (btnKasir) btnKasir.style.display = (currentRole === 'Kasir' || currentRole === 'Admin') ? 'block' : 'none';
-        if (btnAntrian) btnAntrian.style.display = (currentRole === 'Petugas' || currentRole === 'Washer' || currentRole === 'Admin') ? 'block' : 'none';
-        if (btnLacak) btnLacak.style.display = (currentRole === 'Pelanggan' || currentRole === 'Admin') ? 'block' : 'none';
-        if (btnMaster) btnMaster.style.display = (currentRole === 'Admin') ? 'block' : 'none';
-
-        // Kontrol Visibilitas Aksi Sensitif
+        // Kontrol visibilitas tombol aksi sensitif via CSS class
         document.querySelectorAll('.admin-only').forEach(el => {
-          el.style.display = (currentRole === 'Admin') ? 'inline-flex' : 'none';
+          el.style.display = (currentRole === 'Admin') ? '' : 'none';
         });
+        document.querySelectorAll('.kasir-only').forEach(el => {
+          el.style.display = (currentRole === 'Kasir' || currentRole === 'Admin') ? '' : 'none';
+        });
+        document.querySelectorAll('.petugas-only').forEach(el => {
+          el.style.display = (currentRole === 'Petugas' || currentRole === 'Washer' || currentRole === 'Admin') ? '' : 'none';
+        });
+        // Tambahkan class-class sensitif lain sesuai kebutuhan app konkret
       }
       \`\`\`
+
 21. DESAIN UI PER ROLE BERDASARKAN JOB DESCRIPTION & STRUKTUR SECTION (ROLE-AWARE UX — WAJIB DITERAPKAN JIKA ADA MULTI-ROLE):
-    - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA dan MENGIKUTI STRUKTUR HALAMAN & SECTION yang telah dideklarasikan di lembar Brief Kebutuhan:
+    - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA:
     - ATURAN WAJIB:
-      a. TAB/HALAMAN DEFAULT SAAT LOGIN WAJIB MENGIKUTI DEKLARASI BRIEF: Fungsi loginAs(role) WAJIB mengalihkan tab aktif ke halaman landing role tersebut secara otomatis. Contoh:
-         - Role Washer / Petugas / Operator Lapangan → WAJIB default ke tab "Antrian Kerja" / "Tugas" (PT-07 Queue), BUKAN Dashboard.
-         - Role Kasir / Keuangan → WAJIB default ke tab "Input Pesanan" / "Kasir" (PT-08 POS), BUKAN Dashboard.
-         - Role Pelanggan / Pasien / Tamu → WAJIB default ke tab "Lacak Cucian" / "Status Pesanan", BUKAN Dashboard.
-         - Role Admin / Manager / Owner → default ke tab "Dashboard" / "Ringkasan" (PT-01 Dashboard).
-      c. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA: Semua section yang tercantum pada breakdown Brief Kebutuhan (misal: section Ringkasan Statistik, section Form Order Baru, section Antrian Tugas, section Daftar Stok) WAJIB benar-benar ada sebagai kartu/blok terpisah yang jelas di halaman terkait.
-      d. KOLOM TABEL DISESUAIKAN PER ROLE: Jika tabel yang sama diakses oleh beberapa role, kolom yang TIDAK RELEVAN untuk role tertentu WAJIB disembunyikan di loop render().
-      e. KARTU STATISTIK DASHBOARD BERBEDA PER ROLE: Jika ada halaman Ringkasan/Dashboard, kartu metrik yang ditampilkan WAJIB relevan untuk role tersebut.
-      f. DATA TIDAK BOLEH BERBEDA — Sumber data (array state) TETAP SAMA untuk semua role. Yang berbeda HANYA tampilan/filter/kolom/section yang dirender di UI. DILARANG membuat array data terpisah per role.
+      a. SETIAP TOMBOL TAB WAJIB PUNYA data-access-roles: Format: data-access-roles="RoleA,RoleB" — daftar role yang BOLEH melihat tab ini. Contoh:
+         - Tab Dashboard → data-access-roles="Admin" (HANYA Admin)
+         - Tab Pemeriksaan Dokter (klinik) → data-access-roles="Admin,Dokter"
+         - Tab Kasir & Tagihan → data-access-roles="Admin,Kasir,Resepsionis"
+         - Tab Lacak Resi / Antrean Publik → data-access-roles="Admin,Pelanggan,Pasien"
+         SESUAIKAN dengan nama role ASLI dari Brief Kebutuhan, jangan pakai nama generik.
+      b. LANDING TAB DEFAULT PER ROLE WAJIB SESUAI BRIEF: loginAs(role) → filterTabsByRole(role) → showTab ke landing default.
+         - Role Washer/Petugas/Dokter/Teknisi → tab kerja utama mereka (bukan Dashboard)
+         - Role Kasir/Keuangan → tab POS / Kasir
+         - Role Pelanggan/Pasien → tab Lacak/Antrean publik
+         - Role Admin/Owner → tab Dashboard
+      c. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA di halaman terkait.
+      d. KOLOM TABEL & KARTU STATISTIK DISESUAIKAN PER ROLE di loop render().
+      e. DATA TIDAK BOLEH BERBEDA — array state TETAP SAMA, yang beda hanya tampilan/filter per role.
 23. EFISIENSI MODAL & KESELARASAN HANDLER JAVASCRIPT LENGKAP:
     - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
-    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`switchRole\`, \`showTab\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`updateStatusCuci\`, \`cariResi\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
+    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`updateStatusCuci\`, \`cariResi\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
 
 
 
@@ -669,8 +694,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 - Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
 - Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
   1. Data awal 3-5 item contoh realistis (Prinsip 1).
-  2. Role Switcher & Gating Fungsional Nyata (Prinsip 20): fungsi switchRole(role) WAJIB mengarahkan tab aktif langsung ke default landing tiap role (Admin -> Dashboard, Kasir -> Kasir POS / Input Pesanan, Petugas/Washer -> Antrian Kerja Cucian, Pelanggan -> Lacak Status Resi).
-  3. Visibilitas Tab Terbatas (Prinsip 20 & 21): Tab Dashboard HANYA boleh muncul untuk Admin (style.display='none' untuk Kasir, Washer, dan Pelanggan).
+  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. filterTabsByRole() dipanggil pertama kali di loginAs() SEBELUM showTab(), agar tab yg tidak diizinkan benar-benar tersembunyi setelah login.
+  3. Visibilitas Tab Terbatas Per Role (Prinsip 20 & 21): Tab Dashboard hanya muncul untuk Admin. Setiap tab-btn WAJIB punya data-access-roles="RoleA,RoleB" sesuai role yang boleh melihatnya. DILARANG hardcode getElementById('tab-btn-xxx') untuk filter tab.
   4. Kepatuhan Layout Page Template Baku (Prinsip 22): antrian cuci berbentuk kartu antrean (PT-07), kasir berbentuk POS (PT-08), dashboard berbentuk KPI (PT-01).
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
   6. Styling CSS modern murni tanpa Tailwind Play CDN, event handler 100% selaras.

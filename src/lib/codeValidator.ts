@@ -236,15 +236,53 @@ export function validateAndRepairGeneratedCode(
   }
   repairedHtml = repairedHtml.replace(/<button(?![^>]*type=)([^>]*)>/gi, '<button type="button"$1>');
 
-  // 10. Pemeriksaan Integritas Pembatasan Akses Role Switcher (Section 13)
-  // Jika kode memiliki variabel/fungsi terkait role, pastikan ada logika kondisional yang membatasi tampilan (style.display, hidden, dsb)
-  const hasRoleLogic = /currentRole|userRole|activeRole|switchRole|toggleRole|gantiRole|changeRole/i.test(combinedJs);
-  if (hasRoleLogic) {
-    const hasRoleConditionInJs = /currentRole\s*===|userRole\s*===|activeRole\s*===|role\s*===|switchRole\s*\(|toggleRole\s*\(/i.test(combinedJs);
-    const hasRoleVisibilityControl = /style\.display|\.classList\.(?:add|remove|toggle)|\.hidden|disabled\s*=/i.test(combinedJs);
-    
-    if (hasRoleConditionInJs && !hasRoleVisibilityControl) {
-      issues.push(`ROLE_GATING_MISSING: Terdeteksi variabel/fungsi Role Switcher, tetapi TIDAK ADA logika kondisional yang membatasi visibilitas tab atau tombol aksi secara nyata.`);
+  // 10. Pemeriksaan Integritas Pembatasan Akses Role per Tab (Poin 40 — data-access-roles)
+  // Jika kode memiliki loginAs() atau multi-role logic, SETIAP .tab-btn WAJIB punya data-access-roles
+  const hasLoginAsFunc = /function\s+loginAs\s*\(/.test(combinedJs) || /loginAs\s*=\s*(function|\()/.test(combinedJs);
+  const hasMultiRoleLogic = /currentRole|loginAs|filterTabsByRole/i.test(combinedJs);
+
+  if (hasMultiRoleLogic || hasLoginAsFunc) {
+    // Cek apakah ada fungsi filterTabsByRole
+    const hasFilterTabsByRole = /filterTabsByRole\s*\(/.test(combinedJs) ||
+                                 /\.getAttribute\s*\(\s*['"]data-access-roles['"]\s*\)/.test(combinedJs);
+
+    // Cari semua tab-btn button
+    const tabBtnMatches = [...repairedHtml.matchAll(/<button[^>]*class=[^>]*tab-btn[^>]*>/gi)];
+    const tabBtnsWithoutAccessRoles = tabBtnMatches.filter(m => !m[0].includes('data-access-roles'));
+
+    if (tabBtnsWithoutAccessRoles.length > 0) {
+      issues.push(
+        `ROLE_GATING_MISSING_DATA_ATTR: Ditemukan ${tabBtnsWithoutAccessRoles.length} tombol tab-btn TANPA atribut data-access-roles. ` +
+        `WAJIB tambahkan data-access-roles="RoleA,RoleB" pada SETIAP <button class="tab-btn"> ` +
+        `agar filterTabsByRole() bekerja generik tanpa hardcoded getElementById. ` +
+        `Contoh: data-access-roles="Admin,Dokter"`
+      );
+    }
+
+    if (!hasFilterTabsByRole && tabBtnMatches.length > 0) {
+      // Cek apakah ada hardcoded getElementById per tab (pola lama yang rawan regresi)
+      const hasHardcodedTabFilter = /getElementById\s*\(\s*['"]tab-btn-/.test(combinedJs);
+      if (hasHardcodedTabFilter) {
+        issues.push(
+          `ROLE_GATING_HARDCODED: Ditemukan pola getElementById('tab-btn-...') hardcoded untuk kontrol tab. ` +
+          `WAJIB ganti dengan fungsi filterTabsByRole() generik yang membaca atribut data-access-roles. ` +
+          `Ini adalah akar penyebab regresi berulang saat nama tab berbeda antar app.`
+        );
+      }
+    }
+
+    // Cek apakah loginAs() memanggil filterTabsByRole() sebelum showTab()
+    const loginAsFuncMatch = combinedJs.match(/function\s+loginAs\s*\([^)]*\)\s*\{([\s\S]*?)(?=\nfunction |\nconst |\nlet |\nvar |\n\/\/|$)/);
+    if (loginAsFuncMatch) {
+      const loginAsBody = loginAsFuncMatch[1];
+      const callsFilterTabs = /filterTabsByRole\s*\(/.test(loginAsBody);
+      const callsRender = /render\s*\(\)/.test(loginAsBody);
+      if (!callsFilterTabs && !callsRender) {
+        issues.push(
+          `ROLE_GATING_LOGIN_MISSING_FILTER: Fungsi loginAs() tidak memanggil filterTabsByRole() atau render(). ` +
+          `loginAs() WAJIB memanggil filterTabsByRole(role) SEBELUM showTab() agar tab tersembunyi dengan benar.`
+        );
+      }
     }
   }
 
