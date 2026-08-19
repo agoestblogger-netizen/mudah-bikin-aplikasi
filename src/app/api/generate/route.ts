@@ -68,6 +68,35 @@ function isCodeTruncatedOrBroken(text: string): boolean {
   return false;
 }
 
+// Helper: Ekstraksi Brief Kebutuhan dan Daftar Peran Resmi dari Riwayat Chat (Poin 44)
+function extractBriefAndRolesFromHistory(chatHistory: any[]): { rawBrief: string; roles: string[] } {
+  const aiMessages = (chatHistory || []).filter((m: any) => m.sender === 'AI' && (m.text?.includes('Brief Kebutuhan') || m.text?.includes('Job Description') || m.text?.includes('Struktur Halaman')));
+  const lastBriefMsg = aiMessages[aiMessages.length - 1]?.text || '';
+  
+  const roles: string[] = [];
+  if (lastBriefMsg) {
+    // Cari section Job Description & Struktur Halaman
+    const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
+    const jobDescText = jobDescMatch ? jobDescMatch[1] : lastBriefMsg;
+    
+    // Cari baris-baris peran: * **RoleName**: atau * **[RoleName]**:
+    const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
+    let m: RegExpExecArray | null;
+    while ((m = roleLineRegex.exec(jobDescText)) !== null) {
+      let roleName = m[1].trim();
+      // Bersihkan kata awalan jika ada
+      roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
+      const forbiddenKeywords = ['nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3'];
+      const isForbidden = forbiddenKeywords.some(k => roleName.toLowerCase().startsWith(k));
+      if (roleName && !isForbidden && !roles.some(r => r.toLowerCase() === roleName.toLowerCase())) {
+        roles.push(roleName);
+      }
+    }
+  }
+
+  return { rawBrief: lastBriefMsg, roles };
+}
+
 export async function POST(req: Request) {
   try {
     // 1. Rate Limiting Check (PRD Bagian 10)
@@ -90,6 +119,7 @@ export async function POST(req: Request) {
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
+    const { rawBrief: approvedBrief, roles: officialRoles } = extractBriefAndRolesFromHistory(chatHistory);
     
     // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Eksekusi Revisi
     const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang)($|\b)/i.test(prompt.trim());
@@ -505,24 +535,22 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
       \`\`\`
 20. ATURAN PINTU MASUK LAYAR LOGIN SIMULASI & PEMBATASAN AKSES TAB NYATA (MULTI-ROLE LOGIN SCREEN GATE — TERINTEGRASI):
-    - JIKA APLIKASI MEMILIKI LEBIH DARI 1 ROLE (Multi-Role, misal: Admin / Kasir / Washer, atau Pasien / Dokter / Resepsionis):
+    - JIKA APLIKASI MEMILIKI LEBIH DARI 1 ROLE (Multi-Role):
 
     === BAGIAN A: LAYAR LOGIN SIMULASI ===
       1. MOCKUP WAJIB DIMULAI DARI LAYAR "LOGIN SIMULASI" (id="loginScreen") sebagai pintu masuk:
          * Tampilan awal: kartu login di tengah layar. Container app (id="appContainer") awalnya style.display = 'none'.
          * DILARANG langsung menampilkan dashboard dengan tombol switcher di atas.
-         * Sediakan DAFTAR PILIHAN AKUN DEMO dengan NAMA ROLE ASLI dari Brief Kebutuhan.
+         * Sediakan DAFTAR PILIHAN AKUN DEMO dengan NAMA PERAN ASLI dari Brief Kebutuhan.
       2. TOMBOL KELUAR / GANTI AKUN:
          * Header app WAJIB punya tombol "🚪 Keluar / Ganti Akun" (onclick="logout()").
       3. AKSES PUBLIK (Pelanggan/Pasien/Tamu):
-         * Jika ada role publik, sediakan tombol akses langsung di layar login (tanpa login akun).
+         * Jika ada peran publik, sediakan tombol akses langsung di layar login (tanpa login akun).
     - JIKA APLIKASI HANYA 1 ROLE: TIDAK ADA layar login, langsung tampil ke app.
 
     === BAGIAN B: WAJIB — DATA-ATTRIBUTE TAB GATING (GENERIK, BUKAN HARDCODED ID) ===
-    PENYEBAB REGRESI BERULANG: Dulu render() menggunakan getElementById('tab-btn-kasir') secara hardcoded —
-    jika AI membuat nama tab berbeda (misal 'tab-btn-pemeriksaan'), querySelector return null dan semua tab
-    tetap terlihat. SOLUSI PERMANEN: SETIAP tombol tab WAJIB diberi atribut data-access-roles berisi
-    daftar role yang boleh melihatnya. Fungsi render() cukup SATU loop generik — tidak peduli nama tab.
+    SOLUSI PERMANEN: SETIAP tombol tab WAJIB diberi atribut data-access-roles berisi
+    daftar peran yang boleh melihatnya. Fungsi render() cukup SATU loop generik — tidak peduli nama tab.
 
     === POLA HTML WAJIB — SETIAP TOMBOL TAB HARUS PUNYA data-access-roles ===
       \`\`\`html
@@ -533,14 +561,13 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           <h2 class="title" style="font-size: 22px; margin-bottom: 6px;">Pintu Masuk Aplikasi</h2>
           <p class="subtitle" style="margin-bottom: 24px; font-size: 14px;">Pilih akun peran demo untuk masuk:</p>
           <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
-            <!-- Ganti nama role sesuai Brief Kebutuhan! -->
-            <button type="button" class="btn-primary" onclick="loginAs('Admin')" style="justify-content: center; padding: 12px;">👤 Masuk sebagai Admin</button>
-            <button type="button" class="btn-secondary" onclick="loginAs('Kasir')" style="justify-content: center; padding: 12px;">💳 Masuk sebagai Kasir</button>
-            <button type="button" class="btn-secondary" onclick="loginAs('Washer')" style="justify-content: center; padding: 12px;">🧺 Masuk sebagai Washer</button>
+            <!-- ⚠️ WAJIB: Buat tombol demo login HANYA untuk nama-nama peran resmi dari Brief Kebutuhan -->
+            <button type="button" class="btn-primary" onclick="loginAs('NamaPeran1')" style="justify-content: center; padding: 12px;">👤 Masuk sebagai [Nama Peran 1]</button>
+            <button type="button" class="btn-secondary" onclick="loginAs('NamaPeran2')" style="justify-content: center; padding: 12px;">💳 Masuk sebagai [Nama Peran 2]</button>
           </div>
-          <!-- Akses Publik jika ada role tanpa login -->
+          <!-- Akses Publik jika ada peran publik tanpa login (misal: Pasien/Pelanggan) -->
           <div style="border-top: 1px solid #e2e8f0; padding-top: 16px;">
-            <button type="button" class="btn-secondary" onclick="loginAs('Pelanggan')" style="width: 100%; justify-content: center; border-style: dashed;">🔍 Akses Publik: Lacak Pesanan</button>
+            <button type="button" class="btn-secondary" onclick="loginAs('NamaPeranPublik')" style="width: 100%; justify-content: center; border-style: dashed;">🔍 Akses Publik: [Nama Fitur Publik]</button>
           </div>
         </div>
       </div>
@@ -556,21 +583,18 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         </header>
 
         <!-- ⚠️ WAJIB MUTLAK: SETIAP tombol tab HARUS punya atribut data-access-roles
-             berisi role yang BOLEH melihat tab ini, dipisah koma.
+             berisi peran yang BOLEH melihat tab ini, dipisah koma.
              render() akan hide/show berdasarkan atribut ini — BUKAN hardcoded ID. -->
         <div class="tab-nav">
-          <button type="button" id="tab-btn-dashboard" class="tab-btn active"
-                  data-access-roles="Admin"
-                  onclick="showTab('dashboard')">📊 Dashboard</button>
-          <button type="button" id="tab-btn-kasir" class="tab-btn"
-                  data-access-roles="Admin,Kasir"
-                  onclick="showTab('kasir')">💳 Kasir POS</button>
-          <button type="button" id="tab-btn-antrian" class="tab-btn"
-                  data-access-roles="Admin,Washer"
-                  onclick="showTab('antrian')">📋 Antrian Kerja</button>
-          <button type="button" id="tab-btn-lacak" class="tab-btn"
-                  data-access-roles="Admin,Pelanggan"
-                  onclick="showTab('lacak')">🔍 Lacak Resi</button>
+          <button type="button" id="tab-btn-tab1" class="tab-btn active"
+                  data-access-roles="NamaPeran1"
+                  onclick="showTab('tab1')">📋 [Nama Tab 1]</button>
+          <button type="button" id="tab-btn-tab2" class="tab-btn"
+                  data-access-roles="NamaPeran1,NamaPeran2"
+                  onclick="showTab('tab2')">💳 [Nama Tab 2]</button>
+          <button type="button" id="tab-btn-tabpublik" class="tab-btn"
+                  data-access-roles="NamaPeranPublik"
+                  onclick="showTab('tabpublik')">🔍 [Nama Tab Publik]</button>
         </div>
         <!-- Konten Tab... -->
       </div>
@@ -579,7 +603,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     === POLA JAVASCRIPT WAJIB — render() GENERIK dengan data-access-roles ===
       \`\`\`javascript
       let currentRole = null; // null saat awal (multi-role)
-      let activeTab = 'dashboard';
+      let activeTab = 'tab1';
 
       // ─── MASUK SEBAGAI ROLE TERTENTU ─────────────────────────────────────────
       function loginAs(role) {
@@ -592,18 +616,16 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         // STEP 1: Filter visibilitas tab dulu (SEBELUM showTab, agar tab landing visible)
         filterTabsByRole(role);
 
-        // STEP 2: Arahkan ke landing tab default per role
-        if (role === 'Admin' || role === 'Owner' || role === 'Manager') {
-          showTab('dashboard');
-        } else if (role === 'Kasir' || role === 'Keuangan') {
-          showTab('kasir');
-        } else if (role === 'Washer' || role === 'Petugas' || role === 'Operator' || role === 'Dokter' || role === 'Teknisi') {
-          showTab('antrian'); // Sesuaikan dengan nama tab default role ini di app konkret
-        } else if (role === 'Pelanggan' || role === 'Customer' || role === 'Pasien' || role === 'Tamu') {
-          showTab('lacak'); // Tab publik
+        // STEP 2: Arahkan ke landing tab default per peran SESUAI BRIEF KEBUTUHAN
+        if (role === 'NamaPeran1') {
+          showTab('tab1');
+        } else if (role === 'NamaPeran2') {
+          showTab('tab2');
+        } else if (role === 'NamaPeranPublik') {
+          showTab('tabpublik');
         } else {
-          // Fallback: pilih tab pertama yang VISIBLE untuk role ini
-          const firstVisible = document.querySelector('.tab-btn[style*="display: block"], .tab-btn:not([style*="display: none"])');
+          // Fallback: pilih tab pertama yang VISIBLE untuk peran ini
+          const firstVisible = document.querySelector('.tab-btn:not([style*="display: none"])');
           if (firstVisible) firstVisible.click();
         }
 
@@ -617,7 +639,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       // Cukup set data-access-roles di setiap <button class="tab-btn"> di HTML.
       function filterTabsByRole(role) {
         document.querySelectorAll('.tab-btn').forEach(btn => {
-          const allowed = (btn.getAttribute('data-access-roles') || 'Admin').split(',').map(r => r.trim());
+          const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim());
           btn.style.display = allowed.includes(role) ? '' : 'none';
         });
       }
@@ -636,7 +658,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       function showTab(tabName) {
         activeTab = tabName;
         document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-        const target = document.getElementById('tab-' + tabName);
+        const target = document.getElementById('tab-' + tabName) || document.getElementById(tabName);
         if (target) target.classList.add('active');
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         const activeBtn = document.getElementById('tab-btn-' + tabName);
@@ -648,43 +670,21 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         // Update badge peran
         const badge = document.getElementById('currentRoleBadge');
         if (badge && currentRole) badge.innerText = currentRole;
-
-        // Kontrol visibilitas tombol aksi sensitif via CSS class
-        document.querySelectorAll('.admin-only').forEach(el => {
-          el.style.display = (currentRole === 'Admin') ? '' : 'none';
-        });
-        document.querySelectorAll('.kasir-only').forEach(el => {
-          el.style.display = (currentRole === 'Kasir' || currentRole === 'Admin') ? '' : 'none';
-        });
-        document.querySelectorAll('.petugas-only').forEach(el => {
-          el.style.display = (currentRole === 'Petugas' || currentRole === 'Washer' || currentRole === 'Admin') ? '' : 'none';
-        });
-        // Tambahkan class-class sensitif lain sesuai kebutuhan app konkret
       }
       \`\`\`
 
 21. DESAIN UI PER ROLE BERDASARKAN JOB DESCRIPTION & STRUKTUR SECTION (ROLE-AWARE UX — WAJIB DITERAPKAN JIKA ADA MULTI-ROLE):
     - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA:
     - ATURAN WAJIB:
-      a. SETIAP TOMBOL TAB WAJIB PUNYA data-access-roles: Format: data-access-roles="RoleA,RoleB" — daftar role yang BOLEH melihat tab ini. Contoh:
-         - Tab Dashboard → data-access-roles="Admin" (HANYA Admin)
-         - Tab Pemeriksaan Dokter (klinik) → data-access-roles="Admin,Dokter"
-         - Tab Kasir & Tagihan → data-access-roles="Admin,Kasir,Resepsionis"
-         - Tab Lacak Resi / Antrean Publik → data-access-roles="Admin,Pelanggan,Pasien"
-         SESUAIKAN dengan nama role ASLI dari Brief Kebutuhan, jangan pakai nama generik.
-      b. LANDING TAB DEFAULT PER ROLE WAJIB SESUAI BRIEF: loginAs(role) → filterTabsByRole(role) → showTab ke landing default.
-         - Role Washer/Petugas/Dokter/Teknisi → tab kerja utama mereka (bukan Dashboard)
-         - Role Kasir/Keuangan → tab POS / Kasir
-         - Role Pelanggan/Pasien → tab Lacak/Antrean publik
-         - Role Admin/Owner → tab Dashboard
+      a. SETIAP TOMBOL TAB WAJIB PUNYA data-access-roles: Format: data-access-roles="RoleA,RoleB" — daftar peran yang BOLEH melihat tab ini.
+         SESUAIKAN dengan nama peran ASLI dari Brief Kebutuhan, JANGAN pakai nama peran dari domain lain.
+      b. LANDING TAB DEFAULT PER ROLE WAJIB SESUAI BRIEF: loginAs(role) → filterTabsByRole(role) → showTab ke landing default masing-masing peran.
       c. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA di halaman terkait.
       d. KOLOM TABEL & KARTU STATISTIK DISESUAIKAN PER ROLE di loop render().
       e. DATA TIDAK BOLEH BERBEDA — array state TETAP SAMA, yang beda hanya tampilan/filter per role.
 23. EFISIENSI MODAL & KESELARASAN HANDLER JAVASCRIPT LENGKAP:
     - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
-    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`updateStatusCuci\`, \`cariResi\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
-
-
+    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
 
       // Seleksi Page Template Baku Berdasarkan Brief Kebutuhan (Fase C)
       const selectivePageMappings = detectSelectivePageTemplates(prompt + '\n' + allHistoryText);
@@ -693,15 +693,34 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         systemPrompt += `\n\n${selectivePTDirective}`;
       }
 
+      // Ekstraksi Brief Kebutuhan & Daftar Peran Resmi (Poin 44: Single Source of Truth)
+      const { rawBrief: approvedBrief, roles: officialRoles } = extractBriefAndRolesFromHistory(chatHistory);
+
+      if (officialRoles.length > 0) {
+        systemPrompt += `\n\n` +
+`================================================================================
+⚠️ SUMBER KEBENARAN TUNGGAL PERAN & STRUKTUR APLIKASI (ROLE LOCKING MUTLAK):
+Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
+${officialRoles.map((r, i) => `  ${i + 1}. "${r}"`).join('\n')}
+
+ATURAN KONSISTENSI PERAN MUTLAK (DILARANG MENYIMPANG):
+1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
+2. DILARANG KERAS menambahkan role generic dari industri/domain lain (seperti Admin, Kasir, Washer, Petugas, Owner, Manager) jika role tersebut TIDAK TERCANTUM dalam daftar resmi di atas!
+3. Layar Login Simulasi (id="loginScreen") WAJIB HANYA memiliki tombol untuk peran-peran resmi di atas:
+${officialRoles.map(r => `   <button type="button" class="btn-primary" onclick="loginAs('${r}')">Masuk sebagai ${r}</button>`).join('\n')}
+4. SETIAP tombol tab (<button class="tab-btn">) WAJIB menggunakan atribut data-access-roles yang HANYA berisi nama peran dari daftar resmi di atas (contoh: data-access-roles="${officialRoles[0]}" atau data-access-roles="${officialRoles.join(',')}").
+5. Fungsi loginAs(role) WAJIB mencakup percabangan if/else untuk SETIAP peran resmi di atas.
+================================================================================`;
+      }
 
       if (stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) {
         systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
 - Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
 - Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
   1. Data awal 3-5 item contoh realistis (Prinsip 1).
-  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. filterTabsByRole() dipanggil pertama kali di loginAs() SEBELUM showTab(), agar tab yg tidak diizinkan benar-benar tersembunyi setelah login.
-  3. Visibilitas Tab Terbatas Per Role (Prinsip 20 & 21): Tab Dashboard hanya muncul untuk Admin. Setiap tab-btn WAJIB punya data-access-roles="RoleA,RoleB" sesuai role yang boleh melihatnya. DILARANG hardcode getElementById('tab-btn-xxx') untuk filter tab.
-  4. Kepatuhan Layout Page Template Baku (Prinsip 22): antrian cuci berbentuk kartu antrean (PT-07), kasir berbentuk POS (PT-08), dashboard berbentuk KPI (PT-01).
+  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}). filterTabsByRole() dipanggil pertama kali di loginAs() SEBELUM showTab(), agar tab yg tidak diizinkan benar-benar tersembunyi setelah login.
+  3. Visibilitas Tab Terbatas Per Role (Prinsip 20 & 21): Setiap tab-btn WAJIB punya data-access-roles="..." sesuai peran resmi yang boleh melihatnya. DILARANG hardcode getElementById('tab-btn-xxx') untuk filter tab.
+  4. Kepatuhan Layout Page Template Baku (Prinsip 22): wujudkan layout visual sesuai fungsi halaman di Brief Kebutuhan (misal: antrean dengan kartu antrean, POS/transaksi dengan layout kasir, dashboard dengan ringkasan metrik).
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
   6. Styling CSS modern murni tanpa Tailwind Play CDN, event handler 100% selaras.
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
@@ -922,44 +941,45 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
     let actualProviderUsed = aiProvider;
 
+    // Susun Contents Gemini dengan Aturan Role Bergantian (user / model)
+    const rawContents: { role: string; text: string }[] = [];
+    recentHistory.forEach((m: any) => {
+      rawContents.push({
+        role: m.sender === 'AI' ? 'model' : 'user',
+        text: m.text
+      });
+    });
+    rawContents.push({
+      role: 'user',
+      text: userPromptWithContext
+    });
+
+    // Gabungkan pesan berurutan dengan role yang sama
+    const geminiContents: { role: string; parts: { text: string }[] }[] = [];
+    for (const item of rawContents) {
+      const last = geminiContents[geminiContents.length - 1];
+      if (last && last.role === item.role) {
+        last.parts[0].text += '\n\n' + item.text;
+      } else {
+        geminiContents.push({
+          role: item.role,
+          parts: [{ text: item.text }]
+        });
+      }
+    }
+
+    // Pastikan pesan pertama ber-role 'user'
+    if (geminiContents.length > 0 && geminiContents[0].role !== 'user') {
+      geminiContents.unshift({
+        role: 'user',
+        parts: [{ text: 'Halo' }]
+      });
+    }
+
     // =========================================================================
     // JALUR 1: GEMINI API (DIPENGARUHI OLEH getGeminiModel())
     // =========================================================================
     if (aiProvider === 'gemini') {
-      // Susun Contents dengan Aturan Role Bergantian (user / model)
-      const rawContents: { role: string; text: string }[] = [];
-      recentHistory.forEach((m: any) => {
-        rawContents.push({
-          role: m.sender === 'AI' ? 'model' : 'user',
-          text: m.text
-        });
-      });
-      rawContents.push({
-        role: 'user',
-        text: userPromptWithContext
-      });
-
-      // Gabungkan pesan berurutan dengan role yang sama
-      const geminiContents: { role: string; parts: { text: string }[] }[] = [];
-      for (const item of rawContents) {
-        const last = geminiContents[geminiContents.length - 1];
-        if (last && last.role === item.role) {
-          last.parts[0].text += '\n\n' + item.text;
-        } else {
-          geminiContents.push({
-            role: item.role,
-            parts: [{ text: item.text }]
-          });
-        }
-      }
-
-      // Pastikan pesan pertama ber-role 'user'
-      if (geminiContents.length > 0 && geminiContents[0].role !== 'user') {
-        geminiContents.unshift({
-          role: 'user',
-          parts: [{ text: 'Halo' }]
-        });
-      }
 
       const candidateModels = [
         activeGeminiModel,
@@ -1255,7 +1275,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     }
 
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan pada mode generate kode)
-    let validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '') : null;
+    let validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles) : null;
 
     // NFR-10b: Pemeriksaan Integritas, Kelengkapan Tag, Sintaks JavaScript, & Keselarasan DOM Otomatis (Hanya pada mode generate kode)
     const isCodeIncomplete = !htmlCode || !htmlCode.includes('</html>') || !htmlCode.includes('</script>');
@@ -1281,7 +1301,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemPrompt }] },
               contents: [
-                { role: 'user', parts: [{ text: userPromptWithContext }] },
+                ...geminiContents,
                 { role: 'model', parts: [{ text: assistantMessage }] },
                 { role: 'user', parts: [{ text: `PERINGATAN KRITIS NFR-10b (VALIDASI SINTAKS & KELENGKAPAN KODE):
 Ditemukan kendala serius pada kode yang Anda berikan:
@@ -1289,10 +1309,11 @@ Ditemukan kendala serius pada kode yang Anda berikan:
 
 INSTRUKSI PERBAIKAN WAJIB:
 1. Hasilkan KODE HTML LENGKAP DAN UTUH dari <!DOCTYPE html> sampai </html> di dalam blok \`\`\`html ... \`\`\`.
-2. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
-3. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
-4. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-5. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }] }
+2. KONSISTENSI PERAN MUTLAK: Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}). DILARANG KERAS memuat peran dari domain lain (seperti Washer/Kasir/Admin jika tidak ada di Brief Kebutuhan)!
+3. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
+4. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+6. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
             })
@@ -1303,12 +1324,12 @@ INSTRUKSI PERBAIKAN WAJIB:
           if (repairMatch) {
             htmlCode = repairMatch[1].trim();
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
             htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             repairSuccess = true;
           }
         } catch (e) {
@@ -1331,10 +1352,11 @@ Ditemukan kendala serius pada kode yang Anda berikan:
 
 INSTRUKSI PERBAIKAN WAJIB:
 1. Hasilkan KODE HTML LENGKAP DAN UTUH dari <!DOCTYPE html> sampai </html> di dalam blok \`\`\`html ... \`\`\`.
-2. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
-3. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
-4. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-5. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
+2. KONSISTENSI PERAN MUTLAK: Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}). DILARANG KERAS memuat peran dari domain lain (seperti Washer/Kasir/Admin jika tidak ada di Brief Kebutuhan)!
+3. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
+4. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
+5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
+6. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
         ];
 
         const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1351,17 +1373,21 @@ INSTRUKSI PERBAIKAN WAJIB:
           })
         });
 
-        const repairData = await repairRes.json();
-        const repairMsg = repairData.choices?.[0]?.message?.content || '';
-        const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
-        if (repairMatch) {
-          htmlCode = repairMatch[1].trim();
-          assistantMessage = repairMsg;
-          validated = validateAndRepairGeneratedCode(htmlCode, '', '');
-        } else if (repairMsg.includes('```html')) {
-          htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
-          assistantMessage = repairMsg;
-          validated = validateAndRepairGeneratedCode(htmlCode, '', '');
+        if (repairRes.ok) {
+          const repairData = await repairRes.json();
+          const repairMsg = repairData.choices?.[0]?.message?.content || '';
+          const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
+          if (repairMatch) {
+            htmlCode = repairMatch[1].trim();
+            assistantMessage = repairMsg;
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            repairSuccess = true;
+          } else if (repairMsg.includes('```html')) {
+            htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
+            assistantMessage = repairMsg;
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            repairSuccess = true;
+          }
         }
       }
     }

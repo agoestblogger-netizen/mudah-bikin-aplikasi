@@ -16,7 +16,8 @@ export interface ValidationReport {
 export function validateAndRepairGeneratedCode(
   html: string,
   css: string,
-  js: string
+  js: string,
+  expectedRoles?: string[]
 ): ValidationReport {
   const issues: string[] = [];
   let repairedHtml = html;
@@ -271,18 +272,34 @@ export function validateAndRepairGeneratedCode(
       }
     }
 
-    // Cek apakah loginAs() memanggil filterTabsByRole() sebelum showTab()
-    const loginAsFuncMatch = combinedJs.match(/function\s+loginAs\s*\([^)]*\)\s*\{([\s\S]*?)(?=\nfunction |\nconst |\nlet |\nvar |\n\/\/|$)/);
-    if (loginAsFuncMatch) {
-      const loginAsBody = loginAsFuncMatch[1];
-      const callsFilterTabs = /filterTabsByRole\s*\(/.test(loginAsBody);
-      const callsRender = /render\s*\(\)/.test(loginAsBody);
-      if (!callsFilterTabs && !callsRender) {
-        issues.push(
-          `ROLE_GATING_LOGIN_MISSING_FILTER: Fungsi loginAs() tidak memanggil filterTabsByRole() atau render(). ` +
-          `loginAs() WAJIB memanggil filterTabsByRole(role) SEBELUM showTab() agar tab tersembunyi dengan benar.`
-        );
-      }
+    // 10b. Pemeriksaan Kontaminasi Peran (Poin 44: Single Source of Truth dari Brief Kebutuhan)
+    if (expectedRoles && expectedRoles.length > 0) {
+      const normalizedExpected = expectedRoles.map(r => r.trim().toLowerCase());
+      
+      // Ambil semua role yang dipanggil via loginAs('...') di HTML
+      const loginAsCalls = [...repairedHtml.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1].trim());
+      const uniqueLoginRoles = [...new Set(loginAsCalls)];
+
+      // Deteksi role asing / tercemar (misal: Washer / Kasir / Admin di app klinik)
+      uniqueLoginRoles.forEach(foundRole => {
+        const isMatched = normalizedExpected.some(exp => exp === foundRole.toLowerCase() || foundRole.toLowerCase().includes(exp) || exp.includes(foundRole.toLowerCase()));
+        if (!isMatched) {
+          issues.push(
+            `ROLE_CONTAMINATION: Terdeteksi tombol loginAs('${foundRole}') dengan peran asing yang TIDAK ADA dalam Brief Kebutuhan resmi (${expectedRoles.join(', ')}). ` +
+            `Layar login dan fungsi loginAs() WAJIB HANYA memuat peran resmi dari Brief Kebutuhan!`
+          );
+        }
+      });
+
+      // Deteksi role resmi yang hilang dari tombol login
+      expectedRoles.forEach(expRole => {
+        const isPresent = uniqueLoginRoles.some(found => found.toLowerCase() === expRole.trim().toLowerCase() || found.toLowerCase().includes(expRole.trim().toLowerCase()));
+        if (!isPresent) {
+          issues.push(
+            `ROLE_MISSING_LOGIN_BUTTON: Peran resmi "${expRole}" dari Brief Kebutuhan TIDAK memiliki tombol loginAs('${expRole}') di layar loginScreen!`
+          );
+        }
+      });
     }
   }
 
