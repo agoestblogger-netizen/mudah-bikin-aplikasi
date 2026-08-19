@@ -68,10 +68,33 @@ function isCodeTruncatedOrBroken(text: string): boolean {
   return false;
 }
 
-// Helper: Sanitasi Teks Brief Kebutuhan (Poin 46)
+// Helper: Anti-Redundan Tawaran Admin (Poin 48)
+// Jika pesan eksplorasi AI sudah mengusulkan role Admin/Owner/Manager di daftar role utamanya,
+// hapus kalimat tawaran Admin terpisah di bawahnya agar tidak redundan.
+function cleanRedundantAdminOffer(text: string): string {
+  if (!text) return text;
+  
+  // Cek apakah teks sudah mencantumkan role Admin/Owner/Manager sebagai poin usulan (contoh: "1. **Admin**:", "1. Admin:", "- Role Admin:", dll)
+  const hasAdminInList = /(?:^|\n)\s*(?:\d+[\.\)]|[\*\-])\s*(?:\*\*)?(?:Role\s+)?(?:Admin|Super\s*Admin|Owner|Manager)(?:\*\*)?\s*:/i.test(text);
+
+  if (hasAdminInList) {
+    // Regex untuk mencocokkan paragraf tawaran Admin redundan di bagian bawah
+    const redundantPattern = /(?:\n\s*)+(?:Selain\s+(?:itu|peran|role)[^\n]*?(?:butuh|menambahkan|perlu|sangat\s+berguna)[^\n]*?(?:role\s+)?(?:admin|super\s*admin)[^\n]*?\?(?:\s*|$))/gi;
+    if (redundantPattern.test(text)) {
+      text = text.replace(redundantPattern, '\n\nApakah pembagian peran dan alur kerja ini sudah cukup pas untuk usaha Anda, atau ada penyesuaian lain yang ingin ditambahkan?').trim();
+    }
+  }
+
+  return text;
+}
+
+// Helper: Sanitasi Teks Brief Kebutuhan (Poin 46 & 48)
 // Memperbaiki glitch format AI saat revisi agar tidak ada heading role hantu atau Alur Proses yang terlepas
 function sanitizeBriefKebutuhanText(text: string): string {
-  if (!text || (!text.includes('Brief Kebutuhan') && !text.includes('Job Description') && !text.includes('Struktur Halaman'))) {
+  if (!text) return text;
+  text = cleanRedundantAdminOffer(text);
+
+  if (!text.includes('Brief Kebutuhan') && !text.includes('Job Description') && !text.includes('Struktur Halaman')) {
     return text;
   }
 
@@ -327,23 +350,23 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
 2. DILARANG KERAS menyebutkan kata-kata teknis seperti "saya akan berikan kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun tentang pembuatan kode!
 3. NADA KOMUNIKASI WAJIB: BERIKAN USULAN KONKRET DULU, JANGAN PERNAH MELEMPAR BEBAN BERPIKIR KE USER!
    - DILARANG bertanya dengan nada pasif atau kata-kata terbuka seperti "apakah sudah Anda pikirkan/pertimbangkan?", "bagaimana konsep yang Anda inginkan?", atau "apa fitur yang ingin dibuat?".
-   - Karena Anda sudah memiliki acuan struktur modul & peran dari blueprint bisnis, Anda WAJIB langsung MENGUSULKAN pembagian peran dan fitur operasional secara konkret dan singkat (2-4 kalimat).
-   - Format Respons Standar:
-     * Kalimat 1: Sapa & akui ide bisnis pengguna dengan hangat & antusias.
-     * Kalimat 2-3 (USULAN KONKRET): Usulkan peran default beserta tugas/halaman utamanya (contoh: "Untuk aplikasi laundry, biasanya paling pas dibagi ke 3 peran: Admin (pantau omset & kelola tarif), Kasir (terima pesanan & proses pembayaran), dan Washer (update status cucian hingga siap ambil).")
-     * Kalimat 4 (KONFIRMASI RINGAN): Akhiri dengan 1 pertanyaan persetujuan ringan (contoh: "Pembagian peran dan alur kerja ini sudah cukup pas untuk usaha Anda, atau ada peran/penyesuaian lain yang ingin ditambahkan?")
+   - Karena Anda sudah memiliki acuan struktur modul & peran dari blueprint bisnis, Anda WAJIB langsung MENGUSULKAN pembagian peran dan fitur operasional secara konkret.
 
-4. PROAKTIF PERIKSA KEBUTUHAN ROLE ADMIN/SUPER ADMIN UNTUK APP 3+ ROLE (POIN 47):
-   - ATURAN: Jika diskusi atau ide aplikasi melibatkan 3 ROLE ATAU LEBIH yang bersifat OPERASIONAL (contoh: Dokter, Receptionist, Staf Farmasi, Pasien; atau Kasir, Barista, Kitchen, Pelanggan; atau Kasir, Washer, Kurir, Pelanggan) dan BELUM ADA role administratif/pengawas (Admin, Super Admin, Owner, Manager):
-     AI WAJIB proaktif menanyakan/menyarankan apakah dibutuhkan 1 role tambahan Admin/Super Admin, dengan tanggung jawab konkret:
-     a. Manajemen akun staf/user (tambah/hapus/atur akses staf yang bisa login ke aplikasi).
-     b. Kelola parameter/master data layanan (harga, jenis layanan, tarif, kategori — sesuai domain aplikasi).
-   - CONTOH USULAN PROAKTIF KONKRET:
-     "Selain [sebutkan peran yang sudah diajukan], biasanya aplikasi seperti ini juga butuh 1 role Admin yang mengelola akun staf dan parameter layanan (harga, jenis layanan, tarif, dll) — supaya perubahan kecil tidak perlu ubah kode. Mau ditambahkan sebagai role terpisah, atau digabung ke salah satu role yang sudah ada?"
-   - JIKA PENGGUNA MENOLAK/MERASA TIDAK PERLU ("tidak perlu admin", "tanpa admin", "cukup role ini saja", "tidak usah"): AI DILARANG MEMAKSA. Cukup tawarkan 1 kali. Jika ditolak, lanjutkan tanpa role Admin dan jangan pernah menanyakan lagi.
-   - JIKA APLIKASI HANYA 1-2 ROLE (misal toko kecil: Kasir + Pembeli, atau single-user): ATURAN INI TIDAK BERLAKU. Dilarang memaksakan role Admin untuk aplikasi sederhana.
+4. STRUKTUR RESPONS EKSPLORASI IDE (WAJIB IKUTI 3 BAGIAN INI — POIN 47 & 48):
+   - BAGIAN 1 (APRESIASI): Sapa & akui ide bisnis pengguna dengan hangat & antusias (1 kalimat).
+   - BAGIAN 2 (USULAN ROLE): Usulkan / rangkum pembagian peran konkret beserta tugas utamanya (2-3 kalimat atau list ringkas).
+   - BAGIAN 3 (PENUTUP & KONFIRMASI — PILIH PERSIS SALAH SATU DARI 3 KONDISI BERIKUT):
+     * KONDISI A (Jika di dalam daftar peran yang baru saja Anda sebutkan SUDAH ADA role Admin/Super Admin/Owner/Manager):
+       Tutup LANGSUNG dengan 1 pertanyaan persetujuan umum:
+       "Apakah pembagian peran dan alur kerja ini sudah cukup pas untuk usaha Anda, atau ada peran/penyesuaian lain yang ingin ditambahkan?" (DILARANG KERAS menambahkan kalimat tawaran Admin terpisah di bawahnya).
+     * KONDISI B (Jika peran yang dibahas/diajukan pengguna berisi 3 ROLE OPERASIONAL ATAU LEBIH TANPA role Admin/Owner/Manager, contoh: Dokter, Receptionist, Staf Farmasi, Pasien):
+       Tutup WAJIB DENGAN TAWARAN PROAKTIF 1 ROLE ADMIN (Poin 47):
+       "Selain peran operasional di atas, biasanya aplikasi seperti ini juga butuh 1 role Admin yang mengelola akun staf dan parameter layanan (harga, jenis layanan, tarif, dll) — supaya perubahan kecil tidak perlu ubah kode. Mau ditambahkan sebagai role terpisah, atau digabung ke salah satu role yang sudah ada?"
+     * KONDISI C (Jika aplikasi hanya memiliki 1-2 role sederhana, contoh: Kasir + Pembeli, atau single-user):
+       Tutup dengan 1 pertanyaan persetujuan umum (DILARANG menawarkan role Admin).
 
-5. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
+5. JIKA PENGGUNA MENOLAK/MERASA TIDAK PERLU ROLE ADMIN ("tidak perlu admin", "tanpa admin", "cukup role ini saja", "tidak usah"): AI DILARANG MEMAKSA. Cukup tawarkan 1 kali. Jika ditolak, lanjutkan tanpa role Admin dan jangan pernah menanyakan lagi.
+6. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
       }
 
       // Suntikkan blueprint terstruktur atau ringkasan katalog internal untuk memandu dialog

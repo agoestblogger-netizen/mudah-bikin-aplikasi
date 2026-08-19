@@ -1401,9 +1401,11 @@ ${moduleSectionsText}
 Rekomendasi Role: ${rolesSummary}${adminNotice}
 Alur Kerja: ${t.workflow.slice(0, 4).join(' → ')}
 
-PANDUAN EKSPLORASI (POIN 47):
+PANDUAN EKSPLORASI (POIN 47 & 48):
 1. Gunakan modul & section di atas untuk mengusulkan peran dan alur secara konkret (2-4 kalimat). DILARANG bertanya terbuka. DILARANG menyebutkan kode internal kepada pengguna.
-2. PROAKTIF ROLE ADMIN UNTUK APP 3+ ROLE: Jika pengguna mengumpulkan 3+ peran operasional tanpa peran administratif di atas, WAJIB proaktif tawarkan 1 role Admin/Super Admin untuk kelola akun staf & parameter layanan. Jika ditolak, jangan paksa. Jika hanya 1-2 peran, jangan tawarkan Admin.`;
+2. CEK ROLE ADMIN SEBELUM MENAWARKAN (ANTI-REDUNDAN POIN 48):
+   - Jika dalam usulan Anda SUDAH ADA role 'Admin', 'Owner', atau 'Manager' (contoh: 1. Admin, 2. Dokter, 3. Pasien), DILARANG KERAS menambahkan kalimat tawaran Admin terpisah di bawahnya. Cukup tutup dengan pertanyaan persetujuan umum.
+   - HANYA tawarkan role Admin terpisah JIKA daftar peran yang dibahas/diusulkan berisi 3+ peran operasional MURNI TANPA role Admin/Owner/Manager sama sekali. Jika ditolak, jangan paksa. Jika hanya 1-2 peran, jangan tawarkan Admin.`;
 }
 
 
