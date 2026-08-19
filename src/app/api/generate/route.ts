@@ -188,16 +188,24 @@ export async function POST(req: Request) {
       (prompt.length > 220 && (prompt.toLowerCase().includes('role') || prompt.toLowerCase().includes('halaman') || prompt.toLowerCase().includes('fitur')))
     );
 
+    const userMessageCount = (chatHistory || []).filter((m: any) => m.sender === 'USER').length;
+    // Deteksi Persetujuan Ringkas Pengguna terhadap Usulan Konsultan di Tahap Diskusi
+    const isUserAgreeingToProposal = /(^|\b)(ya|iya|sudah|pas|cocok|setuju|ok|oke|sip|lanjut|bisa|sesuai|siap|cukup|ikut saja|terserah|sop|standar|buatkan|buatkan brief|rangkum)($|\b)/i.test(prompt.trim());
+
+    // Deteksi Apakah Prompt Awal Pengguna Menyebut 3+ Role Operasional Tanpa Role Pengawas (Poin 47)
+    const hasAdminMention = /(admin|superadmin|super\s+admin|owner|manager|pengawas)/i.test(prompt + '\n' + allHistoryText);
+    const hasExplicitNoAdmin = /(tanpa\s+admin|tidak\s+perlu\s+admin|gak\s+usah\s+admin|jangan\s+ada\s+admin|cukup\s+role\s+ini|hanya\s+role\s+ini|tidak\s+usah\s+admin)/i.test(prompt + '\n' + allHistoryText);
+    const operationalRoleKeywords = ['dokter', 'perawat', 'bidan', 'apoteker', 'farmasi', 'receptionist', 'resepsionis', 'kasir', 'washer', 'kurir', 'barista', 'koki', 'waiter', 'pelayan', 'mekanik', 'montir', 'guru', 'siswa', 'murid', 'pasien', 'pelanggan', 'customer', 'tamu', 'terapis', 'staff', 'staf'];
+    const matchedOpsRoles = operationalRoleKeywords.filter(k => (prompt + '\n' + allHistoryText).toLowerCase().includes(k));
+    const has3PlusOperationalRoles = matchedOpsRoles.length >= 3;
+    const shouldAskAdminFirst = has3PlusOperationalRoles && !hasAdminMention && !hasExplicitNoAdmin && userMessageCount < 2 && !isUserAgreeingToProposal;
+
     // Deteksi Apakah Prompt Awal Pengguna BENAR-BENAR SANGAT DETAIL:
     // WAJIB panjang > 200 karakter DAN secara eksplisit merinci target peran/user/masalah DAN daftar fitur/alur secara bersamaan.
-    const isVeryDetailedInitialPrompt = prompt.length > 200 && (
+    const isVeryDetailedInitialPrompt = !shouldAskAdminFirst && prompt.length > 200 && (
       (prompt.toLowerCase().includes('target') || prompt.toLowerCase().includes('user') || prompt.toLowerCase().includes('pengguna') || prompt.toLowerCase().includes('pasien') || prompt.toLowerCase().includes('petugas') || prompt.toLowerCase().includes('admin') || prompt.toLowerCase().includes('masalah')) &&
       (prompt.toLowerCase().includes('fitur') || prompt.toLowerCase().includes('alur') || prompt.toLowerCase().includes('menu') || prompt.toLowerCase().includes('tabel') || prompt.toLowerCase().includes('layanan'))
     );
-    const userMessageCount = (chatHistory || []).filter((m: any) => m.sender === 'USER').length;
-
-    // Deteksi Persetujuan Ringkas Pengguna terhadap Usulan Konsultan di Tahap Diskusi
-    const isUserAgreeingToProposal = /(^|\b)(ya|iya|sudah|pas|cocok|setuju|ok|oke|sip|lanjut|bisa|sesuai|siap|cukup|ikut saja|terserah|sop|standar|buatkan|buatkan brief|rangkum)($|\b)/i.test(prompt.trim());
 
     // Kapan masuk Mode Dialog/Streaming (Bukan eksekusi kode langsung):
     // 1. Tahap 1 Ideation (belum ada kode & belum konfirmasi)
@@ -310,7 +318,7 @@ ATURAN MUTLAK PERCAKAPAN:
 4. WAJIB tanyakan konfirmasi di baris terakhir:
    "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan, atau ada section/fitur yang mau ditambah/diubah sebelum saya buatkan prototipenya?"`;
       } else {
-        // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE (contoh: "aplikasi laundry" atau "ingin buat aplikasi klinik")
+        // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
 Tugas Anda pada tahap ini adalah mendiskusikan, menggali, dan mempertajam ide aplikasi bersama pengguna (Sub-langkah 1-4 Eksplorasi Ide).
 
@@ -324,7 +332,18 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
      * Kalimat 1: Sapa & akui ide bisnis pengguna dengan hangat & antusias.
      * Kalimat 2-3 (USULAN KONKRET): Usulkan peran default beserta tugas/halaman utamanya (contoh: "Untuk aplikasi laundry, biasanya paling pas dibagi ke 3 peran: Admin (pantau omset & kelola tarif), Kasir (terima pesanan & proses pembayaran), dan Washer (update status cucian hingga siap ambil).")
      * Kalimat 4 (KONFIRMASI RINGAN): Akhiri dengan 1 pertanyaan persetujuan ringan (contoh: "Pembagian peran dan alur kerja ini sudah cukup pas untuk usaha Anda, atau ada peran/penyesuaian lain yang ingin ditambahkan?")
-4. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
+
+4. PROAKTIF PERIKSA KEBUTUHAN ROLE ADMIN/SUPER ADMIN UNTUK APP 3+ ROLE (POIN 47):
+   - ATURAN: Jika diskusi atau ide aplikasi melibatkan 3 ROLE ATAU LEBIH yang bersifat OPERASIONAL (contoh: Dokter, Receptionist, Staf Farmasi, Pasien; atau Kasir, Barista, Kitchen, Pelanggan; atau Kasir, Washer, Kurir, Pelanggan) dan BELUM ADA role administratif/pengawas (Admin, Super Admin, Owner, Manager):
+     AI WAJIB proaktif menanyakan/menyarankan apakah dibutuhkan 1 role tambahan Admin/Super Admin, dengan tanggung jawab konkret:
+     a. Manajemen akun staf/user (tambah/hapus/atur akses staf yang bisa login ke aplikasi).
+     b. Kelola parameter/master data layanan (harga, jenis layanan, tarif, kategori — sesuai domain aplikasi).
+   - CONTOH USULAN PROAKTIF KONKRET:
+     "Selain [sebutkan peran yang sudah diajukan], biasanya aplikasi seperti ini juga butuh 1 role Admin yang mengelola akun staf dan parameter layanan (harga, jenis layanan, tarif, dll) — supaya perubahan kecil tidak perlu ubah kode. Mau ditambahkan sebagai role terpisah, atau digabung ke salah satu role yang sudah ada?"
+   - JIKA PENGGUNA MENOLAK/MERASA TIDAK PERLU ("tidak perlu admin", "tanpa admin", "cukup role ini saja", "tidak usah"): AI DILARANG MEMAKSA. Cukup tawarkan 1 kali. Jika ditolak, lanjutkan tanpa role Admin dan jangan pernah menanyakan lagi.
+   - JIKA APLIKASI HANYA 1-2 ROLE (misal toko kecil: Kasir + Pembeli, atau single-user): ATURAN INI TIDAK BERLAKU. Dilarang memaksakan role Admin untuk aplikasi sederhana.
+
+5. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
       }
 
       // Suntikkan blueprint terstruktur atau ringkasan katalog internal untuk memandu dialog

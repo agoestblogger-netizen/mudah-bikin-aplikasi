@@ -1380,6 +1380,11 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
     .map(r => `  * Role ${r}`)
     .join(', ');
 
+  const adminRoles = t.roleDefault.filter(r => ['Owner', 'Manager', 'Admin', 'Super Admin'].includes(r));
+  const adminNotice = adminRoles.length > 0
+    ? `\nRole Administratif/Pengawas Baku: ${adminRoles.join(', ')} (memiliki izin penuh kelola akun staf & parameter layanan/harga)`
+    : '';
+
   let variantNotice = '';
   if (matchedVariant) {
     const v = t.variant?.find(item => item.nama.toLowerCase() === matchedVariant.toLowerCase());
@@ -1393,10 +1398,12 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
 Pola Bisnis: "${t.nama}" (${t.deskripsi})${variantNotice}
 Modul & Section:
 ${moduleSectionsText}
-Rekomendasi Role: ${rolesSummary}
+Rekomendasi Role: ${rolesSummary}${adminNotice}
 Alur Kerja: ${t.workflow.slice(0, 4).join(' → ')}
 
-Gunakan modul & section di atas untuk langsung mengusulkan peran dan fitur konkret kepada pengguna secara ramah dan proaktif. DILARANG bertanya terbuka seperti "apakah sudah Anda pikirkan", selalu berikan usulan nyata terlebih dahulu lalu minta konfirmasi. DILARANG menyebutkan kode internal kepada pengguna.`;
+PANDUAN EKSPLORASI (POIN 47):
+1. Gunakan modul & section di atas untuk mengusulkan peran dan alur secara konkret (2-4 kalimat). DILARANG bertanya terbuka. DILARANG menyebutkan kode internal kepada pengguna.
+2. PROAKTIF ROLE ADMIN UNTUK APP 3+ ROLE: Jika pengguna mengumpulkan 3+ peran operasional tanpa peran administratif di atas, WAJIB proaktif tawarkan 1 role Admin/Super Admin untuk kelola akun staf & parameter layanan. Jika ditolak, jangan paksa. Jika hanya 1-2 peran, jangan tawarkan Admin.`;
 }
 
 
