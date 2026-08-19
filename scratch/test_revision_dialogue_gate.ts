@@ -17,7 +17,7 @@ async function testDialogueGate() {
   console.log('--- TEST 1: Revisi Besar + Pertanyaan Eksplisit ---');
   const prompt1 = 'Tolong ganti mekanisme role switcher ini jadi sistem login sungguhan untuk 3 role: Sales, Supervisor, dan Sales Manager. Apakah kamu paham?';
   
-  const res1 = await fetch('http://localhost:3000/api/generate', {
+  const res1 = await fetch('https://www.mudahbikinapps.store/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -55,7 +55,7 @@ async function testDialogueGate() {
   console.log('\n--- TEST 2: Revisi Kecil / Tweak Visual ---');
   const prompt2 = 'ganti warna tombol simpan jadi hijau';
   
-  const res2 = await fetch('http://localhost:3000/api/generate', {
+  const res2 = await fetch('https://www.mudahbikinapps.store/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

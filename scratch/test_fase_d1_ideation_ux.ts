@@ -3,7 +3,7 @@ async function testFaseD1() {
 
   // Test 1: Skenario Klinik (Healthcare) - Menguji pembentukan Brief Kebutuhan
   console.log('--- TEST 1: Skenario Klinik (Healthcare MT-06 + UX-CUST-04 Patient Queue) ---');
-  const resKlinik = await fetch('http://localhost:3000/api/generate', {
+  const resKlinik = await fetch('https://www.mudahbikinapps.store/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -36,7 +36,7 @@ async function testFaseD1() {
 
   // Test 2: Skenario Laundry (Service)
   console.log('\n--- TEST 2: Skenario Laundry (MT-03 + UX-CUST-05 Order Tracking & UX-OPS-01) ---');
-  const resLaundry = await fetch('http://localhost:3000/api/generate', {
+  const resLaundry = await fetch('https://www.mudahbikinapps.store/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

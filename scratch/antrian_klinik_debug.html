@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antrian Klinik Cerdas</title>
+    <link href="https://unpkg.com/lucide@latest" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 24px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+        .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+        .btn-primary {
+            background: #4f46e5; color: #ffffff; font-weight: 600; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .btn-primary:hover { background: #4338ca; }
+        .btn-secondary {
+            background: #ffffff; color: #334155; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-secondary:hover { background: #f1f5f9; }
+        .btn-danger {
+            background: #fff1f2; color: #e11d48; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-danger:hover { background: #ffe4e6; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+        .form-input {
+            width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+        .table-container {
+            overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); background: #ffffff; margin-top: 16px;
+        }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th {
+            background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 16px; border-bottom: 1px solid #e2e8f0;
+        }
+        td { color: #334155; font-size: 14px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+        tr:last-child td { border-bottom: none; }
+        .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; }
+        .tab-btn {
+            padding: 10px 18px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px;
+        }
+        .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .modal {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
+        }
+        .modal-box {
+            background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-width: 480px; width: 100%; padding: 24px;
+        }
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .toast.error { background: #ef4444; }
+        .toast.success { background: #10b981; }
+    </style>
+</head>
+<body>
+    <!-- LAYAR LOGIN SIMULASI -->
+    <div id="loginScreen" style="display: flex; min-height: 85vh; align-items: center; justify-content: center; padding: 20px;">
+        <div class="card" style="max-width: 440px; width: 100%; text-align: center; padding: 32px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);">
+            <div style="font-size: 36px; margin-bottom: 12px;">🔐</div>
+            <h2 class="title" style="font-size: 22px; margin-bottom: 6px;">Pintu Masuk Aplikasi</h2>
+            <p class="subtitle" style="margin-bottom: 24px; font-size: 14px;">Pilih akun peran demo untuk masuk:</p>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                <button type="button" class="btn-primary" onclick="loginAs('Dokter')" style="justify-content: center; padding: 12px;">👤 Masuk sebagai Dokter</button>
+                <button type="button" class="btn-secondary" onclick="loginAs('Staf Klinik')" style="justify-content: center; padding: 12px;">💳 Masuk sebagai Staf Klinik</button>
+                <button type="button" class="btn-secondary" onclick="loginAs('Pasien')" style="justify-content: center; padding: 12px;">🧑‍⚕️ Masuk sebagai Pasien</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KONTEN UTAMA APLIKASI -->
+    <div id="appContainer" class="container" style="display: none;">
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+            <div>
+                <h1 class="title" style="margin-bottom: 4px;">Antrian Klinik Cerdas</h1>
+                <p class="subtitle" style="margin-bottom: 0;">Peran Aktif: <strong id="currentRoleBadge">-</strong></p>
+            </div>
+            <button type="button" class="btn-secondary" onclick="logout()" style="padding: 8px 14px; font-size: 13px;">🚪 Keluar / Ganti Akun</button>
+        </header>
+
+        <div class="tab-nav">
+            <button type="button" id="tab-btn-pemeriksaan" class="tab-btn active" data-access-roles="Dokter" onclick="showTab('pemeriksaan')">🩺 Pemeriksaan</button>
+            <button type="button" id="tab-btn-antrian" class="tab-btn" data-access-roles="Staf Klinik" onclick="showTab('antrian')">📋 Antrian</button>
+            <button type="button" id="tab-btn-status" class="tab-btn" data-access-roles="Pasien" onclick="showTab('status')">🔍 Status Antrian</button>
+        </div>
+
+        <div id="pemeriksaan" class="tab-content active">
+            <div class="card">
+                <h3 class="title">Pasien Menunggu</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>No. Antrian</th>
+                                <th>Nama Pasien</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daftarPasien">
+                            <!-- Data Pasien akan dirender di sini -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="antrian" class="tab-content">
+            <div class="card">
+                <h3 class="title">Daftar Antrian</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>No. Antrian</th>
+                                <th>Nama Pasien</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daftarAntrian">
+                            <!-- Data Antrian akan dirender di sini -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="status" class="tab-content">
+            <div class="card">
+                <h3 class="title">Cek Status Antrian</h3>
+                <div class="form-group">
+                    <label class="form-label" for="inputNoAntrian">Masukkan No. Antrian</label>
+                    <input type="text" id="inputNoAntrian" class="form-input" placeholder="No. Antrian...">
+                </div>
+                <button type="button" class="btn-primary" onclick="cekStatus()">Cek Status</button>
+                <div id="statusResult" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL KONFIRMASI HAPUS -->
+    <div id="modalHapus" class="modal">
+        <div class="modal-box">
+            <h3 class="title" style="font-size:18px;">Konfirmasi Hapus</h3>
+            <p class="subtitle" style="margin-bottom:20px;">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+            <input type="hidden" id="hapusId" value="">
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" class="btn-secondary" onclick="tutupModalHapus()">Batal</button>
+                <button type="button" class="btn-danger" onclick="eksekusiHapus()">Hapus</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastNotification" class="toast"></div>
+
+    <script>
+        let currentRole = null;
+        let items = [
+            { id: '1', nama: 'Pasien A', status: 'Menunggu' },
+            { id: '2', nama: 'Pasien B', status: 'Menunggu' },
+            { id: '3', nama: 'Pasien C', status: 'Menunggu' }
+        ];
+        let antrian = [
+            { id: '1', nama: 'Pasien A' },
+            { id: '2', nama: 'Pasien B' },
+            { id: '3', nama: 'Pasien C' }
+        ];
+
+        function loginAs(role) {
+            currentRole = role;
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'block';
+            filterTabsByRole(role);
+            if (role === 'Dokter') {
+                showTab('pemeriksaan');
+            } else if (role === 'Staf Klinik') {
+                showTab('antrian');
+            } else if (role === 'Pasien') {
+                showTab('status');
+            }
+            render();
+            showToast('Berhasil masuk sebagai ' + role, 'success');
+        }
+
+        function filterTabsByRole(role) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                const allowed = (btn.getAttribute('data-access-roles') || 'Dokter').split(',').map(r => r.trim());
+                btn.style.display = allowed.includes(role) ? '' : 'none';
+            });
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            const target = document.getElementById(tabName);
+            if (target) target.classList.add('active');
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById('tab-btn-' + tabName);
+            if (activeBtn) activeBtn.classList.add('active');
+            render();
+        }
+
+        function render() {
+            const daftarPasien = document.getElementById('daftarPasien');
+            daftarPasien.innerHTML = items.map(item => `
+                <tr>
+                    <td>${item.id}</td>
+                    <td>${item.nama}</td>
+                    <td>${item.status}</td>
+                    <td>
+                        <button type="button" class="btn-secondary" onclick="bukaModalHapus('${item.id}')">Hapus</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            const daftarAntrian = document.getElementById('daftarAntrian');
+            daftarAntrian.innerHTML = antrian.map(item => `
+                <tr>
+                    <td>${item.id}</td>
+                    <td>${item.nama}</td>
+                    <td>
+                        <button type="button" class="btn-secondary" onclick="bukaModalHapus('${item.id}')">Hapus</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function cekStatus() {
+            const noAntrian = document.getElementById('inputNoAntrian').value.trim();
+            const pasien = items.find(item => String(item.id) === String(noAntrian));
+            const resultDiv = document.getElementById('statusResult');
+            if (pasien) {
+                resultDiv.innerHTML = `<p>Status: ${pasien.status}</p>`;
+            } else {
+                resultDiv.innerHTML = `<p>Data tidak ditemukan.</p>`;
+            }
+        }
+
+        function showToast(pesan, tipe = 'error') {
+            const toast = document.getElementById('toastNotification');
+            toast.className = 'toast ' + tipe;
+            toast.innerText = pesan;
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 3000);
+        }
+
+        function logout() {
+            currentRole = null;
+            document.getElementById('appContainer').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'flex';
+            showToast('Anda telah keluar. Pilih akun peran lain.', 'info');
+        }
+
+        function bukaModalHapus(id) {
+            document.getElementById('hapusId').value = id;
+            document.getElementById('modalHapus').style.display = 'flex';
+        }
+
+        function tutupModalHapus() {
+            document.getElementById('modalHapus').style.display = 'none';
+        }
+
+        function eksekusiHapus() {
+            const id = document.getElementById('hapusId').value;
+            items = items.filter(item => String(item.id) !== String(id));
+            antrian = antrian.filter(item => String(item.id) !== String(id));
+            tutupModalHapus();
+            showToast('Data berhasil dihapus!', 'success');
+            render();
+        }
+    </script>
+</body>
+</html>
