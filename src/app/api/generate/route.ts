@@ -69,13 +69,13 @@ function isCodeTruncatedOrBroken(text: string): boolean {
 }
 
 // Helper: Anti-Redundan Tawaran Admin (Poin 48)
-// Jika pesan eksplorasi AI sudah mengusulkan role Admin/Owner/Manager di daftar role utamanya,
+// Jika pesan eksplorasi AI sudah mengusulkan role Admin/Owner/Manager di daftar role utamanya (termasuk varian seperti "Admin Online Shop"),
 // hapus kalimat tawaran Admin terpisah di bawahnya agar tidak redundan.
-function cleanRedundantAdminOffer(text: string): string {
+export function cleanRedundantAdminOffer(text: string): string {
   if (!text) return text;
   
-  // Cek apakah teks sudah mencantumkan role Admin/Owner/Manager sebagai poin usulan (contoh: "1. **Admin**:", "1. Admin:", "- Role Admin:", dll)
-  const hasAdminInList = /(?:^|\n)\s*(?:\d+[\.\)]|[\*\-])\s*(?:\*\*)?(?:Role\s+)?(?:Admin|Super\s*Admin|Owner|Manager)(?:\*\*)?\s*:/i.test(text);
+  // Cek apakah teks sudah mencantumkan role Admin/Owner/Manager sebagai poin usulan (contoh: "1. **Admin**:", "2. **Admin Online Shop**:", "- Role Admin:", dll)
+  const hasAdminInList = /(?:^|\n)\s*(?:\d+[\.\)]|[\*\-])\s*(?:\*\*)?(?:Role\s+)?(?:Admin|Super\s*Admin|Owner|Manager)\b[^\n:]*(?:\*\*)?\s*:/i.test(text);
 
   if (hasAdminInList) {
     // Regex untuk mencocokkan paragraf tawaran Admin redundan di bagian bawah
@@ -121,6 +121,59 @@ function sanitizeBriefKebutuhanText(text: string): string {
   }
 
   return sanitizedLines.join('\n');
+}
+
+// Helper: Ekstraksi Eksplisit Entitas / Varian Role Spesifik dari Prompt Pengguna (Poin 50B)
+// Mencegah AI menggabungkan/menggeneralisasi varian spesifik (misal: 'dokter umum dan dokter gigi' -> Dokter)
+export function extractUserSpecifiedRoleVariants(prompt: string, chatHistory: any[] = []): string[] {
+  const allText = [(prompt || ''), ...(chatHistory || []).map((m: any) => m.text || '')].join('\n');
+  const variantsMap = new Map<string, string>();
+  const baseKeywords = 'dokter|kasir|washer|kurir|driver|terapis|mekanik|montir|guru|teknisi|operator|staf|staff|admin|petugas|apoteker|perawat|bidan';
+
+  function addVariant(item: string) {
+    if (!item) return;
+    const clean = item.trim().replace(/^[\*\-\d\.\s]+/, '');
+    if (clean.length < 3 || clean.length > 35) return;
+    if (/^(aplikasi|fitur|menu|sistem|alur|halaman|tabel|data|yang|bisa|untuk|dengan|dan|atau|serta|secara)$/i.test(clean)) return;
+
+    const formatted = clean.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    const lower = formatted.toLowerCase();
+    if (!variantsMap.has(lower)) {
+      variantsMap.set(lower, formatted);
+    }
+  }
+
+  // Pola 1: Deteksi pola enumerasi 'dengan/memiliki/ada/role/peran [daftar role]'
+  const listRegex = /(?:role|peran|aktor|pengguna|user|dengan|memiliki|ada|fitur untuk)\s*(?::|\s+adalah|\s+yaitu)?\s*([A-Za-z0-9\s,\/&\-\+]+?)(?:\.|\n|$|;|\s+untuk\s+mengelola|\s+yang\s+bisa|\s+agar)/gi;
+  let listMatch;
+  while ((listMatch = listRegex.exec(allText)) !== null) {
+    const listRaw = listMatch[1];
+    const items = listRaw.split(/,\s*dan\s*|,\s*serta\s*|,\s*atau\s*|,|\bdan\b|\bserta\b|\batau\b/i).map(s => s.trim());
+    for (const item of items) {
+      if (new RegExp(baseKeywords, 'i').test(item)) {
+        addVariant(item);
+      }
+    }
+  }
+
+  // Pola 2: Deteksi pasangan varian/spesialisasi spesifik (misal: 'dokter umum dan gigi', 'washer kiloan dan washer satuan')
+  const pairRegex = new RegExp(`\\b(${baseKeywords})\\s+([a-zA-Z0-9\\-_]+(?:\\s+[a-zA-Z0-9\\-_]+)?)\\s*(?:,\\s*dan|,\\s*serta|,\\s*atau|dan|serta|atau|/|,)\\s*(?:(?:(${baseKeywords})\\s+)?([a-zA-Z0-9\\-_]+(?:\\s+[a-zA-Z0-9\\-_]+)?))`, 'gi');
+  let pairMatch;
+  while ((pairMatch = pairRegex.exec(allText)) !== null) {
+    const base1 = pairMatch[1];
+    const spec1 = pairMatch[2]?.trim();
+    const base2 = pairMatch[3] || base1;
+    const spec2 = pairMatch[4]?.trim();
+
+    if (spec1 && !/^(dan|atau|serta|dengan|untuk|yang|di|ke|dari|adalah|yaitu)$/i.test(spec1)) {
+      addVariant(`${base1} ${spec1}`);
+    }
+    if (spec2 && !/^(dan|atau|serta|dengan|untuk|yang|di|ke|dari|adalah|yaitu)$/i.test(spec2)) {
+      addVariant(`${base2} ${spec2}`);
+    }
+  }
+
+  return Array.from(variantsMap.values());
 }
 
 // Helper: Ekstraksi Brief Kebutuhan dan Daftar Peran Resmi dari Riwayat Chat (Poin 44 & 45)
@@ -253,6 +306,20 @@ export async function POST(req: Request) {
     const matchedUXPatterns = findRelevantUXPatterns(prompt + '\n' + allHistoryText, matchedMT?.template.id);
     const uxGuidanceContext = formatUXGuidanceForIdeation(matchedUXPatterns);
 
+    // Ekstraksi Entitas & Varian Role Khusus dari Prompt Pengguna (Poin 50B)
+    const userSpecifiedVariants = extractUserSpecifiedRoleVariants(prompt, chatHistory);
+    let variantsContext = '';
+    if (userSpecifiedVariants.length > 0) {
+      variantsContext = `\n\n=== ENTITAS / VARIAN ROLE SPESIFIK DARI PENGGUNA (WAJIB DIPERTAHANKAN UTUH — POIN 50B) ===
+Pengguna secara spesifik menyebutkan entitas/varian peran berikut:
+${userSpecifiedVariants.map(v => `- ${v}`).join('\n')}
+
+ATURAN MUTLAK PERLAKUAN VARIAN ROLE:
+1. Anda WAJIB menyertakan SEMUA entitas/spesialisasi di atas sebagai role mandiri dan terpisah di dalam usulan peran Anda.
+2. DILARANG KERAS menggabungkan atau menggeneralisasi peran-peran spesifik tersebut menjadi 1 peran umum (contoh: "Dokter Umum" dan "Dokter Gigi" TIDAK BOLEH digabung jadi hanya "Dokter"; "Washer Kiloan" dan "Washer Satuan" TIDAK BOLEH digabung jadi hanya "Washer"; "Kasir Toko Fisik" dan "Admin Online Shop" TIDAK BOLEH digabung).
+3. Jika pengguna menyebutkan varian ini, jangan menolak atau menyederhanakannya, melainkan berikan breakdown tugas spesifik untuk masing-masing varian tersebut.`;
+    }
+
     let systemPrompt = '';
 
     if (isIdeationMode) {
@@ -379,6 +446,11 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
       // Suntikkan Panduan Standar UX & Prioritas Informasi (Fase D-1)
       if (uxGuidanceContext) {
         systemPrompt += `\n\n${uxGuidanceContext}`;
+      }
+
+      // Suntikkan Ekstraksi Varian Role Spesifik Pengguna (Poin 50B)
+      if (variantsContext) {
+        systemPrompt += variantsContext;
       }
     } else {
       // MODE GENERATE KODE (User sudah menyetujui Brief Kebutuhan / Tahap 2 Mockup / Tahap 5 Patch / Tahap 6)

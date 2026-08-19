@@ -53,6 +53,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       }
     ],
     roleDefault: ['Owner', 'Manager', 'Admin', 'Cashier', 'Sales', 'Warehouse', 'Purchasing', 'Customer'],
+    adminRoleGuidance: 'Untuk skala UMKM / toko ritel standar, konsolidasikan Owner, Manager, dan Admin menjadi 1 role "Admin" (atau "Owner") saja untuk kelola akun kasir/staf, master data produk & harga. Pisahkan menjadi Owner + Manager HANYA jika pengguna eksplisit meminta struktur multi-cabang atau hierarki manajemen terpisah.',
     roleToModule: [
       { role: 'Owner', modul: 'Products', permission: 'CRUD' },
       { role: 'Owner', modul: 'Customers', permission: 'CRUD' },
@@ -187,6 +188,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       }
     ],
     roleDefault: ['Owner', 'Manager', 'Sales', 'Sales Admin', 'Purchasing', 'Warehouse', 'Picker', 'Checker', 'Driver', 'Finance', 'Customer'],
+    adminRoleGuidance: 'Untuk skala distributor menengah, gabung Owner dan Manager menjadi 1 role "Admin" / "Manajer Operasional". Pisahkan jika pengguna eksplisit meminta kontrol kepemilikan terpisah dari pengawasan gudang.',
     roleToModule: [
       { role: 'Owner', modul: 'Products', permission: 'CRUD' },
       { role: 'Owner', modul: 'Customers', permission: 'CRUD' },
@@ -285,6 +287,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Sales', 'Menu Performance', 'Food Cost', 'Inventory', 'Staff'] }
     ],
     roleDefault: ['Owner', 'Manager', 'Cashier', 'Waiter', 'Kitchen', 'Barista', 'Warehouse', 'Purchasing', 'Finance', 'Customer'],
+    adminRoleGuidance: 'Untuk cafe/resto/warung skala standar, gabung Owner dan Manager menjadi 1 role "Admin/Owner" untuk kelola menu, harga, dan akun staf. Pisahkan jadi Owner + Manager HANYA jika user eksplisit meminta cabang/franchise atau pembukuan investor.',
     roleToModule: [
       { role: 'Owner', modul: 'Menu', permission: 'CRUD' },
       { role: 'Owner', modul: 'Tables', permission: 'CRUD' },
@@ -383,6 +386,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       }
     ],
     roleDefault: ['Owner', 'Manager', 'Receptionist', 'Service Staff', 'Cashier', 'Customer'],
+    adminRoleGuidance: 'Untuk jasa/laundry/salon skala standar, gabung Owner dan Manager menjadi 1 role "Admin" (atau "Owner") untuk pantau transaksi, kelola staf, dan tarif paket. Pisahkan HANYA jika pengguna meminta struktur multi-outlet.',
     roleToModule: [
       { role: 'Owner', modul: 'Customers', permission: 'CRUD' },
       { role: 'Owner', modul: 'Services', permission: 'CRUD' },
@@ -479,6 +483,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Service', 'Technician', 'Parts', 'Revenue', 'Customer'] }
     ],
     roleDefault: ['Owner', 'Workshop Manager', 'Service Advisor', 'Technician', 'Sparepart Staff', 'Warehouse', 'Cashier', 'Customer'],
+    adminRoleGuidance: 'Untuk bengkel standar, gabung Owner dan Workshop Manager menjadi 1 role "Admin/Kepala Bengkel". Pisahkan HANYA jika user meminta pengawasan investor/owner terpisah.',
     roleToModule: [
       { role: 'Owner', modul: 'Customers', permission: 'CRUD' },
       { role: 'Owner', modul: 'Vehicles', permission: 'CRUD' },
@@ -552,6 +557,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Visit', 'Revenue', 'Inventory', 'Service'] }
     ],
     roleDefault: ['Owner', 'Manager', 'Admin', 'Receptionist', 'Doctor', 'Nurse', 'Pharmacist', 'Cashier', 'Medical Record', 'Patient'],
+    adminRoleGuidance: 'Untuk klinik/praktik mandiri standar, konsolidasikan Owner, Manager, dan Admin menjadi 1 role "Admin" (atau "Admin Klinik") saja untuk mengelola akun dokter/staf, master tarif, dan parameter layanan. Pisahkan jadi Owner + Manager HANYA jika pengguna eksplisit meminta manajemen rumah sakit bertingkat atau multi-klinik.',
     roleToModule: [
       { role: 'Owner', modul: 'Patients', permission: 'CRUD' },
       { role: 'Owner', modul: 'Registration', permission: 'CRUD' },
@@ -653,6 +659,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Production', 'Quality', 'Inventory', 'Machine', 'Cost'] }
     ],
     roleDefault: ['Director', 'Plant Manager', 'Production Manager', 'Planner', 'Supervisor', 'Operator', 'QC/QA', 'Warehouse', 'Purchasing', 'Maintenance', 'Finance'],
+    adminRoleGuidance: 'Untuk skala UKM manufaktur, gabung Director, Plant Manager, dan Supervisor menjadi 1 role "Admin Produksi/Manajer". Pisahkan HANYA untuk pabrik skala korporasi multi-divisi.',
     roleToModule: [
       { role: 'Director', modul: 'Products', permission: 'CRUD' },
       { role: 'Director', modul: 'BOM', permission: 'CRUD' },
@@ -710,6 +717,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Project Profitability', 'Time Log', 'Team Utilization', 'Revenue'] }
     ],
     roleDefault: ['Owner', 'Director', 'Project Manager', 'Account Manager', 'Consultant', 'Staff', 'Finance', 'Admin', 'Client'],
+    adminRoleGuidance: 'Untuk biro jasa/konsultan standar, gabung Owner, Director, dan Project Manager menjadi 1 role "Admin/Lead Project". Pisahkan HANYA jika ada hierarki direksi terpisah.',
     roleToModule: [
       { role: 'Owner', modul: 'Clients', permission: 'CRUD' },
       { role: 'Owner', modul: 'Projects', permission: 'CRUD' },
@@ -758,6 +766,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Occupancy Rate', 'RevPAR', 'Revenue', 'Guest Nationality'] }
     ],
     roleDefault: ['Owner', 'Manager', 'Admin', 'Reservation', 'Front Office', 'Operations', 'Finance', 'Customer'],
+    adminRoleGuidance: 'Untuk homestay/hotel/penginapan standar, gabung Owner, Manager, dan Admin menjadi 1 role "Admin/Manajer Penginapan". Pisahkan HANYA untuk hotel bintang/multi-properti.',
     roleToModule: [
       { role: 'Owner', modul: 'Booking', permission: 'CRUD' },
       { role: 'Owner', modul: 'Resources', permission: 'CRUD' },
@@ -798,6 +807,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Academic Performance', 'Attendance Summary', 'Finance Collection'] }
     ],
     roleDefault: ['Owner/Foundation', 'Principal/Director', 'Admin', 'Teacher', 'Homeroom Teacher', 'Finance', 'Student', 'Parent'],
+    adminRoleGuidance: 'Untuk bimbel/kursus/sekolah standar, gabung Owner/Yayasan dan Principal/Kepala Sekolah menjadi 1 role "Admin/Pengelola". Pisahkan HANYA jika yayasan meminta portal pengawas terpisah.',
     roleToModule: [
       { role: 'Principal/Director', modul: 'Students', permission: 'CRUD' },
       { role: 'Principal/Director', modul: 'Teachers', permission: 'CRUD' },
@@ -839,6 +849,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Sales Pipeline', 'Conversion Rate', 'Sales Rep Performance', 'Revenue Target'] }
     ],
     roleDefault: ['Sales Director', 'Sales Manager', 'Supervisor', 'Sales Executive', 'Account Executive', 'Account Manager', 'Business Development', 'Sales Admin', 'Customer'],
+    adminRoleGuidance: 'Untuk tim sales standar, gabung Sales Director dan Sales Manager menjadi 1 role "Admin / Sales Lead". Pisahkan HANYA jika hierarki sales memiliki 3+ level bertingkat.',
     roleToModule: [
       { role: 'Sales Director', modul: 'Leads', permission: 'CRUD' },
       { role: 'Sales Director', modul: 'Pipeline', permission: 'CRUD' },
@@ -880,6 +891,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Balance Sheet', 'Profit & Loss', 'Cash Flow', 'General Ledger'] }
     ],
     roleDefault: ['Owner', 'Finance Manager', 'Finance Officer', 'Accountant', 'Bookkeeper', 'AR/AP', 'Tax', 'Auditor', 'Approver', 'Viewer'],
+    adminRoleGuidance: 'Untuk keuangan bisnis standar, gabung Owner dan Finance Manager menjadi 1 role "Admin Keuangan". Pisahkan HANYA jika ada pemisahan Maker-Checker/Auditor eksternal.',
     roleToModule: [
       { role: 'Owner', modul: 'Accounts', permission: 'CRUD' },
       { role: 'Owner', modul: 'Journal', permission: 'CRUD' },
@@ -924,6 +936,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Occupancy Trend', 'Revenue Collection', 'Outstanding Rent', 'Maintenance Cost'] }
     ],
     roleDefault: ['Owner', 'Property Manager', 'Admin', 'Leasing', 'Finance', 'Maintenance', 'Tenant'],
+    adminRoleGuidance: 'Untuk kost/sewa properti standar, gabung Owner dan Property Manager menjadi 1 role "Admin Properti / Pemilik". Pisahkan HANYA jika ada pengelola lapangan terpisah dari pemilik.',
     roleToModule: [
       { role: 'Owner', modul: 'Properties', permission: 'CRUD' },
       { role: 'Owner', modul: 'Units', permission: 'CRUD' },
@@ -964,6 +977,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Delivery Success Rate', 'On-Time Performance', 'Fleet Cost', 'COD Reconciliation'] }
     ],
     roleDefault: ['Owner', 'Operations Manager', 'Admin', 'Customer Service', 'Dispatcher', 'Warehouse', 'Driver/Courier', 'Checker', 'Finance', 'Customer'],
+    adminRoleGuidance: 'Untuk ekspedisi/kurir standar, gabung Owner dan Operations Manager menjadi 1 role "Admin Operasional / Dispatcher". Pisahkan HANYA untuk logistik multi-hub.',
     roleToModule: [
       { role: 'Owner', modul: 'Shipments', permission: 'CRUD' },
       { role: 'Owner', modul: 'Reports', permission: 'R' },
@@ -1003,6 +1017,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Member Retention', 'Churn Rate', 'MRR / Revenue', 'Attendance Frequency'] }
     ],
     roleDefault: ['Owner', 'Manager', 'Admin', 'Receptionist', 'Staff', 'Finance', 'Member'],
+    adminRoleGuidance: 'Untuk gym/studio/komunitas standar, gabung Owner dan Manager menjadi 1 role "Admin Gym / Pengelola". Pisahkan HANYA jika ada manajemen cabang terpisah.',
     roleToModule: [
       { role: 'Owner', modul: 'Members', permission: 'CRUD' },
       { role: 'Owner', modul: 'Plans', permission: 'CRUD' },
@@ -1041,6 +1056,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Headcount', 'Turnover Rate', 'Payroll Cost', 'Attendance Rate'] }
     ],
     roleDefault: ['HR Director', 'HR Manager', 'HR Officer', 'Recruiter', 'Payroll', 'Admin', 'Manager', 'Employee'],
+    adminRoleGuidance: 'Untuk HR UKM, gabung HR Director dan HR Manager menjadi 1 role "Admin HRD". Pisahkan HANYA jika ada struktur korporasi multi-divisi.',
     roleToModule: [
       { role: 'HR Director', modul: 'Employees', permission: 'CRUD' },
       { role: 'HR Director', modul: 'Payroll', permission: 'CRUD' },
@@ -1083,6 +1099,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Inventory Turnover', 'PO Fulfillment Rate', 'Procurement Spending', 'Dead Stock'] }
     ],
     roleDefault: ['Procurement Manager', 'Purchasing', 'WH Manager', 'WH Staff', 'Inventory', 'Checker', 'Approver', 'Supplier'],
+    adminRoleGuidance: 'Untuk pengadaan UKM, gabung Procurement Manager dan WH Manager menjadi 1 role "Admin Pengadaan & Gudang". Pisahkan HANYA untuk rantai pasok kompleks.',
     roleToModule: [
       { role: 'Procurement Manager', modul: 'Purchase Request', permission: 'CRUD' },
       { role: 'Procurement Manager', modul: 'Purchase Order', permission: 'CRUD' },
@@ -1124,6 +1141,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Asset Uptime / MTBF', 'Depreciation Schedule', 'Maintenance Spend'] }
     ],
     roleDefault: ['Asset Manager', 'Maintenance Manager', 'Technician', 'Operator', 'Warehouse', 'Finance', 'Auditor'],
+    adminRoleGuidance: 'Untuk inventaris aset UKM, gabung Asset Manager dan Maintenance Manager menjadi 1 role "Admin Aset". Pisahkan HANYA jika tim maintenance terpisah dari pengelola aset.',
     roleToModule: [
       { role: 'Asset Manager', modul: 'Assets', permission: 'CRUD' },
       { role: 'Asset Manager', modul: 'Assignment', permission: 'CRUD' },
@@ -1164,6 +1182,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Reports', sections: ['Ticket Revenue', 'Attendance Rate', 'Participant Demographics'] }
     ],
     roleDefault: ['Event Owner', 'Event Manager', 'Admin', 'Registration Staff', 'Finance', 'Event Staff', 'Speaker', 'Sponsor', 'Participant'],
+    adminRoleGuidance: 'Untuk EO / kepanitiaan standar, gabung Event Owner dan Event Manager menjadi 1 role "Admin EO / Ketua Panitia". Pisahkan HANYA untuk festival skala besar dengan divisi terpisah.',
     roleToModule: [
       { role: 'Event Owner', modul: 'Events', permission: 'CRUD' },
       { role: 'Event Owner', modul: 'Tickets', permission: 'CRUD' },
@@ -1206,6 +1225,7 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
       { modul: 'Dashboard Builder', sections: ['Widget Grid', 'KPI Cards', 'Chart Visuals'] }
     ],
     roleDefault: ['Owner', 'Admin', 'Operator', 'Viewer'],
+    adminRoleGuidance: 'Untuk aplikasi kustom standar, gabung Owner dan Admin menjadi 1 role "Admin" saja. Pisahkan HANYA jika diminta pembatasan hak kepemilikan terpisah.',
     roleToModule: [
       { role: 'Owner', modul: 'Entity Builder', permission: 'CRUD' },
       { role: 'Owner', modul: 'Role Builder', permission: 'CRUD' },
@@ -1385,6 +1405,10 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
     ? `\nRole Administratif/Pengawas Baku: ${adminRoles.join(', ')} (memiliki izin penuh kelola akun staf & parameter layanan/harga)`
     : '';
 
+  const adminGuidanceNotice = t.adminRoleGuidance
+    ? `\nPanduan Konsolidasi Role Administratif (Poin 50A): ${t.adminRoleGuidance}`
+    : '';
+
   let variantNotice = '';
   if (matchedVariant) {
     const v = t.variant?.find(item => item.nama.toLowerCase() === matchedVariant.toLowerCase());
@@ -1398,12 +1422,13 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
 Pola Bisnis: "${t.nama}" (${t.deskripsi})${variantNotice}
 Modul & Section:
 ${moduleSectionsText}
-Rekomendasi Role: ${rolesSummary}${adminNotice}
+Rekomendasi Role: ${rolesSummary}${adminNotice}${adminGuidanceNotice}
 Alur Kerja: ${t.workflow.slice(0, 4).join(' → ')}
 
-PANDUAN EKSPLORASI (POIN 47 & 48):
+PANDUAN EKSPLORASI & KONSOLIDASI ROLE (POIN 47, 48, 50A):
 1. Gunakan modul & section di atas untuk mengusulkan peran dan alur secara konkret (2-4 kalimat). DILARANG bertanya terbuka. DILARANG menyebutkan kode internal kepada pengguna.
-2. CEK ROLE ADMIN SEBELUM MENAWARKAN (ANTI-REDUNDAN POIN 48):
+2. KONSOLIDASI ROLE ADMINISTRATIF (POIN 50A): Ikuti panduan konsolidasi role administratif di atas. Jangan menyalin seluruh role administratif berlapis (Owner, Manager, Admin, Director, dll) sekaligus untuk bisnis skala kecil-menengah. Gunakan 1 role "Admin" (atau "Owner") terpadu kecuali pengguna secara eksplisit meminta struktur manajemen multi-cabang/bertingkat.
+3. CEK ROLE ADMIN SEBELUM MENAWARKAN (ANTI-REDUNDAN POIN 48):
    - Jika dalam usulan Anda SUDAH ADA role 'Admin', 'Owner', atau 'Manager' (contoh: 1. Admin, 2. Dokter, 3. Pasien), DILARANG KERAS menambahkan kalimat tawaran Admin terpisah di bawahnya. Cukup tutup dengan pertanyaan persetujuan umum.
    - HANYA tawarkan role Admin terpisah JIKA daftar peran yang dibahas/diusulkan berisi 3+ peran operasional MURNI TANPA role Admin/Owner/Manager sama sekali. Jika ditolak, jangan paksa. Jika hanya 1-2 peran, jangan tawarkan Admin.`;
 }

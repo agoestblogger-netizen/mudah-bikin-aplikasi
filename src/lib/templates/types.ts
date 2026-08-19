@@ -70,6 +70,7 @@ export interface MasterTemplate {
   deskripsi: string;
   modulDanSection: ModuleSection[];
   roleDefault: string[];
+  adminRoleGuidance?: string; // Panduan konsolidasi role admin/owner untuk skala kecil-menengah (Poin 50A)
   roleToModule: RoleToModulePermission[];
   workflow: string[];
   variant?: TemplateVariant[];
