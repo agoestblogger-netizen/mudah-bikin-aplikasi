@@ -68,6 +68,38 @@ function isCodeTruncatedOrBroken(text: string): boolean {
   return false;
 }
 
+// Helper: Sanitasi Teks Brief Kebutuhan (Poin 46)
+// Memperbaiki glitch format AI saat revisi agar tidak ada heading role hantu atau Alur Proses yang terlepas
+function sanitizeBriefKebutuhanText(text: string): string {
+  if (!text || (!text.includes('Brief Kebutuhan') && !text.includes('Job Description') && !text.includes('Struktur Halaman'))) {
+    return text;
+  }
+
+  const lines = text.split('\n');
+  const sanitizedLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    const trimmed = line.trim();
+
+    // Glitch: Heading role hantu bernama "Alur Proses" (misal: `* **Alur Proses**:` atau `* Role Alur Proses:`)
+    if (/^[\*\-]\s*(?:\*\*)?(?:Role\s+)?Alur\s+Proses(?:\*\*)?:?\s*$/i.test(trimmed)) {
+      line = '      - **Alur Proses**:';
+      if (i + 1 < lines.length && !lines[i + 1].trim().startsWith('*') && !lines[i + 1].trim().startsWith('#') && !lines[i + 1].trim().startsWith('-')) {
+        i++;
+        line += ' ' + lines[i].trim();
+      }
+    }
+
+    // Glitch: Double "Role Role"
+    line = line.replace(/(\*\s+\*\*(?:Role\s+)?(?:Role\s+))/gi, '* **');
+
+    sanitizedLines.push(line);
+  }
+
+  return sanitizedLines.join('\n');
+}
+
 // Helper: Ekstraksi Brief Kebutuhan dan Daftar Peran Resmi dari Riwayat Chat (Poin 44 & 45)
 function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   rawBrief: string;
@@ -89,11 +121,14 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
     // Cari baris-baris peran: * **RoleName**: atau * **[RoleName]**:
     const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
     let m: RegExpExecArray | null;
+    const forbiddenKeywords = [
+      'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
+      'alur proses', 'alur', 'job description', 'struktur halaman', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'halaman utama'
+    ];
     while ((m = roleLineRegex.exec(jobDescText)) !== null) {
       let roleName = m[1].trim();
       // Bersihkan kata awalan jika ada
       roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
-      const forbiddenKeywords = ['nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3'];
       const isForbidden = forbiddenKeywords.some(k => roleName.toLowerCase().startsWith(k));
       if (roleName && !isForbidden && !roles.some(r => r.toLowerCase() === roleName.toLowerCase())) {
         roles.push(roleName);
@@ -209,12 +244,20 @@ TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI):
       } else if (hasBriefPresented && !isConfirmationApproval) {
         // KONDISI 2: BRIEF KEBUTUHAN SUDAH TAMPIL, PENGGUNA MEMBERIKAN REVISI KECIL / DETAIL
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
-Tugas Anda: Memperbarui lembar "Brief Kebutuhan" berdasarkan revisi kecil dari pengguna dan meminta konfirmasi ulang.
+Tugas Anda: Memperbarui lembar "Brief Kebutuhan" secara LENGKAP & UTUH berdasarkan revisi dari pengguna dan meminta konfirmasi ulang.
 
-ATURAN MUTLAK PERCAKAPAN:
-1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
-2. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
-3. Akui revisi pengguna dengan ramah (1-2 kalimat), lalu tampilkan kembali lembar "Brief Kebutuhan" yang telah diperbarui dengan format PERSIS:
+ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46):
+1. WAJIB GENERATE ULANG SELURUH LEMBAR SECARA UTUH DARI AWAL:
+   - DILARANG memotong teks atau hanya menampilkan potongan yang direvisi saja.
+   - Susun ulang seluruh lembar Brief Kebutuhan dari 📋 **Brief Kebutuhan** sampai baris pertanyaan penutup.
+   - PERTAHANKAN seluruh nama peran, halaman, section, dan alur proses dari Brief sebelumnya yang TIDAK diminta berubah.
+2. STRUKTUR ROLE & ALUR PROSES WAJIB LENGKAP PADA SETIAP ROLE:
+   - SETIAP role WAJIB memiliki minimal 1 baris Halaman/Tab DAN 1 baris "- **Alur Proses**: ...".
+   - DILARANG KERAS memisahkan "Alur Proses" menjadi heading role tersendiri (format '* **Alur Proses**:'). Alur proses SELALU menjadi anak (sub-item) dengan indentasi strip (-) di bawah role terkait.
+   - DILARANG membuat heading role kosong.
+3. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
+4. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
+5. Akui revisi pengguna dengan ramah (1-2 kalimat), lalu tampilkan kembali lembar "Brief Kebutuhan" yang telah diperbarui dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi]
    - **Orientasi UI**: [Desktop-first / Mobile-first / Responsif, dengan alasan singkat]
@@ -223,18 +266,18 @@ ATURAN MUTLAK PERCAKAPAN:
    - **Roadmap Lanjutan (V2/V3)**: [fitur yang didorong ke "🚀 Coming Soon" karena di luar kemampuan stack Google Sheets + Apps Script]
    - **Fitur Unik (USP)**: [kalau ada, opsional]
    - **Job Description & Struktur Halaman per Peran** (WAJIB dideklarasikan rinci per halaman & section jika ada 2+ peran; cantumkan mekanisme akses: Login simulasi akun demo untuk peran internal & Akses Publik untuk pelanggan/pasien jika ada; kosongkan jika single-user):
-     * **[Nama Peran 1 — tulis nama saja, misal: Admin]**: ← DILARANG menulis "Role Admin", cukup "Admin"
+     * **[Nama Peran 1 — tulis nama saja, misal: Dokter]**: ← DILARANG menulis "Role Dokter", cukup "Dokter"
        - [Halaman 1] (default): section [Section A], section [Section B]
        - [Halaman 2]: section [Section C], section [Section D]
        - **Alur Proses**: Klik "[Nama Tombol Aksi]" → data/status berubah jadi "[Nilai Konkret]" → Klik "[Tombol Berikutnya]" → status berubah jadi "[Nilai Akhir]" (sebutkan nama tombol pakai tanda kutip; sebutkan nilai status konkret; maks 4-6 langkah)
-     * **[Nama Peran 2 — tulis nama saja, misal: Kasir]**: ← DILARANG menulis "Role Kasir", cukup "Kasir"
+     * **[Nama Peran 2 — tulis nama saja, misal: Receptionist]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
        - [Halaman 2]: section [Section C]
        - **Alur Proses**: Klik "[Nama Tombol]" → [perubahan konkret di layar] → Klik "[Tombol Konfirmasi]" → status berubah jadi "[Nilai Akhir]"
-     * **[Nama Peran 3 — tulis nama saja, misal: Petugas]**: ← DILARANG menulis "Role Petugas", cukup "Petugas"
+     * **[Nama Peran 3 — tulis nama saja, misal: Pasien]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
-       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (peran read-only/pasif: kalau ada langkah menunggu, tulis sebagai konsekuensi aksi peran lain — misal: "saat [Peran Lain] klik X, status nomor ini berubah jadi Y")
-4. Tanyakan konfirmasi eksplisit di baris terakhir:
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar]
+6. Tanyakan konfirmasi eksplisit di baris terakhir:
    "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail/section yang ingin diubah sebelum saya buatkan prototipenya?"`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
         // KONDISI 3: PROMPT AWAL SANGAT DETAIL (>200 chars) ATAU DISKUSI SUDAH 2+ PUTARAN / USER MENYETUJUI USULAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
@@ -901,8 +944,8 @@ ${credentialsList.map(c => `     ${c}`).join(',\n')}
           }
 
           // Bersihkan kode fence jika model sempat menghasilkan (guard tahap 1)
-
-          const cleanReplyText = fullText.replace(/```html[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
+          const rawClean = fullText.replace(/```html[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
+          const cleanReplyText = sanitizeBriefKebutuhanText(rawClean);
 
           // Event DONE: kirim teks final yang sudah bersih dan signal selesai
           send({ type: 'done', replyText: cleanReplyText, code: null });
@@ -1436,7 +1479,7 @@ INSTRUKSI PERBAIKAN WAJIB:
       
       cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
     } else {
-      cleanReplyText = assistantMessage.trim();
+      cleanReplyText = sanitizeBriefKebutuhanText(assistantMessage.trim());
     }
 
 

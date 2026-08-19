@@ -9,6 +9,7 @@ export interface PageSectionDetail {
 export interface RoleDetail {
   roleName: string;
   pages: PageSectionDetail[];
+  alurProses?: string;
 }
 
 export interface ParsedBriefKebutuhan {
@@ -97,26 +98,67 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
       const rawRolesText = rolesBlockMatch[1];
       const lines = rawRolesText.split('\n');
       let currentRole: RoleDetail | null = null;
+      let pendingAlurRole: RoleDetail | null = null;
+      const forbiddenKeywords = ['job description', 'struktur halaman', 'alur proses', 'alur', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'nama peran', 'peran 1', 'role 1'];
 
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
+
+        // Jika baris sebelumnya adalah header Alur Proses tanpa isi teks, baris ini adalah isi Alur Prosesnya
+        if (pendingAlurRole) {
+          const cleanText = trimmed.replace(/^[\-\*]\s*/, '').trim();
+          if (cleanText && !cleanText.startsWith('*') && !cleanText.startsWith('#')) {
+            pendingAlurRole.alurProses = cleanText;
+            pendingAlurRole = null;
+            continue;
+          }
+          pendingAlurRole = null;
+        }
+
+        // Cek baris Alur Proses di bawah role saat ini (misal: `- Alur Proses: Klik ...` atau `* **Alur Proses**: Klik ...` atau `* **Alur Proses**:`)
+        if (currentRole && /^(?:[\*\-]\s*)?(?:\*\*)?Alur\s+Proses(?:\*\*)?:?/i.test(trimmed)) {
+          const alurText = trimmed.replace(/^(?:[\*\-]\s*)?(?:\*\*)?Alur\s+Proses(?:\*\*)?:?\s*/i, '').trim();
+          if (alurText) {
+            currentRole.alurProses = alurText;
+          } else {
+            pendingAlurRole = currentRole;
+          }
+          continue;
+        }
 
         // Cek baris Header Role (misal: `* **Admin**:` atau `* **[Admin]**:` atau `- **Kasir**:`)
         const roleHeaderMatch = trimmed.match(/^[\*\-]\s*\*\*\[?([A-Za-z0-9\s\/\-_]+?)\]?\*\*:?$/) ||
                                 trimmed.match(/^\*\*\[?([A-Za-z0-9\s\/\-_]+?)\]?\*\*:?$/);
 
         if (roleHeaderMatch) {
-          const rName = roleHeaderMatch[1].replace(/[\*\[\]:]/g, '').trim();
-          if (rName && !rName.toLowerCase().startsWith('job description')) {
+          let rName = roleHeaderMatch[1].replace(/[\*\[\]:]/g, '').trim();
+          const isForbidden = forbiddenKeywords.some(k => rName.toLowerCase().startsWith(k));
+          
+          if (rName && !isForbidden) {
+            rName = rName.replace(/^(?:Role|Peran)\s+/i, '').trim();
             currentRole = { roleName: rName, pages: [] };
             roles.push(currentRole);
+            continue;
+          } else if (rName.toLowerCase().includes('alur proses') && currentRole) {
+            pendingAlurRole = currentRole;
             continue;
           }
         }
 
         // Cek baris Halaman/Section di bawah role saat ini (misal: `- Dashboard (default): section ...`)
         if (currentRole && (trimmed.startsWith('-') || trimmed.startsWith('*'))) {
+          // Abaikan jika baris ini ternyata Alur Proses
+          if (/Alur\s+Proses/i.test(trimmed)) {
+            const alurText = trimmed.replace(/^(?:[\*\-]\s*)?(?:\*\*)?Alur\s+Proses(?:\*\*)?:?\s*/i, '').trim();
+            if (alurText) {
+              currentRole.alurProses = alurText;
+            } else {
+              pendingAlurRole = currentRole;
+            }
+            continue;
+          }
+
           const lineWithoutBullet = trimmed.replace(/^[\-\*]\s*/, '').trim();
           const isDefault = /\(default\)/i.test(lineWithoutBullet);
           
@@ -140,7 +182,7 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
 
           pageName = pageName.replace(/\(default\)/i, '').trim();
 
-          if (pageName) {
+          if (pageName && !forbiddenKeywords.some(k => pageName.toLowerCase().startsWith(k))) {
             currentRole.pages.push({
               pageName,
               isDefault,
@@ -151,8 +193,11 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
       }
     }
 
+    // Filter role kosong (tanpa halaman dan tanpa alur)
+    const validRoles = roles.filter(r => r.pages.length > 0 || Boolean(r.alurProses));
+
     // Jika berhasil mengekstrak minimal appName dan (features atau roles)
-    if (appName && (features.length > 0 || roles.length > 0)) {
+    if (appName && (features.length > 0 || validRoles.length > 0)) {
       return {
         introText: introText || undefined,
         appName,
@@ -161,7 +206,7 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
         features,
         roadmap,
         usp,
-        roles,
+        roles: validRoles,
         closingQuestion: closingQuestion || undefined
       };
     }
@@ -266,23 +311,31 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data }) 
               </div>
 
               <div className="space-y-3 pl-2 pt-1">
-                {data.roles.map((r, rIdx) => (
-                  <div key={rIdx} className="space-y-1 pt-2 first:pt-0 border-t first:border-t-0 border-slate-800/60">
-                    <div className="font-bold text-indigo-300 text-xs">
-                      * Role {r.roleName}:
-                    </div>
+                {data.roles.map((r, rIdx) => {
+                  const cleanRoleTitle = r.roleName.toLowerCase().startsWith('role') ? r.roleName : `Role ${r.roleName}`;
+                  return (
+                    <div key={rIdx} className="space-y-1.5 pt-2.5 first:pt-0 border-t first:border-t-0 border-slate-800/60">
+                      <div className="font-bold text-indigo-300 text-xs">
+                        * {cleanRoleTitle}:
+                      </div>
 
-                    <ul className="space-y-1 pl-3 text-slate-300 text-[11.5px]">
-                      {r.pages.map((p, pIdx) => (
-                        <li key={pIdx} className="leading-relaxed">
-                          - <span className="font-medium text-slate-200">{p.pageName}</span>
-                          {p.isDefault && <span className="text-indigo-400 font-normal"> (default)</span>}
-                          {p.sections.length > 0 && `: section ${p.sections.join(', ')}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                      <ul className="space-y-1 pl-3 text-slate-300 text-[11.5px]">
+                        {r.pages.map((p, pIdx) => (
+                          <li key={pIdx} className="leading-relaxed">
+                            - <span className="font-medium text-slate-200">{p.pageName}</span>
+                            {p.isDefault && <span className="text-indigo-400 font-normal"> (default)</span>}
+                            {p.sections.length > 0 && `: section ${p.sections.join(', ')}`}
+                          </li>
+                        ))}
+                        {r.alurProses && (
+                          <li className="leading-relaxed text-slate-400 pt-0.5">
+                            - <span className="font-medium text-indigo-200/90">Alur Proses:</span> {r.alurProses}
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
