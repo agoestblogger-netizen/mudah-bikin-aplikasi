@@ -272,34 +272,52 @@ export function validateAndRepairGeneratedCode(
       }
     }
 
-    // 10b. Pemeriksaan Kontaminasi Peran (Poin 44: Single Source of Truth dari Brief Kebutuhan)
+    // 10b. Pemeriksaan Kontaminasi Peran & Form Login Produksi (Poin 44 & 45: Single Source of Truth dari Brief Kebutuhan)
     if (expectedRoles && expectedRoles.length > 0) {
       const normalizedExpected = expectedRoles.map(r => r.trim().toLowerCase());
       
-      // Ambil semua role yang dipanggil via loginAs('...') di HTML
+      // Ambil semua role yang didefinisikan di JS (DEMO_ACCOUNTS, loginAs, dll) & HTML
       const loginAsCalls = [...repairedHtml.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1].trim());
-      const uniqueLoginRoles = [...new Set(loginAsCalls)];
+      const jsLoginAsCalls = [...combinedJs.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1].trim());
+      const demoAccountRoles = [...combinedJs.matchAll(/role\s*:\s*['"]([^'"]+)['"]/gi)].map(m => m[1].trim());
+      const tabAccessRoles = [...repairedHtml.matchAll(/data-access-roles\s*=\s*['"]([^'"]+)['"]/gi)]
+        .flatMap(m => m[1].split(',').map(r => r.trim()));
+
+      const allFoundRoles = [...new Set([...loginAsCalls, ...jsLoginAsCalls, ...demoAccountRoles, ...tabAccessRoles])];
 
       // Deteksi role asing / tercemar (misal: Washer / Kasir / Admin di app klinik)
-      uniqueLoginRoles.forEach(foundRole => {
+      allFoundRoles.forEach(foundRole => {
+        if (!foundRole) return;
         const isMatched = normalizedExpected.some(exp => exp === foundRole.toLowerCase() || foundRole.toLowerCase().includes(exp) || exp.includes(foundRole.toLowerCase()));
         if (!isMatched) {
           issues.push(
-            `ROLE_CONTAMINATION: Terdeteksi tombol loginAs('${foundRole}') dengan peran asing yang TIDAK ADA dalam Brief Kebutuhan resmi (${expectedRoles.join(', ')}). ` +
-            `Layar login dan fungsi loginAs() WAJIB HANYA memuat peran resmi dari Brief Kebutuhan!`
+            `ROLE_CONTAMINATION: Terdeteksi peran asing "${foundRole}" yang TIDAK ADA dalam Brief Kebutuhan resmi (${expectedRoles.join(', ')}). ` +
+            `Kode aplikasi WAJIB HANYA memuat peran resmi dari Brief Kebutuhan!`
           );
         }
       });
 
-      // Deteksi role resmi yang hilang dari tombol login
-      expectedRoles.forEach(expRole => {
-        const isPresent = uniqueLoginRoles.some(found => found.toLowerCase() === expRole.trim().toLowerCase() || found.toLowerCase().includes(expRole.trim().toLowerCase()));
-        if (!isPresent) {
+      // Periksa keberadaan form login produksi (username & password) jika multi-role
+      if (expectedRoles.length > 1) {
+        const hasUsernameInput = /id\s*=\s*['"](?:loginUsername|username|userEmail|loginEmail)['"]/i.test(repairedHtml) ||
+                                 /type\s*=\s*['"](?:text|email)['"][^>]*id\s*=\s*['"][^'"]*(?:user|login|email)[^'"]*['"]/i.test(repairedHtml);
+        const hasPasswordInput = /type\s*=\s*['"]password['"]/i.test(repairedHtml);
+        const hasLoginHandler = /function\s+handleLogin\s*\(/.test(combinedJs) || /handleLogin\s*=\s*(function|\()/.test(combinedJs) || hasLoginAsFunc;
+
+        if (!hasUsernameInput || !hasPasswordInput) {
           issues.push(
-            `ROLE_MISSING_LOGIN_BUTTON: Peran resmi "${expRole}" dari Brief Kebutuhan TIDAK memiliki tombol loginAs('${expRole}') di layar loginScreen!`
+            `LOGIN_FORM_MISSING_FIELDS: Form login gaya produksi WAJIB memiliki input username (<input type="text" id="loginUsername">) ` +
+            `dan password (<input type="password" id="loginPassword">) untuk autentikasi demo per role.`
           );
         }
-      });
+
+        if (!hasLoginHandler) {
+          issues.push(
+            `LOGIN_FORM_MISSING_HANDLER: Fungsi handleLogin() tidak ditemukan di tag <script>. ` +
+            `WAJIB buat fungsi handleLogin() untuk mencocokkan username/password demo ke peran resmi.`
+          );
+        }
+      }
     }
   }
 
