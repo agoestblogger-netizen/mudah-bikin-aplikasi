@@ -183,6 +183,7 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   roles: string[];
   publicRole: string | null;
   staffRoles: string[];
+  roleLandingTabs: Record<string, string>; // role -> tab ID default
 } {
   const aiMessages = (chatHistory || []).filter((m: any) => m.sender === 'AI' && (m.text?.includes('Brief Kebutuhan') || m.text?.includes('Job Description') || m.text?.includes('Struktur Halaman')));
   const lastBriefMsg = aiMessages[aiMessages.length - 1]?.text || '';
@@ -223,7 +224,40 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
 
   const staffRoles = roles.filter(r => r !== publicRole);
 
-  return { rawBrief: lastBriefMsg, roles, publicRole, staffRoles };
+  // Ekstrak landing tab ID per role dari Brief Kebutuhan (Poin 53)
+  // Format Brief: "* **RoleName** (Akses Publik - Tampilan Awal):" atau "* **RoleName**:"
+  // Diikuti: "- [Halaman/Tab 1] (default): section Nama" atau "- [Halaman 1] (default): ..."
+  const roleLandingTabs: Record<string, string> = {};
+  for (const role of roles) {
+    const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Cari blok teks dari header role sampai role berikutnya
+    const roleBlockRegex = new RegExp(
+      `\\*\\s+\\*\\*\\[?${escapedRole}[^\\]:\\*\\n]*\\]?\\*\\*[^\n]*\n([\\s\\S]*?)(?=\\n\\s*\\*\\s+\\*\\*[^\\*]|\\n\\s*Apakah|\\n\\s*(?:Roadmap|Catatan|Fitur Unik)|$)`, 'i'
+    );
+    const roleBlockMatch = lastBriefMsg.match(roleBlockRegex);
+    if (roleBlockMatch) {
+      const block = roleBlockMatch[1];
+      // Cari tab default: baris "- [Halaman/Tab N] (default):" atau "- Tab default:"
+      const defaultTabMatch = block.match(/\[(?:Halaman|Tab)\s*(\d+|[A-Za-z]+)\]\s*\(default\)\s*:\s*section\s+([^\n,]+)/i) ||
+                              block.match(/\[(?:Halaman|Tab)\s*(\d+|[A-Za-z]+)\]\s*\(default\)/i);
+      if (defaultTabMatch) {
+        // Buat ID tab dari nama section/role (slug format)
+        const sectionName = (defaultTabMatch[2] || role).trim().toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-');
+        roleLandingTabs[role] = sectionName;
+      } else {
+        // Fallback: gunakan slug dari nama role (untuk staf) atau 'public' untuk publik role
+        const isPublic = /^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(role);
+        roleLandingTabs[role] = isPublic
+          ? role.toLowerCase().replace(/[^a-z0-9]/g, '')
+          : role.toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+    } else {
+      roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+  }
+
+  return { rawBrief: lastBriefMsg, roles, publicRole, staffRoles, roleLandingTabs };
 }
 
 export async function POST(req: Request) {
@@ -248,7 +282,7 @@ export async function POST(req: Request) {
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
-    const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles } = extractBriefAndRolesFromHistory(chatHistory);
+    const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
     
     // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Eksekusi Revisi
     const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang)($|\b)/i.test(prompt.trim());
@@ -795,12 +829,21 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
         filterTabsByRole(role);
 
+        // POIN 53: Setelah filter, langsung ke landing tab default role ini
+        // JANGAN gunakan tab publik sebagai fallback — harus ke tab staf spesifik role ini
         const matched = DEMO_ACCOUNTS.find(a => a.role === role);
         if (matched && matched.landingTab) {
           showTab(matched.landingTab);
         } else {
-          const firstVisible = document.querySelector('.tab-btn:not([style*="display: none"])');
-          if (firstVisible) firstVisible.click();
+          // Fallback aman: ambil tab PERTAMA yang dapat diakses role ini (skip tab publik)
+          const publicRoleEl = document.querySelector('.tab-btn[data-access-roles*="Pelanggan"], .tab-btn[data-access-roles*="Pasien"], .tab-btn[data-access-roles*="Customer"]');
+          const publicTabId = publicRoleEl ? publicRoleEl.getAttribute('onclick')?.match(/showTab\(['"]([^'"]+)['"]\)/)?.[1] : null;
+          const firstStaffTab = Array.from(document.querySelectorAll('.tab-btn')).find(btn => {
+            if (btn.style.display === 'none') return false; // tersembunyi
+            const btnTabId = btn.getAttribute('onclick')?.match(/showTab\(['"]([^'"]+)['"]\)/)?.[1];
+            return btnTabId && btnTabId !== publicTabId; // bukan tab publik
+          });
+          if (firstStaffTab) (firstStaffTab as HTMLElement).click();
         }
 
         render();
@@ -840,14 +883,30 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       }
 
       if (officialRoles.length > 0) {
+        // Build DEMO_ACCOUNTS dengan landingTab per role (Poin 53)
+        // landingTab = ID tab default yang langsung ditampilkan saat role ini login
         const credentialsList = officialRoles.map(r => {
           const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return `{ role: '${r}', username: '${u}', password: '${u}123' }`;
+          // Untuk role publik: tidak perlu landingTab (tidak butuh login)
+          // Untuk staf: sertakan landingTab slug dari Brief Kebutuhan
+          const isPublic = r === publicRole;
+          if (isPublic) {
+            return `{ role: '${r}', username: '${u}', password: '${u}123' }`;
+          }
+          // Gunakan slug dari roleLandingTabs jika tersedia, fallback ke slug role
+          const landingTabHint = roleLandingTabs[r] || u;
+          return `{ role: '${r}', username: '${u}', password: '${u}123', landingTab: '${landingTabHint}' }`;
         });
+
+        // Buat panduan landingTab eksplisit per role staf untuk AI
+        const staffLandingGuide = staffRoles.map(r => {
+          const hint = roleLandingTabs[r] || r.toLowerCase().replace(/[^a-z0-9]/g, '');
+          return `   - Role "${r}": landingTab harus diisi dengan ID tab pertama yang terlihat setelah login (Tab default "${r}" sesuai Brief, BUKAN tab publik "${publicRole || 'Pelanggan'}"). Contoh hint ID: '${hint}' — sesuaikan dengan ID tab HTML yang dibuat.`;
+        }).join('\n');
 
         systemPrompt += `\n\n` +
 `================================================================================
-⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52):
+⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52, 53):
 Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
 ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES PUBLIK - TAMPILAN AWAL)' : '(PERAN STAF/INTERNAL)'}`).join('\n')}
 
@@ -873,11 +932,15 @@ ${publicRole ? `3. INISIALISASI AWAL HALAMAN PUBLIK & TAB GATING (POIN 52):
      render();
    }` : `3. LAYAR LOGIN AWAL: Karena tidak ada peran publik, aplikasi dimulai dari form login #loginScreen di tengah layar.`}
 6. FORM LOGIN GAYA PRODUKSI: Form WAJIB memiliki <input type="text" id="loginUsername" placeholder="Username / Email"> dan <input type="password" id="loginPassword" placeholder="Kata Sandi"> serta tombol <button type="button" onclick="handleLogin()">Masuk</button>. DILARANG membuat tombol "Masuk sebagai [Role]" berjejer di form login!
-7. KREDENSIAL SIMULASI: Cocokkan login di fungsi handleLogin() dengan array DEMO_ACCOUNTS:
+7. KREDENSIAL SIMULASI & DEFAULT LANDING TAB PER ROLE (WAJIB — POIN 53):
+   Cocokkan login di fungsi handleLogin() dengan array DEMO_ACCOUNTS PERSIS seperti ini:
    const DEMO_ACCOUNTS = [
 ${credentialsList.map(c => `     ${c}`).join(',\n')}
    ];
-   Jika gagal, panggil showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error').
+   ⚠️ KRITIS (POIN 53 — DEFAULT LANDING TAB): Setiap entry staf WAJIB punya field \`landingTab\` yang diisi dengan ID HTML (id="...") dari TAB PERTAMA/DEFAULT role tersebut sesuai Brief Kebutuhan:
+${staffLandingGuide}
+   PENTING: "landingTab" adalah ID tab HTML staf spesifik, BUKAN ID tab publik ("${publicRole || 'pelanggan'}"). Jika login sebagai Kasir, harus langsung ke tab Kasir; jika login sebagai Washer, harus langsung ke tab Washer — BUKAN tab Lacak/Pelanggan!
+   Jika gagal login, panggil showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error').
 8. SETIAP tombol tab (<button class="tab-btn">) WAJIB menggunakan atribut data-access-roles yang HANYA berisi nama peran resmi di atas.
 ================================================================================`;
       }
