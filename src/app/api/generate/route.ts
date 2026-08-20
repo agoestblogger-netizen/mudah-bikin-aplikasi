@@ -105,9 +105,10 @@ function sanitizeBriefKebutuhanText(text: string): string {
     let line = lines[i];
     const trimmed = line.trim();
 
-    // Glitch: Heading role hantu bernama "Alur Proses" (misal: `* **Alur Proses**:` atau `* Role Alur Proses:`)
-    if (/^[\*\-]\s*(?:\*\*)?(?:Role\s+)?Alur\s+Proses(?:\*\*)?:?\s*$/i.test(trimmed)) {
-      line = '      - **Alur Proses**:';
+    // Glitch: Heading role hantu bernama "Alur Proses" (misal: `* **Alur Proses**:` atau `* Role Alur Proses:` atau `* **Alur Proses Tab 1**:`)
+    if (/^[\*\-]\s*(?:\*\*)?(?:Role\s+)?Alur\s+Proses(?:\s+Tab\s+\d+)?(?:\*\*)?:?\s*$/i.test(trimmed)) {
+      const matchLabel = trimmed.match(/Alur\s+Proses(?:\s+Tab\s+\d+)?/i)?.[0] || 'Alur Proses';
+      line = `      - **${matchLabel}**:`;
       if (i + 1 < lines.length && !lines[i + 1].trim().startsWith('*') && !lines[i + 1].trim().startsWith('#') && !lines[i + 1].trim().startsWith('-')) {
         i++;
         line += ' ' + lines[i].trim();
@@ -344,13 +345,14 @@ TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI):
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
 Tugas Anda: Memperbarui lembar "Brief Kebutuhan" secara LENGKAP & UTUH berdasarkan revisi dari pengguna dan meminta konfirmasi ulang.
 
-ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46):
+ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
 1. WAJIB GENERATE ULANG SELURUH LEMBAR SECARA UTUH DARI AWAL:
    - DILARANG memotong teks atau hanya menampilkan potongan yang direvisi saja.
    - Susun ulang seluruh lembar Brief Kebutuhan dari 📋 **Brief Kebutuhan** sampai baris pertanyaan penutup.
    - PERTAHANKAN seluruh nama peran, halaman, section, dan alur proses dari Brief sebelumnya yang TIDAK diminta berubah.
-2. STRUKTUR ROLE & ALUR PROSES WAJIB LENGKAP PADA SETIAP ROLE:
+2. STRUKTUR ROLE & ALUR PROSES WAJIB LENGKAP PADA SETIAP ROLE (POIN 51):
    - SETIAP role WAJIB memiliki minimal 1 baris Halaman/Tab DAN 1 baris "- **Alur Proses**: ...".
+   - MULTI-TAB ALUR PROSES (POIN 51): Jika role memiliki 2 tab/halaman atau lebih, Alur Proses WAJIB melibatkan perpindahan antar-tab (contoh: [Aksi Tab 1] → [Status Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 sub-baris: "- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ...". Batasi maksimal 6-8 langkah total.
    - DILARANG KERAS memisahkan "Alur Proses" menjadi heading role tersendiri (format '* **Alur Proses**:'). Alur proses SELALU menjadi anak (sub-item) dengan indentasi strip (-) di bawah role terkait.
    - DILARANG membuat heading role kosong.
 3. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
@@ -364,17 +366,17 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46):
    - **Roadmap Lanjutan (V2/V3)**: [fitur yang didorong ke "🚀 Coming Soon" karena di luar kemampuan stack Google Sheets + Apps Script]
    - **Fitur Unik (USP)**: [kalau ada, opsional]
    - **Job Description & Struktur Halaman per Peran** (WAJIB dideklarasikan rinci per halaman & section jika ada 2+ peran; cantumkan mekanisme akses: Login simulasi akun demo untuk peran internal & Akses Publik untuk pelanggan/pasien jika ada; kosongkan jika single-user):
-     * **[Nama Peran 1 — tulis nama saja, misal: Dokter]**: ← DILARANG menulis "Role Dokter", cukup "Dokter"
+     * **[Nama Peran 1 — tulis nama saja, misal: Admin Klinik]**: ← DILARANG menulis "Role Admin", cukup "Admin Klinik"
        - [Halaman 1] (default): section [Section A], section [Section B]
        - [Halaman 2]: section [Section C], section [Section D]
-       - **Alur Proses**: Klik "[Nama Tombol Aksi]" → data/status berubah jadi "[Nilai Konkret]" → Klik "[Tombol Berikutnya]" → status berubah jadi "[Nilai Akhir]" (sebutkan nama tombol pakai tanda kutip; sebutkan nilai status konkret; maks 4-6 langkah)
-     * **[Nama Peran 2 — tulis nama saja, misal: Receptionist]**:
+       - **Alur Proses**: Klik "[Nama Tombol Aksi]" (Tab 1) → status/data berubah jadi "[Nilai Konkret]" → Klik "[Tombol Simpan]" → status jadi "[Aktif]" → Buka tab "[Nama Tab 2]" (Tab 2) → [efek/data baru terlihat di Tab 2] (WAJIB libatkan perpindahan kedua tab; nama tombol pakai tanda kutip; nilai status konkret; maks 6-8 langkah)
+     * **[Nama Peran 2 — tulis nama saja, misal: Dokter Umum]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
        - [Halaman 2]: section [Section C]
-       - **Alur Proses**: Klik "[Nama Tombol]" → [perubahan konkret di layar] → Klik "[Tombol Konfirmasi]" → status berubah jadi "[Nilai Akhir]"
+       - **Alur Proses**: Klik "[Nama Tombol]" (Tab 1) → status berubah jadi "[Nilai Konkret]" → Buka tab "[Nama Tab 2]" (Tab 2) → [rekam medis/hasil muncul di riwayat Tab 2] → Klik "[Tombol Selesai]" → status berubah jadi "[Nilai Akhir]"
      * **[Nama Peran 3 — tulis nama saja, misal: Pasien]**:
        - [Halaman 1] (default): section [Section A], section [Section B]
-       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar]
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (jika 1 tab saja, alur fokus di tab tersebut)
 6. Tanyakan konfirmasi eksplisit di baris terakhir:
    "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail/section yang ingin diubah sebelum saya buatkan prototipenya?"`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
@@ -385,7 +387,12 @@ Tugas Anda: Merangkum kebutuhan aplikasi yang sudah disepakati menjadi lembar re
 ATURAN MUTLAK PERCAKAPAN:
 1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
 2. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
-3. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
+3. ATURAN STRUKTUR HALAMAN & ALUR PROSES MULTI-TAB (POIN 42, 43, 51):
+   - STRUKTUR TAB PER ROLE: Untuk peran internal operasional & pengawas (misal: Admin, Dokter, Kasir, Receptionist, Washer), deklarasikan 2 Halaman/Tab (Tab 1: Operasional Utama/Entri Data, Tab 2: Monitoring/Riwayat/Laporan) agar workspace terstruktur rapi. Untuk peran pelanggan/pasien publik cukup 1 tab.
+   - ALUR PROSES 2 TAB (POIN 51): Jika role memiliki 2 tab/halaman, Alur Proses WAJIB melibatkan dan menghubungkan perpindahan antar-tab sebagai bagian dari alur kerja nyata (contoh: [Aksi di Tab 1] → [Status di Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol di Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 baris terpisah ("- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ..."). Batasi maks 6-8 langkah total.
+   - Jika role hanya memiliki 1 tab: Alur Proses fokus di 1 tab tersebut (3-5 langkah).
+   - Setiap langkah WAJIB menyebutkan nama tombol dalam tanda kutip dan status konkret yang berubah.
+4. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi yang menarik & relevan]
    - **Orientasi UI**: [Desktop-first / Mobile-first / Responsif, dengan alasan singkat]
@@ -394,18 +401,18 @@ ATURAN MUTLAK PERCAKAPAN:
    - **Roadmap Lanjutan (V2/V3)**: [daftar fitur yang didorong ke "🚀 Coming Soon" karena di luar batasan stack GAS]
    - **Fitur Unik (USP)**: [keunikan aplikasi, jika ada]
    - **Job Description & Struktur Halaman per Role** (WAJIB dideklarasikan rinci per halaman & section jika ada 2+ role; cantumkan mekanisme akses: Login simulasi akun demo untuk role internal & Akses Publik untuk pelanggan/pasien jika ada; kosongkan jika single-user):
-     * **[Nama Peran 1 — tulis nama saja, misal: Admin]**: ← DILARANG menulis "Role Admin", cukup "Admin"
+     * **[Nama Peran 1 — tulis nama saja, misal: Admin Klinik]**: ← DILARANG menulis "Role Admin Klinik", cukup "Admin Klinik"
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - [Halaman/Tab 2]: section [Nama Section 3], section [Nama Section 4]
-       - **Alur Proses**: Klik "[Nama Tombol Aksi]" → [data/status berubah jadi "Nilai Konkret"] → Klik "[Tombol Berikutnya]" → status berubah jadi "[Nilai Akhir]" (WAJIB: nama tombol pakai tanda kutip, nilai status konkret, turunkan dari workflow bisnis nyata; maks 4-6 langkah)
-     * **[Nama Peran 2 — tulis nama saja, misal: Kasir]**: ← DILARANG menulis "Role Kasir"
+       - **Alur Proses**: Klik "[Nama Tombol Aksi]" (Tab 1) → [data/status berubah jadi "Nilai Konkret"] → Klik "[Tombol Simpan]" → status jadi "[Aktif]" → Buka tab "[Nama Tab 2]" (Tab 2) → [efek/data baru terlihat di Tab 2] (WAJIB libatkan kedua tab; nama tombol pakai tanda kutip & nilai status konkret; maks 6-8 langkah)
+     * **[Nama Peran 2 — tulis nama saja, misal: Dokter Umum]**: ← DILARANG menulis "Role Dokter Umum"
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - [Halaman/Tab 2]: section [Nama Section 3]
-       - **Alur Proses**: Klik "[Nama Tombol]" → [perubahan konkret di layar, misal: item muncul di daftar] → Klik "[Tombol Konfirmasi]" → status berubah jadi "[Nilai Akhir]"
-     * **[Nama Peran 3 — tulis nama saja, misal: Petugas]**: ← DILARANG menulis "Role Petugas"
+       - **Alur Proses**: Klik "[Nama Tombol]" (Tab 1) → [perubahan konkret di layar] → Buka tab "[Nama Tab 2]" (Tab 2) → [rekam medis/hasil muncul di riwayat] → Klik "[Tombol Selesai]" → status berubah jadi "[Nilai Akhir]"
+     * **[Nama Peran 3 — tulis nama saja, misal: Pasien]**: ← DILARANG menulis "Role Pasien"
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
-       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (langkah menunggu pasif JANGAN ditulis sebagai aksi — tulis sebagai konsekuensi: "saat [Role Lain] klik X, status item ini berubah jadi Y")
-4. WAJIB tanyakan konfirmasi di baris terakhir:
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (jika 1 tab, alur fokus di tab tersebut; langkah menunggu pasif ditulis sebagai konsekuensi: "saat [Role Lain] klik X, status berubah jadi Y")
+5. WAJIB tanyakan konfirmasi di baris terakhir:
    "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan, atau ada section/fitur yang mau ditambah/diubah sebelum saya buatkan prototipenya?"`;
       } else {
         // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
