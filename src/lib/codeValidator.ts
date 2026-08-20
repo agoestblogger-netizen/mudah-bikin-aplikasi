@@ -318,6 +318,84 @@ export function validateAndRepairGeneratedCode(
           );
         }
       }
+
+      // 10c. Pemeriksaan Tab Gating Publik & Keamanan Data (Poin 52 — Anti-Data Leak & Initial Public Role Filtering)
+      let detectedPublicRole: string | null = null;
+      for (const r of expectedRoles) {
+        if (/^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(r)) {
+          detectedPublicRole = r;
+          break;
+        }
+      }
+
+      if (detectedPublicRole) {
+        // 1. Verifikasi apakah filterTabsByRole dipanggil saat inisialisasi awal publik (di luar loginAs)
+        const hasInitialFilterCall = new RegExp(`filterTabsByRole\\s*\\(\\s*['"]?${detectedPublicRole}['"]?\\s*\\)`, 'i').test(combinedJs) ||
+                                     /DOMContentLoaded[\s\S]*?filterTabsByRole/i.test(combinedJs) ||
+                                     /init\(\)[\s\S]*?filterTabsByRole/i.test(combinedJs) ||
+                                     /window\.onload[\s\S]*?filterTabsByRole/i.test(combinedJs);
+
+        if (!hasInitialFilterCall) {
+          issues.push(
+            `PUBLIC_ROLE_UNFILTERED_ON_LOAD: Aplikasi memiliki halaman publik ("${detectedPublicRole}"), tetapi filterTabsByRole("${detectedPublicRole}") ` +
+            `TIDAK dipanggil saat inisialisasi awal (di luar loginAs). Akibatnya seluruh tab staf terbuka tanpa login!`
+          );
+
+          // Auto-repair: Sisipkan pemanggilan filterTabsByRole awal jika fungsi tersebut ada di script
+          if (repairedHtml.includes('function filterTabsByRole') || repairedJs.includes('function filterTabsByRole')) {
+            if (repairedHtml.includes('document.addEventListener(\'DOMContentLoaded\'') || repairedHtml.includes('document.addEventListener("DOMContentLoaded"')) {
+              repairedHtml = repairedHtml.replace(/(document\.addEventListener\(\s*['"]DOMContentLoaded['"]\s*,\s*(?:\(\)|\w+)?\s*=>?\s*\{)/i, `$1\n      if (typeof filterTabsByRole === 'function') filterTabsByRole('${detectedPublicRole}');`);
+            } else if (repairedHtml.includes('</script>')) {
+              repairedHtml = repairedHtml.replace('</script>', `\n    // Inisialisasi awal tab publik (Poin 52)\n    document.addEventListener('DOMContentLoaded', () => {\n      if (typeof filterTabsByRole === 'function') filterTabsByRole('${detectedPublicRole}');\n    });\n    </script>`);
+            }
+          }
+        }
+
+        // Auto-repair defensive: Sembunyikan tombol tab staf di markup HTML bawaan jika belum ada style="display:none"
+        repairedHtml = repairedHtml.replace(/<button([^>]*?)>/gi, (match, attrs) => {
+          if (!attrs.includes('tab-btn')) return match;
+          const accessRolesMatch = attrs.match(/data-access-roles=["']([^"']+)["']/i);
+          if (accessRolesMatch) {
+            const roles = accessRolesMatch[1].split(',').map((r: string) => r.trim().toLowerCase());
+            const hasPublicAccess = roles.some((r: string) => /^(pasien|pelanggan|customer|tamu|guest|publik|client)$/i.test(r));
+            if (!hasPublicAccess && !attrs.includes('style=')) {
+              return `<button${attrs} style="display: none;">`;
+            } else if (!hasPublicAccess && attrs.includes('style="') && !attrs.includes('display: none') && !attrs.includes('display:none')) {
+              return `<button${attrs.replace('style="', 'style="display: none; ')}>`;
+            }
+          }
+          return match;
+        });
+
+        // 2. Deteksi PUBLIC_DATA_LEAK: Tombol Edit/Hapus staf yang terbuka di tab publik
+        const tabBtns = [...repairedHtml.matchAll(/<button([^>]*?)>/gi)].filter(m => m[1].includes('tab-btn'));
+        for (const btnMatch of tabBtns) {
+          const btnAttrs = btnMatch[1];
+          const tabIdMatch = btnAttrs.match(/showTab\(['"]([^'"]+)['"]\)/i);
+          const accessRolesMatch = btnAttrs.match(/data-access-roles=["']([^"']+)["']/i);
+
+          if (tabIdMatch && accessRolesMatch) {
+            const tabId = tabIdMatch[1];
+            const roles = accessRolesMatch[1].split(',').map((r: string) => r.trim().toLowerCase());
+            const isExclusivelyPublic = roles.every((r: string) => /^(pasien|pelanggan|customer|tamu|guest|publik|client)$/i.test(r));
+
+            if (isExclusivelyPublic) {
+              const tabSectionRegex = new RegExp(`<div[^>]*id=["'](?:tab-)?${tabId}["'][^>]*>([\\s\\S]*?)<\\/div>`, 'i');
+              const tabSectionMatch = repairedHtml.match(tabSectionRegex);
+              if (tabSectionMatch) {
+                const sectionContent = tabSectionMatch[1];
+                const hasExposedStaffActions = /<button[^>]*onclick=["'][^"']*(?:hapus|delete|bukaModalHapus|editPesanan|editData|ubahStatus)[^"']*["'][^>]*>/i.test(sectionContent);
+                if (hasExposedStaffActions) {
+                  issues.push(
+                    `PUBLIC_DATA_LEAK: Tab publik "${tabId}" memuat tombol Edit/Hapus atau aksi staf tanpa autentikasi. ` +
+                    `Halaman publik HANYA boleh berisi form pencarian/lacak spesifik atau form pemesanan mandiri, BUKAN tabel master dengan tombol staf!`
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 

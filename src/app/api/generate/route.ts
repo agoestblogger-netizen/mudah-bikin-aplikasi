@@ -808,14 +808,13 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       function filterTabsByRole(role) {
         document.querySelectorAll('.tab-btn').forEach(btn => {
-          const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim());
-          btn.style.display = allowed.includes(role) ? '' : 'none';
+          const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim().toLowerCase());
+          btn.style.display = (role && allowed.includes(role.toLowerCase())) ? '' : 'none';
         });
       }
 
       function logout() {
-        currentRole = null;
-        // Logic logout: jika ada role publik, kembalikan ke landing publik
+        // Logic logout: jika ada role publik, kembalikan ke landing publik & panggil filterTabsByRole(rolePublik)
         // jika murni internal, kembali ke loginScreen
       }
       </script>
@@ -848,21 +847,38 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
         systemPrompt += `\n\n` +
 `================================================================================
-⚠️ SUMBER KEBENARAN TUNGGAL PERAN & AUTENTIKASI (POIN 44 & 45):
+⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52):
 Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
 ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES PUBLIK - TAMPILAN AWAL)' : '(PERAN STAF/INTERNAL)'}`).join('\n')}
 
-ATURAN FORM LOGIN PRODUKSI & PUBLIC LANDING (WAJIB DIPATUHI):
+ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK (WAJIB DIPATUHI — POIN 52):
 1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
 2. DILARANG KERAS menambahkan role generic (Admin, Kasir, Washer, Petugas, Owner, Manager) jika TIDAK ADA di daftar resmi di atas!
-${publicRole ? `3. HALAMAN PUBLIK SEBAGAI TAMPILAN AWAL: Aplikasi WAJIB langsung terbuka di halaman "${publicRole}" (#appContainer display:block). Sediakan tombol "🔐 Login Staf" di pojok kanan header untuk membuka modal login (#modalLogin).` : `3. LAYAR LOGIN AWAL: Karena tidak ada peran publik, aplikasi dimulai dari form login #loginScreen di tengah layar.`}
-4. FORM LOGIN GAYA PRODUKSI: Form WAJIB memiliki <input type="text" id="loginUsername" placeholder="Username / Email"> dan <input type="password" id="loginPassword" placeholder="Kata Sandi"> serta tombol <button type="button" onclick="handleLogin()">Masuk</button>. DILARANG membuat tombol "Masuk sebagai [Role]" berjejer di form login!
-5. KREDENSIAL SIMULASI: Cocokkan login di fungsi handleLogin() dengan array DEMO_ACCOUNTS:
+${publicRole ? `3. INISIALISASI AWAL HALAMAN PUBLIK & TAB GATING (POIN 52):
+   - Aplikasi WAJIB langsung terbuka di halaman "${publicRole}" (#appContainer display:block).
+   - SAAT HALAMAN PERTAMA KALI DIMUAT (di event DOMContentLoaded / akhir script): WAJIB LANGSUNG PANGGIL \`filterTabsByRole('${publicRole}')\` agar SELURUH TAB STAF LANGSUNG TERSEMBUNYI (display: none).
+   - Seluruh <button class="tab-btn"> untuk tab staf yang tidak bisa diakses "${publicRole}" WAJIB memiliki atribut style="display: none;" di markup HTML bawaan agar tidak berkedip terbuka saat load.
+   - Sediakan tombol "🔐 Login Staf" di pojok kanan header (#appContainer) untuk membuka modal login (#modalLogin).
+4. PERLINDUNGAN ANTI-DATA LEAK DI TAB PUBLIK (POIN 52):
+   - Tab publik ("${publicRole}") HANYA boleh berisi form pencarian/pelacakan spesifik (misal: input nomor nota/telepon → tampilkan kartu status untuk 1 pesanan yang dicari) atau form input pemesanan mandiri baru.
+   - DILARANG KERAS menampilkan tabel master database lengkap dari seluruh pesanan/pelanggan lain di tab publik!
+   - DILARANG KERAS menaruh tombol Edit, Hapus, Ubah Status, atau aksi staf lainnya di tab publik. Seluruh tombol manajemen data staf HANYA boleh ada di tab staf yang terkunci di balik login!
+5. LOGOUT HANDLER:
+   function logout() {
+     currentRole = '${publicRole}';
+     filterTabsByRole('${publicRole}');
+     const firstPubTab = document.querySelector('.tab-btn:not([style*="display: none"])');
+     if (firstPubTab) firstPubTab.click();
+     showToast('Berhasil keluar. Kembali ke halaman publik.', 'info');
+     render();
+   }` : `3. LAYAR LOGIN AWAL: Karena tidak ada peran publik, aplikasi dimulai dari form login #loginScreen di tengah layar.`}
+6. FORM LOGIN GAYA PRODUKSI: Form WAJIB memiliki <input type="text" id="loginUsername" placeholder="Username / Email"> dan <input type="password" id="loginPassword" placeholder="Kata Sandi"> serta tombol <button type="button" onclick="handleLogin()">Masuk</button>. DILARANG membuat tombol "Masuk sebagai [Role]" berjejer di form login!
+7. KREDENSIAL SIMULASI: Cocokkan login di fungsi handleLogin() dengan array DEMO_ACCOUNTS:
    const DEMO_ACCOUNTS = [
 ${credentialsList.map(c => `     ${c}`).join(',\n')}
    ];
    Jika gagal, panggil showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error').
-6. SETIAP tombol tab (<button class="tab-btn">) WAJIB menggunakan atribut data-access-roles yang HANYA berisi nama peran resmi di atas.
+8. SETIAP tombol tab (<button class="tab-btn">) WAJIB menggunakan atribut data-access-roles yang HANYA berisi nama peran resmi di atas.
 ================================================================================`;
       }
 
@@ -1466,7 +1482,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 3. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
 4. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
 5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-6. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }] }
+6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
+7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
             })
@@ -1509,7 +1526,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 3. Pastikan SELURUH sintaks JavaScript di dalam tag <script> VALID 100% dan bebas dari SyntaxError (seperti unclosed string, unexpected identifier, atau kurung tidak berpasangan).
 4. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
 5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
-6. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
+6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
+7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
         ];
 
         const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
