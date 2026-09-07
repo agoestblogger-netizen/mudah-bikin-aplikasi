@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getUserFromRequest } from '@/lib/supabase/user';
 
 function unauthorized() {
   return NextResponse.json({ success: false, error: 'Anda harus login terlebih dahulu.' }, { status: 401 });
 }
 
-export async function GET() {
-  const supabase = await createClient();
-  const { data: sessionData } = await supabase.auth.getSession();
-  const user = sessionData.session?.user;
+export async function GET(req: Request) {
+  const user = await getUserFromRequest(req);
   if (!user) return unauthorized();
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('app_projects')
     .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, created_at, updated_at')
     .eq('user_id', user.id)
@@ -27,9 +26,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: sessionData } = await supabase.auth.getSession();
-  const user = sessionData.session?.user;
+  const user = await getUserFromRequest(req);
   if (!user) return unauthorized();
 
   let body: Record<string, unknown>;
@@ -41,11 +38,11 @@ export async function POST(req: Request) {
 
   const title = String(body.title || '').trim().slice(0, 255) || 'Aplikasi Tanpa Nama';
   const description = body.description ? String(body.description).slice(0, 2000) : null;
-  const canvasHtml = body.canvas_html ? String(body.canvas_html) : body.canvas_html as unknown as string | null;
+  const canvasHtml = body.canvas_html ? String(body.canvas_html) : null;
   const canvasCss = body.canvas_css ? String(body.canvas_css) : null;
   const canvasJs = body.canvas_js ? String(body.canvas_js) : null;
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from('app_projects')
     .insert({
       user_id: user.id,
@@ -53,7 +50,7 @@ export async function POST(req: Request) {
       description,
       app_type: 'web_app',
       status: 'canvas_active',
-      canvas_html: canvasHtml || null,
+      canvas_html: canvasHtml,
       canvas_css: canvasCss,
       canvas_js: canvasJs,
       gas_script: body.gas_script ? String(body.gas_script) : null,

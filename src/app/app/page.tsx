@@ -23,6 +23,13 @@ const GENERATE_PROGRESS_STEPS = [
   { label: 'Menyelesaikan & menyiapkan preview...', pct: 97 },
 ];
 
+// Klien menyimpan sesi di localStorage; sertakan token akses ke route server
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export default function AppWorkspacePage() {
   const router = useRouter();
   const [projectState, setProjectState] = useState<AppProjectState>(initialProjectState);
@@ -183,9 +190,10 @@ export default function AppWorkspacePage() {
 
     (async () => {
       try {
+        const headers = await getAuthHeaders();
         const res = await fetch('/api/projects', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify(body)
         });
         if (!res.ok) return;
@@ -225,7 +233,8 @@ export default function AppWorkspacePage() {
   const handleDeleteProject = async (id: string) => {
     setDeletingId(id);
     try {
-      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      const headers = await getAuthHeaders();
+      await fetch(`/api/projects/${id}`, { method: 'DELETE', headers });
       setSavedProjects((prev) => prev.filter((p) => p.id !== id));
       if (lastSavedCanvasRef.current && projectState.id === 'saved-' + id) {
         lastSavedCanvasRef.current = '';
@@ -240,7 +249,8 @@ export default function AppWorkspacePage() {
   // Muat daftar prototype tersimpan setelah sesi login terverifikasi (sekali saja)
   useEffect(() => {
     if (isAuthenticated !== true || savedLoaded) return;
-    fetch('/api/projects', { cache: 'no-store' })
+    getAuthHeaders()
+      .then((headers) => fetch('/api/projects', { cache: 'no-store', headers }))
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { projects?: SavedProject[] } | null) => {
         if (data) setSavedProjects(Array.isArray(data.projects) ? data.projects : []);
