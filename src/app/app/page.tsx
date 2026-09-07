@@ -1,16 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { AppProjectState } from '@/types/app';
+import { AppProjectState, SavedProject } from '@/types/app';
 import { initialProjectState } from '@/lib/defaultState';
 import { Navbar } from '@/components/Navbar';
 import { ChatPanel } from '@/components/ChatPanel';
+import { SavedProjectsList } from '@/components/SavedProjectsList';
 import { BuildBadge } from '@/components/BuildBadge';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import Link from 'next/link';
-import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2 } from 'lucide-react';
+import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen } from 'lucide-react';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -25,12 +26,16 @@ const GENERATE_PROGRESS_STEPS = [
 export default function AppWorkspacePage() {
   const router = useRouter();
   const [projectState, setProjectState] = useState<AppProjectState>(initialProjectState);
-  const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT'>('PREVIEW');
+  const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT' | 'SAVED'>('SAVED');
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [savedLoaded, setSavedLoaded] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const lastSavedCanvasRef = useRef('');
 
   // Shortcut Keyboard Esc untuk keluar dari Fullscreen (Poin 37)
   useEffect(() => {
@@ -125,11 +130,15 @@ export default function AppWorkspacePage() {
   }, [router]);
 
   const handleUpdateState = (updated: Partial<AppProjectState>) => {
-    setProjectState((prev) => ({
-      ...prev,
+    const merged: AppProjectState = {
+      ...projectState,
       ...updated,
       updatedAt: new Date().toISOString()
-    }));
+    };
+    setProjectState(merged);
+    if (updated.canvasCode?.html) {
+      handleAutoSaveProject(merged);
+    }
   };
 
   const handleNewSession = () => {
@@ -138,7 +147,97 @@ export default function AppWorkspacePage() {
       id: 'proj-' + Date.now(),
       updatedAt: new Date().toISOString()
     });
+    lastSavedCanvasRef.current = '';
+    setRightPanelTab('SAVED');
   };
+
+  // =====================================================================
+  // Fitur "Tersimpan" (Saved Prototypes)
+  // =====================================================================
+  const handleAutoSaveProject = useCallback((snapshot: AppProjectState) => {
+    if (!isAuthenticated) return;
+    const html = snapshot.canvasCode.html || '';
+    if (!html || html === lastSavedCanvasRef.current) return;
+    lastSavedCanvasRef.current = html;
+
+    const body = {
+      title: snapshot.title || 'Aplikasi Tanpa Nama',
+      description: snapshot.description,
+      canvas_html: html,
+      canvas_css: snapshot.canvasCode.css || '',
+      canvas_js: snapshot.canvasCode.js || '',
+      gas_script: snapshot.gasConfig.scriptCode || '',
+      gas_web_app_url: snapshot.gasConfig.webAppUrl || '',
+      spreadsheet_id: snapshot.gasConfig.sheetId || ''
+    };
+
+    (async () => {
+      try {
+        const res = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { project?: SavedProject };
+        if (data.project) {
+          setSavedProjects((prev) => [data.project!, ...prev.filter((p) => p.id !== data.project!.id)].slice(0, 50));
+        }
+      } catch (err) {
+        console.error('Failed to auto-save project:', err);
+      }
+    })();
+  }, [isAuthenticated]);
+
+  const handleLoadProject = (project: SavedProject) => {
+    lastSavedCanvasRef.current = project.canvas_html || '';
+    setProjectState({
+      ...initialProjectState,
+      id: 'saved-' + project.id,
+      title: project.title,
+      description: project.description || '',
+      updatedAt: project.updated_at || new Date().toISOString(),
+      canvasCode: {
+        html: project.canvas_html || '',
+        css: project.canvas_css || '',
+        js: project.canvas_js || ''
+      },
+      gasConfig: {
+        sheetId: project.spreadsheet_id || '',
+        webAppUrl: project.gas_web_app_url || '',
+        scriptCode: project.gas_script || '',
+        isConnected: Boolean(project.gas_script)
+      }
+    });
+    setRightPanelTab('PREVIEW');
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      setSavedProjects((prev) => prev.filter((p) => p.id !== id));
+      if (lastSavedCanvasRef.current && projectState.id === 'saved-' + id) {
+        lastSavedCanvasRef.current = '';
+      }
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Muat daftar prototype tersimpan setelah sesi login terverifikasi (sekali saja)
+  useEffect(() => {
+    if (isAuthenticated !== true || savedLoaded) return;
+    fetch('/api/projects', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { projects?: SavedProject[] } | null) => {
+        if (data) setSavedProjects(Array.isArray(data.projects) ? data.projects : []);
+      })
+      .catch((err) => console.error('Failed to load saved projects:', err))
+      .finally(() => setSavedLoaded(true));
+  }, [isAuthenticated, savedLoaded]);
 
   // PRD Bagian 9: Download index.html mandiri untuk deploy ke Cloudflare Pages
   const handleDownloadIndexHtml = () => {
@@ -260,6 +359,23 @@ export default function AppWorkspacePage() {
                   <Code2 className="w-3.5 h-3.5" />
                   <span>Backend Apps Script</span>
                 </button>
+
+                <button
+                  onClick={() => setRightPanelTab('SAVED')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                    rightPanelTab === 'SAVED'
+                      ? 'bg-sky-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span>Tersimpan</span>
+                  {savedProjects.length > 0 && (
+                    <span className="min-w-[18px] px-1 py-0.5 rounded-full bg-slate-800 text-[9px] font-bold text-slate-300">
+                      {savedProjects.length}
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* Aksi Kanan: Download index.html & Fullscreen Toggle */}
@@ -328,7 +444,7 @@ export default function AppWorkspacePage() {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : rightPanelTab === 'GAS_SCRIPT' ? (
                 <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 p-4 overflow-y-auto font-mono text-xs text-emerald-400">
                   {projectState.gasConfig.scriptCode ? (
                     <pre className="whitespace-pre-wrap">{projectState.gasConfig.scriptCode}</pre>
@@ -339,12 +455,22 @@ export default function AppWorkspacePage() {
                       </div>
                       <div className="space-y-1.5 max-w-sm">
                         <h4 className="text-sm font-bold text-white">Backend Google Apps Script Belum Dibuat</h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          Minta AI di panel kiri: <em>"Buatkan script Google Apps Script untuk menghubungkan aplikasi ke Google Sheets"</em>.
-                        </p>
+<p className="text-xs text-slate-400 leading-relaxed">
+  Minta AI di panel kiri: <em>&quot;Buatkan script Google Apps Script untuk menghubungkan aplikasi ke Google Sheets&quot;</em>.
+</p>
                       </div>
                     </div>
                   )}
+                </div>
+              ) : (
+                <div className="w-full h-full bg-slate-900/60 rounded-2xl border border-slate-800 overflow-hidden">
+                  <SavedProjectsList
+                    projects={savedProjects}
+                    loading={!savedLoaded}
+                    deletingId={deletingId}
+                    onLoad={handleLoadProject}
+                    onDelete={handleDeleteProject}
+                  />
                 </div>
               )}
             </div>

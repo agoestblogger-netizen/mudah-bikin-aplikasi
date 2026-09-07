@@ -9,6 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. Table: App Projects
 CREATE TABLE IF NOT EXISTS public.app_projects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     app_type VARCHAR(50) DEFAULT 'web_app', -- 'web_app', 'dashboard', 'form_crud', 'landing_page'
@@ -66,9 +67,19 @@ ALTER TABLE public.app_projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.visual_assets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quality_audits ENABLE ROW LEVEL SECURITY;
 
--- Allow Public / Anon Read & Write for Prototype Development
-CREATE POLICY "Allow public read access to app_projects" ON public.app_projects FOR SELECT USING (true);
-CREATE POLICY "Allow public insert/update to app_projects" ON public.app_projects FOR ALL USING (true);
+-- Multi-user ownership untuk app_projects (demo: file disimpan per akun)
+CREATE INDEX IF NOT EXISTS idx_app_projects_user_updated
+    ON public.app_projects (user_id, updated_at DESC);
+
+-- Policy per-user untuk app_projects (setiap user hanya melihat file miliknya)
+CREATE POLICY "Users can view own projects" ON public.app_projects
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own projects" ON public.app_projects
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own projects" ON public.app_projects
+    FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own projects" ON public.app_projects
+    FOR DELETE USING (auth.uid() = user_id);
 
 CREATE POLICY "Allow public read access to visual_assets" ON public.visual_assets FOR SELECT USING (true);
 CREATE POLICY "Allow public insert/update to visual_assets" ON public.visual_assets FOR ALL USING (true);

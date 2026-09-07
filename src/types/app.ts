@@ -106,3 +106,20 @@ export interface AppProjectState {
   qualityAudit: QualityAuditResult;
   updatedAt: string;
 }
+
+// Snapshot tersimpan dari sebuah prototype (baris app_projects untuk user)
+export interface SavedProject {
+  id: string;
+  title: string;
+  description: string | null;
+  app_type: string | null;
+  status: string | null;
+  canvas_html: string | null;
+  canvas_css: string | null;
+  canvas_js: string | null;
+  gas_script: string | null;
+  gas_web_app_url: string | null;
+  spreadsheet_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
