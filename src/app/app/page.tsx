@@ -137,9 +137,19 @@ export default function AppWorkspacePage() {
     };
     setProjectState(merged);
     if (updated.canvasCode?.html) {
+      setRightPanelTab('PREVIEW');
       handleAutoSaveProject(merged);
     }
   };
+
+  // Saat generate dimulai, otomatis pindah ke tab Live Preview agar progress bar
+  // dan hasil prototype langsung terlihat (tidak tertinggal di tab Tersimpan).
+  const handleSetGenerating = useCallback((val: boolean) => {
+    if (val) {
+      setRightPanelTab('PREVIEW');
+    }
+    setIsGenerating(val);
+  }, []);
 
   const handleNewSession = () => {
     setProjectState({
@@ -320,7 +330,7 @@ export default function AppWorkspacePage() {
             projectState={projectState}
             onUpdateState={handleUpdateState}
             isGenerating={isGenerating}
-            setIsGenerating={setIsGenerating}
+            setIsGenerating={handleSetGenerating}
           />
         </div>
 
