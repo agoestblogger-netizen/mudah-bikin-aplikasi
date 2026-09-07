@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
 import { Bot, Send, User, Sparkles, RefreshCw } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
+import { loadModelSettings } from '@/lib/modelConfig';
 
 
 interface ChatPanelProps {
@@ -137,15 +138,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         currentStage = 'TAHAP_5_PATCH';
       }
 
+      const modelSettings = loadModelSettings();
+      const payload: Record<string, unknown> = {
+        prompt: query,
+        chatHistory: updatedMessages,
+        stage: currentStage,
+        currentCode: projectState.canvasCode.html
+      };
+      payload.userProvider = modelSettings.provider;
+      if (modelSettings.token) {
+        payload.userApiKey = modelSettings.token;
+        payload.userModel = modelSettings.model;
+      }
+
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: query,
-          chatHistory: updatedMessages,
-          stage: currentStage,
-          currentCode: projectState.canvasCode.html
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {

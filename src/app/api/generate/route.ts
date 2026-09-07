@@ -10,12 +10,30 @@ import {
   findRelevantUXPatterns,
   formatUXGuidanceForIdeation
 } from '@/lib/templates';
+import { OPENROUTER_API_BASE, OPENAI_API_BASE } from '@/lib/modelConfig';
+import type { AIProvider } from '@/lib/modelConfig';
 
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
 // =============================================================================
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-4o-mini';
+export const OPENROUTER_SITE_URL = 'https://mudahbikinapps.store';
+export const OPENROUTER_APP_TITLE = 'Mudah Bikin Aplikasi';
+
+// Builder header untuk endpoint kompatibel OpenAI (OpenAI asli atau OpenRouter BYOK)
+function buildOpenAICompatHeaders(apiKey: string | undefined, isOpenRouter: boolean): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`
+  };
+  if (isOpenRouter) {
+    headers['X-OpenRouter-Title'] = OPENROUTER_APP_TITLE;
+    headers['HTTP-Referer'] = OPENROUTER_SITE_URL;
+  }
+  return headers;
+}
 
 
 
@@ -277,7 +295,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { prompt, chatHistory, stage, currentCode } = await req.json();
+    const { prompt, chatHistory, stage, currentCode, userProvider, userApiKey, userModel } = await req.json();
 
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
@@ -973,16 +991,36 @@ ${staffLandingGuide}
       }
     }
 
-    const aiProvider = (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    const activeGeminiModel = getGeminiModel();
-    const activeOpenAIModel = getOpenAIModel();
+    const useUserKey = Boolean(userApiKey && userApiKey.trim());
+    const provider: AIProvider = ['openrouter', 'openai', 'gemini'].includes(userProvider) ? userProvider : 'openrouter';
+
+    // Alur routing 3 provider (BYOK):
+    // - tanpa key user -> server default (env AI_PROVIDER, default gemini)
+    // - key gemini     -> jalur native Gemini, override key+model user
+    // - key openai     -> api.openai.com/v1
+    // - key openrouter -> openrouter.ai/api/v1
+    const requestedProvider = useUserKey
+      ? (provider === 'gemini' ? 'gemini' : 'openai')
+      : (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
+
+    const isUserGemini = useUserKey && provider === 'gemini';
+    const isOpenRouter = useUserKey && provider === 'openrouter';
+
+    const geminiApiKey = isUserGemini ? userApiKey.trim() : process.env.GEMINI_API_KEY;
+    const aiProvider = isUserGemini ? 'gemini' : requestedProvider;
+
+    const openaiApiKey = isUserGemini ? undefined : (useUserKey ? userApiKey.trim() : process.env.OPENAI_API_KEY);
+    const openaiBaseUrl = isUserGemini
+      ? undefined
+      : (useUserKey ? (isOpenRouter ? OPENROUTER_API_BASE : OPENAI_API_BASE) : 'https://api.openai.com/v1');
+
+    const activeGeminiModel = isUserGemini ? (userModel || DEFAULT_GEMINI_MODEL) : getGeminiModel();
+    const activeOpenAIModel = useUserKey ? (userModel || OPENROUTER_DEFAULT_MODEL) : getOpenAIModel();
 
     if (aiProvider === 'gemini' && !geminiApiKey) {
       return NextResponse.json({
         success: false,
-        error: 'GEMINI_API_KEY belum dikonfigurasi di server.',
+        error: 'Gemini API key belum dikonfigurasi di server.',
         replyText: 'Kunci Gemini API belum dipasang di environment server.',
         code: null,
         isContinued: false
@@ -992,8 +1030,8 @@ ${staffLandingGuide}
     if (aiProvider === 'openai' && !openaiApiKey) {
       return NextResponse.json({
         success: false,
-        error: 'OPENAI_API_KEY belum dikonfigurasi di server.',
-        replyText: 'Kunci OpenAI API belum dipasang di environment server.',
+        error: 'OpenAI/OpenRouter API key belum dikonfigurasi.',
+        replyText: 'Kunci OpenAI/OpenRouter API belum terpasang.',
         code: null,
         isContinued: false
       });
@@ -1054,9 +1092,9 @@ ${staffLandingGuide}
               { role: 'user', content: prompt }
             ];
             try {
-              const oaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+              const oaiRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiApiKey}` },
+                headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
                 body: JSON.stringify({
                   model: activeOpenAIModel,
                   messages: oaiMessages,
@@ -1282,13 +1320,10 @@ ${staffLandingGuide}
             { role: 'user', content: userPromptWithContext }
           ];
 
-          let fallbackRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          let fallbackRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
+            headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
+body: JSON.stringify({
               model: activeOpenAIModel,
               messages,
               max_completion_tokens: isIdeationMode ? 1024 : 16384,
@@ -1367,13 +1402,10 @@ ${staffLandingGuide}
                 { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan seluruh script JavaScript dan penutup tag HTML lengkap.' }
               ];
 
-              const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              const contResponse = await fetch(`${openaiBaseUrl}/chat/completions`, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${openaiApiKey}`
-                },
-                body: JSON.stringify({
+                headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
+body: JSON.stringify({
                   model: activeOpenAIModel,
                   messages: contMessages,
                   max_completion_tokens: 8192,
@@ -1419,13 +1451,10 @@ ${staffLandingGuide}
         { role: 'user', content: userPromptWithContext }
       ];
 
-      let response = await fetch('https://api.openai.com/v1/chat/completions', {
+      let response = await fetch(`${openaiBaseUrl}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openaiApiKey}`
-        },
-        body: JSON.stringify({
+        headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
+body: JSON.stringify({
           model: activeOpenAIModel,
           messages,
           max_completion_tokens: isIdeationMode ? 1024 : 8192,
@@ -1456,13 +1485,10 @@ ${staffLandingGuide}
 
         let contText = '';
         try {
-          const contResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          const contResponse = await fetch(`${openaiBaseUrl}/chat/completions`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openaiApiKey}`
-            },
-            body: JSON.stringify({
+            headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
+body: JSON.stringify({
               model: activeOpenAIModel,
               messages: continuationMessages,
               max_completion_tokens: 8192,
@@ -1593,13 +1619,10 @@ INSTRUKSI PERBAIKAN WAJIB:
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
         ];
 
-        const repairRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        const repairRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openaiApiKey}`
-          },
-          body: JSON.stringify({
+          headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
+body: JSON.stringify({
             model: activeOpenAIModel,
             messages: repairPrompt,
             max_completion_tokens: 8192,
