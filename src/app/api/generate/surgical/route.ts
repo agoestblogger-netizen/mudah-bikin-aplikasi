@@ -86,7 +86,8 @@ ATURAN WAJIB & KETAT:
 3. DILARANG menambahkan teks penjelasan, narasi, ringkasan markdown, atau percakapan apapun di luar blok kode.
 4. Pertahankan atribut penting yang sudah ada (seperti id, onclick, data-access-roles, data-od-uid) jika masih relevan, kecuali jika instruksi secara eksplisit meminta untuk mengubahnya.
 5. Terapkan desain visual yang modern, bersih, profesional, dengan pemilihan warna yang harmonis dan micro-interactions yang elegan.
-6. Pastikan seluruh tag pembuka dan penutup berpasangan dengan sempurna tanpa syntax error.`;
+6. Pastikan seluruh tag pembuka dan penutup berpasangan dengan sempurna tanpa syntax error.
+7. PENTING: Gunakan styling visual langsung via atribut inline style="..." (misalnya style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: #ffffff; padding: 10px 20px; border-radius: 8px; ...") agar setiap perubahan desain (warna, teks, background, ukuran, tata letak) PASTI terlihat langsung di kanvas tanpa bergantung pada CSS framework eksternal seperti Tailwind.`;
 
     const userPrompt = `ELEMEN HTML YANG AKAN DIUBAH:
 \`\`\`html

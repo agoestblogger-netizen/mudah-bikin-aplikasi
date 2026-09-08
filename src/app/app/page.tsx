@@ -995,10 +995,19 @@ export default function AppWorkspacePage() {
       const newElementHtml = data.updatedElementHtml;
       const elUid = activeSelection.elementUid;
 
-      // 1. Ganti elemen di kode sumber HTML secara permanen
+      // 1. Bersihkan patch visual lama untuk elemen ini agar tidak menimpa hasil bedah AI
+      const current = projectState.annotations || { marks: [], notes: [], patches: [] };
+      const nextPatches = (current.patches || []).filter((p) => p.elementUid !== elUid);
+      const nextAnnotations = {
+        marks: current.marks || [],
+        notes: current.notes || [],
+        patches: nextPatches
+      };
+
+      // 2. Ganti elemen di kode sumber HTML secara permanen
       const updatedHtml = replaceElementInHtml(projectState.canvasCode.html, elUid, newElementHtml);
 
-      // 2. Kirim pesan ke iframe untuk mengganti elemen secara in-place di live DOM
+      // 3. Kirim pesan ke iframe untuk mengganti elemen secara in-place di live DOM
       iframeRef.current?.contentWindow?.postMessage(
         {
           source: 'OD_BRIDGE',
@@ -1009,8 +1018,9 @@ export default function AppWorkspacePage() {
         '*'
       );
 
-      // 3. Update state proyek & auto save
+      // 4. Update state proyek & auto save
       handleUpdateState({
+        annotations: nextAnnotations,
         canvasCode: {
           ...projectState.canvasCode,
           html: updatedHtml
