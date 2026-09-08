@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
 import { Bot, Send, User, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
+import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
 
 interface Stage1InterviewAIProps {
@@ -84,7 +85,7 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
         }
 
         onUpdateState({
-          title: query.length < 30 ? query : projectState.title,
+          title: extractAppTitleFromChat(finalMessages) ?? (query.length < 30 ? query : projectState.title),
           chatMessages: finalMessages,
           canvasCode: { html: h, css: c, js: j },
           currentStage: 'TAHAP_2_MOCKUP',
@@ -102,7 +103,7 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
         }, 600);
       } else {
         onUpdateState({
-          title: query.length < 30 ? query : projectState.title,
+          title: extractAppTitleFromChat(finalMessages) ?? (query.length < 30 ? query : projectState.title),
           chatMessages: finalMessages
         });
       }

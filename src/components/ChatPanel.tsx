@@ -5,6 +5,7 @@ import { AppProjectState, ChatMessage } from '@/types/app';
 import { Bot, Send, User, Sparkles, RefreshCw } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { loadModelSettings } from '@/lib/modelConfig';
+import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
 
 interface ChatPanelProps {
@@ -238,12 +239,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         setMessages(finalMessages);
 
         const stateUpdates: Partial<AppProjectState> = { chatMessages: finalMessages };
+        stateUpdates.title = extractAppTitleFromChat(finalMessages) ?? (query.length < 30 ? query : projectState.title);
         if (finalCode) {
           let h = '', c = '', j = '';
           if (typeof finalCode === 'string') { h = finalCode; }
           else if (typeof finalCode === 'object') { h = finalCode.html || ''; c = finalCode.css || ''; j = finalCode.js || ''; }
           stateUpdates.canvasCode = { html: h, css: c, js: j };
-          stateUpdates.title = query.length < 30 ? query : projectState.title;
         }
         onUpdateState(stateUpdates);
         return;
@@ -269,6 +270,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       const stateUpdates: Partial<AppProjectState> = {
         chatMessages: finalMessages
       };
+      stateUpdates.title = extractAppTitleFromChat(finalMessages) ?? (query.length < 30 ? query : projectState.title);
 
       // Jika AI menghasilkan / memperbarui kode mockup HTML
       if (data.code) {
@@ -281,7 +283,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           j = data.code.js || '';
         }
         stateUpdates.canvasCode = { html: h, css: c, js: j };
-        stateUpdates.title = query.length < 30 ? query : projectState.title;
       }
 
       onUpdateState(stateUpdates);
