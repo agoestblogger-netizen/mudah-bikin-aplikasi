@@ -102,10 +102,19 @@ export default function AppWorkspacePage() {
     }
   }, []);
 
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+
   const memoizedSrcDoc = useMemo(
     () => buildSrcDoc(projectState.canvasCode),
-    [projectState.canvasCode?.html, projectState.canvasCode?.css, projectState.canvasCode?.js]
+    [reloadTrigger]
   );
+
+  // Sync initial loaded project once on mount
+  useEffect(() => {
+    if (projectState.canvasCode?.html) {
+      setReloadTrigger((k) => k + 1);
+    }
+  }, []);
 
   // OpenDesign-like marks/comments/patches
   const [interactionMode, setInteractionMode] = useState<'none' | 'select' | 'mark'>('none');
@@ -181,22 +190,15 @@ export default function AppWorkspacePage() {
       ...prev,
       canvasCode: target.canvasCode,
       annotations: {
-        ...(prev.annotations || { marks: [], notes: [], patches: [] }),
+        ...(prev.annotations || { marks: [], notes: [], patches: target.patches }),
         patches: target.patches
       }
     }));
     annotationsRef.current = {
-      ...(annotationsRef.current || { marks: [], notes: [], patches: [] }),
+      ...(annotationsRef.current || { marks: [], notes: [], patches: target.patches }),
       patches: target.patches
     };
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        source: 'OD_BRIDGE',
-        type: 'OD_SET_PATCHES',
-        patches: target.patches
-      },
-      '*'
-    );
+    setReloadTrigger((k) => k + 1);
     showToast('Undo visual berhasil', 'info');
   };
 
@@ -210,22 +212,15 @@ export default function AppWorkspacePage() {
       ...prev,
       canvasCode: target.canvasCode,
       annotations: {
-        ...(prev.annotations || { marks: [], notes: [], patches: [] }),
+        ...(prev.annotations || { marks: [], notes: [], patches: target.patches }),
         patches: target.patches
       }
     }));
     annotationsRef.current = {
-      ...(annotationsRef.current || { marks: [], notes: [], patches: [] }),
+      ...(annotationsRef.current || { marks: [], notes: [], patches: target.patches }),
       patches: target.patches
     };
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        source: 'OD_BRIDGE',
-        type: 'OD_SET_PATCHES',
-        patches: target.patches
-      },
-      '*'
-    );
+    setReloadTrigger((k) => k + 1);
     showToast('Redo visual berhasil', 'info');
   };
 
@@ -499,17 +494,7 @@ export default function AppWorkspacePage() {
             ...projectState.canvasCode,
             html: updatedHtml
           }
-        });
-
-        // Kirim kembali patch ke iframe agar sinkron di memori iframe
-        iframeRef.current?.contentWindow?.postMessage(
-          {
-            source: 'OD_BRIDGE',
-            type: 'OD_APPLY_PATCH',
-            patch
-          },
-          '*'
-        );
+        }, { skipIframeReload: true });
       } else if (data.type === 'OD_AREA_MARK') {
         const markId = newOdId();
         const bounds = data.bounds;
@@ -614,7 +599,7 @@ export default function AppWorkspacePage() {
     };
   }, [router]);
 
-  const handleUpdateState = (updated: Partial<AppProjectState>) => {
+  const handleUpdateState = (updated: Partial<AppProjectState>, options?: { skipIframeReload?: boolean }) => {
     if (updated.canvasCode?.html) {
       updated.canvasCode.html = cleanConversationalLeaks(updated.canvasCode.html);
     }
@@ -639,6 +624,9 @@ export default function AppWorkspacePage() {
       setRightPanelTab('PREVIEW');
       handleAutoSaveProject(merged);
     }
+    if (!options?.skipIframeReload && updated.canvasCode) {
+      setReloadTrigger((k) => k + 1);
+    }
     if (updated.canvasCode?.html && updated.canvasCode.html !== projectState.canvasCode.html) {
       pushHistory(merged.canvasCode, merged.annotations?.patches || []);
     }
@@ -660,6 +648,7 @@ export default function AppWorkspacePage() {
       updatedAt: new Date().toISOString()
     };
     setProjectState(fresh);
+    setReloadTrigger((k) => k + 1);
     lastSavedCanvasRef.current = '';
     lastSavedAnnotationsRef.current = '';
     autoSavedProjectIdRef.current = null;
@@ -764,6 +753,7 @@ export default function AppWorkspacePage() {
       }
     };
     setProjectState(nextState);
+    setReloadTrigger((k) => k + 1);
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('mba_active_project', JSON.stringify(nextState));
@@ -881,14 +871,14 @@ export default function AppWorkspacePage() {
       // 2. Hapus elemen langsung dari canvasCode.html secara permanen tanpa menggeser UID elemen lain
       const updatedHtml = removeElementFromHtml(projectState.canvasCode.html, elUid);
 
-      // 3. Update state dan simpan ke history
+      // 3. Update state dan simpan ke history TANPA reload iframe
       handleUpdateState({
         annotations: next,
         canvasCode: {
           ...projectState.canvasCode,
           html: updatedHtml
         }
-      });
+      }, { skipIframeReload: true });
 
       // 4. Beri tahu iframe untuk langsung menghapus elemen tersebut dari DOM aktif
       iframeRef.current?.contentWindow?.postMessage(
@@ -942,7 +932,7 @@ export default function AppWorkspacePage() {
         ...projectState.canvasCode,
         html: updatedHtml
       }
-    });
+    }, { skipIframeReload: true });
 
     iframeRef.current?.contentWindow?.postMessage(
       {
@@ -1018,14 +1008,14 @@ export default function AppWorkspacePage() {
         '*'
       );
 
-      // 4. Update state proyek & auto save
+      // 4. Update state proyek & auto save TANPA reload iframe
       handleUpdateState({
         annotations: nextAnnotations,
         canvasCode: {
           ...projectState.canvasCode,
           html: updatedHtml
         }
-      });
+      }, { skipIframeReload: true });
 
       // 4. Feedback dan bersihkan modal
       showToast('Komponen berhasil diperbarui via AI Bedah!', 'success');
@@ -1119,6 +1109,7 @@ export default function AppWorkspacePage() {
                 } catch {}
               }
               setRightPanelTab('PREVIEW');
+              setReloadTrigger((k) => k + 1);
               return restored;
             }
             return current;
@@ -1261,6 +1252,14 @@ export default function AppWorkspacePage() {
                       aria-label="Redo"
                     >
                       <Redo2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setReloadTrigger((k) => k + 1)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-0.5"
+                      title="Muat Ulang Tampilan Canvas (Refresh)"
+                      aria-label="Refresh Preview"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
@@ -1757,15 +1756,6 @@ export default function AppWorkspacePage() {
                         onLoad={() => {
                           const win = iframeRef.current?.contentWindow;
                           if (!win) return;
-                          win.postMessage(
-                            {
-                              source: 'OD_BRIDGE',
-                              type: 'OD_SET_PATCHES',
-                              patches: annotationsRef.current?.patches || []
-                            },
-                            '*'
-                          );
-
                           win.postMessage(
                             {
                               source: 'OD_BRIDGE',

@@ -390,7 +390,6 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         setMode(msg.mode);
       } else if (msg.type === 'OD_SET_PATCHES') {
         odPatches = Array.isArray(msg.patches) ? msg.patches : [];
-        applyAllPatches();
       } else if (msg.type === 'OD_APPLY_PATCH') {
         const patch = msg.patch;
         odPatches = Array.isArray(odPatches) ? odPatches : [];
@@ -509,7 +508,6 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 
     // Init
     assignElementUids();
-    applyAllPatches();
     postToParent({ type: 'OD_READY' });
   })();
   </script>
