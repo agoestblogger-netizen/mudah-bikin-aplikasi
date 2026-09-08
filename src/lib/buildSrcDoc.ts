@@ -493,6 +493,16 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   if (isFullDoc) {
     let cleanDoc = html;
 
+    // Bersihkan teks percakapan chat / markdown yang bocor setelah tag penutup </html>
+    if (cleanDoc.includes('</html>')) {
+      cleanDoc = cleanDoc.slice(0, cleanDoc.lastIndexOf('</html>') + 7).trim();
+    }
+    if (cleanDoc.includes('<!DOCTYPE')) {
+      cleanDoc = cleanDoc.slice(cleanDoc.indexOf('<!DOCTYPE')).trim();
+    } else if (cleanDoc.includes('<html')) {
+      cleanDoc = cleanDoc.slice(cleanDoc.indexOf('<html')).trim();
+    }
+
     // Bersihkan script Tailwind CDN Play jika ada agar tidak memicu SecurityError
     cleanDoc = cleanDoc.replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '');
 
@@ -526,6 +536,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   }
 
   // Jika berupa fragmen komponen HTML
+  let cleanFragment = html;
+  cleanFragment = cleanFragment.replace(/(?:Kode prototipe|### Ringkasan|Berikut adalah|Seluruh kode|Integritas Fungsionalitas)[\s\S]*$/i, '').trim();
+
   return `<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -534,7 +547,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   ${baseHeaders}
 </head>
 <body>
-  ${html}
+  ${cleanFragment}
   ${js ? `<script>\ntry {\n${js}\n} catch(e) { console.error("JS Error:", e); }\n</script>` : ''}
   ${odBridgeScript}
 </body>

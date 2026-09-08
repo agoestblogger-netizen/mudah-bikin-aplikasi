@@ -46,6 +46,30 @@ export const maxDuration = 300; // 300 detik (5 menit) dengan Vercel Fluid Compu
 function isCodeTruncatedOrBroken(text: string): boolean {
   if (!text) return true;
 
+  // Jika dokumen HTML sudah lengkap ditutup dengan </html> dan tag <script> sudah ditutup
+  if (text.includes('</html>') && (!text.includes('<script') || text.includes('</script>'))) {
+    // Verifikasi apakah JS di dalam script valid (tidak error syntax akibat potongan)
+    const scriptMatches = text.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi);
+    let hasJsSyntaxError = false;
+    if (scriptMatches) {
+      for (const s of scriptMatches) {
+        const cleanJs = s.replace(/<\/?script[\s\S]*?>/gi, '').trim();
+        if (cleanJs) {
+          try {
+            new Function(cleanJs);
+          } catch (err) {
+            hasJsSyntaxError = true;
+            break;
+          }
+        }
+      }
+    }
+    // Jika tidak ada syntax error dan </html> sudah ada, kode SUDAH LENGKAP dan tidak perlu dipaksa lanjut
+    if (!hasJsSyntaxError) {
+      return false;
+    }
+  }
+
   // 1. Cek penutup blok kode markdown
   const backtickMatches = text.match(/```/g) || [];
   if (text.includes('```html') && (backtickMatches.length % 2 !== 0)) {
@@ -1539,6 +1563,16 @@ body: JSON.stringify({
       htmlCode = parts[parts.length - 1].replace(/```[\s\S]*$/, '').trim();
     } else if (assistantMessage.includes('<!DOCTYPE') || assistantMessage.includes('<html') || assistantMessage.includes('<body')) {
       htmlCode = assistantMessage.trim();
+    }
+
+    // SANITASI KETAT ANTI-LEAK: Potong seluruh teks percakapan chat / markdown di luar tag </html>
+    if (htmlCode.includes('</html>')) {
+      htmlCode = htmlCode.slice(0, htmlCode.lastIndexOf('</html>') + 7).trim();
+    }
+    if (htmlCode.includes('<!DOCTYPE')) {
+      htmlCode = htmlCode.slice(htmlCode.indexOf('<!DOCTYPE')).trim();
+    } else if (htmlCode.includes('<html')) {
+      htmlCode = htmlCode.slice(htmlCode.indexOf('<html')).trim();
     }
 
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan pada mode generate kode)

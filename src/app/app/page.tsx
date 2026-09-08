@@ -63,6 +63,9 @@ export default function AppWorkspacePage() {
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && typeof parsed === 'object') {
+            if (parsed.canvasCode?.html && parsed.canvasCode.html.includes('</html>')) {
+              parsed.canvasCode.html = parsed.canvasCode.html.slice(0, parsed.canvasCode.html.lastIndexOf('</html>') + 7).trim();
+            }
             return parsed;
           }
         }
@@ -489,11 +492,17 @@ export default function AppWorkspacePage() {
   }, [router]);
 
   const handleUpdateState = (updated: Partial<AppProjectState>) => {
+    if (updated.canvasCode?.html && updated.canvasCode.html.includes('</html>')) {
+      updated.canvasCode.html = updated.canvasCode.html.slice(0, updated.canvasCode.html.lastIndexOf('</html>') + 7).trim();
+    }
     const merged: AppProjectState = {
       ...projectState,
       ...updated,
       updatedAt: new Date().toISOString()
     };
+    if (merged.canvasCode?.html && merged.canvasCode.html.includes('</html>')) {
+      merged.canvasCode.html = merged.canvasCode.html.slice(0, merged.canvasCode.html.lastIndexOf('</html>') + 7).trim();
+    }
     setProjectState(merged);
     if (typeof window !== 'undefined') {
       try {
@@ -603,7 +612,11 @@ export default function AppWorkspacePage() {
   }, [isAuthenticated]);
 
   const handleLoadProject = (project: SavedProject) => {
-    lastSavedCanvasRef.current = project.canvas_html || '';
+    let cleanHtml = project.canvas_html || '';
+    if (cleanHtml.includes('</html>')) {
+      cleanHtml = cleanHtml.slice(0, cleanHtml.lastIndexOf('</html>') + 7).trim();
+    }
+    lastSavedCanvasRef.current = cleanHtml;
     autoSavedProjectIdRef.current = project.id;
     const nextState: AppProjectState = {
       ...initialProjectState,
@@ -613,7 +626,7 @@ export default function AppWorkspacePage() {
       annotations: { marks: [], notes: [], patches: project.annotations?.patches || [] },
       updatedAt: project.updated_at || new Date().toISOString(),
       canvasCode: {
-        html: project.canvas_html || '',
+        html: cleanHtml,
         css: project.canvas_css || '',
         js: project.canvas_js || ''
       },
@@ -829,8 +842,12 @@ export default function AppWorkspacePage() {
           setProjectState((current) => {
             if (!current.canvasCode?.html && data.projects && data.projects.length > 0) {
               const latest = data.projects[0];
+              let cleanHtml = latest.canvas_html || '';
+              if (cleanHtml.includes('</html>')) {
+                cleanHtml = cleanHtml.slice(0, cleanHtml.lastIndexOf('</html>') + 7).trim();
+              }
               autoSavedProjectIdRef.current = latest.id;
-              lastSavedCanvasRef.current = latest.canvas_html || '';
+              lastSavedCanvasRef.current = cleanHtml;
               const restored: AppProjectState = {
                 ...initialProjectState,
                 id: 'saved-' + latest.id,
@@ -839,7 +856,7 @@ export default function AppWorkspacePage() {
                 annotations: { marks: [], notes: [], patches: latest.annotations?.patches || [] },
                 updatedAt: latest.updated_at || new Date().toISOString(),
                 canvasCode: {
-                  html: latest.canvas_html || '',
+                  html: cleanHtml,
                   css: latest.canvas_css || '',
                   js: latest.canvas_js || ''
                 },

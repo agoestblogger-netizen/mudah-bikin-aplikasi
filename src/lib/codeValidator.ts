@@ -23,6 +23,16 @@ export function validateAndRepairGeneratedCode(
   let repairedHtml = html;
   let repairedJs = js;
 
+  // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown di luar tag </html>
+  if (repairedHtml.includes('</html>')) {
+    repairedHtml = repairedHtml.slice(0, repairedHtml.lastIndexOf('</html>') + 7).trim();
+  }
+  if (repairedHtml.includes('<!DOCTYPE')) {
+    repairedHtml = repairedHtml.slice(repairedHtml.indexOf('<!DOCTYPE')).trim();
+  } else if (repairedHtml.includes('<html')) {
+    repairedHtml = repairedHtml.slice(repairedHtml.indexOf('<html')).trim();
+  }
+
   // 1. Ekstrak JavaScript dari dalam tag <script> di HTML
   let inlineJs = '';
   const scriptMatches = repairedHtml.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi);
