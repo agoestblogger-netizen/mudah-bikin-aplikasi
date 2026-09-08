@@ -802,7 +802,7 @@ export default function AppWorkspacePage() {
                       >
                         {dragDraft && (
                           <div
-                            className="absolute border-2 border-emerald-400/80 bg-emerald-400/10"
+                            className="absolute border-2 border-emerald-400/80 bg-emerald-400/10 pointer-events-none"
                             style={{
                               left: dragDraft.bounds.x * overlaySize.w,
                               top: dragDraft.bounds.y * overlaySize.h,
@@ -811,89 +811,97 @@ export default function AppWorkspacePage() {
                             }}
                           />
                         )}
+                      </div>
 
-                        {selectionPx && activeSelection && (
-                          <>
-                            <div
-                              className="absolute border-2 border-indigo-500/80 bg-indigo-500/10"
-                              style={{
-                                left: selectionPx.left,
-                                top: selectionPx.top,
-                                width: selectionPx.width,
-                                height: selectionPx.height
-                              }}
-                            />
+                      {/* Layer terpisah untuk active selection & popup note agar tidak terblokir oleh pointer event overlay */}
+                      {selectionPx && activeSelection && (
+                        <div className="absolute inset-0 z-30 pointer-events-none">
+                          <div
+                            className="absolute border-2 border-indigo-500/80 bg-indigo-500/10 pointer-events-none"
+                            style={{
+                              left: selectionPx.left,
+                              top: selectionPx.top,
+                              width: selectionPx.width,
+                              height: selectionPx.height
+                            }}
+                          />
 
-                            <div
-                              className="absolute z-50 pointer-events-auto"
-                              style={{
-                                left: selectionPx.anchorLeft,
-                                top: selectionPx.anchorTop,
-                                transform: 'translate(-50%, -100%)'
-                              }}
-                            >
-                              <div className="w-[320px] max-w-[80vw] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3">
-                                <div className="text-[11px] font-bold text-slate-200 mb-2">Mark note</div>
-                                <textarea
-                                  value={noteDraft}
-                                  onChange={(e) => setNoteDraft(e.target.value)}
-                                  rows={2}
-                                  className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
-                                  placeholder="Tulis catatan untuk mark ini..."
-                                />
+                          <div
+                            className="absolute z-50 pointer-events-auto"
+                            style={{
+                              left: selectionPx.anchorLeft,
+                              top: selectionPx.anchorTop,
+                              transform: 'translate(-50%, -100%)'
+                            }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onPointerUp={(e) => e.stopPropagation()}
+                            onPointerMove={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onMouseUp={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="w-[320px] max-w-[80vw] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3">
+                              <div className="text-[11px] font-bold text-slate-200 mb-2">Mark note</div>
+                              <textarea
+                                autoFocus
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                rows={2}
+                                className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none cursor-text select-text"
+                                placeholder="Tulis catatan untuk mark ini..."
+                              />
 
-                                {activeSelection.kind === 'element' && (
-                                  <div className="mt-3 space-y-2">
-                                    <div className="text-[11px] font-semibold text-slate-300">Editor elemen (simple)</div>
-                                    <div className="space-y-1">
-                                      <div className="text-[10px] text-slate-400">Text color</div>
-                                      <input
-                                        value={textColorDraft}
-                                        onChange={(e) => setTextColorDraft(e.target.value)}
-                                        className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                                        placeholder="#RRGGBB atau rgb(...)"
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <div className="text-[10px] text-slate-400">Text content</div>
-                                      <textarea
-                                        value={textContentDraft}
-                                        onChange={(e) => setTextContentDraft(e.target.value)}
-                                        rows={2}
-                                        className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
-                                        placeholder="Isi teks baru..."
-                                      />
-                                    </div>
+                              {activeSelection.kind === 'element' && (
+                                <div className="mt-3 space-y-2">
+                                  <div className="text-[11px] font-semibold text-slate-300">Editor elemen (simple)</div>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] text-slate-400">Text color</div>
+                                    <input
+                                      value={textColorDraft}
+                                      onChange={(e) => setTextColorDraft(e.target.value)}
+                                      className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 cursor-text select-text"
+                                      placeholder="#RRGGBB atau rgb(...)"
+                                    />
                                   </div>
-                                )}
-
-                                <div className="mt-3 flex justify-between gap-2">
-                                  <button
-                                    onClick={handleDeleteActiveSelection}
-                                    className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-white/90 text-xs font-bold border border-slate-700/60"
-                                    title="Hapus mark"
-                                  >
-                                    Hapus
-                                  </button>
-                                  <button
-                                    onClick={handleSendToChat}
-                                    className="px-3 py-2 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 text-white/90 text-xs font-bold border border-slate-700/40"
-                                    title="Kirim catatan mark ke chat AI untuk mengubah area"
-                                  >
-                                    Send to Chat
-                                  </button>
-                                  <button
-                                    onClick={handleSaveAndApply}
-                                    className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 disabled:opacity-40"
-                                  >
-                                    Save & Apply
-                                  </button>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] text-slate-400">Text content</div>
+                                    <textarea
+                                      value={textContentDraft}
+                                      onChange={(e) => setTextContentDraft(e.target.value)}
+                                      rows={2}
+                                      className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none cursor-text select-text"
+                                      placeholder="Isi teks baru..."
+                                    />
+                                  </div>
                                 </div>
+                              )}
+
+                              <div className="mt-3 flex justify-between gap-2">
+                                <button
+                                  onClick={handleDeleteActiveSelection}
+                                  className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-white/90 text-xs font-bold border border-slate-700/60 transition-colors"
+                                  title="Hapus mark"
+                                >
+                                  Hapus
+                                </button>
+                                <button
+                                  onClick={handleSendToChat}
+                                  className="px-3 py-2 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 text-white/90 text-xs font-bold border border-slate-700/40 transition-colors"
+                                  title="Kirim catatan mark ke chat AI untuk mengubah area"
+                                >
+                                  Send to Chat
+                                </button>
+                                <button
+                                  onClick={handleSaveAndApply}
+                                  className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 disabled:opacity-40 transition-colors"
+                                >
+                                  Save & Apply
+                                </button>
                               </div>
                             </div>
-                          </>
-                        )}
-                      </div>
+                          </div>
+                        </div>
+                      )}
 
                       <iframe
                         ref={iframeRef}
