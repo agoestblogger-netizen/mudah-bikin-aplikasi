@@ -30,9 +30,11 @@ echo "==> Deployment UUID: $DEPLOYMENT_UUID"
 echo "==> Menunggu selesai..."
 while true; do
   sleep 15
-  STATUS="$(curl -s -m 15 -H "Authorization: Bearer $TOKEN" \
-    "$COOLIFY_URL/deployments/$DEPLOYMENT_UUID" \
-    | grep -o '"status":"[^"]*"' | head -1)"
+  RESP_DEP="$(curl -s -m 15 -H "Authorization: Bearer $TOKEN" "$COOLIFY_URL/deployments/$DEPLOYMENT_UUID")"
+  STATUS="$(echo "$RESP_DEP" | jq -r .status 2>/dev/null || true)"
+  if [[ -z "$STATUS" || "$STATUS" == "null" ]]; then
+    STATUS="$(echo "$RESP_DEP" | grep -o '"status":"[^"]*"' | tail -1 | cut -d'"' -f4)"
+  fi
   echo "status: $STATUS"
   case "$STATUS" in
     *finished*|*success*) echo "==> Deploy sukses!"; exit 0 ;;

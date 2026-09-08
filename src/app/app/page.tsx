@@ -11,7 +11,7 @@ import { BuildBadge } from '@/components/BuildBadge';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import Link from 'next/link';
-import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen, ChevronsLeft, ChevronsRight, X, Send } from 'lucide-react';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -524,6 +524,13 @@ export default function AppWorkspacePage() {
 
     setExternalChatSendToken(Date.now());
     setExternalChatSendText(prompt);
+
+    // Popover langsung menutup setelah diklik dan dikirim ke chat
+    setActiveSelection(null);
+    setNoteDraft('');
+    setTextColorDraft('');
+    setTextContentDraft('');
+    setDragDraft(null);
   };
 
   const handleDeleteActiveSelection = () => {
@@ -841,7 +848,16 @@ export default function AppWorkspacePage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="w-[320px] max-w-[80vw] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3">
-                              <div className="text-[11px] font-bold text-slate-200 mb-2">Mark note</div>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-[11px] font-bold text-slate-200">Mark note</div>
+                                <button
+                                  onClick={handleDeleteActiveSelection}
+                                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                                  title="Tutup mark"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                               <textarea
                                 autoFocus
                                 value={noteDraft}
@@ -851,51 +867,14 @@ export default function AppWorkspacePage() {
                                 placeholder="Tulis catatan untuk mark ini..."
                               />
 
-                              {activeSelection.kind === 'element' && (
-                                <div className="mt-3 space-y-2">
-                                  <div className="text-[11px] font-semibold text-slate-300">Editor elemen (simple)</div>
-                                  <div className="space-y-1">
-                                    <div className="text-[10px] text-slate-400">Text color</div>
-                                    <input
-                                      value={textColorDraft}
-                                      onChange={(e) => setTextColorDraft(e.target.value)}
-                                      className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 cursor-text select-text"
-                                      placeholder="#RRGGBB atau rgb(...)"
-                                    />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <div className="text-[10px] text-slate-400">Text content</div>
-                                    <textarea
-                                      value={textContentDraft}
-                                      onChange={(e) => setTextContentDraft(e.target.value)}
-                                      rows={2}
-                                      className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none cursor-text select-text"
-                                      placeholder="Isi teks baru..."
-                                    />
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="mt-3 flex justify-between gap-2">
-                                <button
-                                  onClick={handleDeleteActiveSelection}
-                                  className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-white/90 text-xs font-bold border border-slate-700/60 transition-colors"
-                                  title="Hapus mark"
-                                >
-                                  Hapus
-                                </button>
+                              <div className="mt-3">
                                 <button
                                   onClick={handleSendToChat}
-                                  className="px-3 py-2 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 text-white/90 text-xs font-bold border border-slate-700/40 transition-colors"
+                                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/25 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                                   title="Kirim catatan mark ke chat AI untuk mengubah area"
                                 >
-                                  Send to Chat
-                                </button>
-                                <button
-                                  onClick={handleSaveAndApply}
-                                  className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 disabled:opacity-40 transition-colors"
-                                >
-                                  Save & Apply
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Send to Chat</span>
                                 </button>
                               </div>
                             </div>
