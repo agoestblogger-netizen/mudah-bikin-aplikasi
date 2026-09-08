@@ -45,6 +45,7 @@ export default function AppWorkspacePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const lastSavedCanvasRef = useRef('');
   const lastSavedAnnotationsRef = useRef<string>('');
+  const autoSavedProjectIdRef = useRef<string | null>(null);
 
   // OpenDesign-like marks/comments/patches
   const [interactionMode, setInteractionMode] = useState<'select' | 'mark'>('select');
@@ -294,6 +295,7 @@ export default function AppWorkspacePage() {
     });
     lastSavedCanvasRef.current = '';
     lastSavedAnnotationsRef.current = '';
+    autoSavedProjectIdRef.current = null;
     setRightPanelTab('SAVED');
   };
 
@@ -324,6 +326,22 @@ export default function AppWorkspacePage() {
     (async () => {
       try {
         const headers = await getAuthHeaders();
+
+        if (autoSavedProjectIdRef.current) {
+          const id = autoSavedProjectIdRef.current;
+          const res = await fetch(`/api/projects/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify(body)
+          });
+          if (!res.ok) return;
+          const data = (await res.json()) as { project?: SavedProject };
+          if (data.project) {
+            setSavedProjects((prev) => [data.project!, ...prev.filter((p) => p.id !== data.project!.id)].slice(0, 50));
+          }
+          return;
+        }
+
         const res = await fetch('/api/projects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
@@ -332,6 +350,7 @@ export default function AppWorkspacePage() {
         if (!res.ok) return;
         const data = (await res.json()) as { project?: SavedProject };
         if (data.project) {
+          autoSavedProjectIdRef.current = data.project.id;
           setSavedProjects((prev) => [data.project!, ...prev.filter((p) => p.id !== data.project!.id)].slice(0, 50));
         }
       } catch (err) {
@@ -342,6 +361,7 @@ export default function AppWorkspacePage() {
 
   const handleLoadProject = (project: SavedProject) => {
     lastSavedCanvasRef.current = project.canvas_html || '';
+    autoSavedProjectIdRef.current = project.id;
     setProjectState({
       ...initialProjectState,
       id: 'saved-' + project.id,
@@ -373,6 +393,7 @@ export default function AppWorkspacePage() {
       if (lastSavedCanvasRef.current && projectState.id === 'saved-' + id) {
         lastSavedCanvasRef.current = '';
         lastSavedAnnotationsRef.current = '';
+        autoSavedProjectIdRef.current = null;
       }
     } catch (err) {
       console.error('Failed to delete project:', err);
