@@ -95,8 +95,11 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 
     // Hover highlight in select mode
     let hoveredEl = null;
+    let isEditingText = false;
+    let justFinishedEditTime = 0;
+
     document.addEventListener('mouseover', function(e) {
-      if (odMode !== 'select') return;
+      if (odMode !== 'select' || isEditingText) return;
       const target = e.target;
       if (!(target instanceof Element)) return;
       const el = target.closest('[data-od-uid]');
@@ -112,10 +115,18 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
     }, true);
 
     document.addEventListener('mouseout', function(e) {
-      if (hoveredEl) {
+      if (hoveredEl && !isEditingText) {
         hoveredEl.style.outline = '';
         hoveredEl.style.outlineOffset = '';
         hoveredEl = null;
+      }
+    }, true);
+
+    // Prevent any form submits while in design/select/mark modes
+    document.addEventListener('submit', function(e) {
+      if (odMode === 'select' || odMode === 'mark') {
+        e.preventDefault();
+        e.stopPropagation();
       }
     }, true);
 
@@ -130,6 +141,13 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       e.preventDefault();
       e.stopPropagation();
 
+      isEditingText = true;
+      if (hoveredEl && hoveredEl !== el) {
+        hoveredEl.style.outline = '';
+        hoveredEl.style.outlineOffset = '';
+        hoveredEl = null;
+      }
+
       el.contentEditable = 'true';
       el.focus();
       el.style.outline = '2px solid #6366f1';
@@ -140,6 +158,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       function finishEdit() {
         if (done) return;
         done = true;
+        isEditingText = false;
+        justFinishedEditTime = Date.now();
+
         el.contentEditable = 'false';
         el.style.outline = '';
         el.style.outlineOffset = '';
@@ -149,6 +170,20 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 
         const newText = (el.textContent || '').trim();
         const elementUid = el.getAttribute('data-od-uid');
+        if (!elementUid) return;
+
+        // Langsung simpan patch ke odPatches memori lokal iframe agar persist saat ada re-apply
+        const patch = {
+          id: 'patch_' + Date.now(),
+          elementUid: elementUid,
+          patchType: PATCH_TYPE_TEXT_CONTENT,
+          value: newText
+        };
+        odPatches = (odPatches || []).filter(function(p) {
+          return !(p.elementUid === elementUid && p.patchType === PATCH_TYPE_TEXT_CONTENT);
+        });
+        odPatches.push(patch);
+
         const rect = el.getBoundingClientRect();
         const bounds = normalizeRect(rect);
 
@@ -167,10 +202,14 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       function onKeyDown(ke) {
         if (ke.key === 'Enter' && !ke.shiftKey) {
           ke.preventDefault();
+          ke.stopPropagation();
           finishEdit();
         } else if (ke.key === 'Escape') {
           ke.preventDefault();
+          ke.stopPropagation();
           done = true;
+          isEditingText = false;
+          justFinishedEditTime = Date.now();
           el.contentEditable = 'false';
           el.style.outline = '';
           el.style.outlineOffset = '';
@@ -187,11 +226,27 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
     // Select by element click
     document.addEventListener('click', function(e) {
       if (odMode !== 'select') return;
+
+      // Dalam mode select, selalu tahan default behavior (jangan redirect link atau submit form)
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Jika baru saja selesai edit teks dalam 250ms terakhir, abaikan click lanjutan ini
+      if (Date.now() - justFinishedEditTime < 250) {
+        return;
+      }
+
       try {
         const target = e.target;
         if (!(target instanceof Element)) return;
         const el = target.closest('[data-od-uid]');
-        if (!el) return;
+        
+        // Klik di area kanvas kosong / non-elemen teks: kirim deselect
+        if (!el) {
+          postToParent({ type: 'OD_DESELECT' });
+          return;
+        }
+
         const elementUid = el.getAttribute('data-od-uid');
         const rect = el.getBoundingClientRect();
         const bounds = normalizeRect(rect);
@@ -210,8 +265,6 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           currentColor,
           currentBg
         });
-        e.preventDefault();
-        e.stopPropagation();
       } catch (err) {}
     }, true);
 

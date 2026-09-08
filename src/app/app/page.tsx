@@ -238,23 +238,50 @@ export default function AppWorkspacePage() {
 
         const current = annotationsRef.current || { marks: [], notes: [], patches: [] };
         const now = new Date().toISOString();
+        const patch = {
+          id: newOdId(),
+          elementUid,
+          patchType: 'textContent' as const,
+          value: newText,
+          createdAt: now
+        };
         const nextPatches = (current.patches || []).filter(
           (p) => !(p.elementUid === elementUid && p.patchType === 'textContent')
         );
-        nextPatches.push({
-          id: newOdId(),
-          elementUid,
-          patchType: 'textContent',
-          value: newText,
-          createdAt: now
-        });
+        nextPatches.push(patch);
 
         const nextAnnotations = {
           ...current,
           patches: nextPatches
         };
 
+        annotationsRef.current = nextAnnotations;
+        setTextContentDraft(newText);
+        setActiveSelection((prev) => {
+          if (!prev || prev.elementUid !== elementUid) return prev;
+          return {
+            ...prev,
+            initialText: newText
+          };
+        });
+
         handleUpdateState({ annotations: nextAnnotations });
+
+        // Kirim kembali patch ke iframe agar sinkron di memori iframe
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            source: 'OD_BRIDGE',
+            type: 'OD_APPLY_PATCH',
+            patch
+          },
+          '*'
+        );
+      } else if (data.type === 'OD_DESELECT') {
+        setActiveSelection(null);
+        setNoteDraft('');
+        setTextColorDraft('');
+        setBgColorDraft('');
+        setTextContentDraft('');
       } else if (data.type === 'OD_AREA_MARK') {
         const markId = newOdId();
         const bounds = data.bounds;
@@ -1040,6 +1067,21 @@ export default function AppWorkspacePage() {
                               {/* Quick Visual Styler untuk mode Element */}
                               {activeSelection.kind === 'element' && (
                                 <div className="space-y-2 pt-0.5">
+                                  {/* Quick Text Content Input */}
+                                  <div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+                                      <span>Teks Elemen</span>
+                                      <span className="text-[9px] text-indigo-400 font-medium">Live Update</span>
+                                    </div>
+                                    <input
+                                      type="text"
+                                      value={textContentDraft}
+                                      onChange={(e) => applyQuickPatch('textContent', e.target.value)}
+                                      className="w-full bg-slate-950/60 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 cursor-text select-text"
+                                      placeholder="Ubah isi teks komponen langsung..."
+                                    />
+                                  </div>
+
                                   {/* Quick Text Color Palette */}
                                   <div>
                                     <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
