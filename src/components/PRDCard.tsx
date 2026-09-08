@@ -12,7 +12,10 @@ import {
   Layers,
   Sparkles,
   Users,
-  ChevronRight
+  ChevronRight,
+  Edit3,
+  Save,
+  X
 } from 'lucide-react';
 
 export interface PRDSection {
@@ -109,6 +112,7 @@ export function parsePRD(text: string): ParsedPRD | null {
 interface PRDCardProps {
   data: ParsedPRD;
   onSwitchToBuild?: () => void;
+  onUpdatePRD?: (updatedMarkdown: string) => void;
 }
 
 const SECTION_ICONS: Record<number, React.ReactNode> = {
@@ -121,12 +125,15 @@ const SECTION_ICONS: Record<number, React.ReactNode> = {
   7: <ShieldCheck className="w-4 h-4 text-emerald-400" />
 };
 
-export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild }) => {
+export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild, onUpdatePRD }) => {
   const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editMarkdown, setEditMarkdown] = useState(data.rawMarkdown);
+  const [currentData, setCurrentData] = useState<ParsedPRD>(data);
   const [collapsedSections, setCollapsedSections] = useState<Record<number, boolean>>({});
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(data.rawMarkdown);
+    navigator.clipboard.writeText(currentData.rawMarkdown);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -138,6 +145,25 @@ export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild }) => {
     }));
   };
 
+  const handleSaveEdit = () => {
+    const parsed = parsePRD(editMarkdown);
+    if (parsed) {
+      setCurrentData(parsed);
+    } else {
+      setCurrentData((prev) => ({
+        ...prev,
+        rawMarkdown: editMarkdown
+      }));
+    }
+    setIsEditing(false);
+    onUpdatePRD?.(editMarkdown);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMarkdown(currentData.rawMarkdown);
+    setIsEditing(false);
+  };
+
   return (
     <div className="w-full max-w-2xl rounded-2xl bg-[#0a0a10] border border-[#10f48e]/35 shadow-2xl overflow-hidden text-zinc-200 my-2 animate-in fade-in duration-200 select-text">
       {/* Header PRD Card */}
@@ -146,7 +172,7 @@ export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild }) => {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#10f48e]/15 border border-[#10f48e]/40 text-[#10f48e] text-[10px] font-extrabold uppercase tracking-wider">
               <span className="w-1.5 h-1.5 rounded-full bg-[#10f48e] animate-pulse" />
-              Plan Ready for Review
+              {isEditing ? 'Mode Edit PRD Aktif' : 'Plan Ready for Review'}
             </span>
             <span className="text-[11px] text-zinc-400 font-medium">
               Technical PRD & Architecture Plan
@@ -154,78 +180,132 @@ export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild }) => {
           </div>
           <h3 className="text-sm sm:text-base font-extrabold text-white truncate flex items-center gap-2">
             <FileText className="w-4 h-4 text-[#10f48e] shrink-0" />
-            <span className="truncate">{data.appTitle}</span>
+            <span className="truncate">{currentData.appTitle}</span>
           </h3>
         </div>
 
-        {/* Action Button: Copy PRD */}
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="self-start sm:self-center px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
-          title="Salin isi dokumen PRD lengkap ke clipboard"
-        >
-          {copied ? (
+        {/* Action Buttons: Edit PRD & Copy PRD */}
+        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+          {!isEditing ? (
             <>
-              <Check className="w-3.5 h-3.5 text-[#10f48e]" />
-              <span className="text-[#10f48e]">Tersalin!</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditMarkdown(currentData.rawMarkdown);
+                  setIsEditing(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/40 text-zinc-300 hover:text-[#10f48e] text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="Edit teks dokumen PRD secara langsung"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit PRD</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="Salin isi dokumen PRD lengkap ke clipboard"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#10f48e]" />
+                    <span className="text-[#10f48e]">Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Salin</span>
+                  </>
+                )}
+              </button>
             </>
           ) : (
             <>
-              <Copy className="w-3.5 h-3.5" />
-              <span>Salin PRD</span>
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* Daftar 7 Section PRD */}
-      <div className="p-4 sm:p-5 space-y-3.5 max-h-[520px] overflow-y-auto scrollbar-thin divide-y divide-white/5">
-        {data.sections.map((sec) => {
-          const isCollapsed = collapsedSections[sec.number];
-          const icon = SECTION_ICONS[sec.number] || <Layers className="w-4 h-4 text-zinc-400" />;
-
-          return (
-            <div key={sec.number} className="pt-3 first:pt-0">
               <button
                 type="button"
-                onClick={() => toggleSection(sec.number)}
-                className="w-full flex items-center justify-between text-left group py-1 cursor-pointer"
+                onClick={handleCancelEdit}
+                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white text-xs font-medium transition-all flex items-center gap-1 cursor-pointer active:scale-95"
               >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                    {icon}
-                  </div>
-                  <h4 className="text-xs font-bold text-white group-hover:text-[#10f48e] transition-colors">
-                    {sec.number}. {sec.title}
-                  </h4>
-                </div>
-                <ChevronRight
-                  className={`w-4 h-4 text-zinc-500 transition-transform ${
-                    isCollapsed ? '' : 'rotate-90 text-[#10f48e]'
-                  }`}
-                />
+                <X className="w-3.5 h-3.5" />
+                <span>Batal</span>
               </button>
 
-              {!isCollapsed && (
-                <div className="mt-2 pl-8 text-[11.5px] leading-relaxed text-zinc-300 whitespace-pre-wrap font-sans bg-white/[0.02] p-3 rounded-xl border border-white/5">
-                  {sec.content}
-                </div>
-              )}
-            </div>
-          );
-        })}
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] text-black font-extrabold text-xs shadow-md shadow-[#10f48e]/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Save className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Simpan</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Konten PRD: Mode Tampilan Normal vs Mode Editor */}
+      {isEditing ? (
+        <div className="p-4 sm:p-5 space-y-3 bg-[#06060a]">
+          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+            <span>Ubah teks spesifikasi PRD di bawah ini sesuai kebutuhan Anda:</span>
+            <span className="text-[10px] text-zinc-500 font-mono">Markdown Format</span>
+          </div>
+          <textarea
+            rows={18}
+            value={editMarkdown}
+            onChange={(e) => setEditMarkdown(e.target.value)}
+            className="w-full rounded-xl bg-[#0e0e16] border border-[#10f48e]/40 p-3.5 font-mono text-xs text-zinc-100 leading-relaxed focus:outline-none focus:ring-1 focus:ring-[#10f48e] resize-y scrollbar-thin select-text"
+          />
+        </div>
+      ) : (
+        <div className="p-4 sm:p-5 space-y-3.5 max-h-[520px] overflow-y-auto scrollbar-thin divide-y divide-white/5">
+          {currentData.sections.map((sec) => {
+            const isCollapsed = collapsedSections[sec.number];
+            const icon = SECTION_ICONS[sec.number] || <Layers className="w-4 h-4 text-zinc-400" />;
+
+            return (
+              <div key={sec.number} className="pt-3 first:pt-0">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(sec.number)}
+                  className="w-full flex items-center justify-between text-left group py-1 cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                      {icon}
+                    </div>
+                    <h4 className="text-xs font-bold text-white group-hover:text-[#10f48e] transition-colors">
+                      {sec.number}. {sec.title}
+                    </h4>
+                  </div>
+                  <ChevronRight
+                    className={`w-4 h-4 text-zinc-500 transition-transform ${
+                      isCollapsed ? '' : 'rotate-90 text-[#10f48e]'
+                    }`}
+                  />
+                </button>
+
+                {!isCollapsed && (
+                  <div className="mt-2 pl-8 text-[11.5px] leading-relaxed text-zinc-300 whitespace-pre-wrap font-sans bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                    {sec.content}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Footer Kartu PRD: Closing & Tombol Beralih ke Build */}
       <div className="p-4 bg-[#0e0e15] border-t border-white/10 space-y-3">
-        {data.closingNote && (
+        {currentData.closingNote && (
           <p className="text-xs text-zinc-300 leading-relaxed">
-            {data.closingNote}
+            {currentData.closingNote}
           </p>
         )}
 
-        {onSwitchToBuild && (
+        {onSwitchToBuild && !isEditing && (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
             <span className="text-[11px] text-zinc-400">
               PRD ini akan dijadikan acuan spesifikasi saat prototipe dibangun.
