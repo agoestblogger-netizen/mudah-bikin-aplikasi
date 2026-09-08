@@ -18,6 +18,26 @@ export interface SinglePatch {
 
 export const ALLOWED_OD_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small';
 
+function ensureOdUids(doc: Document) {
+  const existingUids = new Set<string>();
+  doc.querySelectorAll('[data-od-uid]').forEach((el) => {
+    const uid = el.getAttribute('data-od-uid');
+    if (uid) existingUids.add(uid);
+  });
+  let counter = 0;
+  const els = Array.from(doc.querySelectorAll(ALLOWED_OD_SELECTOR));
+  els.forEach((el) => {
+    if (!el.hasAttribute('data-od-uid')) {
+      while (existingUids.has('e' + counter)) {
+        counter++;
+      }
+      const newUid = 'e' + counter;
+      el.setAttribute('data-od-uid', newUid);
+      existingUids.add(newUid);
+    }
+  });
+}
+
 /**
  * Menerapkan patches visual langsung ke dalam string HTML sumber secara permanen.
  * Memastikan perubahan WYSIWYG (teks, warna, radius, ukuran) tersimpan ke kode sumber.
@@ -33,13 +53,8 @@ export function syncPatchesToHtml(html: string, patches: SinglePatch[]): string 
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    // Pastikan data-od-uid terpasang secara konsisten
-    const els = Array.from(doc.querySelectorAll(ALLOWED_OD_SELECTOR));
-    els.forEach((el, idx) => {
-      if (!el.hasAttribute('data-od-uid')) {
-        el.setAttribute('data-od-uid', 'e' + idx);
-      }
-    });
+    // Pastikan data-od-uid terpasang secara konsisten tanpa menimpa UID yang sudah ada
+    ensureOdUids(doc);
 
     // Terapkan setiap patch berurutan
     for (const patch of patches) {
@@ -89,6 +104,44 @@ export function syncPatchesToHtml(html: string, patches: SinglePatch[]): string 
 }
 
 /**
+ * Menghapus satu elemen secara permanen dari string HTML sumber berdasarkan elementUid,
+ * tanpa merusak atau mengubah UID elemen lainnya.
+ */
+export function removeElementFromHtml(html: string, elementUid: string): string {
+  if (!html || !elementUid) return html;
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  try {
+    const isFullDoc = html.includes('<!DOCTYPE') || html.includes('<html') || html.includes('<body');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    ensureOdUids(doc);
+
+    const target = doc.querySelector(`[data-od-uid="${elementUid}"]`);
+    if (target) {
+      target.remove();
+    } else {
+      console.warn(`Elemen target dengan UID ${elementUid} tidak ditemukan untuk dihapus.`);
+      return html;
+    }
+
+    if (isFullDoc) {
+      const hasDoctype = html.includes('<!DOCTYPE') || html.includes('<!doctype');
+      const serialized = doc.documentElement.outerHTML;
+      return hasDoctype ? `<!DOCTYPE html>\n${serialized}` : serialized;
+    } else {
+      return doc.body.innerHTML;
+    }
+  } catch (err) {
+    console.error('Gagal menghapus elemen di HTML:', err);
+    return html;
+  }
+}
+
+/**
  * Membersihkan atribut data-od-uid untuk kebutuhan ekspor kode bersih
  */
 export function stripOdUids(html: string): string {
@@ -115,12 +168,7 @@ export function replaceElementInHtml(html: string, elementUid: string, newElemen
     let target = doc.querySelector(`[data-od-uid="${elementUid}"]`);
     if (!target) {
       // Pasang UID konsisten jika belum ada
-      const els = Array.from(doc.querySelectorAll(ALLOWED_OD_SELECTOR));
-      els.forEach((el, idx) => {
-        if (!el.hasAttribute('data-od-uid')) {
-          el.setAttribute('data-od-uid', 'e' + idx);
-        }
-      });
+      ensureOdUids(doc);
       target = doc.querySelector(`[data-od-uid="${elementUid}"]`);
     }
 

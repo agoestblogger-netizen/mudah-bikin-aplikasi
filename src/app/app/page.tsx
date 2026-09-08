@@ -38,7 +38,7 @@ import {
   Redo2,
   Loader2
 } from 'lucide-react';
-import { syncPatchesToHtml, stripOdUids, replaceElementInHtml } from '@/lib/htmlPatcher';
+import { syncPatchesToHtml, stripOdUids, replaceElementInHtml, removeElementFromHtml } from '@/lib/htmlPatcher';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { loadModelSettings } from '@/lib/modelConfig';
 
@@ -869,6 +869,43 @@ export default function AppWorkspacePage() {
     const current = projectState.annotations || { marks: [], notes: [], patches: [] };
     const now = new Date().toISOString();
 
+    if (patchType === 'remove') {
+      // 1. Bersihkan SEMUA patch yang terkait dengan elemen yang dihapus
+      const nextPatches = (current.patches || []).filter((p) => p.elementUid !== elUid);
+      const next = {
+        marks: current.marks || [],
+        notes: current.notes || [],
+        patches: nextPatches
+      };
+
+      // 2. Hapus elemen langsung dari canvasCode.html secara permanen tanpa menggeser UID elemen lain
+      const updatedHtml = removeElementFromHtml(projectState.canvasCode.html, elUid);
+
+      // 3. Update state dan simpan ke history
+      handleUpdateState({
+        annotations: next,
+        canvasCode: {
+          ...projectState.canvasCode,
+          html: updatedHtml
+        }
+      });
+
+      // 4. Beri tahu iframe untuk langsung menghapus elemen tersebut dari DOM aktif
+      iframeRef.current?.contentWindow?.postMessage(
+        {
+          source: 'OD_BRIDGE',
+          type: 'OD_REMOVE_ELEMENT',
+          elementUid: elUid
+        },
+        '*'
+      );
+
+      // 5. Tutup seleksi dan popover
+      setActiveSelection(null);
+      setPopoverPos(null);
+      return;
+    }
+
     const patch = {
       id: newOdId(),
       elementUid: elUid,
@@ -915,11 +952,6 @@ export default function AppWorkspacePage() {
       },
       '*'
     );
-
-    if (patchType === 'remove') {
-      setActiveSelection(null);
-      setPopoverPos(null);
-    }
   };
 
   const handleSurgicalEdit = async () => {

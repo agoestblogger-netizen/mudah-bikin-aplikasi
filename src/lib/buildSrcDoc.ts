@@ -62,9 +62,22 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
     }
 
     function assignElementUids() {
+      const existingUids = new Set();
+      document.querySelectorAll('[data-od-uid]').forEach(function(el) {
+        const uid = el.getAttribute('data-od-uid');
+        if (uid) existingUids.add(uid);
+      });
+      let counter = 0;
       const els = Array.from(document.querySelectorAll(ALLOWED_SELECTOR));
-      els.forEach((el, idx) => {
-        el.setAttribute('data-od-uid', 'e' + idx);
+      els.forEach(function(el) {
+        if (!el.hasAttribute('data-od-uid')) {
+          while (existingUids.has('e' + counter)) {
+            counter++;
+          }
+          const newUid = 'e' + counter;
+          el.setAttribute('data-od-uid', newUid);
+          existingUids.add(newUid);
+        }
       });
     }
 
@@ -87,7 +100,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       } else if (patch.patchType === PATCH_TYPE_BORDER_RADIUS) {
         el.style.borderRadius = String(patch.value ?? '');
       } else if (patch.patchType === PATCH_TYPE_REMOVE) {
-        el.style.display = 'none';
+        el.remove();
       }
     }
 
@@ -389,6 +402,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
         }
+      } else if (msg.type === 'OD_REMOVE_ELEMENT') {
+        const el = document.querySelector('[data-od-uid="' + msg.elementUid + '"]');
+        if (el) el.remove();
       } else if (msg.type === 'OD_REPLACE_ELEMENT') {
         const { elementUid, newElementHtml } = msg;
         const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
