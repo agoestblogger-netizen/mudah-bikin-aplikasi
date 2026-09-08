@@ -22,6 +22,7 @@ import {
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { PRDCard, parsePRD } from './PRDCard';
 import { PlanInteractiveCard, PlanOptionsData } from './PlanInteractiveCard';
+import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
 import { loadModelSettings, getModelLabel, getProviderConfig } from '@/lib/modelConfig';
 import type { ModelSettings } from '@/lib/modelConfig';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
@@ -239,7 +240,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         if (projectState.canvasCode.html) {
           currentStage = 'TAHAP_5_PATCH';
         } else {
-          currentStage = 'TAHAP_1_PEMBUKAAN';
+          currentStage = 'TAHAP_2_MOCKUP';
         }
       }
 
@@ -455,10 +456,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {messages.map((m) => {
           const prdData = m.sender === 'AI' ? parsePRD(m.text) : null;
           const briefData = !prdData && m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
+          const credsData = !prdData && !briefData && m.sender === 'AI' ? parseDemoCredentials(m.text) : null;
+          const textToProcess = credsData ? credsData.cleanText : m.text;
           const { cleanText, options: planOptions } =
             m.sender === 'AI' && !prdData && !briefData
-              ? extractPlanOptions(m.text)
-              : { cleanText: m.text, options: null };
+              ? extractPlanOptions(textToProcess)
+              : { cleanText: textToProcess, options: null };
 
           if (prdData) {
             return (
@@ -578,6 +581,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     {m.timestamp}
                   </span>
                 </div>
+
+                {/* Render Kartu Kredensial Akun Demo (DemoCredentialsCard) */}
+                {credsData && (
+                  <DemoCredentialsCard data={credsData} />
+                )}
 
                 {/* Render Kartu Pilihan Interaktif Guided (PlanInteractiveCard) */}
                 {planOptions && (
