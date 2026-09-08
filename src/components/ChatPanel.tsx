@@ -20,35 +20,11 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
-import { PRDCard, parsePRD } from './PRDCard';
-import { PlanInteractiveCard, PlanOptionsData } from './PlanInteractiveCard';
-import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
 import { loadModelSettings, getModelLabel, getProviderConfig } from '@/lib/modelConfig';
 import type { ModelSettings } from '@/lib/modelConfig';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
 export type ChatMode = 'BUILD' | 'PLAN' | 'SYNC_GAS';
-
-function extractPlanOptions(text: string): { cleanText: string; options: PlanOptionsData | null } {
-  if (!text) return { cleanText: text, options: null };
-  const match = text.match(/<<<OPTIONS>>>\s*([\s\S]*?)\s*<<<END_OPTIONS>>>/);
-  if (!match) return { cleanText: text, options: null };
-
-  try {
-    const parsed = JSON.parse(match[1]);
-    const cleanText = text.replace(/<<<OPTIONS>>>[\s\S]*?<<<END_OPTIONS>>>/, '').trim();
-    return {
-      cleanText,
-      options: {
-        title: parsed.title,
-        roles: Array.isArray(parsed.roles) ? parsed.roles : [],
-        features: Array.isArray(parsed.features) ? parsed.features : []
-      }
-    };
-  } catch (e) {
-    return { cleanText: text, options: null };
-  }
-}
 
 interface ChatPanelProps {
   projectState: AppProjectState;
@@ -240,7 +216,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         if (projectState.canvasCode.html) {
           currentStage = 'TAHAP_5_PATCH';
         } else {
-          currentStage = 'TAHAP_2_MOCKUP';
+          currentStage = 'TAHAP_1_PEMBUKAAN';
         }
       }
 
@@ -454,66 +430,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       {/* Message Stream */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 select-text">
         {messages.map((m) => {
-          const prdData = m.sender === 'AI' ? parsePRD(m.text) : null;
-          const briefData = !prdData && m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
-          const credsData = !prdData && !briefData && m.sender === 'AI' ? parseDemoCredentials(m.text) : null;
-          const textToProcess = credsData ? credsData.cleanText : m.text;
-          const { cleanText, options: planOptions } =
-            m.sender === 'AI' && !prdData && !briefData
-              ? extractPlanOptions(textToProcess)
-              : { cleanText: textToProcess, options: null };
-
-          if (prdData) {
-            return (
-              <div key={m.id} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold bg-[#14141a] border border-white/10 text-[#10f48e]">
-                  <Bot className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex-1 max-w-[95%]">
-                  <PRDCard
-                    data={prdData}
-                    onSwitchToBuild={() => setSelectedMode('BUILD')}
-                    onUpdatePRD={(newMarkdown) => {
-                      const updated = messages.map((msg) =>
-                        msg.id === m.id ? { ...msg, text: newMarkdown } : msg
-                      );
-                      setMessages(updated);
-                      onUpdateState({ chatMessages: updated });
-                    }}
-                  />
-                  <span className="text-[10px] block text-right pt-1 text-zinc-500">
-                    {m.timestamp}
-                  </span>
-                </div>
-              </div>
-            );
-          }
-
-          if (briefData) {
-            return (
-              <div key={m.id} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold bg-[#14141a] border border-white/10 text-[#10f48e]">
-                  <Bot className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex-1 max-w-[95%]">
-                  <BriefKebutuhanCard
-                    data={briefData}
-                    onSwitchToBuild={() => setSelectedMode('BUILD')}
-                    onUpdateBrief={(newMarkdown) => {
-                      const updated = messages.map((msg) =>
-                        msg.id === m.id ? { ...msg, text: newMarkdown } : msg
-                      );
-                      setMessages(updated);
-                      onUpdateState({ chatMessages: updated });
-                    }}
-                  />
-                  <span className="text-[10px] block text-right pt-1 text-zinc-500">
-                    {m.timestamp}
-                  </span>
-                </div>
-              </div>
-            );
-          }
+          const briefData = m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
 
           return (
             <div
@@ -532,15 +449,22 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 {m.sender === 'USER' ? <User className="w-3.5 h-3.5 stroke-[2.5]" /> : <Bot className="w-3.5 h-3.5" />}
               </div>
 
-              <div className="flex-1 max-w-[88%] space-y-2">
+              {briefData ? (
+                <div className="flex-1 max-w-[95%]">
+                  <BriefKebutuhanCard data={briefData} />
+                  <span className="text-[10px] block text-right pt-1 text-zinc-500">
+                    {m.timestamp}
+                  </span>
+                </div>
+              ) : (
                 <div
-                  className={`rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
+                  className={`max-w-[85%] rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
                     m.sender === 'USER'
-                      ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold ml-auto'
+                      ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold'
                       : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{cleanText}</p>
+                  <p className="whitespace-pre-wrap">{m.text}</p>
                   
                   {/* Tombol Pintas: Beralih ke Mode Build jika AI meminta beralih ke Build */}
                   {m.sender === 'AI' && selectedMode === 'PLAN' && (
@@ -581,21 +505,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     {m.timestamp}
                   </span>
                 </div>
-
-                {/* Render Kartu Kredensial Akun Demo (DemoCredentialsCard) */}
-                {credsData && (
-                  <DemoCredentialsCard data={credsData} />
-                )}
-
-                {/* Render Kartu Pilihan Interaktif Guided (PlanInteractiveCard) */}
-                {planOptions && (
-                  <PlanInteractiveCard
-                    data={planOptions}
-                    onSend={handleSendMessage}
-                    disabled={isGenerating}
-                  />
-                )}
-              </div>
+              )}
             </div>
           );
         })}
@@ -608,7 +518,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             </div>
             <div className="max-w-[85%] bg-[#101015] border border-[#10f48e]/30 rounded-2xl rounded-tl-none p-3.5 text-xs text-zinc-200 shadow-inner leading-relaxed">
               <p className="whitespace-pre-wrap">
-                {streamingText.replace(/<<<OPTIONS>>>[\s\S]*?(?:<<<END_OPTIONS>>>|$)/, '').trim()}
+                {streamingText}
                 <span className="inline-block w-1.5 h-3.5 bg-[#10f48e] ml-0.5 animate-pulse rounded-sm align-middle" />
               </p>
             </div>
@@ -640,12 +550,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           }}
           className="relative bg-[#101016] border border-white/10 hover:border-white/20 focus-within:border-[#10f48e]/60 rounded-2xl p-2.5 transition-all shadow-xl flex flex-col gap-2"
         >
-          {/* Indikator Alur Plan vs Build: Jika PRD / Brief sudah siap & mode masih Plan */}
-          {messages.some(m => m.text.includes('Product Requirements Document') || m.text.includes('Technical PRD') || m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:')) && selectedMode === 'PLAN' && (
+          {/* Indikator Alur Plan vs Build: Jika Brief sudah siap & mode masih Plan */}
+          {messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:')) && selectedMode === 'PLAN' && (
             <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-[#10f48e]/10 border border-[#10f48e]/25 text-[11px] text-[#10f48e] animate-in fade-in duration-200">
               <div className="flex items-center gap-1.5 truncate">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span className="font-semibold truncate">PRD siap di-review! Beralih ke <b>Build</b> untuk membuat prototipe.</span>
+                <span className="font-semibold truncate">Brief Kebutuhan siap! Beralih ke <b>Build</b> untuk membuat prototipe.</span>
               </div>
               <button
                 type="button"
@@ -675,8 +585,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               disabled={isGenerating}
               placeholder={
                 selectedMode === 'PLAN'
-                  ? (messages.some(m => m.text.includes('Product Requirements Document') || m.text.includes('Technical PRD') || m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'))
-                      ? 'PRD sudah siap. Ketik revisi PRD, atau ganti mode ke Build untuk membuat prototipe...'
+                  ? (messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'))
+                      ? 'Brief sudah siap. Ketik revisi brief, atau ganti mode ke Build untuk membuat prototipe...'
                       : 'Diskusikan ide & fitur yang ingin Anda rencanakan...')
                   : selectedMode === 'SYNC_GAS'
                   ? 'Ketik instruksi backend Google Apps Script / Sheet database...'

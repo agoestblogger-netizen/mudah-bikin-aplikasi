@@ -221,7 +221,7 @@ export function extractUserSpecifiedRoleVariants(prompt: string, chatHistory: an
   return Array.from(variantsMap.values());
 }
 
-// Helper: Ekstraksi Brief Kebutuhan / PRD dan Daftar Peran Resmi dari Riwayat Chat (Poin 44 & 45)
+// Helper: Ekstraksi Brief Kebutuhan dan Daftar Peran Resmi dari Riwayat Chat (Poin 44 & 45)
 function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   rawBrief: string;
   roles: string[];
@@ -229,77 +229,79 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   staffRoles: string[];
   roleLandingTabs: Record<string, string>; // role -> tab ID default
 } {
-  const aiMessages = (chatHistory || []).filter(
-    (m: any) =>
-      m.sender === 'AI' &&
-      (m.text?.includes('Brief Kebutuhan') ||
-        m.text?.includes('Job Description') ||
-        m.text?.includes('Struktur Halaman') ||
-        m.text?.includes('Product Requirements Document') ||
-        m.text?.includes('Peran Pengguna') ||
-        m.text?.includes('User Roles'))
-  );
-  const lastPlanMsg = aiMessages[aiMessages.length - 1]?.text || '';
-
+  const aiMessages = (chatHistory || []).filter((m: any) => m.sender === 'AI' && (m.text?.includes('Brief Kebutuhan') || m.text?.includes('Job Description') || m.text?.includes('Struktur Halaman')));
+  const lastBriefMsg = aiMessages[aiMessages.length - 1]?.text || '';
+  
   const roles: string[] = [];
   let publicRole: string | null = null;
-  const forbiddenKeywords = [
-    'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
-    'alur proses', 'alur', 'job description', 'struktur halaman', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'halaman utama'
-  ];
 
-  if (lastPlanMsg) {
-    // 1. Coba ekstraksi dari dokumen PRD (Bagian: Peran Pengguna & Hak Akses)
-    const prdRoleSectionMatch = lastPlanMsg.match(
-      /(?:Peran Pengguna|User Roles)[^\n]*\n([\s\S]*?)(?=(?:\n(?:#{1,6}\s*)?(?:\*\*)?(?:Bagian\s+|Poin\s+)?\d+[\.\)]\s*)|$)/i
-    );
-    if (prdRoleSectionMatch) {
-      const prdRoleRegex = /(?:^[•\*\-]\s*(?:\*\*)?([^\n:\*]+)(?:\*\*)?\s*:)/gm;
-      let prdM: RegExpExecArray | null;
-      while ((prdM = prdRoleRegex.exec(prdRoleSectionMatch[1])) !== null) {
-        let rName = prdM[1].trim();
-        rName = rName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
-        const isForbidden = forbiddenKeywords.some((k) => rName.toLowerCase().startsWith(k));
-        if (rName && rName.length < 35 && !isForbidden && !roles.some((r) => r.toLowerCase() === rName.toLowerCase())) {
-          roles.push(rName);
-        }
-      }
-    }
-
-    // 2. Jika belum ada dari PRD, coba ekstraksi dari Brief Kebutuhan lama
-    if (roles.length === 0) {
-      const jobDescMatch = lastPlanMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
-      const jobDescText = jobDescMatch ? jobDescMatch[1] : lastPlanMsg;
-      const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
-      let m: RegExpExecArray | null;
-      while ((m = roleLineRegex.exec(jobDescText)) !== null) {
-        let roleName = m[1].trim();
-        roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
-        const isForbidden = forbiddenKeywords.some((k) => roleName.toLowerCase().startsWith(k));
-        if (roleName && !isForbidden && !roles.some((r) => r.toLowerCase() === roleName.toLowerCase())) {
-          roles.push(roleName);
-        }
+  if (lastBriefMsg) {
+    // Cari section Job Description & Struktur Halaman
+    const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
+    const jobDescText = jobDescMatch ? jobDescMatch[1] : lastBriefMsg;
+    
+    // Cari baris-baris peran: * **RoleName**: atau * **[RoleName]**:
+    const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
+    let m: RegExpExecArray | null;
+    const forbiddenKeywords = [
+      'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
+      'alur proses', 'alur', 'job description', 'struktur halaman', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'halaman utama'
+    ];
+    while ((m = roleLineRegex.exec(jobDescText)) !== null) {
+      let roleName = m[1].trim();
+      // Bersihkan kata awalan jika ada
+      roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
+      const isForbidden = forbiddenKeywords.some(k => roleName.toLowerCase().startsWith(k));
+      if (roleName && !isForbidden && !roles.some(r => r.toLowerCase() === roleName.toLowerCase())) {
+        roles.push(roleName);
       }
     }
   }
 
-  // Tentukan apakah ada peran publik (Pasien, Pelanggan, Customer, Tamu, Publik, Warga, dll)
+  // Tentukan apakah ada peran publik (Pasien, Pelanggan, Customer, Tamu, Publik, dll)
   for (const r of roles) {
-    if (/^(pasien|pelanggan|customer|tamu|guest|publik|client|warga|masyarakat)/i.test(r)) {
+    if (/^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(r)) {
       publicRole = r;
       break;
     }
   }
 
-  const staffRoles = roles.filter((r) => r !== publicRole);
+  const staffRoles = roles.filter(r => r !== publicRole);
 
-  // Ekstrak landing tab ID per role dari Brief / PRD
+  // Ekstrak landing tab ID per role dari Brief Kebutuhan (Poin 53)
+  // Format Brief: "* **RoleName** (Akses Publik - Tampilan Awal):" atau "* **RoleName**:"
+  // Diikuti: "- [Halaman/Tab 1] (default): section Nama" atau "- [Halaman 1] (default): ..."
   const roleLandingTabs: Record<string, string> = {};
   for (const role of roles) {
-    roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Cari blok teks dari header role sampai role berikutnya
+    const roleBlockRegex = new RegExp(
+      `\\*\\s+\\*\\*\\[?${escapedRole}[^\\]:\\*\\n]*\\]?\\*\\*[^\n]*\n([\\s\\S]*?)(?=\\n\\s*\\*\\s+\\*\\*[^\\*]|\\n\\s*Apakah|\\n\\s*(?:Roadmap|Catatan|Fitur Unik)|$)`, 'i'
+    );
+    const roleBlockMatch = lastBriefMsg.match(roleBlockRegex);
+    if (roleBlockMatch) {
+      const block = roleBlockMatch[1];
+      // Cari tab default: baris "- [Halaman/Tab N] (default):" atau "- Tab default:"
+      const defaultTabMatch = block.match(/\[(?:Halaman|Tab)\s*(\d+|[A-Za-z]+)\]\s*\(default\)\s*:\s*section\s+([^\n,]+)/i) ||
+                              block.match(/\[(?:Halaman|Tab)\s*(\d+|[A-Za-z]+)\]\s*\(default\)/i);
+      if (defaultTabMatch) {
+        // Buat ID tab dari nama section/role (slug format)
+        const sectionName = (defaultTabMatch[2] || role).trim().toLowerCase()
+          .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-');
+        roleLandingTabs[role] = sectionName;
+      } else {
+        // Fallback: gunakan slug dari nama role (untuk staf) atau 'public' untuk publik role
+        const isPublic = /^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(role);
+        roleLandingTabs[role] = isPublic
+          ? role.toLowerCase().replace(/[^a-z0-9]/g, '')
+          : role.toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+    } else {
+      roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
   }
 
-  return { rawBrief: lastPlanMsg, roles, publicRole, staffRoles, roleLandingTabs };
+  return { rawBrief: lastBriefMsg, roles, publicRole, staffRoles, roleLandingTabs };
 }
 
 export async function POST(req: Request) {
@@ -327,27 +329,15 @@ export async function POST(req: Request) {
 
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
-    const hasBriefPresented = allHistoryText.includes('Product Requirements Document') ||
-      allHistoryText.includes('Technical PRD') ||
-      allHistoryText.includes('Brief Kebutuhan') ||
-      (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
-    const hasOptionsPresented = allHistoryText.includes('<<<OPTIONS>>>') || allHistoryText.includes('PILIH PERAN & FITUR KUNCI');
+    const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
     const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
     
-    // Deteksi Permintaan Penyusunan Dokumen PRD dari Opsi Guided / Express
-    const isRequestingPRD = /(susunkan|buatkan|bikin|generate)\s*(?:product requirements document|prd)/i.test(prompt) ||
-      prompt.includes('Peran yang saya pilih:') ||
-      prompt.includes('Langsung Buatkan PRD') ||
-      prompt.includes('setuju dengan rekomendasi peran');
-
-    // Deteksi Persetujuan/Konfirmasi Pengguna terhadap PRD atau Permintaan Pembuatan Prototipe
-    const isConfirmationApproval = !isRequestingPRD && (
-      /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
-      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim())
-    );
+    // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Permintaan Pembuatan Prototipe
+    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
+      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim());
 
     // GATE ALUR PLAN VS BUILD (Sama seperti di OpenCode):
-    // Jika brief/PRD sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
+    // Jika brief sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
     // Prototipe TIDAK BOLEH dibuat. AI wajib meminta user mengganti mode ke BUILD di dropdown.
     const isBriefApprovedWhileInPlanMode = Boolean(hasBriefPresented && isConfirmationApproval && isPlanMode);
     
@@ -466,11 +456,54 @@ TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI):
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
 Tugas Anda: Memperbarui lembar "Brief Kebutuhan" secara LENGKAP & UTUH berdasarkan revisi dari pengguna dan meminta konfirmasi ulang.
 
-ATURAN REVISI BRIEF:
-1. WAJIB susun ulang seluruh lembar Brief Kebutuhan dari 📋 **Brief Kebutuhan** sampai baris pertanyaan penutup.
-2. PERTAHANKAN seluruh poin yang tidak diminta berubah.
-3. DILARANG KERAS menghasilkan blok kode HTML/JS (\`\`\`html ... \`\`\`) di giliran ini!
-4. Akui revisi pengguna dengan ramah (1-2 kalimat), lalu tampilkan kembali lembar "Brief Kebutuhan" yang telah diperbarui dengan format PERSIS:
+ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
+1. WAJIB GENERATE ULANG SELURUH LEMBAR SECARA UTUH DARI AWAL:
+   - DILARANG memotong teks atau hanya menampilkan potongan yang direvisi saja.
+   - Susun ulang seluruh lembar Brief Kebutuhan dari 📋 **Brief Kebutuhan** sampai baris pertanyaan penutup.
+   - PERTAHANKAN seluruh nama peran, halaman, section, dan alur proses dari Brief sebelumnya yang TIDAK diminta berubah.
+2. STRUKTUR ROLE & ALUR PROSES WAJIB LENGKAP PADA SETIAP ROLE (POIN 51):
+   - SETIAP role WAJIB memiliki minimal 1 baris Halaman/Tab DAN 1 baris "- **Alur Proses**: ...".
+   - MULTI-TAB ALUR PROSES (POIN 51): Jika role memiliki 2 tab/halaman atau lebih, Alur Proses WAJIB melibatkan perpindahan antar-tab (contoh: [Aksi Tab 1] → [Status Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 sub-baris: "- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ...". Batasi maksimal 6-8 langkah total.
+   - DILARANG KERAS memisahkan "Alur Proses" menjadi heading role tersendiri (format '* **Alur Proses**:'). Alur proses SELALU menjadi anak (sub-item) dengan indentasi strip (-) di bawah role terkait.
+   - DILARANG membuat heading role kosong.
+3. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
+4. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
+5. Akui revisi pengguna dengan ramah (1-2 kalimat), lalu tampilkan kembali lembar "Brief Kebutuhan" yang telah diperbarui dengan format PERSIS:
+   📋 **Brief Kebutuhan**
+   - **Nama App**: [nama aplikasi]
+   - **Orientasi UI**: [Desktop-first / Mobile-first / Responsif, dengan alasan singkat]
+   - **Tema Visual**: [deskripsi warna, gaya, kesan yang diinginkan]
+   - **Fitur Utama (V1)**: [daftar bernomor, ringkas per fitur]
+   - **Roadmap Lanjutan (V2/V3)**: [fitur yang didorong ke "🚀 Coming Soon" karena di luar kemampuan stack Google Sheets + Apps Script]
+   - **Fitur Unik (USP)**: [kalau ada, opsional]
+   - **Job Description & Struktur Halaman per Peran** (WAJIB dideklarasikan rinci per halaman & section jika ada 2+ peran; cantumkan mekanisme akses: Login simulasi akun demo untuk peran internal & Akses Publik untuk pelanggan/pasien jika ada; kosongkan jika single-user):
+     * **[Nama Peran 1 — tulis nama saja, misal: Admin Klinik]**: ← DILARANG menulis "Role Admin", cukup "Admin Klinik"
+       - [Halaman 1] (default): section [Section A], section [Section B]
+       - [Halaman 2]: section [Section C], section [Section D]
+       - **Alur Proses**: Klik "[Nama Tombol Aksi]" (Tab 1) → status/data berubah jadi "[Nilai Konkret]" → Klik "[Tombol Simpan]" → status jadi "[Aktif]" → Buka tab "[Nama Tab 2]" (Tab 2) → [efek/data baru terlihat di Tab 2] (WAJIB libatkan perpindahan kedua tab; nama tombol pakai tanda kutip; nilai status konkret; maks 6-8 langkah)
+     * **[Nama Peran 2 — tulis nama saja, misal: Dokter Umum]**:
+       - [Halaman 1] (default): section [Section A], section [Section B]
+       - [Halaman 2]: section [Section C]
+       - **Alur Proses**: Klik "[Nama Tombol]" (Tab 1) → status berubah jadi "[Nilai Konkret]" → Buka tab "[Nama Tab 2]" (Tab 2) → [rekam medis/hasil muncul di riwayat Tab 2] → Klik "[Tombol Selesai]" → status berubah jadi "[Nilai Akhir]"
+     * **[Nama Peran 3 — tulis nama saja, misal: Pasien]**:
+       - [Halaman 1] (default): section [Section A], section [Section B]
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (jika 1 tab saja, alur fokus di tab tersebut)
+6. Tanyakan konfirmasi eksplisit di baris terakhir:
+   "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika masih ada detail yang ingin diubah."`;
+      } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
+        // KONDISI 3: PROMPT AWAL SANGAT DETAIL (>200 chars) ATAU DISKUSI SUDAH 2+ PUTARAN / USER MENYETUJUI USULAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
+        systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
+Tugas Anda: Merangkum kebutuhan aplikasi yang sudah disepakati menjadi lembar resmi "Brief Kebutuhan" dan meminta konfirmasi sebelum pembuatan prototipe.
+
+ATURAN MUTLAK PERCAKAPAN:
+1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
+2. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
+3. ATURAN STRUKTUR HALAMAN & ALUR PROSES MULTI-TAB (POIN 42, 43, 51):
+   - STRUKTUR TAB PER ROLE: Untuk peran internal operasional & pengawas (misal: Admin, Dokter, Kasir, Receptionist, Washer), deklarasikan 2 Halaman/Tab (Tab 1: Operasional Utama/Entri Data, Tab 2: Monitoring/Riwayat/Laporan) agar workspace terstruktur rapi. Untuk peran pelanggan/pasien publik cukup 1 tab.
+   - ALUR PROSES 2 TAB (POIN 51): Jika role memiliki 2 tab/halaman, Alur Proses WAJIB melibatkan dan menghubungkan perpindahan antar-tab sebagai bagian dari alur kerja nyata (contoh: [Aksi di Tab 1] → [Status di Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol di Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 baris terpisah ("- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ..."). Batasi maks 6-8 langkah total.
+   - Jika role hanya memiliki 1 tab: Alur Proses fokus di 1 tab tersebut (3-5 langkah).
+   - Setiap langkah WAJIB menyebutkan nama tombol dalam tanda kutip dan status konkret yang berubah.
+4. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi yang menarik & relevan]
    - **Orientasi UI**: [Desktop-first / Mobile-first / Responsif, dengan alasan singkat]
@@ -479,78 +512,46 @@ ATURAN REVISI BRIEF:
    - **Roadmap Lanjutan (V2/V3)**: [daftar fitur yang didorong ke "🚀 Coming Soon" karena di luar batasan stack GAS]
    - **Fitur Unik (USP)**: [keunikan aplikasi, jika ada]
    - **Job Description & Struktur Halaman per Role** (WAJIB dideklarasikan rinci per halaman & section jika ada 2+ role; cantumkan mekanisme akses: Login simulasi akun demo untuk role internal & Akses Publik untuk pelanggan/pasien jika ada; kosongkan jika single-user):
-     * **[Nama Peran 1 — tulis nama saja, misal: Admin RT]**:
+     * **[Nama Peran 1 — tulis nama saja, misal: Admin Klinik]**: ← DILARANG menulis "Role Admin Klinik", cukup "Admin Klinik"
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - [Halaman/Tab 2]: section [Nama Section 3], section [Nama Section 4]
        - **Alur Proses**: Klik "[Nama Tombol Aksi]" (Tab 1) → [data/status berubah jadi "Nilai Konkret"] → Klik "[Tombol Simpan]" → status jadi "[Aktif]" → Buka tab "[Nama Tab 2]" (Tab 2) → [efek/data baru terlihat di Tab 2] (WAJIB libatkan kedua tab; nama tombol pakai tanda kutip & nilai status konkret; maks 6-8 langkah)
-     * **[Nama Peran 2 — tulis nama saja, misal: Petugas Ronda]**:
+     * **[Nama Peran 2 — tulis nama saja, misal: Dokter Umum]**: ← DILARANG menulis "Role Dokter Umum"
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - [Halaman/Tab 2]: section [Nama Section 3]
        - **Alur Proses**: Klik "[Nama Tombol]" (Tab 1) → [perubahan konkret di layar] → Buka tab "[Nama Tab 2]" (Tab 2) → [rekam medis/hasil muncul di riwayat] → Klik "[Tombol Selesai]" → status berubah jadi "[Nilai Akhir]"
-     * **[Nama Peran 3 — tulis nama saja, misal: Warga]**:
+     * **[Nama Peran 3 — tulis nama saja, misal: Pasien]**: ← DILARANG menulis "Role Pasien"
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
-       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar]
-
-5. Tanyakan konfirmasi di baris terakhir:
-   "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
-      } else if (isRequestingPRD || (hasOptionsPresented && isUserAgreeingToProposal)) {
-        // KONDISI 3: PENGGUNA MEMILIH OPSI GUIDED/EXPRESS, ATAU MENYETUJUI USULAN CHIPS -> TERBITKAN LEMBAR RESMI BRIEF KEBUTUHAN
-        systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
-Tugas Anda: Merangkum seluruh rancangan aplikasi yang telah dipilih pengguna menjadi lembar resmi "Brief Kebutuhan" yang memuat Job Description, Struktur Halaman per Role, dan Alur Proses 2 Tab.
-
-ATURAN MUTLAK PERCAKAPAN:
-1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript (\`\`\`html ... \`\`\`) di giliran ini!
-2. DILARANG menyebutkan kata "saya akan buatkan kodenya sekarang", karena pembuatan kode prototipe HANYA berjalan setelah pengguna beralih ke mode "Build".
-3. Tampilkan apresiasi singkat (1 kalimat), lalu tampilkan lembar "Brief Kebutuhan" dengan format PERSIS berikut:
-
-📋 **Brief Kebutuhan**
-- **Nama App**: [nama aplikasi yang menarik & relevan]
-- **Orientasi UI**: [Desktop-first / Mobile-first / Responsif, dengan alasan singkat]
-- **Tema Visual**: [deskripsi warna, gaya modern, dan kesan visual]
-- **Fitur Utama (V1)**: [daftar bernomor ringkas per fitur inti yang disepakati]
-- **Roadmap Lanjutan (V2/V3)**: [daftar fitur yang didorong ke "🚀 Coming Soon" karena di luar batasan stack GAS]
-- **Fitur Unik (USP)**: [keunikan aplikasi, jika ada]
-- **Job Description & Struktur Halaman per Role** (WAJIB dideklarasikan rinci per halaman & section jika ada 2+ role; cantumkan mekanisme akses: Login simulasi akun demo untuk role internal & Akses Publik untuk pelanggan/pasien jika ada; kosongkan jika single-user):
-  * **[Nama Peran 1 — tulis nama saja, misal: Admin RT]**:
-    - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
-    - [Halaman/Tab 2]: section [Nama Section 3], section [Nama Section 4]
-    - **Alur Proses**: Klik "[Nama Tombol Aksi]" (Tab 1) → [data/status berubah jadi "Nilai Konkret"] → Klik "[Tombol Simpan]" → status jadi "[Aktif]" → Buka tab "[Nama Tab 2]" (Tab 2) → [efek/data baru terlihat di Tab 2] (WAJIB libatkan kedua tab; nama tombol pakai tanda kutip & nilai status konkret; maks 6-8 langkah)
-  * **[Nama Peran 2 — tulis nama saja, misal: Petugas Ronda]**:
-    - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
-    - [Halaman/Tab 2]: section [Nama Section 3]
-    - **Alur Proses**: Klik "[Nama Tombol]" (Tab 1) → [perubahan konkret di layar] → Buka tab "[Nama Tab 2]" (Tab 2) → [rekam medis/hasil muncul di riwayat] → Klik "[Tombol Selesai]" → status berubah jadi "[Nilai Akhir]"
-  * **[Nama Peran 3 — tulis nama saja, misal: Warga]**:
-    - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
-    - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar]
-
-4. WAJIB tanyakan konfirmasi di baris terakhir:
-"Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika ada section/fitur yang mau disesuaikan terlebih dahulu."`;
+       - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (jika 1 tab, alur fokus di tab tersebut; langkah menunggu pasif ditulis sebagai konsekuensi: "saat [Role Lain] klik X, status berubah jadi Y")
+5. WAJIB tanyakan konfirmasi di baris terakhir:
+   "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika ada section/fitur yang mau disesuaikan terlebih dahulu."`;
       } else {
-        // KONDISI 4: PROMPT AWAL / DISKUSI IDE -> TAMPILKAN ANALISA CERDAS & PANEL OPSI CHIPS (SMART GUIDED HYBRID)
+        // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
-Tugas Anda pada tahap ini: Menganalisa ide pengguna berdasarkan referensi 20 Master Template industri, menyapa ramah, dan menyajikan rekomendasi peran & fitur kunci dalam blok data terstruktur.
+Tugas Anda pada tahap ini adalah mendiskusikan, menggali, dan mempertajam ide aplikasi bersama pengguna (Sub-langkah 1-4 Eksplorasi Ide).
 
-ATURAN PERCAKAPAN & FORMAT OPSI (WAJIB DIPATUHI):
-1. DILARANG KERAS menghasilkan dokumen PRD lengkap (7 poin) atau blok kode di giliran ini! Tugas Anda di giliran ini adalah menganalisa ide secara singkat dan MENYEDIAKAN KARTU PILIHAN CHIPS OPSI.
-2. Berikan analisa ramah dan antusias (2-3 kalimat):
-   - Sapa dan akui ide pengguna.
-   - Jelaskan konsep singkat arsitektur aplikasi yang paling cocok untuk kebutuhan tersebut.
-3. Di bagian paling bawah respons Anda, WAJIB sertakan blok data terstruktur PERSIS dengan format:
-<<<OPTIONS>>>
-{
-  "title": "PILIH PERAN & FITUR KUNCI",
-  "roles": ["Peran 1", "Peran 2", "Peran 3"],
-  "features": [
-    "Fitur/Alur Kunci 1",
-    "Fitur/Alur Kunci 2",
-    "Fitur/Alur Kunci 3",
-    "Fitur/Alur Kunci 4",
-    "Fitur/Alur Kunci 5"
-  ]
-}
-<<<END_OPTIONS>>>
+ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
+1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
+2. DILARANG KERAS menyebutkan kata-kata teknis seperti "saya akan berikan kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun tentang pembuatan kode!
+3. NADA KOMUNIKASI WAJIB: BERIKAN USULAN KONKRET DULU, JANGAN PERNAH MELEMPAR BEBAN BERPIKIR KE USER!
+   - DILARANG bertanya dengan nada pasif atau kata-kata terbuka seperti "apakah sudah Anda pikirkan/pertimbangkan?", "bagaimana konsep yang Anda inginkan?", atau "apa fitur yang ingin dibuat?".
+   - Karena Anda sudah memiliki acuan struktur modul & peran dari blueprint bisnis, Anda WAJIB langsung MENGUSULKAN pembagian peran dan fitur operasional secara konkret.
 
-PASTIKAN nama peran dan fitur di dalam JSON di atas disesuaikan secara cerdas dan kontekstual dengan ide pengguna (BUKAN teks generik).`;
+4. STRUKTUR RESPONS EKSPLORASI IDE (WAJIB IKUTI 3 BAGIAN INI — POIN 47 & 48):
+   - BAGIAN 1 (APRESIASI): Sapa & akui ide bisnis pengguna dengan hangat & antusias (1 kalimat).
+   - BAGIAN 2 (USULAN ROLE): Usulkan / rangkum pembagian peran konkret beserta tugas utamanya (2-3 kalimat atau list ringkas).
+   - BAGIAN 3 (PENUTUP & KONFIRMASI — PILIH PERSIS SALAH SATU DARI 3 KONDISI BERIKUT):
+     * KONDISI A (Jika di dalam daftar peran yang baru saja Anda sebutkan SUDAH ADA role Admin/Super Admin/Owner/Manager):
+       Tutup LANGSUNG dengan 1 pertanyaan persetujuan umum:
+       "Apakah pembagian peran dan alur kerja ini sudah cukup pas untuk usaha Anda, atau ada peran/penyesuaian lain yang ingin ditambahkan?" (DILARANG KERAS menambahkan kalimat tawaran Admin terpisah di bawahnya).
+     * KONDISI B (Jika peran yang dibahas/diajukan pengguna berisi 3 ROLE OPERASIONAL ATAU LEBIH TANPA role Admin/Owner/Manager, contoh: Dokter, Receptionist, Staf Farmasi, Pasien):
+       Tutup WAJIB DENGAN TAWARAN PROAKTIF 1 ROLE ADMIN (Poin 47):
+       "Selain peran operasional di atas, biasanya aplikasi seperti ini juga butuh 1 role Admin yang mengelola akun staf dan parameter layanan (harga, jenis layanan, tarif, dll) — supaya perubahan kecil tidak perlu ubah kode. Mau ditambahkan sebagai role terpisah, atau digabung ke salah satu role yang sudah ada?"
+     * KONDISI C (Jika aplikasi hanya memiliki 1-2 role sederhana, contoh: Kasir + Pembeli, atau single-user):
+       Tutup dengan 1 pertanyaan persetujuan umum (DILARANG menawarkan role Admin).
+
+5. JIKA PENGGUNA MENOLAK/MERASA TIDAK PERLU ROLE ADMIN ("tidak perlu admin", "tanpa admin", "cukup role ini saja", "tidak usah"): AI DILARANG MEMAKSA. Cukup tawarkan 1 kali. Jika ditolak, lanjutkan tanpa role Admin dan jangan pernah menanyakan lagi.
+6. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
       }
 
       // Suntikkan blueprint terstruktur atau ringkasan katalog internal untuk memandu dialog
@@ -598,135 +599,57 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         min-height: 100vh;
         padding: 24px;
       }
-      .container { max-width: 1200px; margin: 0 auto; }
-
-      /* Modern App Header */
-      .app-header {
-        display: flex; justify-content: space-between; align-items: center; background: #ffffff;
-        border-radius: 16px; padding: 18px 24px; border: 1px solid #e2e8f0; margin-bottom: 24px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-      }
-      .brand-box { display: flex; align-items: center; gap: 12px; }
-      .brand-icon {
-        width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 800;
-        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
-      }
-      .title { font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.2; }
-      .subtitle { font-size: 13px; color: #64748b; margin-top: 2px; }
-      .header-actions { display: flex; align-items: center; gap: 12px; }
-      .user-badge {
-        display: inline-flex; align-items: center; gap: 8px; background: #f0fdf4; border: 1px solid #bbf7d0;
-        padding: 6px 14px; border-radius: 9999px; color: #166534; font-weight: 700; font-size: 12px;
-      }
-
-      /* KPI Metric Cards Grid */
-      .kpi-grid {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;
-      }
-      .kpi-card {
-        background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 6px;
-        transition: transform 0.15s, box-shadow 0.15s;
-      }
-      .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.06); }
-      .kpi-label { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
-      .kpi-value { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; }
-      .kpi-badge { font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
-
-      /* Control Toolbar & Filters */
-      .toolbar {
-        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
-        background: #ffffff; border-radius: 12px; padding: 14px 18px; border: 1px solid #e2e8f0; margin-bottom: 18px;
-      }
-      .search-input {
-        padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;
-        min-width: 240px; font-family: inherit;
-      }
-      .search-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
-      .filter-select {
-        padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;
-        background: #fff; font-family: inherit; color: #334155;
-      }
-
-      /* Card & Content Boxes */
+      .container { max-width: 1000px; margin: 0 auto; }
       .card {
         background: #ffffff;
-        border-radius: 14px;
+        border-radius: 12px;
         border: 1px solid rgba(226, 232, 240, 0.8);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         padding: 24px;
         margin-bottom: 24px;
       }
-
-      /* Buttons */
+      .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+      .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
       .btn-primary {
-        background: #4f46e5; color: #ffffff; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+        background: #4f46e5; color: #ffffff; font-weight: 600; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 8px;
       }
-      .btn-primary:hover { background: #4338ca; transform: translateY(-1px); }
+      .btn-primary:hover { background: #4338ca; }
       .btn-secondary {
-        background: #ffffff; color: #334155; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+        background: #ffffff; color: #334155; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
       }
-      .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; }
+      .btn-secondary:hover { background: #f1f5f9; }
       .btn-danger {
-        background: #fff1f2; color: #e11d48; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+        background: #fff1f2; color: #e11d48; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
       }
       .btn-danger:hover { background: #ffe4e6; }
-      
-      /* Form Controls */
       .form-group { margin-bottom: 16px; }
       .form-label { display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; }
       .form-input {
-        width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; font-family: inherit;
+        width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
       }
       .form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
-      
-      /* Data Table Modern */
       .table-container {
-        overflow-x: auto; border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03); background: #ffffff; margin-top: 14px;
+        overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); background: #ffffff; margin-top: 16px;
       }
       table { width: 100%; border-collapse: collapse; text-align: left; }
       th {
-        background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 16px; border-bottom: 1px solid #e2e8f0;
       }
-      td { color: #334155; font-size: 14px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-      tr:hover td { background-color: #f8fafc; }
+      td { color: #334155; font-size: 14px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
       tr:last-child td { border-bottom: none; }
-
-      /* Badges */
-      .badge {
-        display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
-      }
-      .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-      .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-      .badge-danger { background: #ffe4e6; color: #b91c1c; border: 1px solid #fecdd3; }
-      .badge-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
-
-      /* Tabs */
       .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; }
       .tab-btn {
-        padding: 12px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px; display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 18px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px;
       }
-      .tab-btn:hover { color: #334155; }
       .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; }
       .tab-content { display: none; }
       .tab-content.active { display: block; }
-
-      /* Modals */
       .modal {
         position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
       }
       .modal-box {
-        background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-width: 500px; width: 100%; padding: 26px;
+        background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-width: 480px; width: 100%; padding: 24px;
       }
-
-      /* Toast */
-      .toast {
-        position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 13px;
-      }
-      .toast.error { background: #ef4444; }
-      .toast.success { background: #10b981; }
-      .toast.info { background: #3b82f6; }
       \`\`\`
     - Lucide Icons & Google Fonts: Diizinkan di <head> (menggunakan tag <link> font dan <script src="https://unpkg.com/lucide@latest"></script>). Panggil \`if (typeof lucide !== 'undefined' && lucide?.createIcons) lucide.createIcons();\` di fungsi \`render()\`.
 13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
@@ -1108,21 +1031,16 @@ ${staffLandingGuide}
 ================================================================================`;
       }
 
-      if ((stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) || stage === 'TAHAP_2_MOCKUP' || (!currentCode && activeChatMode === 'BUILD')) {
-        systemPrompt += `\n\nATURAN TAHAP 1 & 2 (PEMBUATAN PROTOTIPE VISUAL LENGKAP & KAYA FITUR):
-- Pengguna meminta pembuatan prototipe aplikasi di mode BUILD.
+      if (stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) {
+        systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
+- Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
 - Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
   1. Data awal 3-5 item contoh realistis (Prinsip 1).
-  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen/modalLogin + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}).
-  3. Quick Fill Demo Login di Form Login: Pada form login (#modalLogin atau #loginScreen), WAJIB sertakan kotak "⚡ Akun Demo (Klik untuk Isi Cepat)" dengan tombol untuk masing-masing peran resmi, dan fungsi JavaScript fillDemo(u, p) agar user dapat menguji login dengan 1 klik!
-  4. STANDAR KUALITAS VISUAL & STRUKTUR TAB KAYA FITUR (ANTI-HALAMAN KOSONG):
-     * DILARANG KERAS membuat tab yang hanya berisi tag teks <p> deskripsi atau tag <ul> kosong!
-     * SETIAP TAB wajib memiliki:
-       a) Tab Header & Toolbar: Judul tab yang tegas, input pencarian (search), dropdown filter status, dan tombol aksi utama (misal: "➕ Tambah Data Baru").
-       b) Ringkasan Metrik (KPI Stat Cards): 2-4 kartu statistik dengan icon, angka tebal, label, dan badge status.
-       c) Tampilan Data Utama: Data Table Interaktif (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data.
+  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}). filterTabsByRole() dipanggil pertama kali di loginAs() SEBELUM showTab(), agar tab yg tidak diizinkan benar-benar tersembunyi setelah login.
+  3. Visibilitas Tab Terbatas Per Role (Prinsip 20 & 21): Setiap tab-btn WAJIB punya data-access-roles="..." sesuai peran resmi yang boleh melihatnya. DILARANG hardcode getElementById('tab-btn-xxx') untuk filter tab.
+  4. Kepatuhan Layout Page Template Baku (Prinsip 22): wujudkan layout visual sesuai fungsi halaman di Brief Kebutuhan (misal: antrean dengan kartu antrean, POS/transaksi dengan layout kasir, dashboard dengan ringkasan metrik).
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
-  6. Styling CSS modern murni tanpa Tailwind Play CDN, responsive layout, event handler 100% selaras.
+  6. Styling CSS modern murni tanpa Tailwind Play CDN, event handler 100% selaras.
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
 
       } else if (stage === 'TAHAP_5_PATCH') {
@@ -1834,47 +1752,24 @@ body: JSON.stringify({
         cleanReplyText += '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**';
       }
 
-      // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D): USER DAN PASSWORD DI CHAT
-      if (!cleanReplyText.includes('🔑 **Akun Demo') && !cleanReplyText.includes('🔑 **Petunjuk Akses')) {
-        // Tentukan daftar role yang akan ditampilkan
-        let displayRoles = officialRoles.length > 0 ? [...officialRoles] : [];
-
-        // Jika officialRoles masih kosong, coba ekstrak dari kode HTML prototipe
-        if (displayRoles.length === 0 && htmlCode) {
-          const roleMatches = htmlCode.matchAll(/(?:loginAs|switchRole|selectRole)\s*\(\s*['"]([^'"]+)['"]/gi);
-          for (const rm of roleMatches) {
-            const r = rm[1].trim();
-            if (r && !displayRoles.includes(r)) displayRoles.push(r);
-          }
-        }
-
-        // Jika masih kosong juga, sediakan role fallback umum
-        if (displayRoles.length === 0) {
-          displayRoles = ['Admin', 'Petugas / User'];
-        }
-
-        let credentialsGuide = '\n\n🔑 **Akun Demo & Kredensial Login (Username & Password):**\nSilakan gunakan akun demo di bawah ini untuk mencoba prototipe pada Canvas Preview:\n';
-
+      // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D)
+      if (officialRoles.length > 0 && !cleanReplyText.includes('🔑 **Petunjuk Akses')) {
+        let credentialsGuide = '\n\n🔑 **Petunjuk Akses & Akun Demo:**';
         if (publicRole) {
-          credentialsGuide += `\n> ℹ️ *Aplikasi ini dibuka pertama kali di halaman **${publicRole}** (akses publik tanpa login). Untuk mencoba fitur staf/pengelola, silakan login dengan akun berikut:*\n`;
+          credentialsGuide += `\n- Aplikasi ini dibuka pertama kali di halaman **${publicRole}** (akses publik, tanpa login).`;
+          credentialsGuide += `\n- Untuk masuk sebagai staf, klik tombol **"Login"** di pojok kanan atas, lalu gunakan salah satu akun berikut:`;
+          const staffToDisplay = staffRoles.length > 0 ? staffRoles : officialRoles.filter(r => r !== publicRole);
+          staffToDisplay.forEach(r => {
+            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
+            credentialsGuide += `\n  * **${r}**: username \`${u}\` / password \`${u}123\``;
+          });
+        } else {
+          credentialsGuide += `\n- Masuk ke aplikasi menggunakan salah satu akun demo berikut:`;
+          officialRoles.forEach(r => {
+            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
+            credentialsGuide += `\n  * **${r}**: username \`${u}\` / password \`${u}123\``;
+          });
         }
-
-        credentialsGuide += '\n| Peran (Role) | Username | Password | Hak Akses |';
-        credentialsGuide += '\n| :--- | :--- | :--- | :--- |';
-
-        displayRoles.forEach((r) => {
-          const isPublic = /^(pasien|pelanggan|customer|tamu|guest|publik|client|warga|masyarakat)/i.test(r);
-          if (isPublic) {
-            credentialsGuide += `\n| **${r}** | *(Tanpa Login)* | *(Tanpa Login)* | Akses Publik (Tampilan Awal) |`;
-          } else {
-            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '') || 'admin';
-            const pass = `${u}123`;
-            const desc = /admin/i.test(r) ? 'Akses Penuh (Kelola data & laporan)' : 'Akses Operasional & input data';
-            credentialsGuide += `\n| **${r}** | \`${u}\` | \`${pass}\` | ${desc} |`;
-          }
-        });
-
-        credentialsGuide += '\n\n💡 *Tips: Anda juga dapat langsung mengklik tombol role login instan (Quick Login) yang tersedia pada layar login aplikasi.*';
         cleanReplyText += credentialsGuide;
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {

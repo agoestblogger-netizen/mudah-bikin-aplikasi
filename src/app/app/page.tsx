@@ -1290,6 +1290,47 @@ export default function AppWorkspacePage() {
       .then((data: { projects?: SavedProject[] } | null) => {
         if (data && Array.isArray(data.projects)) {
           setSavedProjects(data.projects);
+          // Jika canvas saat ini masih kosong dan ada saved projects, otomatis pulihkan project terbaru ke Live Preview
+          setProjectState((current) => {
+            if (!current.canvasCode?.html && data.projects && data.projects.length > 0) {
+              const latest = data.projects[0];
+              let cleanHtml = latest.canvas_html || '';
+              if (cleanHtml.includes('</html>')) {
+                cleanHtml = cleanHtml.slice(0, cleanHtml.lastIndexOf('</html>') + 7).trim();
+              }
+              autoSavedProjectIdRef.current = latest.id;
+              lastSavedCanvasRef.current = cleanHtml;
+              const restored: AppProjectState = {
+                ...initialProjectState,
+                id: 'saved-' + latest.id,
+                title: latest.title,
+                description: latest.description || '',
+                annotations: { marks: [], notes: [], patches: latest.annotations?.patches || [] },
+                updatedAt: latest.updated_at || new Date().toISOString(),
+                canvasCode: {
+                  html: cleanHtml,
+                  css: latest.canvas_css || '',
+                  js: latest.canvas_js || ''
+                },
+                gasConfig: {
+                  sheetId: latest.spreadsheet_id || '',
+                  webAppUrl: latest.gas_web_app_url || '',
+                  scriptCode: latest.gas_script || '',
+                  isConnected: Boolean(latest.gas_script)
+                }
+              };
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem('mba_active_project', JSON.stringify(restored));
+                  localStorage.setItem('mba_active_project_id', latest.id);
+                } catch {}
+              }
+              setRightPanelTab('PREVIEW');
+              setReloadTrigger((k) => k + 1);
+              return restored;
+            }
+            return current;
+          });
         }
       })
       .catch((err) => console.error('Failed to load saved projects:', err))
@@ -1560,7 +1601,7 @@ export default function AppWorkspacePage() {
             {/* Isi Viewport Live Preview / Script */}
             <div className="col-start-1 row-start-2 flex-1 overflow-hidden p-4 relative">
               {rightPanelTab === 'PREVIEW' ? (
-                <div className="w-full h-full bg-[#0a0a10] rounded-2xl border border-white/10 overflow-hidden shadow-2xl relative flex items-center justify-center">
+                <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner relative">
                   {projectState.canvasCode.html ? (
                     <div ref={overlayRef} className="relative w-full h-full">
                       <div
@@ -2241,19 +2282,14 @@ export default function AppWorkspacePage() {
                     // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===
                     <GeneratingSkeletonPreview />
                   ) : (
-                    <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-zinc-500 select-none max-w-md animate-in fade-in duration-300">
-                      <div className="w-16 h-16 rounded-3xl bg-[#12121c] border border-[#10f48e]/25 flex items-center justify-center text-[#10f48e] shadow-xl shadow-[#10f48e]/10">
-                        <Sparkles className="w-8 h-8 text-[#10f48e]" />
+                    <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500">
+                      <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-indigo-400/60 shadow-inner">
+                        <Layers className="w-8 h-8 text-indigo-400" />
                       </div>
-                      <div className="space-y-2">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#10f48e]/10 border border-[#10f48e]/25 text-[#10f48e] text-[10px] font-bold uppercase tracking-wider">
-                          Pratinjau Kosong
-                        </div>
-                        <h4 className="text-base font-extrabold text-white tracking-wide">
-                          Belum Ada Prototipe yang Dibuat
-                        </h4>
-                        <p className="text-xs text-zinc-400 leading-relaxed">
-                          Selesaikan perancangan peran, fitur, dan PRD di mode <span className="text-[#10f48e] font-semibold">PLAN</span> pada panel kiri. Prototipe fungsional aplikasi Anda akan langsung dirender secara real-time di sini saat berpindah ke mode <span className="text-[#10f48e] font-semibold">BUILD</span>.
+                      <div className="space-y-1.5 max-w-sm">
+                        <h4 className="text-sm font-bold text-white">Pratinjau Aplikasi Akan Muncul Di Sini</h4>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          Mulai percakapan dengan AI di panel kiri untuk mendeskripsikan aplikasi yang ingin Anda bangun. Mockup interaktif akan langsung dirender secara real-time di sini.
                         </p>
                       </div>
                     </div>
