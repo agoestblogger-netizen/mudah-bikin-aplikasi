@@ -231,8 +231,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       e.preventDefault();
       e.stopPropagation();
 
-      // Jika baru saja selesai edit teks dalam 250ms terakhir, abaikan click lanjutan ini
-      if (Date.now() - justFinishedEditTime < 250) {
+      // Jika baru saja selesai edit teks dalam 350ms terakhir, abaikan click lanjutan ini
+      if (Date.now() - justFinishedEditTime < 350) {
         return;
       }
 
@@ -241,9 +241,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         if (!(target instanceof Element)) return;
         const el = target.closest('[data-od-uid]');
         
-        // Klik di area kanvas kosong / non-elemen teks: kirim deselect
+        // Klik di area kanvas kosong / non-elemen: tahan aksi tombol prototipe tapi JANGAN tutup popover
         if (!el) {
-          postToParent({ type: 'OD_DESELECT' });
           return;
         }
 

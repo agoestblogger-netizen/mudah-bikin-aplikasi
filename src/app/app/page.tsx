@@ -276,12 +276,6 @@ export default function AppWorkspacePage() {
           },
           '*'
         );
-      } else if (data.type === 'OD_DESELECT') {
-        setActiveSelection(null);
-        setNoteDraft('');
-        setTextColorDraft('');
-        setBgColorDraft('');
-        setTextContentDraft('');
       } else if (data.type === 'OD_AREA_MARK') {
         const markId = newOdId();
         const bounds = data.bounds;
