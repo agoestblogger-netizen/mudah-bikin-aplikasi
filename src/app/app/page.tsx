@@ -1,25 +1,40 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AppProjectState, SavedProject } from '@/types/app';
+import { supabase } from '@/lib/supabase/client';
 import { initialProjectState } from '@/lib/defaultState';
+import { AppProjectState, SavedProject } from '@/types/app';
 import { Navbar } from '@/components/Navbar';
 import { ChatPanel } from '@/components/ChatPanel';
 import { SavedProjectsList } from '@/components/SavedProjectsList';
 import { BuildBadge } from '@/components/BuildBadge';
-import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
-import Link from 'next/link';
-import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen, ChevronsLeft, ChevronsRight, X, Send, Edit3, Sparkles } from 'lucide-react';
+import {
+  Code2,
+  RefreshCw,
+  FolderOpen,
+  Eye,
+  ChevronsLeft,
+  ChevronsRight,
+  Layers,
+  Sparkles,
+  Maximize2,
+  Minimize2,
+  Edit3,
+  X,
+  Send,
+  Download
+} from 'lucide-react';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
-  { label: 'Menganalisa kebutuhan aplikasi...', pct: 10 },
-  { label: 'Menyusun struktur HTML & layout...', pct: 28 },
-  { label: 'Menulis komponen & fungsi JavaScript...', pct: 52 },
-  { label: 'Menyempurnakan interaksi & tampilan...', pct: 72 },
-  { label: 'Memvalidasi kode & logika...', pct: 88 },
+  { label: 'Menyusun arsitektur & struktur aplikasi...', pct: 15 },
+  { label: 'Merancang tata letak antarmuka & glassmorphism...', pct: 35 },
+  { label: 'Membangun logika & interaktivitas JavaScript...', pct: 55 },
+  { label: 'Memvalidasi fungsionalitas & keamanan role...', pct: 75 },
+  { label: 'Mengintegrasikan template backend Google Sheets...', pct: 90 },
   { label: 'Menyelesaikan & menyiapkan preview...', pct: 97 },
 ];
 
@@ -32,8 +47,21 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 export default function AppWorkspacePage() {
   const router = useRouter();
-  const [projectState, setProjectState] = useState<AppProjectState>(initialProjectState);
-  const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT' | 'SAVED'>('SAVED');
+  const [projectState, setProjectState] = useState<AppProjectState>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('mba_active_project');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') {
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+    return initialProjectState;
+  });
+  const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT' | 'SAVED'>('PREVIEW');
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -46,6 +74,21 @@ export default function AppWorkspacePage() {
   const lastSavedCanvasRef = useRef('');
   const lastSavedAnnotationsRef = useRef<string>('');
   const autoSavedProjectIdRef = useRef<string | null>(null);
+
+  // Inisialisasi autoSavedProjectIdRef dari localStorage saat mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedId = localStorage.getItem('mba_active_project_id');
+        if (savedId) autoSavedProjectIdRef.current = savedId;
+      } catch {}
+    }
+  }, []);
+
+  const memoizedSrcDoc = useMemo(
+    () => buildSrcDoc(projectState.canvasCode),
+    [projectState.canvasCode?.html, projectState.canvasCode?.css, projectState.canvasCode?.js]
+  );
 
   // OpenDesign-like marks/comments/patches
   const [interactionMode, setInteractionMode] = useState<'none' | 'select' | 'mark'>('none');
@@ -322,6 +365,14 @@ export default function AppWorkspacePage() {
       updatedAt: new Date().toISOString()
     };
     setProjectState(merged);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('mba_active_project', JSON.stringify(merged));
+        if (autoSavedProjectIdRef.current) {
+          localStorage.setItem('mba_active_project_id', autoSavedProjectIdRef.current);
+        }
+      } catch {}
+    }
     if (updated.canvasCode?.html || updated.annotations) {
       setRightPanelTab('PREVIEW');
       handleAutoSaveProject(merged);
@@ -338,15 +389,22 @@ export default function AppWorkspacePage() {
   }, []);
 
   const handleNewSession = () => {
-    setProjectState({
+    const fresh: AppProjectState = {
       ...initialProjectState,
       id: 'proj-' + Date.now(),
       updatedAt: new Date().toISOString()
-    });
+    };
+    setProjectState(fresh);
     lastSavedCanvasRef.current = '';
     lastSavedAnnotationsRef.current = '';
     autoSavedProjectIdRef.current = null;
-    setRightPanelTab('SAVED');
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('mba_active_project');
+        localStorage.removeItem('mba_active_project_id');
+      } catch {}
+    }
+    setRightPanelTab('PREVIEW');
   };
 
   // =====================================================================
@@ -401,6 +459,11 @@ export default function AppWorkspacePage() {
         const data = (await res.json()) as { project?: SavedProject };
         if (data.project) {
           autoSavedProjectIdRef.current = data.project.id;
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('mba_active_project_id', data.project.id);
+            } catch {}
+          }
           setSavedProjects((prev) => [data.project!, ...prev.filter((p) => p.id !== data.project!.id)].slice(0, 50));
         }
       } catch (err) {
@@ -412,7 +475,7 @@ export default function AppWorkspacePage() {
   const handleLoadProject = (project: SavedProject) => {
     lastSavedCanvasRef.current = project.canvas_html || '';
     autoSavedProjectIdRef.current = project.id;
-    setProjectState({
+    const nextState: AppProjectState = {
       ...initialProjectState,
       id: 'saved-' + project.id,
       title: project.title,
@@ -430,7 +493,14 @@ export default function AppWorkspacePage() {
         scriptCode: project.gas_script || '',
         isConnected: Boolean(project.gas_script)
       }
-    });
+    };
+    setProjectState(nextState);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('mba_active_project', JSON.stringify(nextState));
+        localStorage.setItem('mba_active_project_id', project.id);
+      } catch {}
+    }
     setRightPanelTab('PREVIEW');
   };
 
@@ -600,7 +670,45 @@ export default function AppWorkspacePage() {
       .then((headers) => fetch('/api/projects', { cache: 'no-store', headers }))
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { projects?: SavedProject[] } | null) => {
-        if (data) setSavedProjects(Array.isArray(data.projects) ? data.projects : []);
+        if (data && Array.isArray(data.projects)) {
+          setSavedProjects(data.projects);
+          // Jika canvas saat ini masih kosong dan ada saved projects, otomatis pulihkan project terbaru ke Live Preview
+          setProjectState((current) => {
+            if (!current.canvasCode?.html && data.projects && data.projects.length > 0) {
+              const latest = data.projects[0];
+              autoSavedProjectIdRef.current = latest.id;
+              lastSavedCanvasRef.current = latest.canvas_html || '';
+              const restored: AppProjectState = {
+                ...initialProjectState,
+                id: 'saved-' + latest.id,
+                title: latest.title,
+                description: latest.description || '',
+                annotations: { marks: [], notes: [], patches: latest.annotations?.patches || [] },
+                updatedAt: latest.updated_at || new Date().toISOString(),
+                canvasCode: {
+                  html: latest.canvas_html || '',
+                  css: latest.canvas_css || '',
+                  js: latest.canvas_js || ''
+                },
+                gasConfig: {
+                  sheetId: latest.spreadsheet_id || '',
+                  webAppUrl: latest.gas_web_app_url || '',
+                  scriptCode: latest.gas_script || '',
+                  isConnected: Boolean(latest.gas_script)
+                }
+              };
+              if (typeof window !== 'undefined') {
+                try {
+                  localStorage.setItem('mba_active_project', JSON.stringify(restored));
+                  localStorage.setItem('mba_active_project_id', latest.id);
+                } catch {}
+              }
+              setRightPanelTab('PREVIEW');
+              return restored;
+            }
+            return current;
+          });
+        }
       })
       .catch((err) => console.error('Failed to load saved projects:', err))
       .finally(() => setSavedLoaded(true));
@@ -1017,7 +1125,7 @@ export default function AppWorkspacePage() {
                       <iframe
                         ref={iframeRef}
                         title="Live Preview Canvas"
-                        srcDoc={buildSrcDoc(projectState.canvasCode)}
+                        srcDoc={memoizedSrcDoc}
                         className="w-full h-full border-none bg-slate-50"
                         sandbox="allow-scripts allow-forms allow-modals"
                         onLoad={() => {
