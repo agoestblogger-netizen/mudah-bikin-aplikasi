@@ -78,27 +78,29 @@ function SavedProjectCard({
         title={`Buka: ${project.title}`}
         className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-slate-950 border border-slate-800 hover:border-indigo-500/70 transition-all cursor-pointer relative block text-left"
       >
-        {hasPreview && scale > 0 ? (
+        {hasPreview ? (
           <div ref={thumbContainerRef} className="absolute inset-0 overflow-hidden">
-            <div
-              style={{
-                width: THUMB_RENDER_WIDTH,
-                height: THUMB_RENDER_HEIGHT,
-                transformOrigin: 'top left',
-                transform: `scale(${scale})`,
-              }}
-              className="pointer-events-none relative"
-            >
-              <iframe
-                title={`Preview ${project.title}`}
-                srcDoc={srcDoc}
-                width={THUMB_RENDER_WIDTH}
-                height={THUMB_RENDER_HEIGHT}
-                className="border-none"
-                sandbox="allow-scripts allow-forms"
-                scrolling="no"
-              />
-            </div>
+            {scale > 0 && (
+              <div
+                style={{
+                  width: THUMB_RENDER_WIDTH,
+                  height: THUMB_RENDER_HEIGHT,
+                  transformOrigin: 'top left',
+                  transform: `scale(${scale})`,
+                }}
+                className="pointer-events-none relative"
+              >
+                <iframe
+                  title={`Preview ${project.title}`}
+                  srcDoc={srcDoc}
+                  width={THUMB_RENDER_WIDTH}
+                  height={THUMB_RENDER_HEIGHT}
+                  className="border-none"
+                  sandbox="allow-scripts allow-forms"
+                  scrolling="no"
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-slate-600">
