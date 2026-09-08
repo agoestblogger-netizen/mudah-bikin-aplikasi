@@ -1116,21 +1116,29 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
 ================================================================================
 
-⚠️ ATURAN MUTLAK SINKRONISASI PROTOTIPE DENGAN BRIEF KEBUTUHAN:
-1. SATU-SATUNYA SUMBER FITUR & STRUKTUR HALAMAN:
-   - Kode prototipe WAJIB mencerminkan 100% fitur, peran, dan Job Description yang tertulis di Brief Kebutuhan di atas.
-   - DILARANG KERAS mengarang fitur di luar brief atau mengabaikan pembagian tugas per peran yang tercantum.
-2. NAVIGASI TAB PER PERAN (<button class="tab-btn" data-access-roles="...">):
-   - Jika aplikasi memiliki 2 peran atau lebih (${officialRoles.join(', ')}), aplikasi WAJIB memiliki navigasi tab (<div class="tab-nav"> atau <nav class="tabs-nav">) dengan tombol tab (<button class="tab-btn">) yang memisahkan area kerja masing-masing peran.
-   - SETIAP tombol tab WAJIB memiliki atribut \`data-access-roles="NamaPeran"\` (contoh: data-access-roles="${officialRoles[0] || 'Admin'}").
-   - DILARANG KERAS menumpuk seluruh fitur ke dalam 1 tampilan statis tanpa navigasi tab!
-3. PEMISAHAN TAMPILAN & HAK AKSES PER ROLE SECARA NYATA (ROLE-SPECIFIC UI):
-   - Tampilan saat login sebagai peran Administrator/Pengelola: Menampilkan tab-tab administrasi (kelola seluruh data, tombol tambah/edit/hapus data, ringkasan/laporan).
-   - Tampilan saat login sebagai peran Anggota/User/Staff Operasional: HANYA menampilkan tab-tab yang relevan bagi perannya sesuai Brief Kebutuhan (contoh: Profil Saya, Kartu Digital Anggota, Status Iuran Pribadi, Form Pengajuan Mandiri).
-   - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Edit/Hapus seluruh anggota) pada tampilan Anggota biasa!
+⚠️ ATURAN MUTLAK SINKRONISASI PROTOTIPE, ISOLASI PERAN & LARANGAN ROLE SWITCHER:
+1. PERGANTIAN PERAN 100% HANYA LEWAT LAYAR LOGIN (#loginScreen):
+   - DILARANG KERAS membuat tombol switcher peran (seperti tombol berjejer [Admin] [Anggota] atau dropdown switch role) di dalam halaman aplikasi (#appContainer)!
+   - Pergantian peran SELURUHNYA HANYA dilakukan melalui tombol "🚪 Keluar / Ganti Akun" (onclick="logout()") di header aplikasi.
+   - Saat tombol logout() ditekan, #appContainer disembunyikan dan kartu login #loginScreen ditampilkan kembali di tengah layar.
+   - Dari layar login itulah pengguna memilih/masuk sebagai akun peran lain.
+
+2. LABEL TOMBOL TAB ADALAH NAMA FITUR, BUKAN NAMA PERAN:
+   - DILARANG KERAS menamai tombol tab dengan nama peran mentah (misal: tombol tab bertuliskan "Admin" atau "Anggota")!
+   - Tombol tab di dalam aplikasi adalah NAVIGASI FITUR sesuai Job Description di Brief Kebutuhan:
+     * Contoh Tab Admin: <button class="tab-btn" data-access-roles="Admin" onclick="showTab('tab-anggota')">👥 Data Anggota</button>, <button class="tab-btn" data-access-roles="Admin" onclick="showTab('tab-laporan')">📊 Laporan & Kas</button>
+     * Contoh Tab Anggota: <button class="tab-btn" data-access-roles="Anggota" onclick="showTab('tab-profil')">🪪 Kartu Anggota Digital</button>, <button class="tab-btn" data-access-roles="Anggota" onclick="showTab('tab-iuran')">💳 Riwayat Iuran</button>
+
+3. ISOLASI TOTAL HAK AKSES PER ROLE (ZERO ROLE LEAKAGE):
+   - Setiap tombol tab WAJIB memiliki atribut \`data-access-roles="NamaPeran"\` (contoh: data-access-roles="${officialRoles[0] || 'Admin'}").
+   - Fungsi filterTabsByRole(role) WAJIB menyembunyikan (display: none) seluruh tab yang data-access-roles-nya TIDAK mencantumkan peran aktif!
+   - Saat pengguna login sebagai "Anggota", tab-tab milik "Admin" WAJIB 100% TERSEMBUNYI! Pengguna "Anggota" HANYA melihat tab fitur miliknya (misal: Kartu Digital, Profil Pribadi, Iuran Saya).
+   - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Tambah/Edit/Hapus seluruh anggota) pada tampilan Anggota!
+
 4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS:
    - Fungsi loginAs(role) WAJIB memanggil filterTabsByRole(role) untuk menampilkan HANYA tab yang memiliki data-access-roles sesuai peran aktif, dan menyembunyikan tab peran lainnya.
    - loginAs(role) kemudian otomatis mengaktifkan tab pertama milik peran tersebut.
+   - Navigasi tab WAJIB memiliki styling CSS modern (.tab-nav dan .tab-btn dengan border-radius, background, dan warna tegas, bukan button polos HTML bawaan).
 
 ================================================================================
 ⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52, 53):
@@ -1196,7 +1204,13 @@ ${staffLandingGuide}
 
       } else if (stage === 'TAHAP_5_PATCH') {
         systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
-- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, tambah tab/modal, atau perbaikan role yang tidak sinkron dengan brief).
+- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, perbaikan peran, atau perbaikan role yang terbagi di halaman).
+- PERGANTIAN PERAN 100% HANYA LEWAT LOGIN (#loginScreen):
+  * DILARANG KERAS membuat tombol switch peran (seperti tombol [Admin] [Anggota] atau dropdown role switcher) di dalam halaman aplikasi (#appContainer)!
+  * Pergantian peran HANYA dilakukan melalui tombol "🚪 Keluar / Ganti Akun" (onclick="logout()") di header aplikasi, yang mengembalikan pengguna ke kartu #loginScreen.
+  * Di dalam halaman aplikasi (#appContainer), HANYA tampilkan tab fitur yang relevan dengan peran yang sedang aktif.
+- LABEL TOMBOL TAB ADALAH NAMA FITUR, BUKAN NAMA PERAN:
+  * Jangan buat tab bernama "Admin" atau "Anggota". Berikan nama fitur (misal: "👥 Data Anggota", "📊 Laporan & Kas", "🪪 Kartu Digital", "💳 Iuran Saya").
 - SINKRONISASI BRIEF KEBUTUHAN & PEMISAHAN PERAN (MUTLAK):
   * Jika pengguna melaporkan peran tidak sesuai dengan brief atau meminta sinkronisasi, Anda WAJIB memeriksa lembar Brief Kebutuhan resmi di atas.
   * Pastikan setiap peran (${officialRoles.join(', ')}) memiliki tab navigasi terpisah (<button class="tab-btn" data-access-roles="...">) dan tampilan UI yang sesuai dengan Job Description masing-masing peran di Brief Kebutuhan.

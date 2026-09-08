@@ -193,45 +193,49 @@ export function DemoCredentialsCard({ data }: DemoCredentialsCardProps) {
                   : 'bg-white/[0.02] border-white/10 hover:border-white/20'
               }`}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex flex-col gap-2">
                 {/* Role Badge & Access */}
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${
-                      acc.isPublic
-                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                        : index === 0
-                        ? 'bg-emerald-500/20 text-[#10f48e] border border-emerald-500/30'
-                        : 'bg-white/10 text-zinc-300 border border-white/10'
-                    }`}
-                  >
-                    {acc.isPublic ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                    <span>{acc.role}</span>
-                  </span>
-                  {acc.access && (
-                    <span className="text-[10px] text-zinc-400 truncate max-w-[200px]">
-                      {acc.access}
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold shrink-0 ${
+                        acc.isPublic
+                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          : index === 0
+                          ? 'bg-emerald-500/20 text-[#10f48e] border border-emerald-500/30'
+                          : 'bg-white/10 text-zinc-300 border border-white/10'
+                      }`}
+                    >
+                      {acc.isPublic ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                      <span>{acc.role}</span>
+                    </span>
+                    {acc.access && (
+                      <span className="text-[11px] text-zinc-400 truncate">
+                        {acc.access}
+                      </span>
+                    )}
+                  </div>
+
+                  {acc.isPublic && (
+                    <span className="text-[10px] font-medium text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 shrink-0">
+                      Akses Publik
                     </span>
                   )}
                 </div>
 
                 {/* Credentials */}
-                {acc.isPublic ? (
-                  <span className="text-[11px] font-medium text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                    Akses Publik (Tanpa Login)
-                  </span>
-                ) : (
-                  <div className="flex items-center gap-2">
+                {!acc.isPublic && (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
                     {/* Username Box */}
-                    <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-md px-2 py-1">
-                      <span className="text-[10px] text-zinc-500">User:</span>
-                      <code className="text-[11px] font-mono font-bold text-zinc-200">
+                    <div className="flex items-center gap-1.5 bg-black/50 border border-white/10 rounded-md px-2.5 py-1 text-xs">
+                      <span className="text-[10px] text-zinc-400 font-medium">User:</span>
+                      <code className="text-[11px] font-mono font-bold text-zinc-100">
                         {acc.username}
                       </code>
                       <button
                         type="button"
                         onClick={() => handleCopy(acc.username, `u-${index}`)}
-                        className="ml-1 p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                        className="ml-1 p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                         title="Salin Username"
                       >
                         {isUserCopied ? (
@@ -243,15 +247,15 @@ export function DemoCredentialsCard({ data }: DemoCredentialsCardProps) {
                     </div>
 
                     {/* Password Box */}
-                    <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-md px-2 py-1">
-                      <span className="text-[10px] text-zinc-500">Pass:</span>
-                      <code className="text-[11px] font-mono font-bold text-zinc-200">
+                    <div className="flex items-center gap-1.5 bg-black/50 border border-white/10 rounded-md px-2.5 py-1 text-xs">
+                      <span className="text-[10px] text-zinc-400 font-medium">Pass:</span>
+                      <code className="text-[11px] font-mono font-bold text-zinc-100">
                         {acc.password}
                       </code>
                       <button
                         type="button"
                         onClick={() => handleCopy(acc.password, `p-${index}`)}
-                        className="ml-1 p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                        className="ml-1 p-0.5 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                         title="Salin Kata Sandi"
                       >
                         {isPassCopied ? (

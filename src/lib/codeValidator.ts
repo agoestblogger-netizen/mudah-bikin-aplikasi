@@ -354,6 +354,57 @@ function eksekusiHapus() {
           `Setiap peran dalam Brief Kebutuhan WAJIB memiliki tab dan tampilan UI yang relevan dengan Job Description-nya!`
         );
       }
+
+      // Poin 56: Tab button label HARUS nama fitur, BUKAN nama peran mentah
+      for (const btnMatch of tabBtnMatches) {
+        const fullBtn = btnMatch[0];
+        const btnTagEndIndex = repairedHtml.indexOf(fullBtn);
+        if (btnTagEndIndex !== -1) {
+          const closeTagIndex = repairedHtml.indexOf('</button>', btnTagEndIndex);
+          if (closeTagIndex !== -1) {
+            const innerText = repairedHtml.substring(btnTagEndIndex + fullBtn.length, closeTagIndex).replace(/<[^>]*>/g, '').trim();
+            for (const role of expectedRoles!) {
+              if (innerText.toLowerCase() === role.trim().toLowerCase()) {
+                issues.push(
+                  `ROLE_AS_TAB_LABEL: Tombol tab diberi label nama peran mentah "${innerText}". ` +
+                  `DILARANG menamai tombol tab dengan nama peran! Tab di dalam aplikasi adalah NAVIGASI FITUR (contoh: "Kelola Anggota", "Kartu Digital", "Laporan"). ` +
+                  `Pergantian peran HANYA dilakukan melalui tombol "Keluar / Ganti Akun" yang kembali ke form login.`
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // Poin 57: Larangan role switcher langsung di dalam appContainer
+      const appContainerMatch = repairedHtml.match(/<div[^>]*id=['"]appContainer['"][^>]*>([\s\S]*?)<\/body>/i);
+      if (appContainerMatch) {
+        const appHtml = appContainerMatch[1];
+        const forbiddenSwitcherMatches = [...appHtml.matchAll(/onclick=['"]loginAs\(['"]([^'"]+)['"]\)/gi)];
+        if (forbiddenSwitcherMatches.length > 0) {
+          issues.push(
+            `FORBIDDEN_ROLE_SWITCHER_IN_APP: Ditemukan tombol ganti peran langsung di dalam halaman aplikasi (appContainer). ` +
+            `DILARANG membuat tombol ganti peran / role switcher di dalam halaman aplikasi! ` +
+            `Pergantian peran SELURUHNYA HANYA lewat tombol Logout / "Keluar / Ganti Akun" yang mengembalikan pengguna ke #loginScreen.`
+          );
+        }
+      }
+
+      // Poin 58: Isolasi peran (tidak semua tab dibuka untuk semua peran)
+      if (tabBtnMatches.length > 1) {
+        const allRolesJoined = expectedRoles!.map(r => r.trim().toLowerCase()).sort().join(',');
+        const identicalAccessTabs = tabBtnMatches.filter(m => {
+          const ar = (m[0].match(/data-access-roles=['"]([^'"]+)['"]/i)?.[1] || '').split(',').map(r => r.trim().toLowerCase()).sort().join(',');
+          return ar === allRolesJoined;
+        });
+        if (identicalAccessTabs.length === tabBtnMatches.length) {
+          issues.push(
+            `NO_ROLE_ISOLATION: Seluruh tombol tab memiliki data-access-roles="${expectedRoles!.join(',')}". ` +
+            `DILARANG mencampur semua peran di setiap tab! Setiap peran WAJIB memiliki tab spesifik miliknya sendiri ` +
+            `(misal: Tab Admin untuk kelola data master, Tab Anggota untuk kartu digital & status pribadi).`
+          );
+        }
+      }
     }
 
     if (isMultiRoleApp && !hasFilterTabsByRole) {
