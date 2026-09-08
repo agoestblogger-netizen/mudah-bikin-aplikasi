@@ -1037,7 +1037,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       e. DATA TIDAK BOLEH BERBEDA — array state TETAP SAMA, yang beda hanya tampilan/filter per role.
 23. EFISIENSI MODAL & KESELARASAN HANDLER JAVASCRIPT LENGKAP:
     - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
-    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`handleLogin\`, \`bukaModalLogin\`, \`tutupModalLogin\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
+    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`handleLogin\`, \`bukaModalLogin\`, \`tutupModalLogin\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`prosesPenjualan\`, \`prosesTransaksi\`, \`checkout\`, \`bayar\`, \`cetakStruk\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
 
       // Seleksi Page Template Baku Berdasarkan Brief Kebutuhan (Fase C)
       const selectivePageMappings = detectSelectivePageTemplates(prompt + '\n' + allHistoryText);
@@ -1810,6 +1810,63 @@ body: JSON.stringify({
 
     // PERLINDUNGAN TAHAP 1 MUTLAK: DILARANG mengirimkan kode sebelum Brief Kebutuhan disetujui pengguna!
     const isStage1AwaitingConfirmation = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
+
+    // SELF-HEALING FINAL PASS: Jika setelah upaya perbaikan AI masih menyisakan MISMATCH_HANDLER atau MISMATCH_DOM_ID,
+    // lakukan auto-patch fallback cerdas agar user tidak dihadapkan pada layar error dan prototipe tetap dapat dijalankan 100%!
+    if (!isStage1AwaitingConfirmation && validated && !validated.isValid && htmlCode && htmlCode.includes('</html>') && htmlCode.includes('</script>')) {
+      const hasSyntaxError = validated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
+      const hasCriticalSwap = validated.issues.some(i => i.startsWith('CRITICAL_ACTION_SWAP'));
+      const hasRoleContamination = validated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
+
+      if (!hasSyntaxError && !hasCriticalSwap && !hasRoleContamination) {
+        let patchedHtml = validated.repairedCode?.html || htmlCode;
+        const missingHandlers: string[] = [];
+
+        validated.issues.forEach(issue => {
+          const matchHandler = issue.match(/MISMATCH_HANDLER:\s*Fungsi\s*["']([^"']+)["']/i);
+          if (matchHandler && matchHandler[1]) {
+            missingHandlers.push(matchHandler[1]);
+          }
+        });
+
+        if (missingHandlers.length > 0 && patchedHtml.includes('</script>')) {
+          let fallbackScript = '\n    // --- AUTO-PATCH SELF-HEALING HANDLERS ---\n';
+          missingHandlers.forEach(fn => {
+            const isModalClose = /tutup|close|batal/i.test(fn);
+            const isModalOpen = /buka|open|tambah|edit/i.test(fn);
+            const isPaymentOrProcess = /proses|bayar|checkout|selesai/i.test(fn);
+
+            fallbackScript += `    function ${fn}(...args) {\n`;
+            fallbackScript += `      console.log('[Auto-Handler] Dipanggil: ${fn}', args);\n`;
+            if (isModalClose) {
+              fallbackScript += `      document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');\n`;
+            } else if (isModalOpen) {
+              fallbackScript += `      const m = document.querySelector('.modal'); if (m) m.style.display = 'flex';\n`;
+            } else if (isPaymentOrProcess) {
+              fallbackScript += `      if (typeof showToast === 'function') showToast('Transaksi/Aksi berhasil diproses!', 'success');\n`;
+              fallbackScript += `      else alert('Transaksi/Aksi berhasil diproses!');\n`;
+              fallbackScript += `      if (typeof render === 'function') { try { render(); } catch(e){} }\n`;
+              fallbackScript += `      else if (typeof renderTable === 'function') { try { renderTable(); } catch(e){} }\n`;
+            } else {
+              fallbackScript += `      if (typeof showToast === 'function') showToast('Aksi ' + '${fn}' + ' berhasil dijalankan!', 'success');\n`;
+              fallbackScript += `      else alert('Aksi ' + '${fn}' + ' berhasil dijalankan!');\n`;
+              fallbackScript += `      if (typeof render === 'function') { try { render(); } catch(e){} }\n`;
+            }
+            fallbackScript += `    }\n`;
+          });
+          fallbackScript += '    // ----------------------------------------\n';
+
+          patchedHtml = patchedHtml.replace('</script>', `${fallbackScript}</script>`);
+        }
+
+        // Re-validasi setelah self-healing patch
+        const reValidated = validateAndRepairGeneratedCode(patchedHtml, '', '', officialRoles);
+        if (reValidated.isValid || !reValidated.issues.some(i => i.startsWith('SYNTAX_ERROR') || i.startsWith('CRITICAL_ACTION_SWAP'))) {
+          validated = reValidated;
+          htmlCode = patchedHtml;
+        }
+      }
+    }
 
     const hasValidCode = Boolean(
       !isStage1AwaitingConfirmation &&

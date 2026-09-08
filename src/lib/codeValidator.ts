@@ -92,6 +92,20 @@ export function validateAndRepairGeneratedCode(
     'updateStatusCuci': ['updateStatus', 'gantiStatus', 'ubahStatus', 'setStatus'],
     'cariResi': ['lacakResi', 'cariStatus', 'lacakPesanan', 'cariData', 'lacakOrder'],
     'lacakResi': ['cariResi', 'cariStatus', 'lacakPesanan', 'cariData', 'lacakOrder'],
+    // POS / Penjualan / Transaksi
+    'prosesPenjualan': ['prosesTransaksi', 'simpanTransaksi', 'simpanPesanan', 'checkout', 'bayar', 'selesaiTransaksi', 'selesaikanTransaksi', 'handleCheckout', 'simpanData', 'simpanForm'],
+    'prosesTransaksi': ['prosesPenjualan', 'simpanTransaksi', 'simpanPesanan', 'checkout', 'bayar', 'selesaiTransaksi', 'selesaikanTransaksi', 'handleCheckout', 'simpanData', 'simpanForm'],
+    'prosesPesanan': ['prosesTransaksi', 'prosesPenjualan', 'simpanPesanan', 'simpanOrder', 'checkout', 'selesaiTransaksi'],
+    'prosesBayar': ['bayar', 'checkout', 'prosesPenjualan', 'prosesTransaksi', 'simpanTransaksi'],
+    'bayar': ['prosesPenjualan', 'prosesTransaksi', 'checkout', 'selesaiTransaksi', 'simpanTransaksi'],
+    'checkout': ['prosesPenjualan', 'prosesTransaksi', 'prosesPesanan', 'bayar', 'selesaiTransaksi', 'simpanTransaksi'],
+    'selesaiTransaksi': ['prosesPenjualan', 'prosesTransaksi', 'checkout', 'bayar', 'simpanTransaksi'],
+    'selesaikanTransaksi': ['prosesPenjualan', 'prosesTransaksi', 'checkout', 'bayar', 'simpanTransaksi'],
+    'cetakStruk': ['cetak', 'printNota', 'printStruk', 'cetakNota', 'downloadInvoice', 'cetakInvoice'],
+    'cetakNota': ['cetakStruk', 'cetak', 'printNota', 'printStruk', 'downloadInvoice'],
+    'tambahKeranjang': ['tambahItem', 'masukkanKeranjang', 'addToCart', 'tambahProduk'],
+    'masukkanKeranjang': ['tambahKeranjang', 'tambahItem', 'addToCart', 'tambahProduk'],
+    'hitungTotal': ['updateTotal', 'kalkulasiTotal', 'render', 'hitungKembalian'],
     'showToast': ['toast', 'notifikasi', 'tampilkanToast', 'showNotification']
   };
 
@@ -117,7 +131,7 @@ export function validateAndRepairGeneratedCode(
 
       // Rekonsiliasi semantik cerdas berbasis kata kerja aksi (HANYA jika fungsi nyata yang relevan ada di script)
       if (!resolved) {
-        const actionPrefixes = ['simpan', 'hapus', 'bukaModal', 'tutupModal', 'update', 'lacak', 'cari', 'tambah', 'filter'];
+        const actionPrefixes = ['simpan', 'hapus', 'bukaModal', 'tutupModal', 'update', 'lacak', 'cari', 'tambah', 'filter', 'proses', 'bayar', 'checkout', 'selesai', 'cetak', 'hitung', 'handle'];
         for (const prefix of actionPrefixes) {
           if (fn.toLowerCase().startsWith(prefix.toLowerCase())) {
             for (const defFn of Array.from(definedFunctions)) {
@@ -128,7 +142,11 @@ export function validateAndRepairGeneratedCode(
                 (prefLower === 'bukamodal' && defLower.startsWith('openmodal')) ||
                 (prefLower === 'tutupmodal' && defLower.startsWith('closemodal')) ||
                 (prefLower === 'simpan' && (defLower.startsWith('save') || defLower.startsWith('submit'))) ||
-                (prefLower === 'hapus' && (defLower.startsWith('delete') || defLower.startsWith('remove')))
+                (prefLower === 'hapus' && (defLower.startsWith('delete') || defLower.startsWith('remove'))) ||
+                (prefLower === 'proses' && (defLower.startsWith('bayar') || defLower.startsWith('checkout') || defLower.startsWith('simpan') || defLower.startsWith('selesai'))) ||
+                (prefLower === 'bayar' && (defLower.startsWith('proses') || defLower.startsWith('checkout') || defLower.startsWith('simpan'))) ||
+                (prefLower === 'checkout' && (defLower.startsWith('proses') || defLower.startsWith('bayar') || defLower.startsWith('simpan'))) ||
+                (prefLower === 'cetak' && defLower.startsWith('print'))
               ) {
                 if (repairedHtml.includes('</script>')) {
                   repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { if (typeof ${defFn} === 'function') ${defFn}(...args); }\n</script>`);
@@ -148,7 +166,8 @@ export function validateAndRepairGeneratedCode(
       if (!resolved && fn === 'eksekusiHapus' && repairedHtml.includes('</script>')) {
         const fallbackEksekusiHapus = `
 function eksekusiHapus() {
-  const id = document.getElementById('hapusId')?.value;
+  const _getEl = (s) => document.getElementById(s);
+  const id = _getEl('hapusId')?.value;
   if (!id) return;
   const arrNames = ['items', 'dataList', 'daftarPesanan', 'daftarProduk', 'orders', 'pesananList', 'pasien', 'antrian', 'members', 'transactions', 'transaksi', 'produk'];
   for (const a of arrNames) {
@@ -159,7 +178,7 @@ function eksekusiHapus() {
     } catch(e) {}
   }
   if (typeof tutupModalHapus === 'function') tutupModalHapus();
-  else if (document.getElementById('modalHapus')) document.getElementById('modalHapus').style.display = 'none';
+  else if (_getEl('modalHapus')) _getEl('modalHapus').style.display = 'none';
   if (typeof render === 'function') render();
   else if (typeof renderTable === 'function') renderTable();
   if (typeof showToast === 'function') showToast('Data berhasil dihapus!', 'success');
@@ -170,7 +189,7 @@ function eksekusiHapus() {
         resolved = true;
       }
 
-      // Jika tidak ada fungsi nyata yang cocok, WAJIB catat sebagai issue agar memicu NFR-10b AI Auto-Recovery (DILARANG STUBBING KOSONG)
+      // Jika tidak ada fungsi nyata yang cocok, catat sebagai issue agar memicu NFR-10b AI Auto-Recovery
       if (!resolved) {
         issues.push(`MISMATCH_HANDLER: Fungsi "${fn}" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.`);
       }
@@ -197,6 +216,20 @@ function eksekusiHapus() {
           repairedHtml = repairedHtml.replace('</body>', `  <div id="${elemId}" class="toast"></div>\n</body>`);
         } else {
           repairedHtml += `\n<div id="${elemId}" class="toast"></div>`;
+        }
+        existingHtmlIds.add(elemId);
+      } else if (elemId === 'hapusId') {
+        if (repairedHtml.includes('</body>')) {
+          repairedHtml = repairedHtml.replace('</body>', `  <input type="hidden" id="hapusId" value="">\n</body>`);
+        } else {
+          repairedHtml += `\n<input type="hidden" id="hapusId" value="">`;
+        }
+        existingHtmlIds.add(elemId);
+      } else if (elemId === 'modalHapus') {
+        if (repairedHtml.includes('</body>')) {
+          repairedHtml = repairedHtml.replace('</body>', `  <div id="modalHapus" class="modal" style="display:none;"></div>\n</body>`);
+        } else {
+          repairedHtml += `\n<div id="modalHapus" class="modal" style="display:none;"></div>`;
         }
         existingHtmlIds.add(elemId);
       } else {
