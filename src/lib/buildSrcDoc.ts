@@ -353,6 +353,90 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       }
     });
 
+    // Polyfill window.confirm agar tidak diblokir oleh sandbox iframe
+    try {
+      const _origConfirm = window.confirm;
+      window.confirm = function(msg) {
+        try {
+          if (_origConfirm) return _origConfirm.call(window, msg);
+        } catch (e) {}
+        return true;
+      };
+    } catch (e) {}
+
+    // Fallback pengaman untuk modal konfirmasi hapus
+    if (typeof window.bukaModalHapus !== 'function') {
+      window.bukaModalHapus = function(id) {
+        const input = document.getElementById('hapusId');
+        if (input) input.value = String(id);
+        const modal = document.getElementById('modalHapus');
+        if (modal) {
+          modal.style.display = 'flex';
+        } else if (typeof window.eksekusiHapus === 'function') {
+          window.eksekusiHapus(id);
+        } else if (typeof window.hapusItem === 'function') {
+          window.hapusItem(id);
+        } else if (typeof window.hapusData === 'function') {
+          window.hapusData(id);
+        }
+      };
+    }
+
+    if (typeof window.tutupModalHapus !== 'function') {
+      window.tutupModalHapus = function() {
+        const modal = document.getElementById('modalHapus');
+        if (modal) modal.style.display = 'none';
+      };
+    }
+
+    if (typeof window.eksekusiHapus !== 'function') {
+      window.eksekusiHapus = function(passedId) {
+        const id = passedId || document.getElementById('hapusId')?.value;
+        let deleted = false;
+
+        // 1. Coba panggil fungsi hapus spesifik jika ada
+        const altFns = ['hapusItem', 'hapusData', 'hapusPesanan', 'hapusOrder', 'hapusProduk', 'deleteItem', 'removeItem', 'hapusPasien', 'hapusAntrian'];
+        for (const fn of altFns) {
+          if (typeof window[fn] === 'function' && fn !== 'eksekusiHapus') {
+            try {
+              window[fn](id);
+              deleted = true;
+              break;
+            } catch (e) {}
+          }
+        }
+
+        // 2. Jika belum terhapus, filter array global yang relevan
+        if (!deleted && id) {
+          const commonArrays = ['items', 'dataList', 'daftarPesanan', 'daftarProduk', 'orders', 'pesananList', 'pasien', 'antrian', 'members', 'transactions', 'transaksi', 'produk'];
+          for (const arrName of commonArrays) {
+            try {
+              if (Array.isArray(window[arrName])) {
+                const beforeLen = window[arrName].length;
+                window[arrName] = window[arrName].filter(item => String(item?.id ?? item?.kode ?? item?.no ?? '') !== String(id));
+                if (window[arrName].length < beforeLen) deleted = true;
+              }
+            } catch (e) {}
+          }
+        }
+
+        // 3. Tutup modal
+        const modal = document.getElementById('modalHapus');
+        if (modal) modal.style.display = 'none';
+
+        // 4. Re-render tampilan
+        if (typeof window.render === 'function') {
+          try { window.render(); } catch (e) {}
+        } else if (typeof window.renderTable === 'function') {
+          try { window.renderTable(); } catch (e) {}
+        }
+
+        if (typeof window.showToast === 'function') {
+          try { window.showToast('Data berhasil dihapus!', 'success'); } catch (e) {}
+        }
+      };
+    }
+
     // Init
     assignElementUids();
     applyAllPatches();

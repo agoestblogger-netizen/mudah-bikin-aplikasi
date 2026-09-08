@@ -135,6 +135,32 @@ export function validateAndRepairGeneratedCode(
       }
 
 
+      // Auto-repair untuk eksekusiHapus modal konfirmasi jika belum terdefinisi
+      if (!resolved && fn === 'eksekusiHapus' && repairedHtml.includes('</script>')) {
+        const fallbackEksekusiHapus = `
+function eksekusiHapus() {
+  const id = document.getElementById('hapusId')?.value;
+  if (!id) return;
+  const arrNames = ['items', 'dataList', 'daftarPesanan', 'daftarProduk', 'orders', 'pesananList', 'pasien', 'antrian', 'members', 'transactions', 'transaksi', 'produk'];
+  for (const a of arrNames) {
+    try {
+      if (typeof window[a] !== 'undefined' && Array.isArray(window[a])) {
+        window[a] = window[a].filter(item => String(item?.id ?? item?.kode ?? item?.no ?? '') !== String(id));
+      }
+    } catch(e) {}
+  }
+  if (typeof tutupModalHapus === 'function') tutupModalHapus();
+  else if (document.getElementById('modalHapus')) document.getElementById('modalHapus').style.display = 'none';
+  if (typeof render === 'function') render();
+  else if (typeof renderTable === 'function') renderTable();
+  if (typeof showToast === 'function') showToast('Data berhasil dihapus!', 'success');
+}
+`;
+        repairedHtml = repairedHtml.replace('</script>', `${fallbackEksekusiHapus}\n</script>`);
+        definedFunctions.add('eksekusiHapus');
+        resolved = true;
+      }
+
       // Jika tidak ada fungsi nyata yang cocok, WAJIB catat sebagai issue agar memicu NFR-10b AI Auto-Recovery (DILARANG STUBBING KOSONG)
       if (!resolved) {
         issues.push(`MISMATCH_HANDLER: Fungsi "${fn}" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.`);

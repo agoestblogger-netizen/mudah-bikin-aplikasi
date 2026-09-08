@@ -759,6 +759,15 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         document.getElementById('modalHapus').style.display = 'none';
       }
 
+      function eksekusiHapus() {
+        const id = document.getElementById('hapusId')?.value;
+        if (!id) return;
+        items = items.filter(item => String(item.id) !== String(id));
+        tutupModalHapus();
+        render();
+        showToast('Data berhasil dihapus!', 'success');
+      }
+
 20. ATURAN PINTU MASUK, HALAMAN PUBLIK DEFAULT, & FORM LOGIN PRODUKSI (POIN 45):
     - JIKA APLIKASI MEMILIKI LEBIH DARI 1 ROLE (Multi-Role):
 

@@ -1045,13 +1045,14 @@ export default function AppWorkspacePage() {
                                   <button
                                     onClick={() => {
                                       setActiveSelection(null);
+                                      setInteractionMode('none');
                                       setNoteDraft('');
                                       setTextColorDraft('');
                                       setBgColorDraft('');
                                       setTextContentDraft('');
                                     }}
                                     className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
-                                    title="Tutup inspector"
+                                    title="Tutup inspector & kembali ke mode interaktif"
                                   >
                                     <X className="w-3.5 h-3.5" />
                                   </button>
