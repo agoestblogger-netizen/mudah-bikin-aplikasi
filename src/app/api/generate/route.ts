@@ -333,6 +333,7 @@ export async function POST(req: Request) {
       allHistoryText.includes('Technical PRD') ||
       allHistoryText.includes('Brief Kebutuhan') ||
       (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
+    const hasOptionsPresented = allHistoryText.includes('<<<OPTIONS>>>') || allHistoryText.includes('PILIH PERAN & FITUR KUNCI');
     const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
     
     // Deteksi Permintaan Penyusunan Dokumen PRD dari Opsi Guided / Express
@@ -510,8 +511,8 @@ ATURAN REVISI PRD:
 
 5. Tanyakan konfirmasi di baris terakhir:
    "Apakah dokumen PRD yang diperbarui ini sudah sesuai? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
-      } else if (isRequestingPRD || isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
-        // KONDISI 3: PENGGUNA MEMILIH OPSI GUIDED/EXPRESS, ATAU DISKUSI SUDAH MATANG -> TERBITKAN DOKUMEN RESMI PRD
+      } else if (isRequestingPRD || (hasOptionsPresented && isUserAgreeingToProposal)) {
+        // KONDISI 3: PENGGUNA MEMILIH OPSI GUIDED/EXPRESS, ATAU MENYETUJUI USULAN CHIPS -> TERBITKAN DOKUMEN RESMI PRD
         systemPrompt = `Anda adalah Konsultan Aplikasi AI & Solution Architect dari platform "Mudah Bikin Aplikasi".
 Tugas Anda: Merangkum seluruh rancangan aplikasi menjadi dokumen resmi "Product Requirements Document (PRD)" yang memuat 7 Bagian Arsitektur Sistem & Database.
 
@@ -564,7 +565,7 @@ Plan Ready for Review
 Tugas Anda pada tahap ini: Menganalisa ide pengguna berdasarkan referensi 20 Master Template industri, menyapa ramah, dan menyajikan rekomendasi peran & fitur kunci dalam blok data terstruktur.
 
 ATURAN PERCAKAPAN & FORMAT OPSI (WAJIB DIPATUHI):
-1. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau membuat prototipe di giliran ini!
+1. DILARANG KERAS menghasilkan dokumen PRD lengkap (7 poin) atau blok kode di giliran ini! Tugas Anda di giliran ini adalah menganalisa ide secara singkat dan MENYEDIAKAN KARTU PILIHAN CHIPS OPSI.
 2. Berikan analisa ramah dan antusias (2-3 kalimat):
    - Sapa dan akui ide pengguna.
    - Jelaskan konsep singkat arsitektur aplikasi yang paling cocok untuk kebutuhan tersebut.
