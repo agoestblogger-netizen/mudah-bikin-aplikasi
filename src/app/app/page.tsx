@@ -43,6 +43,7 @@ import {
   Loader2,
   Image as ImageIcon,
   Check,
+  Copy,
   User,
   Bell,
   Star,
@@ -153,7 +154,8 @@ export default function AppWorkspacePage() {
     }
     return initialProjectState;
   });
-  const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT' | 'SAVED'>('PREVIEW');
+  const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'HTML_CODE' | 'GAS_SCRIPT' | 'SAVED'>('PREVIEW');
+  const [copiedHtml, setCopiedHtml] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSavedProjectsModalOpen, setIsSavedProjectsModalOpen] = useState(false);
   const [modelSettings, setModelSettings] = useState(() => loadModelSettings());
@@ -1353,6 +1355,16 @@ export default function AppWorkspacePage() {
     setTimeout(() => setDownloaded(false), 3000);
   };
 
+  const handleCopyHtml = () => {
+    const fullHtml = buildSrcDoc(projectState.canvasCode);
+    const codeToCopy = fullHtml || projectState.canvasCode.html;
+    if (!codeToCopy) return;
+    const cleanHtml = stripOdUids(codeToCopy);
+    navigator.clipboard.writeText(cleanHtml);
+    setCopiedHtml(true);
+    setTimeout(() => setCopiedHtml(false), 2000);
+  };
+
   // Guard Layar Kunci / Pemeliharaan (PRD Bagian 11)
   if (isAuthenticated === false) {
     return (
@@ -1445,28 +1457,28 @@ export default function AppWorkspacePage() {
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Toolbar Atas Panel Kanan: Segmented Switch, Open Design Icons + Tooltip, Publish, Fullscreen */}
             <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/10 bg-[#0e0e14] gap-2 shrink-0">
-              {/* Segmented Control: Preview vs Code */}
+              {/* Segmented Control: Preview vs Code (Warna Hijau Neon) */}
               <div className="flex items-center gap-1 bg-[#14141c] p-1 rounded-xl border border-white/5">
                 <button
                   onClick={() => setRightPanelTab('PREVIEW')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs transition-all ${
                     rightPanelTab === 'PREVIEW'
-                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
-                      : 'text-zinc-400 hover:text-white'
+                      ? 'bg-[#10f48e] text-black font-extrabold shadow-[0_0_12px_rgba(16,244,142,0.45)]'
+                      : 'text-zinc-400 hover:text-white font-medium'
                   }`}
                 >
-                  <Eye className="w-3.5 h-3.5" />
+                  <Eye className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>Preview</span>
                 </button>
                 <button
-                  onClick={() => setRightPanelTab('GAS_SCRIPT')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    rightPanelTab === 'GAS_SCRIPT'
-                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
-                      : 'text-zinc-400 hover:text-white'
+                  onClick={() => setRightPanelTab('HTML_CODE')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs transition-all ${
+                    rightPanelTab === 'HTML_CODE'
+                      ? 'bg-[#10f48e] text-black font-extrabold shadow-[0_0_12px_rgba(16,244,142,0.45)]'
+                      : 'text-zinc-400 hover:text-white font-medium'
                   }`}
                 >
-                  <Code2 className="w-3.5 h-3.5" />
+                  <Code2 className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>Code</span>
                 </button>
               </div>
@@ -2283,23 +2295,46 @@ export default function AppWorkspacePage() {
                     </div>
                   )}
                 </div>
-              ) : rightPanelTab === 'GAS_SCRIPT' ? (
-                <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 p-4 overflow-y-auto font-mono text-xs text-emerald-400">
-                  {projectState.gasConfig.scriptCode ? (
-                    <pre className="whitespace-pre-wrap">{projectState.gasConfig.scriptCode}</pre>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500 font-sans">
-                      <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-emerald-400/60 shadow-inner">
-                        <Code2 className="w-8 h-8 text-emerald-400" />
-                      </div>
-                      <div className="space-y-1.5 max-w-sm">
-                        <h4 className="text-sm font-bold text-white">Backend Google Apps Script Belum Dibuat</h4>
-<p className="text-xs text-slate-400 leading-relaxed">
-  Minta AI di panel kiri: <em>&quot;Buatkan script Google Apps Script untuk menghubungkan aplikasi ke Google Sheets&quot;</em>.
-</p>
-                      </div>
+              ) : rightPanelTab === 'HTML_CODE' ? (
+                <div className="w-full h-full bg-[#0b0b10] rounded-2xl border border-white/10 flex flex-col overflow-hidden">
+                  {/* Top bar Code Viewer */}
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-[#0e0e15] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Code2 className="w-4 h-4 text-[#10f48e]" />
+                      <span className="text-xs font-mono font-semibold text-zinc-200">index.html</span>
+                      <span className="text-[10px] text-zinc-500 font-mono">
+                        {projectState.canvasCode.html ? `${projectState.canvasCode.html.length.toLocaleString()} bytes` : '0 bytes'}
+                      </span>
                     </div>
-                  )}
+                    <button
+                      onClick={handleCopyHtml}
+                      disabled={!projectState.canvasCode.html}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-all disabled:opacity-40 cursor-pointer"
+                      title="Salin semua kode HTML"
+                    >
+                      {copiedHtml ? <Check className="w-3.5 h-3.5 text-[#10f48e]" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedHtml ? 'Tersalin!' : 'Salin Kode'}</span>
+                    </button>
+                  </div>
+
+                  {/* Code Pre Container */}
+                  <div className="flex-1 p-4 overflow-auto font-mono text-xs text-emerald-300/90 leading-relaxed select-text scrollbar-thin">
+                    {projectState.canvasCode.html ? (
+                      <pre className="whitespace-pre-wrap">{projectState.canvasCode.html}</pre>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4 text-zinc-500 font-sans">
+                        <div className="w-16 h-16 rounded-3xl bg-[#121218] border border-white/10 flex items-center justify-center text-[#10f48e]/60 shadow-inner">
+                          <Code2 className="w-8 h-8 text-[#10f48e]" />
+                        </div>
+                        <div className="space-y-1.5 max-w-sm">
+                          <h4 className="text-sm font-bold text-white">Kode HTML Belum Dibuat</h4>
+                          <p className="text-xs text-zinc-400 leading-relaxed">
+                            Mulai percakapan dengan AI di panel kiri untuk mendeskripsikan aplikasi yang ingin Anda buat. Kode HTML akan otomatis digenerate dan tampil di sini.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="w-full h-full bg-slate-900/60 rounded-2xl border border-slate-800 overflow-hidden">
