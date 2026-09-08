@@ -435,92 +435,123 @@ export default function AppWorkspacePage() {
               )}
             </div>
 
-            {/* Sidebar Kanan: tab menu + unduh sebagai badge (dengan expand/collapse) */}
-            <div className={`col-start-2 row-start-2 flex flex-col items-center gap-2 py-3 border-l border-slate-800 bg-slate-950/60 overflow-y-auto overflow-x-hidden transition-all duration-300 ${
-              sideRailExpanded ? 'w-[150px]' : 'w-14'
+            {/* Sidebar Kanan: badge menu dengan mode ringkas/lengkap */}
+            <aside className={`col-start-2 row-start-2 flex flex-col border-l border-slate-800/80 bg-slate-950/80 p-2 overflow-y-auto overflow-x-hidden transition-[width] duration-300 ease-out ${
+              sideRailExpanded ? 'w-48' : 'w-[68px]'
             }`}>
-              {/* Tombol Expand / Collapse */}
               <button
                 onClick={() => setSideRailExpanded(v => !v)}
-                className="flex items-center justify-center w-full px-2 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition-all"
-                title={sideRailExpanded ? 'Ciutkan menu' : 'Perluas menu'}
-                aria-label={sideRailExpanded ? 'Ciutkan menu' : 'Perluas menu'}
+                className={`h-10 rounded-xl border border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-700 hover:text-white transition-all flex items-center shrink-0 ${
+                  sideRailExpanded ? 'w-full justify-between px-3' : 'w-full justify-center'
+                }`}
+                title={sideRailExpanded ? 'Ciutkan menu panel' : 'Perluas menu panel'}
+                aria-label={sideRailExpanded ? 'Ciutkan menu panel' : 'Perluas menu panel'}
               >
+                {sideRailExpanded && <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Menu Panel</span>}
                 {sideRailExpanded ? <ChevronsRight className="w-3.5 h-3.5" /> : <ChevronsLeft className="w-3.5 h-3.5" />}
               </button>
 
-              <button
-                onClick={() => setRightPanelTab('PREVIEW')}
-                className={`relative flex items-center rounded-xl transition-all shrink-0 ${
-                  sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px]' : 'w-11 h-11 justify-center'
-                } ${
-                  rightPanelTab === 'PREVIEW'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
-                title="Live Preview"
-              >
-                <Eye className="w-4 h-4 shrink-0" />
-                {sideRailExpanded && <span className="whitespace-nowrap font-semibold">Live Preview</span>}
-              </button>
-
-              <button
-                onClick={() => setRightPanelTab('GAS_SCRIPT')}
-                className={`relative flex items-center rounded-xl transition-all shrink-0 ${
-                  sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px]' : 'w-11 h-11 justify-center'
-                } ${
-                  rightPanelTab === 'GAS_SCRIPT'
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
-                title="Backend Apps Script"
-              >
-                <Code2 className="w-4 h-4 shrink-0" />
-                {sideRailExpanded && <span className="whitespace-nowrap font-semibold">Backend Apps Script</span>}
-              </button>
-
-              <button
-                onClick={() => setRightPanelTab('SAVED')}
-                className={`relative flex items-center rounded-xl transition-all shrink-0 ${
-                  sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px]' : 'w-11 h-11 justify-center'
-                } ${
-                  rightPanelTab === 'SAVED'
-                    ? 'bg-sky-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
-                title="Tersimpan"
-              >
-                <FolderOpen className="w-4 h-4 shrink-0" />
-                {sideRailExpanded && <span className="whitespace-nowrap font-semibold">Tersimpan</span>}
-                {savedProjects.length > 0 && (
-                  sideRailExpanded ? (
-                    <span className="min-w-[16px] px-1 py-0.5 rounded-full bg-slate-800 text-[8px] font-bold text-slate-300">
-                      {savedProjects.length}
+              <nav className="mt-3 flex flex-col gap-2" aria-label="Menu panel pratinjau">
+                <button
+                  onClick={() => setRightPanelTab('PREVIEW')}
+                  className={`relative flex min-h-12 w-full items-center rounded-2xl border transition-all ${
+                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
+                  } ${
+                    rightPanelTab === 'PREVIEW'
+                      ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-100 shadow-[inset_3px_0_0_0_rgba(99,102,241,0.9)]'
+                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                  title={sideRailExpanded ? undefined : 'Live Preview'}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-400/20 bg-indigo-500/10">
+                    <Eye className="w-4 h-4" />
+                  </span>
+                  {sideRailExpanded && (
+                    <span className="min-w-0 text-left">
+                      <span className="block whitespace-nowrap text-[11px] font-bold text-white">Live Preview</span>
+                      <span className="block whitespace-nowrap text-[9px] text-slate-500">Canvas aplikasi</span>
                     </span>
-                  ) : (
-                    <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-sky-400" />
-                  )
-                )}
-              </button>
+                  )}
+                </button>
 
-              <div className={`mt-1 pt-2 border-t border-slate-800 ${
-                sideRailExpanded ? 'w-full flex justify-center' : 'w-full flex justify-center'
-              }`}>
+                <button
+                  onClick={() => setRightPanelTab('GAS_SCRIPT')}
+                  className={`relative flex min-h-12 w-full items-center rounded-2xl border transition-all ${
+                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
+                  } ${
+                    rightPanelTab === 'GAS_SCRIPT'
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100 shadow-[inset_3px_0_0_0_rgba(16,185,129,0.9)]'
+                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                  title={sideRailExpanded ? undefined : 'Backend Apps Script'}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-500/10">
+                    <Code2 className="w-4 h-4" />
+                  </span>
+                  {sideRailExpanded && (
+                    <span className="min-w-0 text-left">
+                      <span className="block whitespace-nowrap text-[11px] font-bold text-white">Backend Apps Script</span>
+                      <span className="block whitespace-nowrap text-[9px] text-slate-500">Integrasi Google Sheets</span>
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setRightPanelTab('SAVED')}
+                  className={`relative flex min-h-12 w-full items-center rounded-2xl border transition-all ${
+                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
+                  } ${
+                    rightPanelTab === 'SAVED'
+                      ? 'border-sky-500/40 bg-sky-500/15 text-sky-100 shadow-[inset_3px_0_0_0_rgba(14,165,233,0.9)]'
+                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-200'
+                  }`}
+                  title={sideRailExpanded ? undefined : 'Tersimpan'}
+                >
+                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-500/10">
+                    <FolderOpen className="w-4 h-4" />
+                    {!sideRailExpanded && savedProjects.length > 0 && (
+                      <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-slate-950 bg-sky-500 px-0.5 text-[7px] font-bold text-white">
+                        {savedProjects.length}
+                      </span>
+                    )}
+                  </span>
+                  {sideRailExpanded && (
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                      <span>
+                        <span className="block whitespace-nowrap text-[11px] font-bold text-white">Tersimpan</span>
+                        <span className="block whitespace-nowrap text-[9px] text-slate-500">Proyek Anda</span>
+                      </span>
+                      {savedProjects.length > 0 && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500/20 px-1 text-[8px] font-bold text-sky-300">
+                          {savedProjects.length}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </button>
+              </nav>
+
+              <div className="mt-auto border-t border-slate-800/80 pt-2">
                 <button
                   onClick={handleDownloadIndexHtml}
                   disabled={!projectState.canvasCode.html}
-                  className={`relative flex items-center rounded-xl transition-all shrink-0 bg-gradient-to-b from-emerald-500 to-teal-600 hover:opacity-90 text-white shadow-md shadow-emerald-600/20 disabled:opacity-40 ${
-                    sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px] font-bold' : 'w-11 h-11 justify-center'
+                  className={`flex min-h-12 w-full items-center rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/25 to-teal-500/15 text-emerald-100 transition-all hover:border-emerald-400/50 hover:from-emerald-500/35 disabled:cursor-not-allowed disabled:opacity-35 ${
+                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
                   }`}
-                  title={downloaded ? 'Tersimpan!' : 'Download index.html'}
+                  title={sideRailExpanded ? undefined : downloaded ? 'Tersimpan!' : 'Download index.html'}
                 >
-                  <Download className="w-4 h-4 shrink-0" />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
+                    <Download className="w-4 h-4" />
+                  </span>
                   {sideRailExpanded && (
-                    <span className="whitespace-nowrap">{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
+                    <span className="min-w-0 text-left">
+                      <span className="block whitespace-nowrap text-[11px] font-bold">{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
+                      <span className="block whitespace-nowrap text-[9px] text-emerald-200/55">Ekspor prototipe</span>
+                    </span>
                   )}
                 </button>
               </div>
-            </div>
+            </aside>
           </div>
         </div>
 

@@ -306,43 +306,58 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   return (
     <div className="grid h-[calc(100vh-100px)] grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
-      {/* Sidebar Kiri: menu AI sebagai badge (dengan expand/collapse) */}
-      <div className={`col-start-1 row-start-1 row-span-2 flex flex-col items-center justify-between py-4 border-r border-slate-800 bg-slate-950/60 overflow-hidden transition-all duration-300 ${
-        railExpanded ? 'w-48' : 'w-[52px]'
+      {/* Sidebar Kiri: badge chat AI dengan mode ringkas/lengkap */}
+      <aside className={`col-start-1 row-start-1 row-span-2 flex flex-col border-r border-slate-800/80 bg-slate-950/80 p-2 overflow-hidden transition-[width] duration-300 ease-out ${
+        railExpanded ? 'w-48' : 'w-[68px]'
       }`}>
-        {/* Tombol Expand / Collapse */}
         <button
           onClick={() => setRailExpanded(v => !v)}
-          className="flex items-center justify-center px-1.5 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition-all self-end"
-          title={railExpanded ? 'Ciutkan menu' : 'Perluas menu'}
-          aria-label={railExpanded ? 'Ciutkan menu' : 'Perluas menu'}
+          className={`h-10 rounded-xl border border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-700 hover:text-white transition-all flex items-center ${
+            railExpanded ? 'w-full justify-between px-3' : 'w-full justify-center'
+          }`}
+          title={railExpanded ? 'Ciutkan panel chat' : 'Perluas panel chat'}
+          aria-label={railExpanded ? 'Ciutkan panel chat' : 'Perluas panel chat'}
         >
-          {railExpanded ? <ChevronsLeft className="w-3.5 h-3.5" /> : <ChevronsRight className="w-3.5 h-3.5" />}
+          {railExpanded && <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Panel Chat</span>}
+          {railExpanded ? <ChevronsLeft className="w-4 h-4" /> : <ChevronsRight className="w-4 h-4" />}
         </button>
 
-        <div className="flex flex-col items-center gap-3 w-full">
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
-            <Bot className="w-4 h-4" />
+        <div className="mt-3 flex flex-col gap-2">
+          <div
+            className={`relative flex min-h-12 items-center rounded-2xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-100 shadow-[inset_3px_0_0_0_rgba(99,102,241,0.9)] ${
+              railExpanded ? 'gap-3 px-3 py-3' : 'justify-center px-2 py-3'
+            }`}
+            title={railExpanded ? undefined : 'Percakapan AI'}
+          >
+            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-500/15 text-indigo-300">
+              <Bot className="w-4 h-4" />
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-950 bg-emerald-400" />
+            </span>
+            {railExpanded && (
+              <span className="min-w-0 text-left">
+                <span className="block whitespace-nowrap text-xs font-bold text-white">Percakapan AI</span>
+                <span className="mt-0.5 block text-[9px] leading-3 text-slate-400">Asisten pembuatan aplikasi</span>
+              </span>
+            )}
           </div>
 
-          {railExpanded && (
-            <div className="px-3 text-center">
-              <h2 className="text-sm font-bold text-white leading-tight whitespace-nowrap">Percakapan AI</h2>
-              <p className="text-[10px] text-slate-400 mt-1">Deskripsikan ide aplikasi, minta penambahan fitur, atau laporkan kendala.</p>
-            </div>
-          )}
-
           <div
-            className="flex items-center gap-1 bg-indigo-950/60 border border-indigo-800/40 px-2 py-1.5 rounded-full text-[9px] text-indigo-300 font-medium leading-tight whitespace-nowrap"
-            title="AI Generator Aktif"
+            className={`flex min-h-10 items-center rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300 ${
+              railExpanded ? 'gap-2 px-3' : 'justify-center px-2'
+            }`}
+            title={railExpanded ? undefined : 'AI Generator Aktif'}
           >
-            <Sparkles className="w-3 h-3 shrink-0" />
-            <span>{railExpanded ? 'AI Generator Aktif' : 'AI Aktif'}</span>
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            {railExpanded && <span className="whitespace-nowrap text-[10px] font-semibold">AI Generator Aktif</span>}
           </div>
         </div>
 
-        <span className="text-[10px] font-bold text-slate-500 uppercase [writing-mode:vertical-rl] rotate-180 tracking-[0.2em]">AI Chat</span>
-      </div>
+        <div className="mt-auto px-1 pb-1 text-center">
+          <span className={`font-semibold uppercase text-slate-600 ${railExpanded ? 'text-[9px] tracking-[0.16em]' : 'text-[8px] tracking-[0.12em]'}`}>
+            {railExpanded ? 'Mudah Bikin Aplikasi' : 'AI'}
+          </span>
+        </div>
+      </aside>
 
       {/* Message History Area */}
       <div className="col-start-2 row-start-1 flex-1 overflow-y-auto p-6 space-y-4">
