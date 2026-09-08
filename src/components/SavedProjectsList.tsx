@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FolderOpen, Trash2, Loader2 } from 'lucide-react';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import type { SavedProject } from '@/types/app';
@@ -13,8 +13,26 @@ interface SavedProjectsListProps {
   onDelete: (id: string) => void;
 }
 
-// Lebar render asli iframe miniatur — container mengecilkan dengan transform scale.
+// Lebar render asli iframe miniatur — kontainer mengecilkan dengan transform scale.
 const THUMB_RENDER_WIDTH = 900;
+const THUMB_RENDER_HEIGHT = Math.round((THUMB_RENDER_WIDTH * 3) / 4);
+
+// Ukur lebar kontainer thumbnail lalu hitung skala agar iframe 900px pas dirender.
+function useContainerScale(containerRef: React.RefObject<HTMLDivElement | null>, designWidth: number): number {
+  const [scale, setScale] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setScale(el.clientWidth > 0 ? el.clientWidth / designWidth : 0);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [containerRef, designWidth]);
+
+  return scale;
+}
 
 function formatRelativeTime(iso: string): string {
   const date = new Date(iso);
@@ -40,6 +58,9 @@ function SavedProjectCard({
   onLoad: () => void;
   onDelete: () => void;
 }) {
+  const thumbContainerRef = useRef<HTMLDivElement>(null);
+  const scale = useContainerScale(thumbContainerRef, THUMB_RENDER_WIDTH);
+
   const canvas = {
     html: project.canvas_html || '',
     css: project.canvas_css || '',
@@ -57,13 +78,14 @@ function SavedProjectCard({
         title={`Buka: ${project.title}`}
         className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-slate-950 border border-slate-800 hover:border-indigo-500/70 transition-all cursor-pointer relative block text-left"
       >
-        {hasPreview ? (
-          <div className="absolute inset-0 overflow-hidden">
+        {hasPreview && scale > 0 ? (
+          <div ref={thumbContainerRef} className="absolute inset-0 overflow-hidden">
             <div
               style={{
                 width: THUMB_RENDER_WIDTH,
+                height: THUMB_RENDER_HEIGHT,
                 transformOrigin: 'top left',
-                transform: 'scale(1)'
+                transform: `scale(${scale})`,
               }}
               className="pointer-events-none relative"
             >
@@ -71,7 +93,7 @@ function SavedProjectCard({
                 title={`Preview ${project.title}`}
                 srcDoc={srcDoc}
                 width={THUMB_RENDER_WIDTH}
-                height={Math.round((THUMB_RENDER_WIDTH * 3) / 4)}
+                height={THUMB_RENDER_HEIGHT}
                 className="border-none"
                 sandbox="allow-scripts allow-forms"
                 scrolling="no"
