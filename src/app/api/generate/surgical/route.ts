@@ -10,6 +10,7 @@ import {
   getGeminiModel,
   getOpenAIModel
 } from '@/app/api/generate/route';
+import { OPENROUTER_API_BASE, OPENAI_API_BASE } from '@/lib/modelConfig';
 
 function buildOpenAICompatHeaders(apiKey: string | undefined, isOpenRouter: boolean): Record<string, string> {
   const headers: Record<string, string> = {
@@ -55,26 +56,26 @@ export async function POST(req: Request) {
       );
     }
 
-    const serverGeminiKey = process.env.GEMINI_API_KEY;
-    const serverOpenAiKey = process.env.OPENAI_API_KEY;
+    const hasUserKey = typeof userApiKey === 'string' && userApiKey.trim().length > 0;
+    const useUserKey = hasUserKey;
 
-    let aiProvider = provider;
-    if (aiProvider === 'gemini' && !userApiKey && !serverGeminiKey && serverOpenAiKey) {
-      aiProvider = 'openai';
-    } else if (aiProvider === 'openai' && !userApiKey && !serverOpenAiKey && serverGeminiKey) {
-      aiProvider = 'gemini';
-    }
+    const requestedProvider = useUserKey
+      ? (provider === 'gemini' ? 'gemini' : 'openai')
+      : (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
 
-    const isUserGemini = aiProvider === 'gemini' && !!userApiKey;
-    const geminiApiKey = isUserGemini ? userApiKey : serverGeminiKey;
+    const isUserGemini = useUserKey && provider === 'gemini';
+    const isOpenRouter = useUserKey && (provider === 'openrouter' || (typeof userApiKey === 'string' && userApiKey.startsWith('sk-or-')));
 
-    const useUserKey = (aiProvider === 'openai' || aiProvider === 'openrouter') && !!userApiKey;
-    const openaiApiKey = useUserKey ? userApiKey : serverOpenAiKey;
-    const isOpenRouter = aiProvider === 'openrouter' || (useUserKey && typeof userApiKey === 'string' && userApiKey.startsWith('sk-or-'));
-    const openaiBaseUrl = isOpenRouter ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1';
+    const geminiApiKey = isUserGemini ? userApiKey.trim() : process.env.GEMINI_API_KEY;
+    const aiProvider = isUserGemini ? 'gemini' : requestedProvider;
+
+    const openaiApiKey = isUserGemini ? undefined : (useUserKey ? userApiKey.trim() : process.env.OPENAI_API_KEY);
+    const openaiBaseUrl = isUserGemini
+      ? undefined
+      : (useUserKey ? (isOpenRouter ? OPENROUTER_API_BASE : OPENAI_API_BASE) : 'https://api.openai.com/v1');
 
     const activeGeminiModel = isUserGemini ? (userModel || DEFAULT_GEMINI_MODEL) : getGeminiModel();
-    const activeOpenAIModel = useUserKey ? (userModel || OPENROUTER_DEFAULT_MODEL) : getOpenAIModel();
+    const activeOpenAIModel = useUserKey ? (userModel || (isOpenRouter ? OPENROUTER_DEFAULT_MODEL : DEFAULT_OPENAI_MODEL)) : getOpenAIModel();
 
     const systemPrompt = `Anda adalah Surgical UI Component Engineer yang sangat ahli, presisi, dan berkecepatan tinggi.
 Tugas Anda: Memodifikasi HANYA satu elemen HTML/komponen antarmuka pengguna berdasarkan instruksi revisi yang diminta pengguna.
@@ -100,9 +101,10 @@ ${appContext ? `KONTEKS APLIKASI: ${appContext}` : ''}
 KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
 
     let rawOutput = '';
+    let lastErrorMsg = '';
 
-    // Prioritas 1: Gemini
-    if (aiProvider === 'gemini' && geminiApiKey) {
+    // Prioritas 1: Gemini (jika provider gemini, atau fallback server)
+    if ((aiProvider === 'gemini' || !aiProvider) && geminiApiKey) {
       try {
         const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:generateContent?key=${geminiApiKey}`,
@@ -120,16 +122,21 @@ KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
         if (geminiRes.ok) {
           const geminiData = await geminiRes.json();
           rawOutput = geminiData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+        } else {
+          const errText = await geminiRes.text();
+          console.warn('Gemini surgical generation HTTP error:', geminiRes.status, errText);
+          lastErrorMsg = `Gemini (${geminiRes.status}): ${errText.slice(0, 150)}`;
         }
-      } catch (geminiErr) {
+      } catch (geminiErr: any) {
         console.warn('Gemini surgical generation failed, falling back if available...', geminiErr);
+        lastErrorMsg = `Gemini: ${geminiErr?.message || String(geminiErr)}`;
       }
     }
 
     // Fallback atau Jalur 2: OpenAI / OpenRouter
     if (!rawOutput && openaiApiKey) {
       try {
-        const openaiRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
+        const openaiRes = await fetch(`${openaiBaseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
           method: 'POST',
           headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
           body: JSON.stringify({
@@ -138,7 +145,7 @@ KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt }
             ],
-            max_completion_tokens: 2048,
+            max_tokens: 2048,
             temperature: 0.2
           })
         });
@@ -146,15 +153,42 @@ KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
         if (openaiRes.ok) {
           const openaiData = await openaiRes.json();
           rawOutput = openaiData.choices?.[0]?.message?.content || '';
+        } else {
+          const errText = await openaiRes.text();
+          console.warn('OpenAI surgical generation HTTP error:', openaiRes.status, errText);
+          lastErrorMsg = `OpenAI (${openaiRes.status}): ${errText.slice(0, 150)}`;
         }
-      } catch (openaiErr) {
+      } catch (openaiErr: any) {
         console.warn('OpenAI surgical generation failed:', openaiErr);
+        lastErrorMsg = `OpenAI: ${openaiErr?.message || String(openaiErr)}`;
       }
+    }
+
+    // Jika OpenAI adalah pilihan utama tapi gagal, coba fallback ke Gemini jika ada key server
+    if (!rawOutput && !isUserGemini && process.env.GEMINI_API_KEY && geminiApiKey !== process.env.GEMINI_API_KEY) {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiModel()}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+            })
+          }
+        );
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          rawOutput = geminiData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+        }
+      } catch (err) {}
     }
 
     if (!rawOutput) {
       return NextResponse.json(
-        { success: false, error: 'Gagal mendapatkan respon dari AI untuk pembaruan elemen bedah.' },
+        { success: false, error: lastErrorMsg || 'Gagal mendapatkan respon dari AI untuk pembaruan elemen bedah.' },
         { status: 502 }
       );
     }
