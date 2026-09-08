@@ -81,6 +81,19 @@ export default function AppWorkspacePage() {
     return { left, top, width, height, anchorLeft, anchorTop };
   })();
 
+  const [dragDraft, setDragDraft] = useState<
+    | null
+    | {
+        bounds: { x: number; y: number; w: number; h: number };
+      }
+  >(null);
+  const dragDraftRef = useRef<{
+    dragging: boolean;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const dragBoundsRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+
   const annotationsRef = useRef(projectState.annotations);
   useEffect(() => {
     annotationsRef.current = projectState.annotations;
@@ -488,6 +501,38 @@ export default function AppWorkspacePage() {
     handleUpdateState({ annotations: next });
   };
 
+  const handleDeleteActiveSelection = () => {
+    if (!activeSelection) return;
+    const current = projectState.annotations || { marks: [], notes: [], patches: [] };
+    const next = {
+      marks: Array.isArray(current.marks) ? [...current.marks] : [],
+      notes: Array.isArray(current.notes) ? [...current.notes] : [],
+      patches: Array.isArray(current.patches) ? [...current.patches] : []
+    };
+
+    next.marks = next.marks.filter((m) => m.id !== activeSelection.markId);
+    next.notes = next.notes.filter((n) => n.markId !== activeSelection.markId);
+    if (activeSelection.kind === 'element' && activeSelection.elementUid) {
+      next.patches = next.patches.filter((p) => p.elementUid !== activeSelection.elementUid);
+    }
+
+    setActiveSelection(null);
+    setNoteDraft('');
+    setTextColorDraft('');
+    setTextContentDraft('');
+    setDragDraft(null);
+
+    handleUpdateState({ annotations: next });
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: 'OD_BRIDGE',
+        type: 'OD_SET_PATCHES',
+        patches: next.patches || []
+      },
+      '*'
+    );
+  };
+
   // Muat daftar prototype tersimpan setelah sesi login terverifikasi (sekali saja)
   useEffect(() => {
     if (isAuthenticated !== true || savedLoaded) return;
@@ -656,7 +701,87 @@ export default function AppWorkspacePage() {
                 <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner relative">
                   {projectState.canvasCode.html ? (
                     <div ref={overlayRef} className="relative w-full h-full">
-                      <div className="absolute inset-0 pointer-events-none">
+                      <div
+                        className={`absolute inset-0 ${interactionMode === 'mark' ? 'pointer-events-auto' : 'pointer-events-none'}`}
+                        onPointerDown={(e) => {
+                          if (interactionMode !== 'mark') return;
+                          if (!overlayRef.current) return;
+                          if (e.pointerType === 'mouse' && e.button !== 0) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const rect = overlayRef.current.getBoundingClientRect();
+                          const startX = e.clientX - rect.left;
+                          const startY = e.clientY - rect.top;
+                          dragDraftRef.current = { dragging: true, startX, startY };
+                          const bounds = {
+                            x: startX / rect.width,
+                            y: startY / rect.height,
+                            w: 0,
+                            h: 0
+                          };
+                          dragBoundsRef.current = bounds;
+                          setDragDraft({ bounds });
+                        }}
+                        onPointerMove={(e) => {
+                          if (interactionMode !== 'mark') return;
+                          const st = dragDraftRef.current;
+                          if (!st?.dragging || !overlayRef.current) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const rect = overlayRef.current.getBoundingClientRect();
+                          const endX = e.clientX - rect.left;
+                          const endY = e.clientY - rect.top;
+                          const left = Math.min(st.startX, endX);
+                          const top = Math.min(st.startY, endY);
+                          const width = Math.abs(endX - st.startX);
+                          const height = Math.abs(endY - st.startY);
+                          const bounds = {
+                            x: clamp(left / rect.width, 0, 1),
+                            y: clamp(top / rect.height, 0, 1),
+                            w: clamp(width / rect.width, 0, 1),
+                            h: clamp(height / rect.height, 0, 1)
+                          };
+                          dragBoundsRef.current = bounds;
+                          setDragDraft({ bounds });
+                        }}
+                        onPointerUp={(e) => {
+                          if (interactionMode !== 'mark') return;
+                          const st = dragDraftRef.current;
+                          if (!st?.dragging || !overlayRef.current) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          dragDraftRef.current = null;
+                          const bounds = dragBoundsRef.current;
+                          if (!bounds) return;
+                          if (!bounds.w || !bounds.h) return;
+                          const minPxW = overlaySize.w * bounds.w;
+                          const minPxH = overlaySize.h * bounds.h;
+                          if (minPxW < 6 || minPxH < 6) {
+                            setDragDraft(null);
+                            dragBoundsRef.current = null;
+                            return;
+                          }
+                          const markId = newOdId();
+                          setActiveSelection({ markId, kind: 'area', bounds });
+                          setNoteDraft('');
+                          setTextColorDraft('');
+                          setTextContentDraft('');
+                          setDragDraft(null);
+                          dragBoundsRef.current = null;
+                        }}
+                      >
+                        {dragDraft && (
+                          <div
+                            className="absolute border-2 border-emerald-400/80 bg-emerald-400/10"
+                            style={{
+                              left: dragDraft.bounds.x * overlaySize.w,
+                              top: dragDraft.bounds.y * overlaySize.h,
+                              width: dragDraft.bounds.w * overlaySize.w,
+                              height: dragDraft.bounds.h * overlaySize.h
+                            }}
+                          />
+                        )}
+
                         {selectionPx && activeSelection && (
                           <>
                             <div
@@ -712,7 +837,14 @@ export default function AppWorkspacePage() {
                                   </div>
                                 )}
 
-                                <div className="mt-3 flex justify-end">
+                                <div className="mt-3 flex justify-between gap-2">
+                                  <button
+                                    onClick={handleDeleteActiveSelection}
+                                    className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-white/90 text-xs font-bold border border-slate-700/60"
+                                    title="Hapus mark"
+                                  >
+                                    Hapus
+                                  </button>
                                   <button
                                     onClick={handleSaveAndApply}
                                     className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 disabled:opacity-40"
