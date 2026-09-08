@@ -350,11 +350,13 @@ export default function AppWorkspacePage() {
     return { left, top, width, height, defaultLeft, defaultTop, popoverW };
   })();
 
+  const [isDraggingPopover, setIsDraggingPopover] = useState(false);
+
   const handlePopoverDragStart = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch (_) {}
+
     const currentX = popoverPos?.x ?? selectionPx?.defaultLeft ?? 16;
     const currentY = popoverPos?.y ?? selectionPx?.defaultTop ?? 16;
     popoverDragRef.current = {
@@ -364,28 +366,40 @@ export default function AppWorkspacePage() {
       initX: currentX,
       initY: currentY
     };
+    setIsDraggingPopover(true);
   };
 
-  const handlePopoverDragMove = (e: React.PointerEvent) => {
-    if (!popoverDragRef.current?.dragging) return;
-    e.stopPropagation();
-    const dx = e.clientX - popoverDragRef.current.startX;
-    const dy = e.clientY - popoverDragRef.current.startY;
-    const popoverW = selectionPx?.popoverW || Math.min(320, (overlaySize.w || 360) * 0.85);
-    const nextX = clamp(popoverDragRef.current.initX + dx, 10, Math.max(10, (overlaySize.w || 360) - popoverW - 10));
-    const nextY = clamp(popoverDragRef.current.initY + dy, 12, Math.max(12, (overlaySize.h || 500) - 80));
-    setPopoverPos({ x: nextX, y: nextY });
-  };
+  useEffect(() => {
+    if (!isDraggingPopover) return;
 
-  const handlePopoverDragEnd = (e: React.PointerEvent) => {
-    if (popoverDragRef.current?.dragging) {
-      e.stopPropagation();
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch (_) {}
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!popoverDragRef.current?.dragging) return;
+      e.preventDefault();
+      const dx = e.clientX - popoverDragRef.current.startX;
+      const dy = e.clientY - popoverDragRef.current.startY;
+      const popoverW = selectionPx?.popoverW || Math.min(340, (overlaySize.w || 360) * 0.9);
+      const maxW = overlaySize.w || window.innerWidth;
+      const maxH = overlaySize.h || window.innerHeight;
+      const nextX = clamp(popoverDragRef.current.initX + dx, 8, Math.max(8, maxW - popoverW - 8));
+      const nextY = clamp(popoverDragRef.current.initY + dy, 8, Math.max(8, maxH - 80));
+      setPopoverPos({ x: nextX, y: nextY });
+    };
+
+    const handlePointerUp = () => {
       popoverDragRef.current = null;
-    }
-  };
+      setIsDraggingPopover(false);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [isDraggingPopover, overlaySize, selectionPx]);
 
   const [dragDraft, setDragDraft] = useState<
     | null
@@ -1570,6 +1584,14 @@ export default function AppWorkspacePage() {
                             }}
                           />
 
+                          {/* Shield transparan layar penuh saat dragging agar pointer event tidak tertelan iframe */}
+                          {isDraggingPopover && (
+                            <div
+                              className="fixed inset-0 z-[99999] cursor-grabbing select-none"
+                              style={{ touchAction: 'none' }}
+                            />
+                          )}
+
                           <div
                             className="absolute z-50 pointer-events-auto"
                             style={{
@@ -1588,21 +1610,32 @@ export default function AppWorkspacePage() {
                               {/* Header Card dengan Grab Handle untuk Menggeser Popover */}
                               <div
                                 onPointerDown={handlePopoverDragStart}
-                                onPointerMove={handlePopoverDragMove}
-                                onPointerUp={handlePopoverDragEnd}
-                                className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2 cursor-grab active:cursor-grabbing select-none"
+                                className={`flex items-center justify-between gap-2 border-b border-slate-800 pb-2 select-none touch-none ${
+                                  isDraggingPopover ? 'cursor-grabbing' : 'cursor-grab'
+                                }`}
                                 title="Klik & geser untuk memindahkan posisi popover"
                               >
-                                <div className="flex items-center gap-1.5 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0 pointer-events-none">
                                   <div className="p-0.5 text-slate-500 hover:text-slate-300">
                                     <GripHorizontal className="w-4 h-4" />
                                   </div>
                                   {activeSelection.kind === 'element' ? (
-                                    <>
-                                      <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-indigo-500/30">
-                                        &lt;{activeSelection.tagName || 'elem'}&gt;
+                                    <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-indigo-500/30">
+                                      &lt;{activeSelection.tagName || 'elem'}&gt;
+                                    </span>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">
+                                        MARK AREA
                                       </span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
+                                  {activeSelection.kind === 'element' && (
+                                    <>
                                       <button
+                                        type="button"
                                         onPointerDown={(e) => e.stopPropagation()}
                                         onClick={() => {
                                           if (activeSelection.elementUid) {
@@ -1622,35 +1655,28 @@ export default function AppWorkspacePage() {
                                         <Edit3 className="w-2.5 h-2.5 text-indigo-400" />
                                         <span>Edit Teks</span>
                                       </button>
+                                      <button
+                                        type="button"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={() => {
+                                          if (confirm('Hapus elemen ini dari canvas?')) {
+                                            applyQuickPatch('remove', 'deleted');
+                                          }
+                                        }}
+                                        className="text-rose-400 hover:text-rose-300 p-1 rounded-lg hover:bg-rose-500/20 transition-colors"
+                                        title="Hapus komponen ini langsung"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
                                     </>
-                                  ) : (
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">
-                                        MARK AREA
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {activeSelection.kind === 'element' && (
-                                    <button
-                                      onPointerDown={(e) => e.stopPropagation()}
-                                      onClick={() => {
-                                        if (confirm('Hapus elemen ini dari canvas?')) {
-                                          applyQuickPatch('remove', 'deleted');
-                                        }
-                                      }}
-                                      className="text-rose-400 hover:text-rose-300 p-1 rounded-lg hover:bg-rose-500/20 transition-colors"
-                                      title="Hapus komponen ini langsung"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
                                   )}
                                   <button
+                                    type="button"
                                     onPointerDown={(e) => e.stopPropagation()}
                                     onClick={() => {
                                       setActiveSelection(null);
                                       setPopoverPos(null);
+                                      setIsDraggingPopover(false);
                                       setInteractionMode('none');
                                       setNoteDraft('');
                                       setTextColorDraft('');
