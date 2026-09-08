@@ -3,14 +3,22 @@ interface BriefLikeMessage {
   text?: string;
 }
 
-// Ambil nama aplikasi dari lembar "Brief Kebutuhan" AI, contoh: "- **Nama App**: Kasir Pintar"
+// Ambil nama aplikasi dari lembar "Brief Kebutuhan" AI
+// Format sebenarnya: "• Nama App: Dashboard Keuangan Harian" atau "- **Nama App**: X"
 export function extractAppTitle(text: string): string | null {
   if (!text) return null;
-  const match = text.match(/\*\*Nama App\*\*\s*[::]\s*([^\n\r*]+)/i) || text.match(/Nama App\s*[::]\s*([^\n\r]+)/i);
-  if (!match) return null;
-  const name = (match[1] || '').replace(/\s+/g, ' ').trim().replace(/^[:.\-\s]+|[:.\-\s]+$/g, '');
-  if (!name) return null;
-  return name.slice(0, 120);
+  const patterns = [
+    /[•\-*]\s*\*?\*?Nama\s*App\*?\*?\s*[::]\s*([^\n\r*•]+)/i,
+    /Nama\s*App\s*[::]\s*([^\n\r*]+)/i
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const name = (m[1] || '').replace(/\s+/g, ' ').trim();
+      if (name && name.length >= 2) return name.slice(0, 120);
+    }
+  }
+  return null;
 }
 
 // Cari judul dari pesan AI terbaru yang memuat "Nama App"
