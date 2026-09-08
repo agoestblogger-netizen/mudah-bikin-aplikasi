@@ -109,6 +109,9 @@ export default function AppWorkspacePage() {
     rightPanelTabRef.current = rightPanelTab;
   }, [rightPanelTab]);
 
+  const [externalChatSendToken, setExternalChatSendToken] = useState<string | number | null>(null);
+  const [externalChatSendText, setExternalChatSendText] = useState<string | null>(null);
+
   // Shortcut Keyboard Esc untuk keluar dari Fullscreen (Poin 37)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -501,6 +504,28 @@ export default function AppWorkspacePage() {
     handleUpdateState({ annotations: next });
   };
 
+  const handleSendToChat = () => {
+    if (!activeSelection) return;
+
+    handleSaveAndApply();
+
+    const bounds = activeSelection.bounds;
+    const area = `bounds: x=${bounds.x.toFixed(4)}, y=${bounds.y.toFixed(4)}, w=${bounds.w.toFixed(4)}, h=${bounds.h.toFixed(4)}`;
+
+    const note = (noteDraft || '').trim();
+    const prompt = [
+      'Tolong ubah prototype pada MARK/AREA berikut agar sesuai dengan catatan pengguna.',
+      `Mode: ${activeSelection.kind}`,
+      area,
+      activeSelection.kind === 'element' && activeSelection.elementUid ? `elementUid: ${activeSelection.elementUid}` : null,
+      note ? `Catatan: ${note}` : null,
+      'Fokus perubahan pada area/elemen yang ditandai. Setelah itu buat ulang mockup agar konsisten.'
+    ].filter(Boolean).join('\n');
+
+    setExternalChatSendToken(Date.now());
+    setExternalChatSendText(prompt);
+  };
+
   const handleDeleteActiveSelection = () => {
     if (!activeSelection) return;
     const current = projectState.annotations || { marks: [], notes: [], patches: [] };
@@ -628,6 +653,8 @@ export default function AppWorkspacePage() {
             onUpdateState={handleUpdateState}
             isGenerating={isGenerating}
             setIsGenerating={handleSetGenerating}
+            externalSendToken={externalChatSendToken ?? undefined}
+            externalSendText={externalChatSendText}
           />
         </div>
 
@@ -844,6 +871,13 @@ export default function AppWorkspacePage() {
                                     title="Hapus mark"
                                   >
                                     Hapus
+                                  </button>
+                                  <button
+                                    onClick={handleSendToChat}
+                                    className="px-3 py-2 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 text-white/90 text-xs font-bold border border-slate-700/40"
+                                    title="Kirim catatan mark ke chat AI untuk mengubah area"
+                                  >
+                                    Send to Chat
                                   </button>
                                   <button
                                     onClick={handleSaveAndApply}

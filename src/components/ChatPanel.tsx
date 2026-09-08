@@ -13,6 +13,10 @@ interface ChatPanelProps {
   onUpdateState: (updated: Partial<AppProjectState>) => void;
   isGenerating: boolean;
   setIsGenerating: (val: boolean) => void;
+
+  // External trigger untuk mengirim pesan ke ChatPanel dari luar (mis. dari popover mark)
+  externalSendToken?: string | number;
+  externalSendText?: string | null;
 }
 
 const BRAINSTORMING_LOADING_TEXTS = [
@@ -70,7 +74,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   projectState,
   onUpdateState,
   isGenerating,
-  setIsGenerating
+  setIsGenerating,
+  externalSendToken,
+  externalSendText
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
@@ -303,6 +309,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       setIsGenerating(false);
     }
   };
+
+  // Jika ada trigger eksternal, kirim pesan ke AI.
+  useEffect(() => {
+    if (!externalSendToken) return;
+    if (!externalSendText) return;
+    handleSendMessage(externalSendText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalSendToken]);
 
   return (
     <div className="grid h-[calc(100vh-100px)] grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
