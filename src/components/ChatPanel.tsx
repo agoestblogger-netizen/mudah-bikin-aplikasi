@@ -304,27 +304,26 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
-      {/* Panel Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60 shrink-0">
-        <div className="flex items-center gap-3">
+    <div className="grid h-[calc(100vh-100px)] grid-cols-[52px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
+      {/* Sidebar Kiri: judul & status AI (dipindah dari atas) */}
+      <div className="col-start-1 row-start-1 row-span-2 flex flex-col items-center justify-between py-4 border-r border-slate-800 bg-slate-950/60 overflow-hidden">
+        <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
             <Bot className="w-4 h-4" />
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-white leading-tight">Percakapan AI</h2>
-            <p className="text-[11px] text-slate-400">Deskripsikan ide aplikasi, minta penambahan fitur, atau laporkan kendala.</p>
+          <div
+            className="flex flex-col items-center gap-1 bg-indigo-950/60 border border-indigo-800/40 px-2 py-1.5 rounded-full text-[9px] text-indigo-300 font-medium leading-tight"
+            title="AI Generator Aktif"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>AI Aktif</span>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-800/40 px-3 py-1 rounded-full text-[11px] text-indigo-300 font-medium">
-          <Sparkles className="w-3 h-3" />
-          <span>AI Generator Aktif</span>
-        </div>
+        <span className="text-[10px] font-bold text-slate-400 uppercase [writing-mode:vertical-rl] rotate-180 tracking-[0.2em]">Percakapan AI</span>
       </div>
 
       {/* Message History Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="col-start-2 row-start-1 flex-1 overflow-y-auto p-6 space-y-4">
         {messages.map((m) => {
           const briefData = m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
 
@@ -420,7 +419,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/60 shrink-0">
+      <div className="col-start-2 row-start-2 p-4 border-t border-slate-800 bg-slate-950/60 shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();

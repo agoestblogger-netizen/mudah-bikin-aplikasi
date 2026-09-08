@@ -332,10 +332,10 @@ export default function AppWorkspacePage() {
       <Navbar userEmail={userEmail} onNewSession={handleNewSession} />
 
       {/* Main 2-Panel Workspace Murni Sesuai PRD FR-09 */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,10fr)] gap-6">
         
-        {/* PANEL KIRI (6 Kolom): Percakapan AI Penuh */}
-        <div className="lg:col-span-6 flex flex-col">
+        {/* PANEL KIRI (3fr ≈ 30% dari kanan): Percakapan AI */}
+        <div className="flex flex-col min-w-0">
           <ChatPanel
             projectState={projectState}
             onUpdateState={handleUpdateState}
@@ -349,95 +349,34 @@ export default function AppWorkspacePage() {
           className={
             isPreviewFullscreen
               ? 'fixed inset-0 z-50 p-3 sm:p-5 bg-slate-950/95 backdrop-blur-2xl flex flex-col transition-all duration-300 ease-in-out'
-              : 'lg:col-span-6 flex flex-col bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)] transition-all duration-300 ease-in-out'
+              : 'flex flex-col min-w-0 bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)] transition-all duration-300 ease-in-out'
           }
         >
-          <div className={isPreviewFullscreen ? 'flex-1 flex flex-col bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-full' : 'flex-1 flex flex-col h-full overflow-hidden'}>
-            {/* Header Kontrol Panel Kanan */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-950/60 shrink-0 gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setRightPanelTab('PREVIEW')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                    rightPanelTab === 'PREVIEW'
-                      ? 'bg-indigo-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Live Preview</span>
-                </button>
+          <div className={isPreviewFullscreen ? 'flex-1 grid grid-cols-[minmax(0,1fr)_54px] grid-rows-[auto_minmax(0,1fr)] bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-full' : 'flex-1 grid grid-cols-[minmax(0,1fr)_54px] grid-rows-[auto_minmax(0,1fr)] h-full overflow-hidden'}>
+            {/* Strip atas: label tab aktif + tombol Fullscreen (tetap di atas; menu lain dipindah ke samping kanan) */}
+            <div className="col-span-2 flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-950/60 gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                {rightPanelTab === 'PREVIEW' ? 'Live Preview' : rightPanelTab === 'GAS_SCRIPT' ? 'Backend Apps Script' : 'Tersimpan'}
+              </span>
 
-                <button
-                  onClick={() => setRightPanelTab('GAS_SCRIPT')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                    rightPanelTab === 'GAS_SCRIPT'
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Code2 className="w-3.5 h-3.5" />
-                  <span>Backend Apps Script</span>
-                </button>
-
-                <button
-                  onClick={() => setRightPanelTab('SAVED')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                    rightPanelTab === 'SAVED'
-                      ? 'bg-sky-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>Tersimpan</span>
-                  {savedProjects.length > 0 && (
-                    <span className="min-w-[18px] px-1 py-0.5 rounded-full bg-slate-800 text-[9px] font-bold text-slate-300">
-                      {savedProjects.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              {/* Aksi Kanan: Download index.html & Fullscreen Toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleDownloadIndexHtml}
-                  disabled={!projectState.canvasCode.html}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-90 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 disabled:opacity-40"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
-                  <span className="sm:hidden">Download</span>
-                </button>
-
-                {/* Tombol Fullscreen Expand / Collapse (Poin 37) */}
-                <button
-                  onClick={() => setIsPreviewFullscreen(prev => !prev)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                    isPreviewFullscreen
-                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
-                      : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-800'
-                  }`}
-                  title={isPreviewFullscreen ? 'Tutup Fullscreen (Esc)' : 'Perbesar Fullscreen'}
-                  aria-label={isPreviewFullscreen ? 'Tutup Fullscreen' : 'Perbesar Fullscreen'}
-                >
-                  {isPreviewFullscreen ? (
-                    <>
-                      <Minimize2 className="w-3.5 h-3.5" />
-                      <span className="hidden md:inline">Tutup Fullscreen</span>
-                    </>
-                  ) : (
-                    <>
-                      <Maximize2 className="w-3.5 h-3.5" />
-                      <span className="hidden md:inline">Fullscreen</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Tombol Fullscreen Expand / Collapse (Poin 37) */}
+              <button
+                onClick={() => setIsPreviewFullscreen(prev => !prev)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
+                  isPreviewFullscreen
+                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+                    : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-800'
+                }`}
+                title={isPreviewFullscreen ? 'Tutup Fullscreen (Esc)' : 'Perbesar Fullscreen'}
+                aria-label={isPreviewFullscreen ? 'Tutup Fullscreen' : 'Perbesar Fullscreen'}
+              >
+                {isPreviewFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{isPreviewFullscreen ? 'Tutup Fullscreen' : 'Fullscreen'}</span>
+              </button>
             </div>
 
             {/* Isi Viewport Live Preview / Script */}
-            <div className="flex-1 overflow-hidden p-4 relative">
+            <div className="col-start-1 row-start-2 flex-1 overflow-hidden p-4 relative">
               {rightPanelTab === 'PREVIEW' ? (
                 <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
                   {projectState.canvasCode.html ? (
@@ -493,6 +432,65 @@ export default function AppWorkspacePage() {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Sidebar Kanan: tab menu + unduh (dipindah dari atas) */}
+            <div className="col-start-2 row-start-2 flex flex-col items-center gap-2 py-3 border-l border-slate-800 bg-slate-950/60 overflow-y-auto">
+              <button
+                onClick={() => setRightPanelTab('PREVIEW')}
+                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-semibold leading-tight transition-all ${
+                  rightPanelTab === 'PREVIEW'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Live Preview"
+              >
+                <Eye className="w-4 h-4" />
+                <span>Preview</span>
+              </button>
+
+              <button
+                onClick={() => setRightPanelTab('GAS_SCRIPT')}
+                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-semibold leading-tight transition-all ${
+                  rightPanelTab === 'GAS_SCRIPT'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Backend Apps Script"
+              >
+                <Code2 className="w-4 h-4" />
+                <span>Backend</span>
+              </button>
+
+              <button
+                onClick={() => setRightPanelTab('SAVED')}
+                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-semibold leading-tight transition-all ${
+                  rightPanelTab === 'SAVED'
+                    ? 'bg-sky-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Tersimpan"
+              >
+                <FolderOpen className="w-4 h-4" />
+                <span>Tersimpan</span>
+                {savedProjects.length > 0 && (
+                  <span className="min-w-[16px] px-1 py-0.5 rounded-full bg-slate-800 text-[8px] font-bold text-slate-300">
+                    {savedProjects.length}
+                  </span>
+                )}
+              </button>
+
+              <div className="mt-1 pt-2 border-t border-slate-800 w-full flex justify-center">
+                <button
+                  onClick={handleDownloadIndexHtml}
+                  disabled={!projectState.canvasCode.html}
+                  className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-bold leading-tight transition-all bg-gradient-to-b from-emerald-500 to-teal-600 hover:opacity-90 text-white shadow-md shadow-emerald-600/20 disabled:opacity-40"
+                  title={downloaded ? 'Tersimpan!' : 'Download index.html'}
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{downloaded ? 'OK!' : 'Unduh'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
