@@ -40,14 +40,28 @@ export function parsePRD(text: string): ParsedPRD | null {
 
   // Cek apakah teks memuat penanda PRD
   const hasPRDHeader =
-    /Product Requirements Document\s*\(PRD\)/i.test(text) ||
+    /Product Requirements Document/i.test(text) ||
+    /\bPRD\b/i.test(text) ||
     /Technical PRD/i.test(text) ||
-    /Rancangan Spesifikasi Sistem\s*&\s*Database/i.test(text);
+    /Rancangan Spesifikasi Sistem/i.test(text) ||
+    /Architecture Plan/i.test(text) ||
+    /Plan Ready for Review/i.test(text);
 
   if (!hasPRDHeader) return null;
 
-  // Minimal harus ada Executive Summary atau Peran Pengguna
-  if (!/Executive Summary/i.test(text) && !/Peran Pengguna/i.test(text)) {
+  // Minimal harus ada indikasi konten spesifikasi teknis
+  const hasTechnicalContent =
+    /Executive Summary/i.test(text) ||
+    /Ringkasan Eksekutif/i.test(text) ||
+    /Peran Pengguna/i.test(text) ||
+    /User Roles/i.test(text) ||
+    /Arsitektur Multi-Halaman/i.test(text) ||
+    /Struktur Database/i.test(text) ||
+    /Spesifikasi Backend/i.test(text) ||
+    /Fitur Unggulan/i.test(text) ||
+    /Keamanan & Validasi/i.test(text);
+
+  if (!hasTechnicalContent) {
     return null;
   }
 
@@ -60,20 +74,22 @@ export function parsePRD(text: string): ParsedPRD | null {
     if (titleMatch) {
       appTitle = titleMatch[1].replace(/[#*`_]/g, '').trim();
     } else {
-      const generalTitleMatch = text.match(/(?:Aplikasi|Sistem)\s+([^\n\-–—]+)/i);
+      const generalTitleMatch = text.match(/(?:Aplikasi|Sistem)\s+([^\n\-–—:.]+)/i);
       if (generalTitleMatch) {
         appTitle = generalTitleMatch[0].replace(/[#*`_]/g, '').trim();
       }
     }
 
-    // Ekstrak 7 Bagian Utama dengan regex nomor 1 s/d 7
-    const sectionRegex = /(?:^|\n)(?:###?\s*)?(\d+)\.\s+([^\n]+)\n([\s\S]*?)(?=(?:\n(?:###?\s*)?\d+\.\s+[^\n]+\n|$))/g;
+    // Ekstrak Bagian Utama dengan regex nomor 1 s/d 7 yang mendukung bold, header, parenthesis
+    const sectionRegex =
+      /(?:^|\n)(?:#{1,6}\s*)?(?:\*\*)?(?:Bagian\s+|Poin\s+)?(\d+)[\.\)]\s*(?:\*\*)?\s*([^\n]+)\n([\s\S]*?)(?=(?:\n(?:#{1,6}\s*)?(?:\*\*)?(?:Bagian\s+|Poin\s+)?\d+[\.\)]\s*)|$)/gi;
     const sections: PRDSection[] = [];
     let match;
 
     while ((match = sectionRegex.exec(text)) !== null) {
       const num = parseInt(match[1], 10);
-      const title = match[2].replace(/[*_#`]/g, '').trim();
+      const rawTitle = match[2];
+      const title = rawTitle.replace(/^[*_#`\s]+|[*_#`:\s]+$/g, '').trim();
       const content = match[3].trim();
       sections.push({
         number: num,
@@ -82,14 +98,21 @@ export function parsePRD(text: string): ParsedPRD | null {
       });
     }
 
-    // Jika parsing 7 section gagal menangkap, kembalikan null agar fallback ke bubble biasa
-    if (sections.length < 2) return null;
+    // Fallback cerdas: Jika regex section gagal menangkap nomor terstruktur,
+    // jangan kembalikan null! Bungkus dalam 1 section utuh agar kartu PRD dan tombol Edit tetap aktif!
+    if (sections.length === 0) {
+      sections.push({
+        number: 1,
+        title: 'Spesifikasi & Rencana Arsitektur',
+        content: text.trim()
+      });
+    }
 
     // Ekstrak Closing Note di akhir jika ada (misal pertanyaan konfirmasi)
     let closingNote = '';
     const lastSection = sections[sections.length - 1];
     if (lastSection) {
-      const splitClosing = lastSection.content.split(/\n(?=(?:Apakah|Silakan|Jika sudah|Untuk mulai))/i);
+      const splitClosing = lastSection.content.split(/\n(?=(?:Apakah|Silakan|Jika sudah|Untuk mulai|Beri tahu saya))/i);
       if (splitClosing.length > 1) {
         lastSection.content = splitClosing[0].trim();
         closingNote = splitClosing.slice(1).join('\n').trim();
@@ -194,11 +217,11 @@ export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild, onUpdat
                   setEditMarkdown(currentData.rawMarkdown);
                   setIsEditing(true);
                 }}
-                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/40 text-zinc-300 hover:text-[#10f48e] text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                className="px-3 py-1.5 rounded-xl bg-[#10f48e]/15 hover:bg-[#10f48e]/25 border border-[#10f48e]/40 text-[#10f48e] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm shadow-[#10f48e]/10"
                 title="Edit teks dokumen PRD secara langsung"
               >
                 <Edit3 className="w-3.5 h-3.5" />
-                <span>Edit PRD</span>
+                <span>✏️ Edit PRD</span>
               </button>
 
               <button
@@ -311,14 +334,28 @@ export const PRDCard: React.FC<PRDCardProps> = ({ data, onSwitchToBuild, onUpdat
               PRD ini akan dijadikan acuan spesifikasi saat prototipe dibangun.
             </span>
 
-            <button
-              type="button"
-              onClick={onSwitchToBuild}
-              className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-[#10f48e]/25 transition-all flex items-center justify-center gap-2 shrink-0 active:scale-98 cursor-pointer"
-            >
-              <Wrench className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Setujui PRD & Beralih ke Mode Build</span>
-            </button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditMarkdown(currentData.rawMarkdown);
+                  setIsEditing(true);
+                }}
+                className="py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/40 text-zinc-200 hover:text-[#10f48e] font-bold text-xs transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-[#10f48e]" />
+                <span>Edit PRD</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onSwitchToBuild}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-[#10f48e]/25 transition-all flex items-center justify-center gap-2 shrink-0 active:scale-98 cursor-pointer"
+              >
+                <Wrench className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Setujui PRD & Beralih ke Mode Build</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
