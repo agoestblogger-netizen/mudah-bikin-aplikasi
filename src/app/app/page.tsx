@@ -48,7 +48,7 @@ export default function AppWorkspacePage() {
   const autoSavedProjectIdRef = useRef<string | null>(null);
 
   // OpenDesign-like marks/comments/patches
-  const [interactionMode, setInteractionMode] = useState<'select' | 'mark'>('select');
+  const [interactionMode, setInteractionMode] = useState<'none' | 'select' | 'mark'>('none');
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [overlaySize, setOverlaySize] = useState({ w: 0, h: 0 });
@@ -417,7 +417,7 @@ export default function AppWorkspacePage() {
       id: 'saved-' + project.id,
       title: project.title,
       description: project.description || '',
-      annotations: project.annotations || { marks: [], notes: [], patches: [] },
+      annotations: { marks: [], notes: [], patches: project.annotations?.patches || [] },
       updatedAt: project.updated_at || new Date().toISOString(),
       canvasCode: {
         html: project.canvas_html || '',
@@ -458,52 +458,10 @@ export default function AppWorkspacePage() {
     const now = new Date().toISOString();
 
     const next: typeof current = {
-      marks: Array.isArray(current.marks) ? [...current.marks] : [],
-      notes: Array.isArray(current.notes) ? [...current.notes] : [],
+      marks: [],
+      notes: [],
       patches: Array.isArray(current.patches) ? [...current.patches] : []
     };
-
-    const cleanNote = (noteDraft || '').trim();
-    if (cleanNote) {
-      const markIdx = next.marks.findIndex((m) => m.id === activeSelection.markId);
-      if (markIdx === -1) {
-        next.marks.push({
-          id: activeSelection.markId,
-          kind: activeSelection.kind,
-          bounds: activeSelection.bounds,
-          elementUid: activeSelection.elementUid,
-          createdAt: now
-        });
-      } else {
-        next.marks[markIdx] = {
-          ...next.marks[markIdx],
-          kind: activeSelection.kind,
-          bounds: activeSelection.bounds,
-          elementUid: activeSelection.elementUid
-        };
-      }
-
-      const noteIdx = next.notes.findIndex((n) => n.markId === activeSelection.markId);
-      if (noteIdx === -1) {
-        next.notes.push({
-          id: newOdId(),
-          markId: activeSelection.markId,
-          text: cleanNote,
-          createdAt: now
-        });
-      } else {
-        next.notes[noteIdx] = {
-          ...next.notes[noteIdx],
-          text: cleanNote,
-          updatedAt: now
-        };
-      }
-    }
-
-    // Bersihkan mark yang tidak memiliki catatan sama sekali agar tidak menjadi pin bertumpuk
-    next.marks = next.marks.filter((m) => {
-      return next.notes.some((n) => n.markId === m.id && n.text && n.text.trim().length > 0);
-    });
 
     if (activeSelection.kind === 'element' && activeSelection.elementUid) {
       const elUid = activeSelection.elementUid;
@@ -583,8 +541,8 @@ export default function AppWorkspacePage() {
     nextPatches.push(patch);
 
     const next = {
-      marks: current.marks || [],
-      notes: current.notes || [],
+      marks: [],
+      notes: [],
       patches: nextPatches
     };
 
@@ -633,38 +591,7 @@ export default function AppWorkspacePage() {
     setDragDraft(null);
   };
 
-  const handleDeleteActiveSelection = () => {
-    if (!activeSelection) return;
-    const current = projectState.annotations || { marks: [], notes: [], patches: [] };
-    const next = {
-      marks: Array.isArray(current.marks) ? [...current.marks] : [],
-      notes: Array.isArray(current.notes) ? [...current.notes] : [],
-      patches: Array.isArray(current.patches) ? [...current.patches] : []
-    };
 
-    next.marks = next.marks.filter((m) => m.id !== activeSelection.markId);
-    next.notes = next.notes.filter((n) => n.markId !== activeSelection.markId);
-    if (activeSelection.kind === 'element' && activeSelection.elementUid) {
-      next.patches = next.patches.filter((p) => p.elementUid !== activeSelection.elementUid);
-    }
-
-    setActiveSelection(null);
-    setNoteDraft('');
-    setTextColorDraft('');
-    setBgColorDraft('');
-    setTextContentDraft('');
-    setDragDraft(null);
-
-    handleUpdateState({ annotations: next });
-    iframeRef.current?.contentWindow?.postMessage(
-      {
-        source: 'OD_BRIDGE',
-        type: 'OD_SET_PATCHES',
-        patches: next.patches || []
-      },
-      '*'
-    );
-  };
 
   // Muat daftar prototype tersimpan setelah sesi login terverifikasi (sekali saja)
   useEffect(() => {
@@ -785,29 +712,29 @@ export default function AppWorkspacePage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
-                      setInteractionMode('select');
+                      setInteractionMode((prev) => (prev === 'select' ? 'none' : 'select'));
                       setActiveSelection(null);
                     }}
-                    className={`px-2 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
                       interactionMode === 'select'
-                        ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50'
+                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/30'
+                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50 hover:text-white'
                     }`}
-                    title="Pilih elemen (klik)"
+                    title={interactionMode === 'select' ? 'Nonaktifkan Select mode' : 'Pilih elemen (klik)'}
                   >
                     Select
                   </button>
                   <button
                     onClick={() => {
-                      setInteractionMode('mark');
+                      setInteractionMode((prev) => (prev === 'mark' ? 'none' : 'mark'));
                       setActiveSelection(null);
                     }}
-                    className={`px-2 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
                       interactionMode === 'mark'
-                        ? 'bg-emerald-600 text-white border-emerald-500'
-                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-600/30'
+                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50 hover:text-white'
                     }`}
-                    title="Mark area (drag)"
+                    title={interactionMode === 'mark' ? 'Nonaktifkan Mark mode' : 'Mark area (drag)'}
                   >
                     Mark
                   </button>
@@ -921,52 +848,6 @@ export default function AppWorkspacePage() {
                         )}
                       </div>
 
-                      {/* Numbered Pin Markers (①, ②, ③) HANYA untuk mark yang memiliki catatan tersimpan */}
-                      {(() => {
-                        const activePinnedMarks = (projectState.annotations?.marks || []).filter((m) => {
-                          const n = projectState.annotations?.notes?.find((note) => note.markId === m.id);
-                          return Boolean(n && n.text && n.text.trim().length > 0);
-                        });
-
-                        if (activePinnedMarks.length === 0) return null;
-
-                        return (
-                          <div className="absolute inset-0 z-25 pointer-events-none">
-                            {activePinnedMarks.map((m, pinIdx) => {
-                              const pinX = m.bounds.x * overlaySize.w;
-                              const pinY = m.bounds.y * overlaySize.h;
-                              const isCurrent = activeSelection?.markId === m.id;
-                              const noteItem = projectState.annotations?.notes?.find((n) => n.markId === m.id);
-
-                              return (
-                                <button
-                                  key={m.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveSelection({
-                                      markId: m.id,
-                                      kind: m.kind,
-                                      bounds: m.bounds,
-                                      elementUid: m.elementUid
-                                    });
-                                    setNoteDraft(noteItem?.text || '');
-                                  }}
-                                  className={`absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shadow-lg transition-all duration-200 hover:scale-125 cursor-pointer ${
-                                    isCurrent
-                                      ? 'bg-gradient-to-r from-indigo-500 to-pink-500 text-white ring-2 ring-white scale-110 shadow-indigo-500/50'
-                                      : 'bg-slate-900/95 text-slate-100 border border-slate-700 hover:bg-indigo-600 hover:border-indigo-400'
-                                  }`}
-                                  style={{ left: pinX, top: pinY }}
-                                  title={noteItem?.text ? `Pin #${pinIdx + 1}: ${noteItem.text}` : `Pin #${pinIdx + 1}`}
-                                >
-                                  {pinIdx + 1}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-
                       {/* Layer terpisah untuk active selection & floating inspector note agar tidak terblokir oleh pointer event overlay */}
                       {selectionPx && activeSelection && (
                         <div className="absolute inset-0 z-30 pointer-events-none">
@@ -1032,15 +913,6 @@ export default function AppWorkspacePage() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
-                                  {projectState.annotations?.marks?.some((m) => m.id === activeSelection.markId) && (
-                                    <button
-                                      onClick={handleDeleteActiveSelection}
-                                      className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors"
-                                      title="Hapus pin dan catatan ini dari canvas"
-                                    >
-                                      Hapus Pin
-                                    </button>
-                                  )}
                                   <button
                                     onClick={() => {
                                       setActiveSelection(null);
