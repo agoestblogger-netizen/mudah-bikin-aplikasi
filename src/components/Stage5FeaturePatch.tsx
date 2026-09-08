@@ -68,7 +68,7 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
       {/* Header */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 lg:p-8 backdrop-blur-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-2xl bg-[#10f48e]/10 border border-[#10f48e]/30 flex items-center justify-center text-[#10f48e]">
             <Wrench className="w-5 h-5" />
           </div>
           <div>
@@ -77,7 +77,7 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-amber-950/60 border border-amber-800/40 px-3 py-1.5 rounded-full text-xs text-amber-300 font-semibold">
+        <div className="flex items-center gap-2 bg-[#10f48e]/10 border border-[#10f48e]/30 px-3 py-1.5 rounded-full text-xs text-[#10f48e] font-semibold">
           <Sparkles className="w-3.5 h-3.5" />
           <span>Total Revisi: {patchHistory.length}</span>
         </div>
@@ -137,7 +137,7 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
         {/* Patch History */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 space-y-4">
           <h3 className="font-bold text-white text-base flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-400" />
+            <Clock className="w-4 h-4 text-[#10f48e]" />
             2. Riwayat Pembaruan Fitur
           </h3>
 

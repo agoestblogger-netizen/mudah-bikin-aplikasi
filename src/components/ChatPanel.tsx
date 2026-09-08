@@ -74,7 +74,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
-  const [selectedMode, setSelectedMode] = useState<ChatMode>('BUILD');
+  const [selectedMode, setSelectedMode] = useState<ChatMode>(() => {
+    if (projectState.canvasCode?.html) return 'BUILD';
+    return 'PLAN';
+  });
   const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -463,6 +466,26 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 >
                   <p className="whitespace-pre-wrap">{m.text}</p>
                   
+                  {/* Tombol Pintas: Beralih ke Mode Build jika AI meminta beralih ke Build */}
+                  {m.sender === 'AI' && selectedMode === 'PLAN' && (
+                    m.text.toLowerCase().includes('build (prototype)') || 
+                    m.text.toLowerCase().includes('mode ke build') || 
+                    m.text.toLowerCase().includes('ganti mode ke build') || 
+                    m.text.toLowerCase().includes('ubah mode ke build') ||
+                    m.text.toLowerCase().includes('mode build')
+                  ) && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMode('BUILD')}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-md shadow-[#10f48e]/25 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                      >
+                        <Wrench className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>🛠️ Beralih ke Mode Build Sekarang</span>
+                      </button>
+                    </div>
+                  )}
+
                   {/* Quick Action Pills */}
                   {m.suggestedOptions && m.suggestedOptions.length > 0 && messages.length <= 1 && (
                     <div className="pt-3 border-t border-white/10 flex flex-wrap gap-1.5">
@@ -527,6 +550,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           }}
           className="relative bg-[#101016] border border-white/10 hover:border-white/20 focus-within:border-[#10f48e]/60 rounded-2xl p-2.5 transition-all shadow-xl flex flex-col gap-2"
         >
+          {/* Indikator Alur Plan vs Build: Jika Brief sudah siap & mode masih Plan */}
+          {messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:')) && selectedMode === 'PLAN' && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-[#10f48e]/10 border border-[#10f48e]/25 text-[11px] text-[#10f48e] animate-in fade-in duration-200">
+              <div className="flex items-center gap-1.5 truncate">
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span className="font-semibold truncate">Brief Kebutuhan siap! Beralih ke <b>Build</b> untuk membuat prototipe.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedMode('BUILD')}
+                className="ml-2 shrink-0 px-2.5 py-0.5 rounded-lg bg-[#10f48e] hover:bg-emerald-400 text-black font-extrabold text-[10px] transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                Ganti ke Build
+              </button>
+            </div>
+          )}
+
           {/* Baris Input Teks */}
           <div className="flex items-start gap-2">
             <button
@@ -545,7 +585,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               disabled={isGenerating}
               placeholder={
                 selectedMode === 'PLAN'
-                  ? 'Diskusikan ide & fitur yang ingin Anda rencanakan...'
+                  ? (messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'))
+                      ? 'Brief sudah siap. Ketik revisi brief, atau ganti mode ke Build untuk membuat prototipe...'
+                      : 'Diskusikan ide & fitur yang ingin Anda rencanakan...')
                   : selectedMode === 'SYNC_GAS'
                   ? 'Ketik instruksi backend Google Apps Script / Sheet database...'
                   : 'Ketik instruksi untuk membangun prototype web app Anda...'

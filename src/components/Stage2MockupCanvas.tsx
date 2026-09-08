@@ -122,7 +122,7 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
         <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800 bg-slate-950/60">
           <div className="flex items-center gap-2">
             {[
-              { id: 'HTML', label: 'HTML Structure', icon: <FileCode className="w-4 h-4 text-orange-400" /> },
+              { id: 'HTML', label: 'HTML Structure', icon: <FileCode className="w-4 h-4 text-[#10f48e]" /> },
               { id: 'CSS', label: 'CSS Styles', icon: <Code2 className="w-4 h-4 text-cyan-400" /> },
               { id: 'JS', label: 'Dynamic JS State', icon: <Code2 className="w-4 h-4 text-yellow-400" /> },
               { id: 'SUMMARY', label: 'Ringkasan Prototipe', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> }

@@ -2212,8 +2212,8 @@ export default function AppWorkspacePage() {
                                   disabled={isSurgicalLoading || !noteDraft.trim()}
                                   className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
                                     isSurgicalLoading || !noteDraft.trim()
-                                      ? 'bg-indigo-950/40 text-indigo-400/40 border border-indigo-900/30 cursor-not-allowed'
-                                      : 'bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                                      ? 'bg-emerald-950/40 text-emerald-400/40 border border-emerald-900/30 cursor-not-allowed'
+                                      : 'bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold shadow-md shadow-[#10f48e]/25'
                                   }`}
                                   title={
                                     activeSelection.kind === 'area'
@@ -2228,7 +2228,7 @@ export default function AppWorkspacePage() {
                                     </>
                                   ) : (
                                     <>
-                                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                      <Sparkles className="w-3.5 h-3.5 text-black" />
                                       <span>{activeSelection.kind === 'area' ? '⚡ AI Bedah Area' : '⚡ AI Bedah'}</span>
                                     </>
                                   )}

@@ -13,6 +13,7 @@ import {
 } from '@/lib/templates';
 import { OPENROUTER_API_BASE, OPENAI_API_BASE } from '@/lib/modelConfig';
 import type { AIProvider } from '@/lib/modelConfig';
+import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
@@ -320,15 +321,25 @@ export async function POST(req: Request) {
       );
     }
 
-    const { prompt, chatHistory, stage, currentCode, userProvider, userApiKey, userModel } = await req.json();
+    const { prompt, chatHistory, stage, currentCode, userProvider, userApiKey, userModel, mode } = await req.json();
+
+    // Deteksi Mode Dropdown Chat ('BUILD' | 'PLAN' | 'SYNC_GAS')
+    const activeChatMode = (mode || (stage === 'TAHAP_4_BACKEND' ? 'SYNC_GAS' : currentCode ? 'BUILD' : 'PLAN')).toUpperCase();
+    const isPlanMode = activeChatMode === 'PLAN';
 
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
     const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
     
-    // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Eksekusi Revisi
-    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang)($|\b)/i.test(prompt.trim());
+    // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Permintaan Pembuatan Prototipe
+    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
+      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim());
+
+    // GATE ALUR PLAN VS BUILD (Sama seperti di OpenCode):
+    // Jika brief sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
+    // Prototipe TIDAK BOLEH dibuat. AI wajib meminta user mengganti mode ke BUILD di dropdown.
+    const isBriefApprovedWhileInPlanMode = Boolean(hasBriefPresented && isConfirmationApproval && isPlanMode);
     
     // Deteksi Pertanyaan Eksplisit dari Pengguna (Wajib dijawab dalam dialog, dilarang langsung lompat ke eksekusi - Poin 38)
     const hasExplicitQuestion = prompt.includes('?') || /(^|\b)(apakah|apa\s+kamu\s+paham|paham\s+kah|paham\s+gak|paham\s+kan|ngerti\s+gak|ngerti\s+kan|bisa\s+kah|gimana\s+menurutmu|bagaimana\s+menurutmu|menurut\s+kamu|kenapa|mengapa|bagaimana\s+cara|tolong\s+jelaskan|apa\s+maksud|apakah\s+bisa|jelaskan)($|\b)/i.test(prompt.trim());
@@ -362,9 +373,11 @@ export async function POST(req: Request) {
     );
 
     // Kapan masuk Mode Dialog/Streaming (Bukan eksekusi kode langsung):
-    // 1. Tahap 1 Ideation (belum ada kode & belum konfirmasi)
-    // 2. ATAU Tahap Revisi (sudah ada kode) TETAPI ada Pertanyaan Eksplisit atau Revisi Signifikan yang belum disetujui untuk dieksekusi (Poin 38)
+    // 1. Mode PLAN aktif (selalu dialog ideation/planning, dilarang buat kode di mode ini)
+    // 2. Tahap 1 Ideation (belum ada kode & belum konfirmasi di mode BUILD)
+    // 3. ATAU Tahap Revisi (sudah ada kode) TETAPI ada Pertanyaan Eksplisit atau Revisi Signifikan yang belum disetujui untuk dieksekusi (Poin 38)
     const isIdeationMode = (
+      isPlanMode ||
       ((stage === 'TAHAP_1_PEMBUKAAN' || !currentCode) && !(hasBriefPresented && isConfirmationApproval)) ||
       (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval)
     );
@@ -401,7 +414,28 @@ ATURAN MUTLAK PERLAKUAN VARIAN ROLE:
     let systemPrompt = '';
 
     if (isIdeationMode) {
-      if (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval) {
+      if (isBriefApprovedWhileInPlanMode) {
+        // KONDISI KHUSUS: BRIEF SUDAH LENGKAP & DISETUJUI, TETAPI MODE INPUT MASIH 'PLAN'
+        // Sistem menolak membuat prototipe dan meminta user mengganti mode ke BUILD (sama seperti di OpenCode)
+        const appTitle = extractAppTitleFromChat(chatHistory) || 'ini';
+        systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
+Pengguna baru saja menyetujui lembar Brief Kebutuhan atau meminta agar prototipe aplikasi dibuat.
+Namun, sistem mendeteksi bahwa dropdown mode saat ini MASIH berada di mode "Plan (Brief Kebutuhan)".
+
+ATURAN KERJA SISTEM (SAMA SEPERTI DI OPENCODE):
+1. Mode "Plan" hanya difungsikan untuk berdiskusi, merancang ide, dan menyusun lembar Brief Kebutuhan.
+2. Di mode "Plan", sistem TIDAK DAPAT dan DILARANG menghasilkan kode prototipe aplikasi.
+3. Pembuatan kode prototipe HANYA DAPAT DILAKUKAN jika pengguna telah mengganti mode pengerjaan ke "Build (Prototype)" pada dropdown di samping kolom chat.
+4. Selama mode masih "Plan", Anda DILARANG KERAS membuat prototipe ataupun menghasilkan blok kode HTML/CSS/JS!
+
+TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI DENGAN RAMAH, TEGAS & JELAS):
+1. Berikan apresiasi hangat bahwa perancangan Brief Kebutuhan untuk aplikasi "${appTitle}" sudah selesai dan disepakati.
+2. Jelaskan bahwa Anda sudah siap membangun aplikasi ini, TETAPI karena dropdown chat saat ini masih dalam mode "Plan (Brief)", prototipe belum dapat dibuat.
+3. Berikan instruksi jelas kepada pengguna:
+   "Silakan ubah dropdown mode di samping kolom chat dari **Plan (Brief)** menjadi **🛠️ Build (Prototype)**, lalu tekan tombol kirim atau konfirmasi untuk mulai membangun prototipe aplikasi Anda."
+4. Ingatkan bahwa pemisahan mode Plan dan Build ini diterapkan agar perencanaan kebutuhan matang terlebih dahulu sebelum kode mulai ditulis (sama seperti sistem di OpenCode).
+5. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript (\`\`\`html ... \`\`\`) di giliran ini!`;
+      } else if (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval) {
         // KONDISI KHUSUS (POIN 38): GERBANG DIALOG UNTUK REVISI SIGNIFIKAN / PERTANYAAN EKSPLISIT SAAT MOCKUP SUDAH ADA
         systemPrompt = `Anda adalah Konsultan Aplikasi & Asisten AI dari platform "Mudah Bikin Aplikasi".
 Pengguna memiliki aplikasi/mockup yang sudah dibuat, dan saat ini mengajukan PERTANYAAN EKSPLISIT atau REVISI BESAR/STRUKTURAL (misal: mengganti mekanisme role switcher jadi sistem login sungguhan, menambah/menghapus role, perombakan alur, dll).
@@ -455,7 +489,7 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
        - [Halaman 1] (default): section [Section A], section [Section B]
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (jika 1 tab saja, alur fokus di tab tersebut)
 6. Tanyakan konfirmasi eksplisit di baris terakhir:
-   "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai, atau masih ada detail/section yang ingin diubah sebelum saya buatkan prototipenya?"`;
+   "Apakah lembar Brief Kebutuhan yang diperbarui ini sudah sesuai? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika masih ada detail yang ingin diubah."`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
         // KONDISI 3: PROMPT AWAL SANGAT DETAIL (>200 chars) ATAU DISKUSI SUDAH 2+ PUTARAN / USER MENYETUJUI USULAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
@@ -490,7 +524,7 @@ ATURAN MUTLAK PERCAKAPAN:
        - [Halaman/Tab 1] (default): section [Nama Section 1], section [Nama Section 2]
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (jika 1 tab, alur fokus di tab tersebut; langkah menunggu pasif ditulis sebagai konsekuensi: "saat [Role Lain] klik X, status berubah jadi Y")
 5. WAJIB tanyakan konfirmasi di baris terakhir:
-   "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan, atau ada section/fitur yang mau ditambah/diubah sebelum saya buatkan prototipenya?"`;
+   "Apakah Brief Kebutuhan di atas sudah sesuai dengan yang Anda inginkan? Jika sudah pas, silakan ubah mode ke 🛠️ **Build** pada dropdown di samping kolom chat untuk mulai membuat prototipenya, atau beri tahu saya jika ada section/fitur yang mau disesuaikan terlebih dahulu."`;
       } else {
         // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
