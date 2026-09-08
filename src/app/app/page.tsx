@@ -729,14 +729,15 @@ export default function AppWorkspacePage() {
                   {projectState.canvasCode.html ? (
                     <div ref={overlayRef} className="relative w-full h-full">
                       <div
-                        className={`absolute inset-0 ${interactionMode === 'mark' ? 'pointer-events-auto' : 'pointer-events-none'}`}
+                        className={`absolute inset-0 z-20 ${interactionMode === 'mark' ? 'pointer-events-auto' : 'pointer-events-none'}`}
                         onPointerDown={(e) => {
                           if (interactionMode !== 'mark') return;
                           if (!overlayRef.current) return;
                           if (e.pointerType === 'mouse' && e.button !== 0) return;
                           e.preventDefault();
                           e.stopPropagation();
-                          const rect = overlayRef.current.getBoundingClientRect();
+                           const rect = overlayRef.current.getBoundingClientRect();
+                           setOverlaySize({ w: rect.width, h: rect.height });
                           const startX = e.clientX - rect.left;
                           const startY = e.clientY - rect.top;
                           dragDraftRef.current = { dragging: true, startX, startY };
@@ -755,7 +756,8 @@ export default function AppWorkspacePage() {
                           if (!st?.dragging || !overlayRef.current) return;
                           e.preventDefault();
                           e.stopPropagation();
-                          const rect = overlayRef.current.getBoundingClientRect();
+                           const rect = overlayRef.current.getBoundingClientRect();
+                           setOverlaySize({ w: rect.width, h: rect.height });
                           const endX = e.clientX - rect.left;
                           const endY = e.clientY - rect.top;
                           const left = Math.min(st.startX, endX);
@@ -778,16 +780,17 @@ export default function AppWorkspacePage() {
                           e.preventDefault();
                           e.stopPropagation();
                           dragDraftRef.current = null;
-                          const bounds = dragBoundsRef.current;
-                          if (!bounds) return;
-                          if (!bounds.w || !bounds.h) return;
-                          const minPxW = overlaySize.w * bounds.w;
-                          const minPxH = overlaySize.h * bounds.h;
-                          if (minPxW < 6 || minPxH < 6) {
-                            setDragDraft(null);
-                            dragBoundsRef.current = null;
-                            return;
-                          }
+                           const bounds = dragBoundsRef.current;
+                           if (!bounds) return;
+                           if (!bounds.w || !bounds.h) return;
+                           const rect = overlayRef.current.getBoundingClientRect();
+                           const minPxW = rect.width * bounds.w;
+                           const minPxH = rect.height * bounds.h;
+                           if (minPxW < 6 || minPxH < 6) {
+                             setDragDraft(null);
+                             dragBoundsRef.current = null;
+                             return;
+                           }
                           const markId = newOdId();
                           setActiveSelection({ markId, kind: 'area', bounds });
                           setNoteDraft('');
