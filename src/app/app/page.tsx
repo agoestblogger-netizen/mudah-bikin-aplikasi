@@ -463,39 +463,47 @@ export default function AppWorkspacePage() {
       patches: Array.isArray(current.patches) ? [...current.patches] : []
     };
 
-    const markIdx = next.marks.findIndex((m) => m.id === activeSelection.markId);
-    if (markIdx === -1) {
-      next.marks.push({
-        id: activeSelection.markId,
-        kind: activeSelection.kind,
-        bounds: activeSelection.bounds,
-        elementUid: activeSelection.elementUid,
-        createdAt: now
-      });
-    } else {
-      next.marks[markIdx] = {
-        ...next.marks[markIdx],
-        kind: activeSelection.kind,
-        bounds: activeSelection.bounds,
-        elementUid: activeSelection.elementUid
-      };
+    const cleanNote = (noteDraft || '').trim();
+    if (cleanNote) {
+      const markIdx = next.marks.findIndex((m) => m.id === activeSelection.markId);
+      if (markIdx === -1) {
+        next.marks.push({
+          id: activeSelection.markId,
+          kind: activeSelection.kind,
+          bounds: activeSelection.bounds,
+          elementUid: activeSelection.elementUid,
+          createdAt: now
+        });
+      } else {
+        next.marks[markIdx] = {
+          ...next.marks[markIdx],
+          kind: activeSelection.kind,
+          bounds: activeSelection.bounds,
+          elementUid: activeSelection.elementUid
+        };
+      }
+
+      const noteIdx = next.notes.findIndex((n) => n.markId === activeSelection.markId);
+      if (noteIdx === -1) {
+        next.notes.push({
+          id: newOdId(),
+          markId: activeSelection.markId,
+          text: cleanNote,
+          createdAt: now
+        });
+      } else {
+        next.notes[noteIdx] = {
+          ...next.notes[noteIdx],
+          text: cleanNote,
+          updatedAt: now
+        };
+      }
     }
 
-    const noteIdx = next.notes.findIndex((n) => n.markId === activeSelection.markId);
-    if (noteIdx === -1) {
-      next.notes.push({
-        id: newOdId(),
-        markId: activeSelection.markId,
-        text: noteDraft,
-        createdAt: now
-      });
-    } else {
-      next.notes[noteIdx] = {
-        ...next.notes[noteIdx],
-        text: noteDraft,
-        updatedAt: now
-      };
-    }
+    // Bersihkan mark yang tidak memiliki catatan sama sekali agar tidak menjadi pin bertumpuk
+    next.marks = next.marks.filter((m) => {
+      return next.notes.some((n) => n.markId === m.id && n.text && n.text.trim().length > 0);
+    });
 
     if (activeSelection.kind === 'element' && activeSelection.elementUid) {
       const elUid = activeSelection.elementUid;
@@ -913,42 +921,51 @@ export default function AppWorkspacePage() {
                         )}
                       </div>
 
-                      {/* Numbered Pin Markers (①, ②, ③) pada setiap area yang ditandai */}
-                      {projectState.annotations?.marks && projectState.annotations.marks.length > 0 && (
-                        <div className="absolute inset-0 z-25 pointer-events-none">
-                          {projectState.annotations.marks.map((m, idx) => {
-                            const pinX = m.bounds.x * overlaySize.w;
-                            const pinY = m.bounds.y * overlaySize.h;
-                            const isCurrent = activeSelection?.markId === m.id;
-                            const noteItem = projectState.annotations?.notes?.find((n) => n.markId === m.id);
+                      {/* Numbered Pin Markers (①, ②, ③) HANYA untuk mark yang memiliki catatan tersimpan */}
+                      {(() => {
+                        const activePinnedMarks = (projectState.annotations?.marks || []).filter((m) => {
+                          const n = projectState.annotations?.notes?.find((note) => note.markId === m.id);
+                          return Boolean(n && n.text && n.text.trim().length > 0);
+                        });
 
-                            return (
-                              <button
-                                key={m.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveSelection({
-                                    markId: m.id,
-                                    kind: m.kind,
-                                    bounds: m.bounds,
-                                    elementUid: m.elementUid
-                                  });
-                                  setNoteDraft(noteItem?.text || '');
-                                }}
-                                className={`absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shadow-lg transition-all duration-200 hover:scale-125 cursor-pointer ${
-                                  isCurrent
-                                    ? 'bg-gradient-to-r from-indigo-500 to-pink-500 text-white ring-2 ring-white scale-110 shadow-indigo-500/50'
-                                    : 'bg-slate-900/90 text-slate-100 border border-slate-700/80 hover:bg-indigo-600 hover:border-indigo-400'
-                                }`}
-                                style={{ left: pinX, top: pinY }}
-                                title={noteItem?.text ? `Pin #${idx + 1}: ${noteItem.text}` : `Pin #${idx + 1}`}
-                              >
-                                {idx + 1}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                        if (activePinnedMarks.length === 0) return null;
+
+                        return (
+                          <div className="absolute inset-0 z-25 pointer-events-none">
+                            {activePinnedMarks.map((m, pinIdx) => {
+                              const pinX = m.bounds.x * overlaySize.w;
+                              const pinY = m.bounds.y * overlaySize.h;
+                              const isCurrent = activeSelection?.markId === m.id;
+                              const noteItem = projectState.annotations?.notes?.find((n) => n.markId === m.id);
+
+                              return (
+                                <button
+                                  key={m.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveSelection({
+                                      markId: m.id,
+                                      kind: m.kind,
+                                      bounds: m.bounds,
+                                      elementUid: m.elementUid
+                                    });
+                                    setNoteDraft(noteItem?.text || '');
+                                  }}
+                                  className={`absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shadow-lg transition-all duration-200 hover:scale-125 cursor-pointer ${
+                                    isCurrent
+                                      ? 'bg-gradient-to-r from-indigo-500 to-pink-500 text-white ring-2 ring-white scale-110 shadow-indigo-500/50'
+                                      : 'bg-slate-900/95 text-slate-100 border border-slate-700 hover:bg-indigo-600 hover:border-indigo-400'
+                                  }`}
+                                  style={{ left: pinX, top: pinY }}
+                                  title={noteItem?.text ? `Pin #${pinIdx + 1}: ${noteItem.text}` : `Pin #${pinIdx + 1}`}
+                                >
+                                  {pinIdx + 1}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
 
                       {/* Layer terpisah untuk active selection & floating inspector note agar tidak terblokir oleh pointer event overlay */}
                       {selectionPx && activeSelection && (
@@ -1014,13 +1031,30 @@ export default function AppWorkspacePage() {
                                     </div>
                                   )}
                                 </div>
-                                <button
-                                  onClick={handleDeleteActiveSelection}
-                                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
-                                  title="Tutup mark"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {projectState.annotations?.marks?.some((m) => m.id === activeSelection.markId) && (
+                                    <button
+                                      onClick={handleDeleteActiveSelection}
+                                      className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors"
+                                      title="Hapus pin dan catatan ini dari canvas"
+                                    >
+                                      Hapus Pin
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setActiveSelection(null);
+                                      setNoteDraft('');
+                                      setTextColorDraft('');
+                                      setBgColorDraft('');
+                                      setTextContentDraft('');
+                                    }}
+                                    className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                                    title="Tutup inspector"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
 
                               {/* Quick Visual Styler untuk mode Element */}
