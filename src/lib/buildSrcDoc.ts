@@ -112,7 +112,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       } catch (err) {}
     }, true);
 
-    // Mark by dragging area (MVP: kirim final saat pointer up)
+    // Mark by dragging area (MVP: kirim final saat mouse up)
+    // Gunakan mouse events agar lebih stabil di sandbox iframe dibanding pointer events.
     let dragging = false;
     let dragStart = null;
     let dragEnd = null;
@@ -126,9 +127,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       return { left: x1, top: y1, width: x2 - x1, height: y2 - y1 };
     }
 
-    document.addEventListener('pointerdown', function(e) {
+    function beginDrag(e) {
       if (odMode !== 'mark') return;
-      if (!(e instanceof PointerEvent)) return;
+      if (!(e instanceof MouseEvent)) return;
       if (e.button !== 0) return;
       dragging = true;
       dragStart = { x: e.clientX, y: e.clientY };
@@ -137,21 +138,21 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         e.preventDefault();
         e.stopPropagation();
       } catch (err) {}
-    }, true);
+    }
 
-    window.addEventListener('pointermove', function(e) {
+    function updateDrag(e) {
       if (!dragging || odMode !== 'mark') return;
-      if (!(e instanceof PointerEvent)) return;
+      if (!(e instanceof MouseEvent)) return;
+      dragEnd = { x: e.clientX, y: e.clientY };
       try {
         e.preventDefault();
         e.stopPropagation();
       } catch (err) {}
-      dragEnd = { x: e.clientX, y: e.clientY };
-    }, { passive: false });
+    }
 
-    window.addEventListener('pointerup', function(e) {
+    function endDrag(e) {
       if (!dragging || odMode !== 'mark') return;
-      if (!(e instanceof PointerEvent)) return;
+      if (!(e instanceof MouseEvent)) return;
       dragging = false;
       dragEnd = { x: e.clientX, y: e.clientY };
       try {
@@ -166,9 +167,14 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         type: 'OD_AREA_MARK',
         bounds
       });
+
       dragStart = null;
       dragEnd = null;
-    }, true);
+    }
+
+    document.addEventListener('mousedown', beginDrag, true);
+    window.addEventListener('mousemove', updateDrag, { passive: false });
+    window.addEventListener('mouseup', endDrag, true);
 
     // Receive messages from parent
     window.addEventListener('message', function(ev) {
