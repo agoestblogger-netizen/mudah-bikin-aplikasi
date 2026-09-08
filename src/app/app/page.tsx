@@ -595,6 +595,32 @@ export default function AppWorkspacePage() {
         setTextColorDraft('');
         setBgColorDraft('');
         setTextContentDraft('');
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            source: 'OD_BRIDGE',
+            type: 'OD_RESOLVE_AREA',
+            markId,
+            bounds
+          },
+          '*'
+        );
+      } else if (data.type === 'OD_AREA_RESOLVED') {
+        const markId = data.markId;
+        const elementUid = data.elementUid;
+        const outerHtml = data.outerHtml;
+        if (!markId || !elementUid || !outerHtml) return;
+
+        setActiveSelection((prev) => {
+          if (!prev || prev.markId !== markId) return prev;
+          return {
+            ...prev,
+            elementUid,
+            tagName: data.tagName,
+            outerHtml,
+            initialText: data.currentText || '',
+            breadcrumbs: Array.isArray(data.breadcrumbs) ? data.breadcrumbs : []
+          };
+        });
       }
     };
 
@@ -1107,13 +1133,20 @@ export default function AppWorkspacePage() {
   };
 
   const handleSurgicalEdit = async () => {
-    if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid || !activeSelection.outerHtml) {
-      showToast('Pilih elemen target terlebih dahulu.', 'error');
+    if (!activeSelection) return;
+
+    let elUid = activeSelection.elementUid;
+    let outerHtml = activeSelection.outerHtml;
+    let tagName = activeSelection.tagName || 'element';
+
+    if (!elUid || !outerHtml) {
+      showToast('Sedang mendeteksi komponen pada area yang ditandai... Silakan coba 1 detik lagi.', 'info');
       return;
     }
+
     const instruction = noteDraft.trim();
     if (!instruction) {
-      showToast('Ketik instruksi perubahan untuk elemen ini.', 'error');
+      showToast('Ketik instruksi perubahan untuk area/komponen ini.', 'error');
       return;
     }
 
@@ -1129,10 +1162,10 @@ export default function AppWorkspacePage() {
           ...authHeaders
         },
         body: JSON.stringify({
-          elementHtml: activeSelection.outerHtml,
+          elementHtml: outerHtml,
           instruction,
           appContext: projectState.title || '',
-          tagName: activeSelection.tagName || 'element',
+          tagName,
           provider: modelSettings.provider,
           apiKey: modelSettings.token || undefined,
           model: modelSettings.model || undefined
@@ -1145,7 +1178,6 @@ export default function AppWorkspacePage() {
       }
 
       const newElementHtml = data.updatedElementHtml;
-      const elUid = activeSelection.elementUid;
 
       // 1. Bersihkan patch visual lama untuk elemen ini agar tidak menimpa hasil bedah AI
       const current = projectState.annotations || { marks: [], notes: [], patches: [] };
@@ -1179,8 +1211,13 @@ export default function AppWorkspacePage() {
         }
       }, { skipIframeReload: true });
 
-      // 4. Feedback dan bersihkan modal
-      showToast('Komponen berhasil diperbarui via AI Bedah!', 'success');
+      // 5. Feedback dan bersihkan modal
+      showToast(
+        activeSelection.kind === 'area'
+          ? 'Area komponen berhasil diperbarui via AI Bedah!'
+          : 'Komponen berhasil diperbarui via AI Bedah!',
+        'success'
+      );
       setActiveSelection(null);
       setPopoverPos(null);
       setNoteDraft('');
@@ -1556,6 +1593,17 @@ export default function AppWorkspacePage() {
                           setTextContentDraft('');
                           setDragDraft(null);
                           dragBoundsRef.current = null;
+
+                          // Resolusi komponen pada area yang ditandai untuk AI Bedah
+                          iframeRef.current?.contentWindow?.postMessage(
+                            {
+                              source: 'OD_BRIDGE',
+                              type: 'OD_RESOLVE_AREA',
+                              markId,
+                              bounds
+                            },
+                            '*'
+                          );
                         }}
                       >
                         {dragDraft && (
@@ -1628,6 +1676,11 @@ export default function AppWorkspacePage() {
                                       <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">
                                         MARK AREA
                                       </span>
+                                      {activeSelection.tagName && (
+                                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 font-mono text-[9px] border border-emerald-500/20 font-bold">
+                                          &lt;{activeSelection.tagName}&gt;
+                                        </span>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1699,7 +1752,7 @@ export default function AppWorkspacePage() {
                               </div>
 
                               {/* Breadcrumb Hierarki Elemen (Fase 3) */}
-                              {activeSelection.kind === 'element' && activeSelection.breadcrumbs && activeSelection.breadcrumbs.length > 0 && (
+                              {activeSelection.breadcrumbs && activeSelection.breadcrumbs.length > 0 && (
                                 <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono overflow-x-auto whitespace-nowrap bg-slate-950/60 px-2.5 py-1.5 rounded-xl border border-slate-800 custom-scrollbar">
                                   <span className="text-slate-500 text-[9px] font-semibold">DOM:</span>
                                   {activeSelection.breadcrumbs.map((crumb, idx) => (
@@ -2054,7 +2107,7 @@ export default function AppWorkspacePage() {
                               <div>
                                 <div className="text-[10px] text-slate-400 font-semibold mb-1 flex items-center gap-1">
                                   <Sparkles className="w-3 h-3 text-indigo-400" />
-                                  <span>Perintah AI untuk komponen ini</span>
+                                  <span>Perintah AI untuk {activeSelection.kind === 'area' ? 'area' : 'komponen'} ini</span>
                                 </div>
                                 <textarea
                                   autoFocus
@@ -2062,47 +2115,53 @@ export default function AppWorkspacePage() {
                                   onChange={(e) => setNoteDraft(e.target.value)}
                                   rows={2}
                                   className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none cursor-text select-text"
-                                  placeholder="Tulis instruksi perubahan untuk komponen ini..."
+                                  placeholder={
+                                    activeSelection.kind === 'area'
+                                      ? 'Tulis instruksi perubahan untuk area yang ditandai ini...'
+                                      : 'Tulis instruksi perubahan untuk komponen ini...'
+                                  }
                                 />
                               </div>
 
                               {/* Action Buttons: ⚡ AI Bedah (Surgical) & Send to Chat */}
                               <div className="flex items-center gap-2 pt-1">
-                                {activeSelection.kind === 'element' && (
-                                  <button
-                                    onClick={handleSurgicalEdit}
-                                    disabled={isSurgicalLoading || !noteDraft.trim()}
-                                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
-                                      isSurgicalLoading || !noteDraft.trim()
-                                        ? 'bg-indigo-950/40 text-indigo-400/40 border border-indigo-900/30 cursor-not-allowed'
-                                        : 'bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white shadow-md shadow-indigo-600/30'
-                                    }`}
-                                    title="Perbarui elemen ini secara instan via AI dalam 2-3 detik tanpa reload halaman"
-                                  >
-                                    {isSurgicalLoading ? (
-                                      <>
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                        <span>Memproses...</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                                        <span>⚡ AI Bedah</span>
-                                      </>
-                                    )}
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={handleSurgicalEdit}
+                                  disabled={isSurgicalLoading || !noteDraft.trim()}
+                                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
+                                    isSurgicalLoading || !noteDraft.trim()
+                                      ? 'bg-indigo-950/40 text-indigo-400/40 border border-indigo-900/30 cursor-not-allowed'
+                                      : 'bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                                  }`}
+                                  title={
+                                    activeSelection.kind === 'area'
+                                      ? 'Bedah area komponen yang ditandai secara instan via AI dalam 2-3 detik tanpa reload halaman'
+                                      : 'Perbarui elemen ini secara instan via AI dalam 2-3 detik tanpa reload halaman'
+                                  }
+                                >
+                                  {isSurgicalLoading ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Memproses...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                      <span>{activeSelection.kind === 'area' ? '⚡ AI Bedah Area' : '⚡ AI Bedah'}</span>
+                                    </>
+                                  )}
+                                </button>
 
                                 <button
+                                  type="button"
                                   onClick={handleSendToChat}
                                   disabled={isSurgicalLoading}
-                                  className={`${
-                                    activeSelection.kind === 'element' ? 'px-3' : 'w-full'
-                                  } py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]`}
+                                  className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
                                   title="Kirim catatan ke alur percakapan chat utama"
                                 >
                                   <Send className="w-3.5 h-3.5" />
-                                  <span>{activeSelection.kind === 'element' ? 'Ke Chat' : 'Send to Chat'}</span>
+                                  <span>Ke Chat</span>
                                 </button>
                               </div>
                             </div>

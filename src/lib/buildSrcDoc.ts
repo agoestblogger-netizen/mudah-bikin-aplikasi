@@ -16,7 +16,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <script>
   (function() {
     const SOURCE = 'OD_BRIDGE';
-    const ALLOWED_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small';
+    const ALLOWED_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small,div,section,form,header,nav,main,aside,footer,table,tbody,tr,ul,ol';
     const PATCH_TYPE_TEXT_COLOR = 'textColor';
     const PATCH_TYPE_TEXT_CONTENT = 'textContent';
     const PATCH_TYPE_BG_COLOR = 'bgColor';
@@ -481,6 +481,95 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
               target.insertBefore(newImg, target.firstChild);
             }
           }
+        }
+      } else if (msg.type === 'OD_RESOLVE_AREA') {
+        const { markId, bounds } = msg;
+        if (!bounds) return;
+
+        assignElementUids();
+
+        const winW = window.innerWidth || document.documentElement.clientWidth || 1;
+        const winH = window.innerHeight || document.documentElement.clientHeight || 1;
+        const boxLeft = bounds.x * winW;
+        const boxTop = bounds.y * winH;
+        const boxRight = (bounds.x + bounds.w) * winW;
+        const boxBottom = (bounds.y + bounds.h) * winH;
+        const boxW = Math.max(1, bounds.w * winW);
+        const boxH = Math.max(1, bounds.h * winH);
+        const boxArea = boxW * boxH;
+
+        const allEls = Array.from(document.querySelectorAll('[data-od-uid]'));
+        let bestEl = null;
+        let bestScore = -1;
+
+        for (let i = 0; i < allEls.length; i++) {
+          const el = allEls[i];
+          if (el === document.body || el === document.documentElement) continue;
+          const tName = (el.tagName || '').toUpperCase();
+          if (tName === 'BODY' || tName === 'HTML' || tName === 'SCRIPT' || tName === 'STYLE') continue;
+
+          const r = el.getBoundingClientRect();
+          if (r.width <= 4 || r.height <= 4) continue;
+
+          const interW = Math.max(0, Math.min(boxRight, r.right) - Math.max(boxLeft, r.left));
+          const interH = Math.max(0, Math.min(boxBottom, r.bottom) - Math.max(boxTop, r.top));
+          const interArea = interW * interH;
+          if (interArea <= 0) continue;
+
+          const elArea = r.width * r.height;
+          const coverageOfEl = interArea / elArea;
+          const coverageOfBox = interArea / boxArea;
+
+          let score = 0;
+          if (coverageOfEl >= 0.7) {
+            // Sebagian besar elemen berada di dalam kotak seleksi
+            score = coverageOfBox * 12 + coverageOfEl * 6;
+          } else if (coverageOfBox >= 0.7) {
+            // Elemen melingkupi sebagian besar kotak seleksi
+            score = coverageOfBox * 8 + coverageOfEl * 4;
+          } else {
+            // Irisan proporsional (IoU)
+            score = (interArea / (elArea + boxArea - interArea)) * 10;
+          }
+
+          if (elArea > boxArea * 5) {
+            score *= 0.2;
+          }
+
+          const outerLen = el.outerHTML ? el.outerHTML.length : 0;
+          if (outerLen > 15000) {
+            score *= 0.1;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestEl = el;
+          }
+        }
+
+        if (bestEl) {
+          const elementUid = bestEl.getAttribute('data-od-uid');
+          const tagName = bestEl.tagName.toLowerCase();
+          const outerHtml = (bestEl.outerHTML || '').slice(0, 15000);
+          const currentText = (bestEl.textContent || '').trim().slice(0, 2000);
+          const breadcrumbs = [];
+          let curr = bestEl;
+          while (curr && curr !== document.body && curr !== document.documentElement && breadcrumbs.length < 3) {
+            const tn = curr.tagName.toLowerCase();
+            const cn = curr.className && typeof curr.className === 'string' ? '.' + curr.className.trim().split(/\s+/)[0] : '';
+            breadcrumbs.unshift(tn + cn);
+            curr = curr.parentElement;
+          }
+
+          postToParent({
+            type: 'OD_AREA_RESOLVED',
+            markId: markId,
+            elementUid: elementUid,
+            tagName: tagName,
+            outerHtml: outerHtml,
+            currentText: currentText,
+            breadcrumbs: breadcrumbs
+          });
         }
       }
     });

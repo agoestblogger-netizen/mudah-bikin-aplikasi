@@ -16,7 +16,7 @@ export interface SinglePatch {
   createdAt: string;
 }
 
-export const ALLOWED_OD_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small';
+export const ALLOWED_OD_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small,div,section,form,header,nav,main,aside,footer,table,tbody,tr,ul,ol';
 
 function ensureOdUids(doc: Document) {
   const existingUids = new Set<string>();
