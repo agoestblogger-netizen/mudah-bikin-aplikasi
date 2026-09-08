@@ -221,7 +221,7 @@ export function extractUserSpecifiedRoleVariants(prompt: string, chatHistory: an
   return Array.from(variantsMap.values());
 }
 
-// Helper: Ekstraksi Brief Kebutuhan dan Daftar Peran Resmi dari Riwayat Chat (Poin 44 & 45)
+// Helper: Ekstraksi Brief Kebutuhan / PRD dan Daftar Peran Resmi dari Riwayat Chat (Poin 44 & 45)
 function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   rawBrief: string;
   roles: string[];
@@ -229,79 +229,77 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   staffRoles: string[];
   roleLandingTabs: Record<string, string>; // role -> tab ID default
 } {
-  const aiMessages = (chatHistory || []).filter((m: any) => m.sender === 'AI' && (m.text?.includes('Brief Kebutuhan') || m.text?.includes('Job Description') || m.text?.includes('Struktur Halaman')));
-  const lastBriefMsg = aiMessages[aiMessages.length - 1]?.text || '';
-  
+  const aiMessages = (chatHistory || []).filter(
+    (m: any) =>
+      m.sender === 'AI' &&
+      (m.text?.includes('Brief Kebutuhan') ||
+        m.text?.includes('Job Description') ||
+        m.text?.includes('Struktur Halaman') ||
+        m.text?.includes('Product Requirements Document') ||
+        m.text?.includes('Peran Pengguna') ||
+        m.text?.includes('User Roles'))
+  );
+  const lastPlanMsg = aiMessages[aiMessages.length - 1]?.text || '';
+
   const roles: string[] = [];
   let publicRole: string | null = null;
+  const forbiddenKeywords = [
+    'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
+    'alur proses', 'alur', 'job description', 'struktur halaman', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'halaman utama'
+  ];
 
-  if (lastBriefMsg) {
-    // Cari section Job Description & Struktur Halaman
-    const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
-    const jobDescText = jobDescMatch ? jobDescMatch[1] : lastBriefMsg;
-    
-    // Cari baris-baris peran: * **RoleName**: atau * **[RoleName]**:
-    const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
-    let m: RegExpExecArray | null;
-    const forbiddenKeywords = [
-      'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
-      'alur proses', 'alur', 'job description', 'struktur halaman', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'halaman utama'
-    ];
-    while ((m = roleLineRegex.exec(jobDescText)) !== null) {
-      let roleName = m[1].trim();
-      // Bersihkan kata awalan jika ada
-      roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
-      const isForbidden = forbiddenKeywords.some(k => roleName.toLowerCase().startsWith(k));
-      if (roleName && !isForbidden && !roles.some(r => r.toLowerCase() === roleName.toLowerCase())) {
-        roles.push(roleName);
+  if (lastPlanMsg) {
+    // 1. Coba ekstraksi dari dokumen PRD (Bagian: Peran Pengguna & Hak Akses)
+    const prdRoleSectionMatch = lastPlanMsg.match(
+      /(?:Peran Pengguna|User Roles)[^\n]*\n([\s\S]*?)(?=(?:\n(?:#{1,6}\s*)?(?:\*\*)?(?:Bagian\s+|Poin\s+)?\d+[\.\)]\s*)|$)/i
+    );
+    if (prdRoleSectionMatch) {
+      const prdRoleRegex = /(?:^[•\*\-]\s*(?:\*\*)?([^\n:\*]+)(?:\*\*)?\s*:)/gm;
+      let prdM: RegExpExecArray | null;
+      while ((prdM = prdRoleRegex.exec(prdRoleSectionMatch[1])) !== null) {
+        let rName = prdM[1].trim();
+        rName = rName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
+        const isForbidden = forbiddenKeywords.some((k) => rName.toLowerCase().startsWith(k));
+        if (rName && rName.length < 35 && !isForbidden && !roles.some((r) => r.toLowerCase() === rName.toLowerCase())) {
+          roles.push(rName);
+        }
+      }
+    }
+
+    // 2. Jika belum ada dari PRD, coba ekstraksi dari Brief Kebutuhan lama
+    if (roles.length === 0) {
+      const jobDescMatch = lastPlanMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
+      const jobDescText = jobDescMatch ? jobDescMatch[1] : lastPlanMsg;
+      const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
+      let m: RegExpExecArray | null;
+      while ((m = roleLineRegex.exec(jobDescText)) !== null) {
+        let roleName = m[1].trim();
+        roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
+        const isForbidden = forbiddenKeywords.some((k) => roleName.toLowerCase().startsWith(k));
+        if (roleName && !isForbidden && !roles.some((r) => r.toLowerCase() === roleName.toLowerCase())) {
+          roles.push(roleName);
+        }
       }
     }
   }
 
-  // Tentukan apakah ada peran publik (Pasien, Pelanggan, Customer, Tamu, Publik, dll)
+  // Tentukan apakah ada peran publik (Pasien, Pelanggan, Customer, Tamu, Publik, Warga, dll)
   for (const r of roles) {
-    if (/^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(r)) {
+    if (/^(pasien|pelanggan|customer|tamu|guest|publik|client|warga|masyarakat)/i.test(r)) {
       publicRole = r;
       break;
     }
   }
 
-  const staffRoles = roles.filter(r => r !== publicRole);
+  const staffRoles = roles.filter((r) => r !== publicRole);
 
-  // Ekstrak landing tab ID per role dari Brief Kebutuhan (Poin 53)
-  // Format Brief: "* **RoleName** (Akses Publik - Tampilan Awal):" atau "* **RoleName**:"
-  // Diikuti: "- [Halaman/Tab 1] (default): section Nama" atau "- [Halaman 1] (default): ..."
+  // Ekstrak landing tab ID per role dari Brief / PRD
   const roleLandingTabs: Record<string, string> = {};
   for (const role of roles) {
-    const escapedRole = role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Cari blok teks dari header role sampai role berikutnya
-    const roleBlockRegex = new RegExp(
-      `\\*\\s+\\*\\*\\[?${escapedRole}[^\\]:\\*\\n]*\\]?\\*\\*[^\n]*\n([\\s\\S]*?)(?=\\n\\s*\\*\\s+\\*\\*[^\\*]|\\n\\s*Apakah|\\n\\s*(?:Roadmap|Catatan|Fitur Unik)|$)`, 'i'
-    );
-    const roleBlockMatch = lastBriefMsg.match(roleBlockRegex);
-    if (roleBlockMatch) {
-      const block = roleBlockMatch[1];
-      // Cari tab default: baris "- [Halaman/Tab N] (default):" atau "- Tab default:"
-      const defaultTabMatch = block.match(/\[(?:Halaman|Tab)\s*(\d+|[A-Za-z]+)\]\s*\(default\)\s*:\s*section\s+([^\n,]+)/i) ||
-                              block.match(/\[(?:Halaman|Tab)\s*(\d+|[A-Za-z]+)\]\s*\(default\)/i);
-      if (defaultTabMatch) {
-        // Buat ID tab dari nama section/role (slug format)
-        const sectionName = (defaultTabMatch[2] || role).trim().toLowerCase()
-          .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-');
-        roleLandingTabs[role] = sectionName;
-      } else {
-        // Fallback: gunakan slug dari nama role (untuk staf) atau 'public' untuk publik role
-        const isPublic = /^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(role);
-        roleLandingTabs[role] = isPublic
-          ? role.toLowerCase().replace(/[^a-z0-9]/g, '')
-          : role.toLowerCase().replace(/[^a-z0-9]/g, '');
-      }
-    } else {
-      roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
-    }
+    roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
-  return { rawBrief: lastBriefMsg, roles, publicRole, staffRoles, roleLandingTabs };
+  return { rawBrief: lastPlanMsg, roles, publicRole, staffRoles, roleLandingTabs };
 }
 
 export async function POST(req: Request) {
@@ -1785,24 +1783,47 @@ body: JSON.stringify({
         cleanReplyText += '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**';
       }
 
-      // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D)
-      if (officialRoles.length > 0 && !cleanReplyText.includes('🔑 **Petunjuk Akses')) {
-        let credentialsGuide = '\n\n🔑 **Petunjuk Akses & Akun Demo:**';
-        if (publicRole) {
-          credentialsGuide += `\n- Aplikasi ini dibuka pertama kali di halaman **${publicRole}** (akses publik, tanpa login).`;
-          credentialsGuide += `\n- Untuk masuk sebagai staf, klik tombol **"Login"** di pojok kanan atas, lalu gunakan salah satu akun berikut:`;
-          const staffToDisplay = staffRoles.length > 0 ? staffRoles : officialRoles.filter(r => r !== publicRole);
-          staffToDisplay.forEach(r => {
-            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-            credentialsGuide += `\n  * **${r}**: username \`${u}\` / password \`${u}123\``;
-          });
-        } else {
-          credentialsGuide += `\n- Masuk ke aplikasi menggunakan salah satu akun demo berikut:`;
-          officialRoles.forEach(r => {
-            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-            credentialsGuide += `\n  * **${r}**: username \`${u}\` / password \`${u}123\``;
-          });
+      // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D): USER DAN PASSWORD DI CHAT
+      if (!cleanReplyText.includes('🔑 **Akun Demo') && !cleanReplyText.includes('🔑 **Petunjuk Akses')) {
+        // Tentukan daftar role yang akan ditampilkan
+        let displayRoles = officialRoles.length > 0 ? [...officialRoles] : [];
+
+        // Jika officialRoles masih kosong, coba ekstrak dari kode HTML prototipe
+        if (displayRoles.length === 0 && htmlCode) {
+          const roleMatches = htmlCode.matchAll(/(?:loginAs|switchRole|selectRole)\s*\(\s*['"]([^'"]+)['"]/gi);
+          for (const rm of roleMatches) {
+            const r = rm[1].trim();
+            if (r && !displayRoles.includes(r)) displayRoles.push(r);
+          }
         }
+
+        // Jika masih kosong juga, sediakan role fallback umum
+        if (displayRoles.length === 0) {
+          displayRoles = ['Admin', 'Petugas / User'];
+        }
+
+        let credentialsGuide = '\n\n🔑 **Akun Demo & Kredensial Login (Username & Password):**\nSilakan gunakan akun demo di bawah ini untuk mencoba prototipe pada Canvas Preview:\n';
+
+        if (publicRole) {
+          credentialsGuide += `\n> ℹ️ *Aplikasi ini dibuka pertama kali di halaman **${publicRole}** (akses publik tanpa login). Untuk mencoba fitur staf/pengelola, silakan login dengan akun berikut:*\n`;
+        }
+
+        credentialsGuide += '\n| Peran (Role) | Username | Password | Hak Akses |';
+        credentialsGuide += '\n| :--- | :--- | :--- | :--- |';
+
+        displayRoles.forEach((r) => {
+          const isPublic = /^(pasien|pelanggan|customer|tamu|guest|publik|client|warga|masyarakat)/i.test(r);
+          if (isPublic) {
+            credentialsGuide += `\n| **${r}** | *(Tanpa Login)* | *(Tanpa Login)* | Akses Publik (Tampilan Awal) |`;
+          } else {
+            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '') || 'admin';
+            const pass = `${u}123`;
+            const desc = /admin/i.test(r) ? 'Akses Penuh (Kelola data & laporan)' : 'Akses Operasional & input data';
+            credentialsGuide += `\n| **${r}** | \`${u}\` | \`${pass}\` | ${desc} |`;
+          }
+        });
+
+        credentialsGuide += '\n\n💡 *Tips: Anda juga dapat langsung mengklik tombol role login instan (Quick Login) yang tersedia pada layar login aplikasi.*';
         cleanReplyText += credentialsGuide;
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {
