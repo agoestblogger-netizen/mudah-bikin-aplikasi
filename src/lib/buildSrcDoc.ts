@@ -419,6 +419,69 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
             }
           }
         }
+      } else if (msg.type === 'OD_INSERT_ICON') {
+        const { elementUid, iconName } = msg;
+        const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
+        if (target && iconName) {
+          const existingIcon = target.querySelector('i[data-lucide], svg.lucide, svg[data-lucide]');
+          const newI = document.createElement('i');
+          newI.setAttribute('data-lucide', String(iconName).toLowerCase().trim());
+          newI.style.width = '16px';
+          newI.style.height = '16px';
+          newI.style.display = 'inline-block';
+          newI.style.verticalAlign = 'middle';
+          newI.style.marginRight = '6px';
+          if (existingIcon) {
+            existingIcon.replaceWith(newI);
+          } else {
+            target.insertBefore(newI, target.firstChild);
+          }
+          if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+            try { window.lucide.createIcons(); } catch(e) {}
+          }
+        }
+      } else if (msg.type === 'OD_INSERT_IMAGE') {
+        const { elementUid, imageUrl, styleType } = msg;
+        const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
+        if (target && imageUrl) {
+          if (target.tagName && target.tagName.toLowerCase() === 'img') {
+            target.src = imageUrl;
+          } else {
+            const existingImg = target.querySelector('img');
+            if (existingImg) {
+              existingImg.src = imageUrl;
+            } else {
+              const newImg = document.createElement('img');
+              newImg.src = imageUrl;
+              newImg.alt = 'Gambar';
+              if (styleType === 'avatar') {
+                newImg.style.width = '36px';
+                newImg.style.height = '36px';
+                newImg.style.borderRadius = '9999px';
+                newImg.style.objectFit = 'cover';
+                newImg.style.display = 'inline-block';
+                newImg.style.verticalAlign = 'middle';
+                newImg.style.marginRight = '8px';
+              } else if (styleType === 'banner') {
+                newImg.style.width = '100%';
+                newImg.style.height = '180px';
+                newImg.style.objectFit = 'cover';
+                newImg.style.borderRadius = '8px';
+                newImg.style.marginBottom = '12px';
+                newImg.style.display = 'block';
+              } else {
+                newImg.style.width = '48px';
+                newImg.style.height = '48px';
+                newImg.style.borderRadius = '8px';
+                newImg.style.objectFit = 'cover';
+                newImg.style.display = 'inline-block';
+                newImg.style.verticalAlign = 'middle';
+                newImg.style.marginRight = '8px';
+              }
+              target.insertBefore(newImg, target.firstChild);
+            }
+          }
+        }
       }
     });
 

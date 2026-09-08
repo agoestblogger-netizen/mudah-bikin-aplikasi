@@ -36,11 +36,82 @@ import {
   GripHorizontal,
   Undo2,
   Redo2,
-  Loader2
+  Loader2,
+  Image as ImageIcon,
+  Check,
+  User,
+  Bell,
+  Star,
+  ArrowRight,
+  Plus,
+  Search,
+  Settings,
+  Lock,
+  Mail,
+  Heart,
+  Zap,
+  ShoppingBag,
+  ShieldCheck,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import { syncPatchesToHtml, stripOdUids, replaceElementInHtml, removeElementFromHtml } from '@/lib/htmlPatcher';
+import {
+  syncPatchesToHtml,
+  stripOdUids,
+  replaceElementInHtml,
+  removeElementFromHtml,
+  insertIconIntoHtml,
+  insertImageIntoHtml
+} from '@/lib/htmlPatcher';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { loadModelSettings } from '@/lib/modelConfig';
+
+const POPULAR_ICONS = [
+  { name: 'check', label: 'Check', icon: Check },
+  { name: 'star', label: 'Star', icon: Star },
+  { name: 'bell', label: 'Bell', icon: Bell },
+  { name: 'user', label: 'User', icon: User },
+  { name: 'plus', label: 'Plus', icon: Plus },
+  { name: 'arrow-right', label: 'Panah', icon: ArrowRight },
+  { name: 'search', label: 'Cari', icon: Search },
+  { name: 'settings', label: 'Setting', icon: Settings },
+  { name: 'lock', label: 'Kunci', icon: Lock },
+  { name: 'mail', label: 'Email', icon: Mail },
+  { name: 'sparkles', label: 'Kilau', icon: Sparkles },
+  { name: 'heart', label: 'Suka', icon: Heart },
+  { name: 'zap', label: 'Petir', icon: Zap },
+  { name: 'shopping-bag', label: 'Belanja', icon: ShoppingBag },
+  { name: 'shield-check', label: 'Aman', icon: ShieldCheck },
+  { name: 'trash-2', label: 'Hapus', icon: Trash2 },
+];
+
+const POPULAR_IMAGES = [
+  {
+    title: 'Avatar Wanita',
+    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    type: 'avatar' as const,
+  },
+  {
+    title: 'Avatar Pria',
+    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    type: 'avatar' as const,
+  },
+  {
+    title: 'Produk Gadget',
+    url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300&auto=format&fit=crop&q=80',
+    type: 'thumbnail' as const,
+  },
+  {
+    title: 'Dashboard / Tech',
+    url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&auto=format&fit=crop&q=80',
+    type: 'thumbnail' as const,
+  },
+  {
+    title: 'Banner Gradien',
+    url: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800&auto=format&fit=crop&q=80',
+    type: 'banner' as const,
+  },
+];
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -232,6 +303,11 @@ export default function AppWorkspacePage() {
   }, [projectState.canvasCode.html]);
 
   const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [shortcutPanel, setShortcutPanel] = useState<'none' | 'icon' | 'image'>('none');
+  const [customIconDraft, setCustomIconDraft] = useState('');
+  const [customImageDraft, setCustomImageDraft] = useState('');
+  const [imageStyleType, setImageStyleType] = useState<'avatar' | 'banner' | 'thumbnail'>('thumbnail');
+
   const popoverDragRef = useRef<{
     dragging: boolean;
     startX: number;
@@ -250,7 +326,7 @@ export default function AppWorkspacePage() {
     const height = activeSelection.bounds.h * overlaySize.h;
     if (width <= 1 || height <= 1) return null;
 
-    const popoverW = Math.min(320, overlaySize.w * 0.85);
+    const popoverW = Math.min(340, overlaySize.w * 0.9);
     const popoverH = 430;
 
     // Hitung posisi horizontal default (tengah elemen, dijaga di dalam viewport)
@@ -893,6 +969,9 @@ export default function AppWorkspacePage() {
       // 5. Tutup seleksi dan popover
       setActiveSelection(null);
       setPopoverPos(null);
+      setShortcutPanel('none');
+      setCustomIconDraft('');
+      setCustomImageDraft('');
       return;
     }
 
@@ -942,6 +1021,75 @@ export default function AppWorkspacePage() {
       },
       '*'
     );
+  };
+
+  const handleInsertIcon = (iconName: string) => {
+    if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid) return;
+    const elUid = activeSelection.elementUid;
+    const cleanName = iconName.trim().toLowerCase();
+    if (!cleanName) return;
+
+    // 1. Sinkronkan ke canvasCode.html secara permanen
+    const updatedHtml = insertIconIntoHtml(projectState.canvasCode.html, elUid, cleanName);
+
+    // 2. Kirim pesan ke iframe untuk update in-place tanpa reload
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: 'OD_BRIDGE',
+        type: 'OD_INSERT_ICON',
+        elementUid: elUid,
+        iconName: cleanName
+      },
+      '*'
+    );
+
+    // 3. Update state tanpa reload iframe
+    handleUpdateState(
+      {
+        canvasCode: {
+          ...projectState.canvasCode,
+          html: updatedHtml
+        }
+      },
+      { skipIframeReload: true }
+    );
+
+    showToast(`Ikon "${cleanName}" berhasil disisipkan!`, 'success');
+  };
+
+  const handleInsertImage = (imageUrl: string, styleType: 'avatar' | 'banner' | 'thumbnail' = 'thumbnail') => {
+    if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid) return;
+    const elUid = activeSelection.elementUid;
+    const cleanUrl = imageUrl.trim();
+    if (!cleanUrl) return;
+
+    // 1. Sinkronkan ke canvasCode.html secara permanen
+    const updatedHtml = insertImageIntoHtml(projectState.canvasCode.html, elUid, cleanUrl, styleType);
+
+    // 2. Kirim pesan ke iframe untuk update in-place tanpa reload
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: 'OD_BRIDGE',
+        type: 'OD_INSERT_IMAGE',
+        elementUid: elUid,
+        imageUrl: cleanUrl,
+        styleType
+      },
+      '*'
+    );
+
+    // 3. Update state tanpa reload iframe
+    handleUpdateState(
+      {
+        canvasCode: {
+          ...projectState.canvasCode,
+          html: updatedHtml
+        }
+      },
+      { skipIframeReload: true }
+    );
+
+    showToast('Gambar berhasil disisipkan!', 'success');
   };
 
   const handleSurgicalEdit = async () => {
@@ -1022,6 +1170,9 @@ export default function AppWorkspacePage() {
       setActiveSelection(null);
       setPopoverPos(null);
       setNoteDraft('');
+      setShortcutPanel('none');
+      setCustomIconDraft('');
+      setCustomImageDraft('');
       setInteractionMode('none');
     } catch (err: any) {
       console.error('Surgical edit error:', err);
@@ -1059,6 +1210,9 @@ export default function AppWorkspacePage() {
     setTextColorDraft('');
     setBgColorDraft('');
     setTextContentDraft('');
+    setShortcutPanel('none');
+    setCustomIconDraft('');
+    setCustomImageDraft('');
     setDragDraft(null);
   };
 
@@ -1506,6 +1660,9 @@ export default function AppWorkspacePage() {
                                       setFontWeightDraft('');
                                       setTextAlignDraft('');
                                       setBorderRadiusDraft('');
+                                      setShortcutPanel('none');
+                                      setCustomIconDraft('');
+                                      setCustomImageDraft('');
                                     }}
                                     className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
                                     title="Tutup inspector & kembali ke mode interaktif"
@@ -1682,6 +1839,186 @@ export default function AppWorkspacePage() {
                                           <span>{rad.label}</span>
                                         </button>
                                       ))}
+                                    </div>
+
+                                    {/* Tombol Pintas: Sisipkan Ikon & Gambar Cepat */}
+                                    <div className="pt-1 border-t border-slate-800/80">
+                                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1.5">
+                                        <span>Tombol Pintas Sisip</span>
+                                        <span className="text-[9px] text-indigo-400 font-medium">Instan ke Elemen</span>
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-1.5">
+                                        <button
+                                          type="button"
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={() => setShortcutPanel(shortcutPanel === 'icon' ? 'none' : 'icon')}
+                                          className={`py-1.5 px-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all ${
+                                            shortcutPanel === 'icon'
+                                              ? 'bg-indigo-600 border-indigo-500 text-white shadow-md'
+                                              : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                                          }`}
+                                          title="Buka pilihan ikon pintas Lucide"
+                                        >
+                                          <div className="flex items-center gap-1.5">
+                                            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                                            <span>+ Ikon</span>
+                                          </div>
+                                          {shortcutPanel === 'icon' ? <ChevronUp className="w-3 h-3 opacity-80" /> : <ChevronDown className="w-3 h-3 opacity-80" />}
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onPointerDown={(e) => e.stopPropagation()}
+                                          onClick={() => setShortcutPanel(shortcutPanel === 'image' ? 'none' : 'image')}
+                                          className={`py-1.5 px-2 rounded-xl text-xs font-semibold flex items-center justify-between border transition-all ${
+                                            shortcutPanel === 'image'
+                                              ? 'bg-emerald-600 border-emerald-500 text-white shadow-md'
+                                              : 'bg-slate-950/70 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                                          }`}
+                                          title="Buka pilihan gambar & avatar pintas"
+                                        >
+                                          <div className="flex items-center gap-1.5">
+                                            <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>+ Gambar</span>
+                                          </div>
+                                          {shortcutPanel === 'image' ? <ChevronUp className="w-3 h-3 opacity-80" /> : <ChevronDown className="w-3 h-3 opacity-80" />}
+                                        </button>
+                                      </div>
+
+                                      {/* Panel Pilihan Ikon */}
+                                      {shortcutPanel === 'icon' && (
+                                        <div className="mt-2 p-2 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                                          <div className="text-[10px] text-slate-400 font-semibold flex items-center justify-between">
+                                            <span>Pilih Ikon Cepat:</span>
+                                            <span className="text-[9px] text-slate-500 font-mono">Lucide Icons</span>
+                                          </div>
+                                          <div className="grid grid-cols-4 gap-1 max-h-36 overflow-y-auto custom-scrollbar p-0.5">
+                                            {POPULAR_ICONS.map((ic) => {
+                                              const IconComp = ic.icon;
+                                              return (
+                                                <button
+                                                  key={ic.name}
+                                                  type="button"
+                                                  onPointerDown={(e) => e.stopPropagation()}
+                                                  onClick={() => handleInsertIcon(ic.name)}
+                                                  className="p-1.5 rounded-lg bg-slate-900/90 hover:bg-indigo-600 border border-slate-800 hover:border-indigo-500 text-slate-300 hover:text-white flex flex-col items-center justify-center gap-1 transition-all group"
+                                                  title={`Sisipkan ikon ${ic.name}`}
+                                                >
+                                                  <IconComp className="w-3.5 h-3.5 group-hover:scale-110 transition-transform text-indigo-400 group-hover:text-white" />
+                                                  <span className="text-[8px] font-mono leading-none truncate max-w-[50px]">{ic.label}</span>
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                          <div className="pt-1 border-t border-slate-800/80 flex items-center gap-1.5">
+                                            <input
+                                              type="text"
+                                              value={customIconDraft}
+                                              onChange={(e) => setCustomIconDraft(e.target.value)}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && customIconDraft.trim()) {
+                                                  handleInsertIcon(customIconDraft);
+                                                  setCustomIconDraft('');
+                                                }
+                                              }}
+                                              placeholder="Nama ikon lain (mis: phone, map)..."
+                                              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[10px] text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                            />
+                                            <button
+                                              type="button"
+                                              onPointerDown={(e) => e.stopPropagation()}
+                                              onClick={() => {
+                                                if (customIconDraft.trim()) {
+                                                  handleInsertIcon(customIconDraft);
+                                                  setCustomIconDraft('');
+                                                }
+                                              }}
+                                              disabled={!customIconDraft.trim()}
+                                              className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-[10px] font-bold text-white shrink-0 transition-colors"
+                                            >
+                                              Sisip
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Panel Pilihan Gambar */}
+                                      {shortcutPanel === 'image' && (
+                                        <div className="mt-2 p-2 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold">
+                                            <span>Format Tampilan:</span>
+                                          </div>
+                                          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                                            {[
+                                              { id: 'avatar', label: 'Bulat (Avatar)' },
+                                              { id: 'thumbnail', label: 'Kotak (48px)' },
+                                              { id: 'banner', label: 'Banner Lebar' },
+                                            ].map((fmt) => (
+                                              <button
+                                                key={fmt.id}
+                                                type="button"
+                                                onPointerDown={(e) => e.stopPropagation()}
+                                                onClick={() => setImageStyleType(fmt.id as any)}
+                                                className={`flex-1 py-0.5 text-[9px] font-medium rounded transition-colors ${
+                                                  imageStyleType === fmt.id ? 'bg-emerald-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                                                }`}
+                                              >
+                                                {fmt.label}
+                                              </button>
+                                            ))}
+                                          </div>
+
+                                          <div className="text-[10px] text-slate-400 font-semibold pt-0.5">
+                                            <span>Preset Gambar:</span>
+                                          </div>
+                                          <div className="space-y-1 max-h-36 overflow-y-auto custom-scrollbar p-0.5">
+                                            {POPULAR_IMAGES.map((img) => (
+                                              <button
+                                                key={img.title}
+                                                type="button"
+                                                onPointerDown={(e) => e.stopPropagation()}
+                                                onClick={() => handleInsertImage(img.url, imageStyleType || img.type)}
+                                                className="w-full p-1.5 rounded-lg bg-slate-900/90 hover:bg-emerald-600/80 border border-slate-800 hover:border-emerald-500 text-slate-300 hover:text-white flex items-center gap-2 transition-all text-left group"
+                                                title={`Sisipkan ${img.title}`}
+                                              >
+                                                <img src={img.url} alt={img.title} className="w-6 h-6 rounded object-cover shrink-0 border border-slate-700" />
+                                                <span className="text-[10px] font-medium truncate flex-1">{img.title}</span>
+                                                <Plus className="w-3 h-3 opacity-60 group-hover:opacity-100 shrink-0" />
+                                              </button>
+                                            ))}
+                                          </div>
+
+                                          <div className="pt-1 border-t border-slate-800/80 flex items-center gap-1.5">
+                                            <input
+                                              type="text"
+                                              value={customImageDraft}
+                                              onChange={(e) => setCustomImageDraft(e.target.value)}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && customImageDraft.trim()) {
+                                                  handleInsertImage(customImageDraft, imageStyleType);
+                                                  setCustomImageDraft('');
+                                                }
+                                              }}
+                                              placeholder="URL gambar (https://...)..."
+                                              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[10px] text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                                            />
+                                            <button
+                                              type="button"
+                                              onPointerDown={(e) => e.stopPropagation()}
+                                              onClick={() => {
+                                                if (customImageDraft.trim()) {
+                                                  handleInsertImage(customImageDraft, imageStyleType);
+                                                  setCustomImageDraft('');
+                                                }
+                                              }}
+                                              disabled={!customImageDraft.trim()}
+                                              className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-[10px] font-bold text-white shrink-0 transition-colors"
+                                            >
+                                              Sisip
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </div>

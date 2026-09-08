@@ -203,3 +203,122 @@ export function replaceElementInHtml(html: string, elementUid: string, newElemen
     return html;
   }
 }
+
+/**
+ * Menyisipkan ikon Lucide ke dalam elemen target berdasarkan elementUid secara permanen di HTML.
+ * Jika elemen sudah memiliki ikon (<i data-lucide="..."> atau <svg class="...lucide..."),
+ * ikon tersebut diganti dengan yang baru. Jika belum, ikon baru disisipkan di awal elemen (prepend).
+ */
+export function insertIconIntoHtml(html: string, elementUid: string, iconName: string): string {
+  if (!html || !elementUid || !iconName) return html;
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  try {
+    const isFullDoc = html.includes('<!DOCTYPE') || html.includes('<html') || html.includes('<body');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    let target = doc.querySelector(`[data-od-uid="${elementUid}"]`);
+    if (!target) {
+      ensureOdUids(doc);
+      target = doc.querySelector(`[data-od-uid="${elementUid}"]`);
+    }
+
+    if (!target) {
+      console.warn(`Elemen target dengan UID ${elementUid} tidak ditemukan untuk disisipkan ikon.`);
+      return html;
+    }
+
+    const existingIcon = target.querySelector('i[data-lucide], svg.lucide, svg[data-lucide]');
+    const newIcon = doc.createElement('i');
+    newIcon.setAttribute('data-lucide', iconName.toLowerCase().trim());
+    newIcon.setAttribute('style', 'width: 16px; height: 16px; display: inline-block; vertical-align: middle; margin-right: 6px;');
+
+    if (existingIcon) {
+      existingIcon.replaceWith(newIcon);
+    } else {
+      target.insertBefore(newIcon, target.firstChild);
+    }
+
+    if (isFullDoc) {
+      const hasDoctype = html.includes('<!DOCTYPE') || html.includes('<!doctype');
+      const serialized = doc.documentElement.outerHTML;
+      return hasDoctype ? `<!DOCTYPE html>\n${serialized}` : serialized;
+    } else {
+      return doc.body.innerHTML;
+    }
+  } catch (err) {
+    console.error('Gagal menyisipkan ikon ke HTML:', err);
+    return html;
+  }
+}
+
+/**
+ * Menyisipkan atau memperbarui gambar (img) pada elemen target berdasarkan elementUid secara permanen di HTML.
+ * Jika elemen target sendiri adalah <img>, perbarui src.
+ * Jika elemen target berisi <img>, perbarui src gambar yang ada.
+ * Jika tidak, sisipkan tag <img> baru di awal elemen.
+ */
+export function insertImageIntoHtml(
+  html: string,
+  elementUid: string,
+  imageUrl: string,
+  styleType: 'avatar' | 'banner' | 'thumbnail' = 'thumbnail'
+): string {
+  if (!html || !elementUid || !imageUrl) return html;
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return html;
+  }
+
+  try {
+    const isFullDoc = html.includes('<!DOCTYPE') || html.includes('<html') || html.includes('<body');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    let target = doc.querySelector(`[data-od-uid="${elementUid}"]`) as HTMLElement | null;
+    if (!target) {
+      ensureOdUids(doc);
+      target = doc.querySelector(`[data-od-uid="${elementUid}"]`) as HTMLElement | null;
+    }
+
+    if (!target) {
+      console.warn(`Elemen target dengan UID ${elementUid} tidak ditemukan untuk disisipkan gambar.`);
+      return html;
+    }
+
+    let defaultStyle = 'width: 48px; height: 48px; border-radius: 8px; object-fit: cover; display: inline-block; vertical-align: middle; margin-right: 8px;';
+    if (styleType === 'avatar') {
+      defaultStyle = 'width: 36px; height: 36px; border-radius: 9999px; object-fit: cover; display: inline-block; vertical-align: middle; margin-right: 8px;';
+    } else if (styleType === 'banner') {
+      defaultStyle = 'width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 12px; display: block;';
+    }
+
+    if (target.tagName.toLowerCase() === 'img') {
+      target.setAttribute('src', imageUrl);
+    } else {
+      const existingImg = target.querySelector('img');
+      if (existingImg) {
+        existingImg.setAttribute('src', imageUrl);
+      } else {
+        const newImg = doc.createElement('img');
+        newImg.setAttribute('src', imageUrl);
+        newImg.setAttribute('alt', 'Gambar');
+        newImg.setAttribute('style', defaultStyle);
+        target.insertBefore(newImg, target.firstChild);
+      }
+    }
+
+    if (isFullDoc) {
+      const hasDoctype = html.includes('<!DOCTYPE') || html.includes('<!doctype');
+      const serialized = doc.documentElement.outerHTML;
+      return hasDoctype ? `<!DOCTYPE html>\n${serialized}` : serialized;
+    } else {
+      return doc.body.innerHTML;
+    }
+  } catch (err) {
+    console.error('Gagal menyisipkan gambar ke HTML:', err);
+    return html;
+  }
+}
