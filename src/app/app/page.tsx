@@ -11,7 +11,7 @@ import { BuildBadge } from '@/components/BuildBadge';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import Link from 'next/link';
-import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen, ChevronsLeft, ChevronsRight, X, Send } from 'lucide-react';
+import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen, ChevronsLeft, ChevronsRight, X, Send, Edit3, Sparkles } from 'lucide-react';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -59,12 +59,15 @@ export default function AppWorkspacePage() {
         kind: 'area' | 'element';
         bounds: { x: number; y: number; w: number; h: number };
         elementUid?: string;
+        tagName?: string;
         initialText?: string;
         initialColor?: string;
+        initialBg?: string;
       }
   >(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [textColorDraft, setTextColorDraft] = useState('');
+  const [bgColorDraft, setBgColorDraft] = useState('');
   const [textContentDraft, setTextContentDraft] = useState('');
 
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
@@ -76,9 +79,10 @@ export default function AppWorkspacePage() {
     const width = activeSelection.bounds.w * overlaySize.w;
     const height = activeSelection.bounds.h * overlaySize.h;
     if (width <= 1 || height <= 1) return null;
-    const anchorLeft = clamp(left + width / 2, 120, Math.max(120, overlaySize.w - 120));
-    const anchorTop = clamp(top, 60, Math.max(60, overlaySize.h - 60));
-    return { left, top, width, height, anchorLeft, anchorTop };
+    const placeAbove = top >= 240;
+    const anchorLeft = clamp(left + width / 2, 165, Math.max(165, overlaySize.w - 165));
+    const anchorTop = placeAbove ? Math.max(10, top - 10) : Math.min(overlaySize.h - 10, top + height + 10);
+    return { left, top, width, height, anchorLeft, anchorTop, placeAbove };
   })();
 
   const [dragDraft, setDragDraft] = useState<
@@ -163,9 +167,11 @@ export default function AppWorkspacePage() {
 
         const patches = annotationsRef.current?.patches || [];
         const lastColor = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textColor');
+        const lastBg = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'bgColor');
         const lastText = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textContent');
 
         const initialColor = lastColor?.value ?? data.currentColor ?? '';
+        const initialBg = lastBg?.value ?? data.currentBg ?? '';
         const initialText = lastText?.value ?? data.currentText ?? '';
 
         setActiveSelection({
@@ -173,12 +179,39 @@ export default function AppWorkspacePage() {
           kind: 'element',
           bounds,
           elementUid,
+          tagName: data.tagName,
           initialColor,
+          initialBg,
           initialText
         });
         setNoteDraft('');
         setTextColorDraft(String(initialColor || ''));
+        setBgColorDraft(String(initialBg || ''));
         setTextContentDraft(String(initialText || ''));
+      } else if (data.type === 'OD_UPDATE_TEXT') {
+        const elementUid = data.elementUid;
+        const newText = data.newText;
+        if (!elementUid) return;
+
+        const current = annotationsRef.current || { marks: [], notes: [], patches: [] };
+        const now = new Date().toISOString();
+        const nextPatches = (current.patches || []).filter(
+          (p) => !(p.elementUid === elementUid && p.patchType === 'textContent')
+        );
+        nextPatches.push({
+          id: newOdId(),
+          elementUid,
+          patchType: 'textContent',
+          value: newText,
+          createdAt: now
+        });
+
+        const nextAnnotations = {
+          ...current,
+          patches: nextPatches
+        };
+
+        handleUpdateState({ annotations: nextAnnotations });
       } else if (data.type === 'OD_AREA_MARK') {
         const markId = newOdId();
         const bounds = data.bounds;
@@ -186,6 +219,7 @@ export default function AppWorkspacePage() {
         setActiveSelection({ markId, kind: 'area', bounds });
         setNoteDraft('');
         setTextColorDraft('');
+        setBgColorDraft('');
         setTextContentDraft('');
       }
     };
@@ -466,6 +500,7 @@ export default function AppWorkspacePage() {
     if (activeSelection.kind === 'element' && activeSelection.elementUid) {
       const elUid = activeSelection.elementUid;
       const colorVal = textColorDraft.trim();
+      const bgVal = bgColorDraft.trim();
       const textVal = textContentDraft;
 
       if (colorVal) {
@@ -474,6 +509,22 @@ export default function AppWorkspacePage() {
           elementUid: elUid,
           patchType: 'textColor' as const,
           value: colorVal,
+          createdAt: now
+        };
+        next.patches.push(patch);
+        iframeRef.current?.contentWindow?.postMessage({
+          source: 'OD_BRIDGE',
+          type: 'OD_APPLY_PATCH',
+          patch
+        }, '*');
+      }
+
+      if (bgVal) {
+        const patch = {
+          id: newOdId(),
+          elementUid: elUid,
+          patchType: 'bgColor' as const,
+          value: bgVal,
           createdAt: now
         };
         next.patches.push(patch);
@@ -504,6 +555,46 @@ export default function AppWorkspacePage() {
     handleUpdateState({ annotations: next });
   };
 
+  const applyQuickPatch = (patchType: 'textColor' | 'bgColor' | 'textContent', value: string) => {
+    if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid) return;
+    const elUid = activeSelection.elementUid;
+    const current = projectState.annotations || { marks: [], notes: [], patches: [] };
+    const now = new Date().toISOString();
+
+    const patch = {
+      id: newOdId(),
+      elementUid: elUid,
+      patchType,
+      value,
+      createdAt: now
+    };
+
+    const nextPatches = (current.patches || []).filter(
+      (p) => !(p.elementUid === elUid && p.patchType === patchType)
+    );
+    nextPatches.push(patch);
+
+    const next = {
+      marks: current.marks || [],
+      notes: current.notes || [],
+      patches: nextPatches
+    };
+
+    if (patchType === 'textColor') setTextColorDraft(value);
+    if (patchType === 'bgColor') setBgColorDraft(value);
+    if (patchType === 'textContent') setTextContentDraft(value);
+
+    handleUpdateState({ annotations: next });
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: 'OD_BRIDGE',
+        type: 'OD_APPLY_PATCH',
+        patch
+      },
+      '*'
+    );
+  };
+
   const handleSendToChat = () => {
     if (!activeSelection) return;
 
@@ -529,6 +620,7 @@ export default function AppWorkspacePage() {
     setActiveSelection(null);
     setNoteDraft('');
     setTextColorDraft('');
+    setBgColorDraft('');
     setTextContentDraft('');
     setDragDraft(null);
   };
@@ -551,6 +643,7 @@ export default function AppWorkspacePage() {
     setActiveSelection(null);
     setNoteDraft('');
     setTextColorDraft('');
+    setBgColorDraft('');
     setTextContentDraft('');
     setDragDraft(null);
 
@@ -820,7 +913,44 @@ export default function AppWorkspacePage() {
                         )}
                       </div>
 
-                      {/* Layer terpisah untuk active selection & popup note agar tidak terblokir oleh pointer event overlay */}
+                      {/* Numbered Pin Markers (①, ②, ③) pada setiap area yang ditandai */}
+                      {projectState.annotations?.marks && projectState.annotations.marks.length > 0 && (
+                        <div className="absolute inset-0 z-25 pointer-events-none">
+                          {projectState.annotations.marks.map((m, idx) => {
+                            const pinX = m.bounds.x * overlaySize.w;
+                            const pinY = m.bounds.y * overlaySize.h;
+                            const isCurrent = activeSelection?.markId === m.id;
+                            const noteItem = projectState.annotations?.notes?.find((n) => n.markId === m.id);
+
+                            return (
+                              <button
+                                key={m.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveSelection({
+                                    markId: m.id,
+                                    kind: m.kind,
+                                    bounds: m.bounds,
+                                    elementUid: m.elementUid
+                                  });
+                                  setNoteDraft(noteItem?.text || '');
+                                }}
+                                className={`absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shadow-lg transition-all duration-200 hover:scale-125 cursor-pointer ${
+                                  isCurrent
+                                    ? 'bg-gradient-to-r from-indigo-500 to-pink-500 text-white ring-2 ring-white scale-110 shadow-indigo-500/50'
+                                    : 'bg-slate-900/90 text-slate-100 border border-slate-700/80 hover:bg-indigo-600 hover:border-indigo-400'
+                                }`}
+                                style={{ left: pinX, top: pinY }}
+                                title={noteItem?.text ? `Pin #${idx + 1}: ${noteItem.text}` : `Pin #${idx + 1}`}
+                              >
+                                {idx + 1}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Layer terpisah untuk active selection & floating inspector note agar tidak terblokir oleh pointer event overlay */}
                       {selectionPx && activeSelection && (
                         <div className="absolute inset-0 z-30 pointer-events-none">
                           <div
@@ -838,7 +968,7 @@ export default function AppWorkspacePage() {
                             style={{
                               left: selectionPx.anchorLeft,
                               top: selectionPx.anchorTop,
-                              transform: 'translate(-50%, -100%)'
+                              transform: selectionPx.placeAbove ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
                             }}
                             onPointerDown={(e) => e.stopPropagation()}
                             onPointerUp={(e) => e.stopPropagation()}
@@ -847,36 +977,132 @@ export default function AppWorkspacePage() {
                             onMouseUp={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="w-[320px] max-w-[80vw] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-[11px] font-bold text-slate-200">Mark note</div>
+                            <div className="w-[320px] max-w-[85vw] bg-slate-900/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl shadow-2xl p-3 space-y-3">
+                              {/* Header Card */}
+                              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {activeSelection.kind === 'element' ? (
+                                    <>
+                                      <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-indigo-500/30">
+                                        &lt;{activeSelection.tagName || 'elem'}&gt;
+                                      </span>
+                                      <button
+                                        onClick={() => {
+                                          if (activeSelection.elementUid) {
+                                            iframeRef.current?.contentWindow?.postMessage(
+                                              {
+                                                source: 'OD_BRIDGE',
+                                                type: 'OD_START_INLINE_EDIT',
+                                                elementUid: activeSelection.elementUid
+                                              },
+                                              '*'
+                                            );
+                                          }
+                                        }}
+                                        className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-semibold border border-slate-700/60 flex items-center gap-1 transition-colors"
+                                        title="Double-click di canvas atau klik di sini untuk edit teks langsung"
+                                      >
+                                        <Edit3 className="w-2.5 h-2.5 text-indigo-400" />
+                                        <span>Edit Teks</span>
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold uppercase tracking-wider border border-emerald-500/30">
+                                        MARK AREA
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                                 <button
                                   onClick={handleDeleteActiveSelection}
-                                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+                                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
                                   title="Tutup mark"
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
-                              <textarea
-                                autoFocus
-                                value={noteDraft}
-                                onChange={(e) => setNoteDraft(e.target.value)}
-                                rows={2}
-                                className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none cursor-text select-text"
-                                placeholder="Tulis catatan untuk mark ini..."
-                              />
 
-                              <div className="mt-3">
-                                <button
-                                  onClick={handleSendToChat}
-                                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/25 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-                                  title="Kirim catatan mark ke chat AI untuk mengubah area"
-                                >
-                                  <Send className="w-3.5 h-3.5" />
-                                  <span>Send to Chat</span>
-                                </button>
+                              {/* Quick Visual Styler untuk mode Element */}
+                              {activeSelection.kind === 'element' && (
+                                <div className="space-y-2 pt-0.5">
+                                  {/* Quick Text Color Palette */}
+                                  <div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+                                      <span>Warna Teks Cepat</span>
+                                      <span className="font-mono text-[9px] text-slate-500">{textColorDraft || 'default'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      {[
+                                        { label: 'Putih', val: '#ffffff', bg: 'bg-white' },
+                                        { label: 'Dark', val: '#0f172a', bg: 'bg-slate-900 border border-slate-700' },
+                                        { label: 'Indigo', val: '#6366f1', bg: 'bg-indigo-500' },
+                                        { label: 'Emerald', val: '#10b981', bg: 'bg-emerald-500' },
+                                        { label: 'Amber', val: '#f59e0b', bg: 'bg-amber-500' },
+                                        { label: 'Rose', val: '#f43f5e', bg: 'bg-rose-500' },
+                                      ].map((sw) => (
+                                        <button
+                                          key={sw.val}
+                                          onClick={() => applyQuickPatch('textColor', sw.val)}
+                                          className={`w-5 h-5 rounded-full ${sw.bg} shadow hover:scale-110 active:scale-95 transition-transform ${textColorDraft === sw.val ? 'ring-2 ring-indigo-400' : ''}`}
+                                          title={`Terapkan warna teks ${sw.label}`}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Quick Background Color Palette */}
+                                  <div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+                                      <span>Warna Latar (BG) Cepat</span>
+                                      <span className="font-mono text-[9px] text-slate-500">{bgColorDraft || 'default'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      {[
+                                        { label: 'Transparan', val: 'transparent', bg: 'bg-slate-800 border border-dashed border-slate-600' },
+                                        { label: 'Indigo', val: '#4f46e5', bg: 'bg-indigo-600' },
+                                        { label: 'Emerald', val: '#059669', bg: 'bg-emerald-600' },
+                                        { label: 'Dark Card', val: '#1e293b', bg: 'bg-slate-800' },
+                                        { label: 'Amber', val: '#d97706', bg: 'bg-amber-600' },
+                                        { label: 'Rose', val: '#e11d48', bg: 'bg-rose-600' },
+                                      ].map((sw) => (
+                                        <button
+                                          key={sw.val}
+                                          onClick={() => applyQuickPatch('bgColor', sw.val)}
+                                          className={`w-5 h-5 rounded-md ${sw.bg} shadow hover:scale-110 active:scale-95 transition-transform ${bgColorDraft === sw.val ? 'ring-2 ring-indigo-400' : ''}`}
+                                          title={`Terapkan latar ${sw.label}`}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* AI Instruction Textarea */}
+                              <div>
+                                <div className="text-[10px] text-slate-400 font-semibold mb-1 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-indigo-400" />
+                                  <span>Perintah AI untuk komponen ini</span>
+                                </div>
+                                <textarea
+                                  autoFocus
+                                  value={noteDraft}
+                                  onChange={(e) => setNoteDraft(e.target.value)}
+                                  rows={2}
+                                  className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none cursor-text select-text"
+                                  placeholder="Tulis instruksi perubahan untuk komponen ini..."
+                                />
                               </div>
+
+                              {/* Send to Chat Action Button */}
+                              <button
+                                onClick={handleSendToChat}
+                                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white text-xs font-bold shadow-md shadow-indigo-600/25 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+                                title="Kirim catatan mark ke chat AI untuk mengubah area"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Send to Chat</span>
+                              </button>
                             </div>
                           </div>
                         </div>

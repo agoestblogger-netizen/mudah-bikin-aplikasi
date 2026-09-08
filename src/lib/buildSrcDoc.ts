@@ -14,9 +14,10 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <script>
   (function() {
     const SOURCE = 'OD_BRIDGE';
-    const ALLOWED_SELECTOR = 'p,h1,h2,h3,span,label,button,a';
+    const ALLOWED_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td';
     const PATCH_TYPE_TEXT_COLOR = 'textColor';
     const PATCH_TYPE_TEXT_CONTENT = 'textContent';
+    const PATCH_TYPE_BG_COLOR = 'bgColor';
 
     let odMode = 'none';
     let odPatches = Array.isArray(window.__OD_PATCHES__) ? window.__OD_PATCHES__ : [];
@@ -66,8 +67,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       if (!el) return;
       if (patch.patchType === PATCH_TYPE_TEXT_COLOR) {
         el.style.color = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_BG_COLOR) {
+        el.style.backgroundColor = String(patch.value ?? '');
       } else if (patch.patchType === PATCH_TYPE_TEXT_CONTENT) {
-        // MVP: ganti seluruh text
         el.textContent = String(patch.value ?? '');
       }
     }
@@ -84,7 +86,103 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       } else {
         document.documentElement.style.cursor = '';
       }
+      if (hoveredEl) {
+        hoveredEl.style.outline = '';
+        hoveredEl.style.outlineOffset = '';
+        hoveredEl = null;
+      }
     }
+
+    // Hover highlight in select mode
+    let hoveredEl = null;
+    document.addEventListener('mouseover', function(e) {
+      if (odMode !== 'select') return;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const el = target.closest('[data-od-uid]');
+      if (el && el !== hoveredEl) {
+        if (hoveredEl) {
+          hoveredEl.style.outline = '';
+          hoveredEl.style.outlineOffset = '';
+        }
+        hoveredEl = el;
+        hoveredEl.style.outline = '2px dashed rgba(99, 102, 241, 0.75)';
+        hoveredEl.style.outlineOffset = '2px';
+      }
+    }, true);
+
+    document.addEventListener('mouseout', function(e) {
+      if (hoveredEl) {
+        hoveredEl.style.outline = '';
+        hoveredEl.style.outlineOffset = '';
+        hoveredEl = null;
+      }
+    }, true);
+
+    // Double-click inline text editing (WYSIWYG Direct Edit)
+    document.addEventListener('dblclick', function(e) {
+      if (odMode !== 'select') return;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const el = target.closest('[data-od-uid]');
+      if (!el) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      el.contentEditable = 'true';
+      el.focus();
+      el.style.outline = '2px solid #6366f1';
+      el.style.outlineOffset = '2px';
+      el.style.cursor = 'text';
+
+      let done = false;
+      function finishEdit() {
+        if (done) return;
+        done = true;
+        el.contentEditable = 'false';
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+        el.style.cursor = '';
+        el.removeEventListener('blur', onBlur);
+        el.removeEventListener('keydown', onKeyDown);
+
+        const newText = (el.textContent || '').trim();
+        const elementUid = el.getAttribute('data-od-uid');
+        const rect = el.getBoundingClientRect();
+        const bounds = normalizeRect(rect);
+
+        postToParent({
+          type: 'OD_UPDATE_TEXT',
+          elementUid,
+          newText,
+          bounds
+        });
+      }
+
+      function onBlur() {
+        finishEdit();
+      }
+
+      function onKeyDown(ke) {
+        if (ke.key === 'Enter' && !ke.shiftKey) {
+          ke.preventDefault();
+          finishEdit();
+        } else if (ke.key === 'Escape') {
+          ke.preventDefault();
+          done = true;
+          el.contentEditable = 'false';
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+          el.style.cursor = '';
+          el.removeEventListener('blur', onBlur);
+          el.removeEventListener('keydown', onKeyDown);
+        }
+      }
+
+      el.addEventListener('blur', onBlur);
+      el.addEventListener('keydown', onKeyDown);
+    }, true);
 
     // Select by element click
     document.addEventListener('click', function(e) {
@@ -100,12 +198,17 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         const cs = window.getComputedStyle(el);
         const currentText = (el.textContent || '').trim().slice(0, 2000);
         const currentColor = (cs && cs.color) ? cs.color : '';
+        const currentBg = (cs && cs.backgroundColor) ? cs.backgroundColor : '';
+        const tagName = el.tagName.toLowerCase();
+
         postToParent({
           type: 'OD_SELECT_ELEMENT',
           elementUid,
+          tagName,
           bounds,
           currentText,
-          currentColor
+          currentColor,
+          currentBg
         });
         e.preventDefault();
         e.stopPropagation();
@@ -113,7 +216,6 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
     }, true);
 
     // Mark by dragging area (MVP: kirim final saat mouse up)
-    // Gunakan mouse events agar lebih stabil di sandbox iframe dibanding pointer events.
     let dragging = false;
     let dragStart = null;
     let dragEnd = null;
@@ -161,7 +263,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       } catch (err) {}
 
       const r = getDragRect();
-      if (!r || r.width < 2 || r.height < 2) return;
+      if (!r || r.width < 6 || r.height < 6) return;
       const bounds = normalizeRect(r);
       postToParent({
         type: 'OD_AREA_MARK',
@@ -190,6 +292,12 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         odPatches = Array.isArray(odPatches) ? odPatches : [];
         odPatches.push(patch);
         applyOnePatch(patch);
+      } else if (msg.type === 'OD_START_INLINE_EDIT') {
+        const el = document.querySelector('[data-od-uid="' + msg.elementUid + '"]');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        }
       }
     });
 
