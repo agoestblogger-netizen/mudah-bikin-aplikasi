@@ -127,7 +127,7 @@ export type ODAnnotations = {
   patches: Array<{
     id: string;
     elementUid: string;
-    patchType: 'textColor' | 'textContent' | 'bgColor';
+    patchType: 'textColor' | 'textContent' | 'bgColor' | 'fontSize' | 'fontWeight' | 'textAlign' | 'borderRadius' | 'remove';
     value: string;
     createdAt: string;
   }>;

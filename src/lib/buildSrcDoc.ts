@@ -14,10 +14,15 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <script>
   (function() {
     const SOURCE = 'OD_BRIDGE';
-    const ALLOWED_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td';
+    const ALLOWED_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small';
     const PATCH_TYPE_TEXT_COLOR = 'textColor';
     const PATCH_TYPE_TEXT_CONTENT = 'textContent';
     const PATCH_TYPE_BG_COLOR = 'bgColor';
+    const PATCH_TYPE_FONT_SIZE = 'fontSize';
+    const PATCH_TYPE_FONT_WEIGHT = 'fontWeight';
+    const PATCH_TYPE_TEXT_ALIGN = 'textAlign';
+    const PATCH_TYPE_BORDER_RADIUS = 'borderRadius';
+    const PATCH_TYPE_REMOVE = 'remove';
 
     let odMode = 'none';
     let odPatches = Array.isArray(window.__OD_PATCHES__) ? window.__OD_PATCHES__ : [];
@@ -71,6 +76,16 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         el.style.backgroundColor = String(patch.value ?? '');
       } else if (patch.patchType === PATCH_TYPE_TEXT_CONTENT) {
         el.textContent = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_FONT_SIZE) {
+        el.style.fontSize = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_FONT_WEIGHT) {
+        el.style.fontWeight = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_TEXT_ALIGN) {
+        el.style.textAlign = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_BORDER_RADIUS) {
+        el.style.borderRadius = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_REMOVE) {
+        el.style.display = 'none';
       }
     }
 
@@ -142,6 +157,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       e.stopPropagation();
 
       isEditingText = true;
+      const initialText = el.textContent || '';
       if (hoveredEl && hoveredEl !== el) {
         hoveredEl.style.outline = '';
         hoveredEl.style.outlineOffset = '';
@@ -210,6 +226,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           done = true;
           isEditingText = false;
           justFinishedEditTime = Date.now();
+          el.textContent = initialText; // Kembalikan ke teks awal saat dibatalkan
           el.contentEditable = 'false';
           el.style.outline = '';
           el.style.outlineOffset = '';
@@ -253,6 +270,10 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         const currentText = (el.textContent || '').trim().slice(0, 2000);
         const currentColor = (cs && cs.color) ? cs.color : '';
         const currentBg = (cs && cs.backgroundColor) ? cs.backgroundColor : '';
+        const currentFontSize = (cs && cs.fontSize) ? cs.fontSize : '';
+        const currentFontWeight = (cs && cs.fontWeight) ? cs.fontWeight : '';
+        const currentTextAlign = (cs && cs.textAlign) ? cs.textAlign : '';
+        const currentBorderRadius = (cs && cs.borderRadius) ? cs.borderRadius : '';
         const tagName = el.tagName.toLowerCase();
 
         postToParent({
@@ -262,7 +283,11 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           bounds,
           currentText,
           currentColor,
-          currentBg
+          currentBg,
+          currentFontSize,
+          currentFontWeight,
+          currentTextAlign,
+          currentBorderRadius
         });
       } catch (err) {}
     }, true);

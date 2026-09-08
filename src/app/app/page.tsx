@@ -25,8 +25,16 @@ import {
   Edit3,
   X,
   Send,
-  Download
+  Download,
+  Trash2,
+  Bold,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Square,
+  Circle
 } from 'lucide-react';
+import { syncPatchesToHtml, stripOdUids } from '@/lib/htmlPatcher';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -106,12 +114,20 @@ export default function AppWorkspacePage() {
         initialText?: string;
         initialColor?: string;
         initialBg?: string;
+        initialFontSize?: string;
+        initialFontWeight?: string;
+        initialTextAlign?: string;
+        initialBorderRadius?: string;
       }
   >(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [textColorDraft, setTextColorDraft] = useState('');
   const [bgColorDraft, setBgColorDraft] = useState('');
   const [textContentDraft, setTextContentDraft] = useState('');
+  const [fontSizeDraft, setFontSizeDraft] = useState('');
+  const [fontWeightDraft, setFontWeightDraft] = useState('');
+  const [textAlignDraft, setTextAlignDraft] = useState('');
+  const [borderRadiusDraft, setBorderRadiusDraft] = useState('');
 
   const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
   const selectionPx = (() => {
@@ -212,10 +228,18 @@ export default function AppWorkspacePage() {
         const lastColor = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textColor');
         const lastBg = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'bgColor');
         const lastText = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textContent');
+        const lastSize = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'fontSize');
+        const lastWeight = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'fontWeight');
+        const lastAlign = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textAlign');
+        const lastRadius = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'borderRadius');
 
         const initialColor = lastColor?.value ?? data.currentColor ?? '';
         const initialBg = lastBg?.value ?? data.currentBg ?? '';
         const initialText = lastText?.value ?? data.currentText ?? '';
+        const initialFontSize = lastSize?.value ?? data.currentFontSize ?? '';
+        const initialFontWeight = lastWeight?.value ?? data.currentFontWeight ?? '';
+        const initialTextAlign = lastAlign?.value ?? data.currentTextAlign ?? '';
+        const initialBorderRadius = lastRadius?.value ?? data.currentBorderRadius ?? '';
 
         setActiveSelection({
           markId,
@@ -225,12 +249,20 @@ export default function AppWorkspacePage() {
           tagName: data.tagName,
           initialColor,
           initialBg,
-          initialText
+          initialText,
+          initialFontSize,
+          initialFontWeight,
+          initialTextAlign,
+          initialBorderRadius
         });
         setNoteDraft('');
         setTextColorDraft(String(initialColor || ''));
         setBgColorDraft(String(initialBg || ''));
         setTextContentDraft(String(initialText || ''));
+        setFontSizeDraft(String(initialFontSize || ''));
+        setFontWeightDraft(String(initialFontWeight || ''));
+        setTextAlignDraft(String(initialTextAlign || ''));
+        setBorderRadiusDraft(String(initialBorderRadius || ''));
       } else if (data.type === 'OD_UPDATE_TEXT') {
         const elementUid = data.elementUid;
         const newText = data.newText;
@@ -265,7 +297,16 @@ export default function AppWorkspacePage() {
           };
         });
 
-        handleUpdateState({ annotations: nextAnnotations });
+        // Sinkronkan langsung ke canvasCode.html secara permanen (Permanent HTML Source Sync)
+        const updatedHtml = syncPatchesToHtml(projectState.canvasCode.html, [patch]);
+
+        handleUpdateState({
+          annotations: nextAnnotations,
+          canvasCode: {
+            ...projectState.canvasCode,
+            html: updatedHtml
+          }
+        });
 
         // Kirim kembali patch ke iframe agar sinkron di memori iframe
         iframeRef.current?.contentWindow?.postMessage(
@@ -612,7 +653,10 @@ export default function AppWorkspacePage() {
     handleUpdateState({ annotations: next });
   };
 
-  const applyQuickPatch = (patchType: 'textColor' | 'bgColor' | 'textContent', value: string) => {
+  const applyQuickPatch = (
+    patchType: 'textColor' | 'bgColor' | 'textContent' | 'fontSize' | 'fontWeight' | 'textAlign' | 'borderRadius' | 'remove',
+    value: string
+  ) => {
     if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid) return;
     const elUid = activeSelection.elementUid;
     const current = projectState.annotations || { marks: [], notes: [], patches: [] };
@@ -640,8 +684,22 @@ export default function AppWorkspacePage() {
     if (patchType === 'textColor') setTextColorDraft(value);
     if (patchType === 'bgColor') setBgColorDraft(value);
     if (patchType === 'textContent') setTextContentDraft(value);
+    if (patchType === 'fontSize') setFontSizeDraft(value);
+    if (patchType === 'fontWeight') setFontWeightDraft(value);
+    if (patchType === 'textAlign') setTextAlignDraft(value);
+    if (patchType === 'borderRadius') setBorderRadiusDraft(value);
 
-    handleUpdateState({ annotations: next });
+    // Sinkronkan langsung ke canvasCode.html secara permanen (Permanent HTML Source Sync)
+    const updatedHtml = syncPatchesToHtml(projectState.canvasCode.html, [patch]);
+
+    handleUpdateState({
+      annotations: next,
+      canvasCode: {
+        ...projectState.canvasCode,
+        html: updatedHtml
+      }
+    });
+
     iframeRef.current?.contentWindow?.postMessage(
       {
         source: 'OD_BRIDGE',
@@ -650,6 +708,10 @@ export default function AppWorkspacePage() {
       },
       '*'
     );
+
+    if (patchType === 'remove') {
+      setActiveSelection(null);
+    }
   };
 
   const handleSendToChat = () => {
@@ -740,7 +802,8 @@ export default function AppWorkspacePage() {
     const fullHtml = buildSrcDoc(projectState.canvasCode);
     if (!fullHtml) return;
 
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8;' });
+    const cleanHtml = stripOdUids(fullHtml);
+    const blob = new Blob([cleanHtml], { type: 'text/html;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1042,6 +1105,19 @@ export default function AppWorkspacePage() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
+                                  {activeSelection.kind === 'element' && (
+                                    <button
+                                      onClick={() => {
+                                        if (confirm('Hapus elemen ini dari canvas?')) {
+                                          applyQuickPatch('remove', 'deleted');
+                                        }
+                                      }}
+                                      className="text-rose-400 hover:text-rose-300 p-1 rounded-lg hover:bg-rose-500/20 transition-colors"
+                                      title="Hapus komponen ini langsung"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => {
                                       setActiveSelection(null);
@@ -1050,6 +1126,10 @@ export default function AppWorkspacePage() {
                                       setTextColorDraft('');
                                       setBgColorDraft('');
                                       setTextContentDraft('');
+                                      setFontSizeDraft('');
+                                      setFontWeightDraft('');
+                                      setTextAlignDraft('');
+                                      setBorderRadiusDraft('');
                                     }}
                                     className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
                                     title="Tutup inspector & kembali ke mode interaktif"
@@ -1061,12 +1141,12 @@ export default function AppWorkspacePage() {
 
                               {/* Quick Visual Styler untuk mode Element */}
                               {activeSelection.kind === 'element' && (
-                                <div className="space-y-2 pt-0.5">
+                                <div className="space-y-2.5 pt-0.5">
                                   {/* Quick Text Content Input */}
                                   <div>
                                     <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
                                       <span>Teks Elemen</span>
-                                      <span className="text-[9px] text-indigo-400 font-medium">Live Update</span>
+                                      <span className="text-[9px] text-indigo-400 font-medium">Auto-Sync ke HTML</span>
                                     </div>
                                     <input
                                       type="text"
@@ -1075,6 +1155,68 @@ export default function AppWorkspacePage() {
                                       className="w-full bg-slate-950/60 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 cursor-text select-text"
                                       placeholder="Ubah isi teks komponen langsung..."
                                     />
+                                  </div>
+
+                                  {/* Typography & Alignment Controls */}
+                                  <div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+                                      <span>Tipografi & Format</span>
+                                      <span className="font-mono text-[9px] text-slate-500">{fontSizeDraft || 'default'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {/* Ukuran Font */}
+                                      <div className="flex items-center bg-slate-950/70 border border-slate-800 rounded-lg p-0.5">
+                                        {[
+                                          { label: 'S', val: '12px', title: 'Kecil (12px)' },
+                                          { label: 'M', val: '14px', title: 'Normal (14px)' },
+                                          { label: 'L', val: '18px', title: 'Besar (18px)' },
+                                          { label: 'XL', val: '24px', title: 'Judul (24px)' },
+                                        ].map((sz) => (
+                                          <button
+                                            key={sz.val}
+                                            onClick={() => applyQuickPatch('fontSize', sz.val)}
+                                            className={`px-1.5 py-0.5 text-[10px] font-bold rounded transition-colors ${fontSizeDraft === sz.val ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                                            title={sz.title}
+                                          >
+                                            {sz.label}
+                                          </button>
+                                        ))}
+                                      </div>
+
+                                      {/* Font Weight: Bold */}
+                                      <button
+                                        onClick={() => applyQuickPatch('fontWeight', fontWeightDraft === 'bold' || fontWeightDraft === '700' ? 'normal' : 'bold')}
+                                        className={`p-1.5 rounded-lg border text-xs transition-colors flex items-center justify-center ${fontWeightDraft === 'bold' || fontWeightDraft === '700' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-white'}`}
+                                        title="Tebalkan Teks (Bold)"
+                                      >
+                                        <Bold className="w-3 h-3" />
+                                      </button>
+
+                                      {/* Text Alignment */}
+                                      <div className="flex items-center bg-slate-950/70 border border-slate-800 rounded-lg p-0.5">
+                                        <button
+                                          onClick={() => applyQuickPatch('textAlign', 'left')}
+                                          className={`p-1 rounded transition-colors ${textAlignDraft === 'left' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                          title="Rata Kiri"
+                                        >
+                                          <AlignLeft className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={() => applyQuickPatch('textAlign', 'center')}
+                                          className={`p-1 rounded transition-colors ${textAlignDraft === 'center' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                          title="Rata Tengah"
+                                        >
+                                          <AlignCenter className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={() => applyQuickPatch('textAlign', 'right')}
+                                          className={`p-1 rounded transition-colors ${textAlignDraft === 'right' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                                          title="Rata Kanan"
+                                        >
+                                          <AlignRight className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
                                   </div>
 
                                   {/* Quick Text Color Palette */}
@@ -1123,6 +1265,31 @@ export default function AppWorkspacePage() {
                                           className={`w-5 h-5 rounded-md ${sw.bg} shadow hover:scale-110 active:scale-95 transition-transform ${bgColorDraft === sw.val ? 'ring-2 ring-indigo-400' : ''}`}
                                           title={`Terapkan latar ${sw.label}`}
                                         />
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Quick Border Radius */}
+                                  <div>
+                                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold mb-1">
+                                      <span>Lengkung Sudut (Radius)</span>
+                                      <span className="font-mono text-[9px] text-slate-500">{borderRadiusDraft || 'default'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {[
+                                        { label: 'Kotak', val: '0px', shape: 'rounded-none' },
+                                        { label: 'Rounded', val: '8px', shape: 'rounded-md' },
+                                        { label: 'Pill', val: '9999px', shape: 'rounded-full' },
+                                      ].map((rad) => (
+                                        <button
+                                          key={rad.val}
+                                          onClick={() => applyQuickPatch('borderRadius', rad.val)}
+                                          className={`px-2.5 py-1 text-[10px] font-semibold border rounded-lg flex items-center gap-1 transition-colors ${borderRadiusDraft === rad.val ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800'}`}
+                                          title={`Atur sudut: ${rad.label}`}
+                                        >
+                                          <div className={`w-2.5 h-2.5 border border-current ${rad.shape}`} />
+                                          <span>{rad.label}</span>
+                                        </button>
                                       ))}
                                     </div>
                                   </div>
