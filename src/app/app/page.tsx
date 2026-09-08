@@ -11,7 +11,7 @@ import { BuildBadge } from '@/components/BuildBadge';
 import { supabase } from '@/lib/supabase/client';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import Link from 'next/link';
-import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen } from 'lucide-react';
+import { Eye, Code2, Download, RefreshCw, Layers, Maximize2, Minimize2, FolderOpen, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -39,6 +39,7 @@ export default function AppWorkspacePage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+  const [sideRailExpanded, setSideRailExpanded] = useState(false);
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [savedLoaded, setSavedLoaded] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -332,9 +333,9 @@ export default function AppWorkspacePage() {
       <Navbar userEmail={userEmail} onNewSession={handleNewSession} />
 
       {/* Main 2-Panel Workspace Murni Sesuai PRD FR-09 */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,10fr)] gap-6">
+      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6">
         
-        {/* PANEL KIRI (3fr ≈ 30% dari kanan): Percakapan AI */}
+        {/* PANEL KIRI (±40%): Percakapan AI */}
         <div className="flex flex-col min-w-0">
           <ChatPanel
             projectState={projectState}
@@ -352,7 +353,7 @@ export default function AppWorkspacePage() {
               : 'flex flex-col min-w-0 bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)] transition-all duration-300 ease-in-out'
           }
         >
-          <div className={isPreviewFullscreen ? 'flex-1 grid grid-cols-[minmax(0,1fr)_54px] grid-rows-[auto_minmax(0,1fr)] bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-full' : 'flex-1 grid grid-cols-[minmax(0,1fr)_54px] grid-rows-[auto_minmax(0,1fr)] h-full overflow-hidden'}>
+          <div className={isPreviewFullscreen ? 'flex-1 grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-full' : 'flex-1 grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] h-full overflow-hidden'}>
             {/* Strip atas: label tab aktif + tombol Fullscreen (tetap di atas; menu lain dipindah ke samping kanan) */}
             <div className="col-span-2 flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-950/60 gap-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -434,61 +435,89 @@ export default function AppWorkspacePage() {
               )}
             </div>
 
-            {/* Sidebar Kanan: tab menu + unduh (dipindah dari atas) */}
-            <div className="col-start-2 row-start-2 flex flex-col items-center gap-2 py-3 border-l border-slate-800 bg-slate-950/60 overflow-y-auto">
+            {/* Sidebar Kanan: tab menu + unduh sebagai badge (dengan expand/collapse) */}
+            <div className={`col-start-2 row-start-2 flex flex-col items-center gap-2 py-3 border-l border-slate-800 bg-slate-950/60 overflow-y-auto overflow-x-hidden transition-all duration-300 ${
+              sideRailExpanded ? 'w-[150px]' : 'w-14'
+            }`}>
+              {/* Tombol Expand / Collapse */}
+              <button
+                onClick={() => setSideRailExpanded(v => !v)}
+                className="flex items-center justify-center w-full px-2 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition-all"
+                title={sideRailExpanded ? 'Ciutkan menu' : 'Perluas menu'}
+                aria-label={sideRailExpanded ? 'Ciutkan menu' : 'Perluas menu'}
+              >
+                {sideRailExpanded ? <ChevronsRight className="w-3.5 h-3.5" /> : <ChevronsLeft className="w-3.5 h-3.5" />}
+              </button>
+
               <button
                 onClick={() => setRightPanelTab('PREVIEW')}
-                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-semibold leading-tight transition-all ${
+                className={`relative flex items-center rounded-xl transition-all shrink-0 ${
+                  sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px]' : 'w-11 h-11 justify-center'
+                } ${
                   rightPanelTab === 'PREVIEW'
                     ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
                 title="Live Preview"
               >
-                <Eye className="w-4 h-4" />
-                <span>Preview</span>
+                <Eye className="w-4 h-4 shrink-0" />
+                {sideRailExpanded && <span className="whitespace-nowrap font-semibold">Live Preview</span>}
               </button>
 
               <button
                 onClick={() => setRightPanelTab('GAS_SCRIPT')}
-                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-semibold leading-tight transition-all ${
+                className={`relative flex items-center rounded-xl transition-all shrink-0 ${
+                  sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px]' : 'w-11 h-11 justify-center'
+                } ${
                   rightPanelTab === 'GAS_SCRIPT'
                     ? 'bg-emerald-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
                 title="Backend Apps Script"
               >
-                <Code2 className="w-4 h-4" />
-                <span>Backend</span>
+                <Code2 className="w-4 h-4 shrink-0" />
+                {sideRailExpanded && <span className="whitespace-nowrap font-semibold">Backend Apps Script</span>}
               </button>
 
               <button
                 onClick={() => setRightPanelTab('SAVED')}
-                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-semibold leading-tight transition-all ${
+                className={`relative flex items-center rounded-xl transition-all shrink-0 ${
+                  sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px]' : 'w-11 h-11 justify-center'
+                } ${
                   rightPanelTab === 'SAVED'
                     ? 'bg-sky-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
                 title="Tersimpan"
               >
-                <FolderOpen className="w-4 h-4" />
-                <span>Tersimpan</span>
+                <FolderOpen className="w-4 h-4 shrink-0" />
+                {sideRailExpanded && <span className="whitespace-nowrap font-semibold">Tersimpan</span>}
                 {savedProjects.length > 0 && (
-                  <span className="min-w-[16px] px-1 py-0.5 rounded-full bg-slate-800 text-[8px] font-bold text-slate-300">
-                    {savedProjects.length}
-                  </span>
+                  sideRailExpanded ? (
+                    <span className="min-w-[16px] px-1 py-0.5 rounded-full bg-slate-800 text-[8px] font-bold text-slate-300">
+                      {savedProjects.length}
+                    </span>
+                  ) : (
+                    <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-sky-400" />
+                  )
                 )}
               </button>
 
-              <div className="mt-1 pt-2 border-t border-slate-800 w-full flex justify-center">
+              <div className={`mt-1 pt-2 border-t border-slate-800 ${
+                sideRailExpanded ? 'w-full flex justify-center' : 'w-full flex justify-center'
+              }`}>
                 <button
                   onClick={handleDownloadIndexHtml}
                   disabled={!projectState.canvasCode.html}
-                  className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl text-[9px] font-bold leading-tight transition-all bg-gradient-to-b from-emerald-500 to-teal-600 hover:opacity-90 text-white shadow-md shadow-emerald-600/20 disabled:opacity-40"
+                  className={`relative flex items-center rounded-xl transition-all shrink-0 bg-gradient-to-b from-emerald-500 to-teal-600 hover:opacity-90 text-white shadow-md shadow-emerald-600/20 disabled:opacity-40 ${
+                    sideRailExpanded ? 'gap-2 w-full px-3 py-2 justify-start text-[10px] font-bold' : 'w-11 h-11 justify-center'
+                  }`}
                   title={downloaded ? 'Tersimpan!' : 'Download index.html'}
                 >
-                  <Download className="w-4 h-4" />
-                  <span>{downloaded ? 'OK!' : 'Unduh'}</span>
+                  <Download className="w-4 h-4 shrink-0" />
+                  {sideRailExpanded && (
+                    <span className="whitespace-nowrap">{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
+                  )}
                 </button>
               </div>
             </div>

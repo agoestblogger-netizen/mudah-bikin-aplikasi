@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
-import { Bot, Send, User, Sparkles, RefreshCw } from 'lucide-react';
+import { Bot, Send, User, Sparkles, RefreshCw, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { loadModelSettings } from '@/lib/modelConfig';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
@@ -74,6 +74,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
+  const [railExpanded, setRailExpanded] = useState(false);
   const [loadingText, setLoadingText] = useState('Sedang mikirin ide kamu...');
   // streamingText: teks ghost bubble yang sedang di-stream (null = tidak streaming)
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -304,22 +305,43 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="grid h-[calc(100vh-100px)] grid-cols-[52px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
-      {/* Sidebar Kiri: judul & status AI (dipindah dari atas) */}
-      <div className="col-start-1 row-start-1 row-span-2 flex flex-col items-center justify-between py-4 border-r border-slate-800 bg-slate-950/60 overflow-hidden">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+    <div className="grid h-[calc(100vh-100px)] grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
+      {/* Sidebar Kiri: menu AI sebagai badge (dengan expand/collapse) */}
+      <div className={`col-start-1 row-start-1 row-span-2 flex flex-col items-center justify-between py-4 border-r border-slate-800 bg-slate-950/60 overflow-hidden transition-all duration-300 ${
+        railExpanded ? 'w-48' : 'w-[52px]'
+      }`}>
+        {/* Tombol Expand / Collapse */}
+        <button
+          onClick={() => setRailExpanded(v => !v)}
+          className="flex items-center justify-center px-1.5 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 transition-all self-end"
+          title={railExpanded ? 'Ciutkan menu' : 'Perluas menu'}
+          aria-label={railExpanded ? 'Ciutkan menu' : 'Perluas menu'}
+        >
+          {railExpanded ? <ChevronsLeft className="w-3.5 h-3.5" /> : <ChevronsRight className="w-3.5 h-3.5" />}
+        </button>
+
+        <div className="flex flex-col items-center gap-3 w-full">
+          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
             <Bot className="w-4 h-4" />
           </div>
+
+          {railExpanded && (
+            <div className="px-3 text-center">
+              <h2 className="text-sm font-bold text-white leading-tight whitespace-nowrap">Percakapan AI</h2>
+              <p className="text-[10px] text-slate-400 mt-1">Deskripsikan ide aplikasi, minta penambahan fitur, atau laporkan kendala.</p>
+            </div>
+          )}
+
           <div
-            className="flex flex-col items-center gap-1 bg-indigo-950/60 border border-indigo-800/40 px-2 py-1.5 rounded-full text-[9px] text-indigo-300 font-medium leading-tight"
+            className="flex items-center gap-1 bg-indigo-950/60 border border-indigo-800/40 px-2 py-1.5 rounded-full text-[9px] text-indigo-300 font-medium leading-tight whitespace-nowrap"
             title="AI Generator Aktif"
           >
-            <Sparkles className="w-3 h-3" />
-            <span>AI Aktif</span>
+            <Sparkles className="w-3 h-3 shrink-0" />
+            <span>{railExpanded ? 'AI Generator Aktif' : 'AI Aktif'}</span>
           </div>
         </div>
-        <span className="text-[10px] font-bold text-slate-400 uppercase [writing-mode:vertical-rl] rotate-180 tracking-[0.2em]">Percakapan AI</span>
+
+        <span className="text-[10px] font-bold text-slate-500 uppercase [writing-mode:vertical-rl] rotate-180 tracking-[0.2em]">AI Chat</span>
       </div>
 
       {/* Message History Area */}
