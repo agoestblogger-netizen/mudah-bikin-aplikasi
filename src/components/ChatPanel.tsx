@@ -350,9 +350,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       <div className="col-start-2 row-start-1 flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Header dipindah ke atas canvas kiri */}
         <div className="shrink-0 px-6 pt-5 pb-4 border-b border-slate-800/70 bg-slate-950/25">
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4">
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-500/15 text-indigo-300">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-500/15 text-indigo-300 shrink-0">
                 <Bot className="w-4 h-4" />
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-slate-950 bg-emerald-400" />
               </div>
@@ -364,9 +364,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300 px-4 py-2">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-[11px] font-medium">AI Generator Aktif</span>
+            {/* Badge status (tanpa kotak terpisah agar tidak terasa “2 kotak”) */}
+            <div className="flex items-center gap-2 text-emerald-300">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span className="text-[11px] font-medium whitespace-nowrap">AI Generator Aktif</span>
             </div>
           </div>
         </div>
