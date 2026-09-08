@@ -26,11 +26,11 @@ Setelah selesai edit code di lokal Mac:
 # 1. Commit perubahan
 git add -A && git commit -m "feat/fix: deskripsi singkat"
 
-# 2. Push ke VPS (UTAMA) → otomatis build + Coolify redeploy
-git push vps main
-
-# 3. Push ke GitHub (backup)
+# 2. Push ke GitHub (WAJIB PERTAMA agar Coolify menarik commit terbaru saat webhook jalan)
 git push origin main
+
+# 3. Push ke VPS → otomatis checkout /home/projects + build + trigger Coolify redeploy
+git push vps main
 ```
 
 ## Apa yang terjadi saat `git push vps main`:
