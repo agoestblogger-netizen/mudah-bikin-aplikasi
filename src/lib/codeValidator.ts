@@ -355,33 +355,81 @@ function eksekusiHapus() {
         );
       }
 
-      // Poin 56: Tab button label HARUS nama fitur, BUKAN nama peran mentah
-      for (const btnMatch of tabBtnMatches) {
-        const fullBtn = btnMatch[0];
-        const btnTagEndIndex = repairedHtml.indexOf(fullBtn);
-        if (btnTagEndIndex !== -1) {
-          const closeTagIndex = repairedHtml.indexOf('</button>', btnTagEndIndex);
-          if (closeTagIndex !== -1) {
-            const innerText = repairedHtml.substring(btnTagEndIndex + fullBtn.length, closeTagIndex).replace(/<[^>]*>/g, '').trim();
-            for (const role of expectedRoles!) {
-              if (innerText.toLowerCase() === role.trim().toLowerCase()) {
-                issues.push(
-                  `ROLE_AS_TAB_LABEL: Tombol tab diberi label nama peran mentah "${innerText}". ` +
-                  `DILARANG menamai tombol tab dengan nama peran! Tab di dalam aplikasi adalah NAVIGASI FITUR (contoh: "Kelola Anggota", "Kartu Digital", "Laporan"). ` +
-                  `Pergantian peran HANYA dilakukan melalui tombol "Keluar / Ganti Akun" yang kembali ke form login.`
-                );
-              }
-            }
+      // Auto-repair cerdas: Ubah label tab peran mentah (misal: "👥 Admin" -> "👥 Kelola Data", "💳 Anggota" -> "🪪 Kartu Anggota Digital")
+      for (const role of expectedRoles!) {
+        const rLower = role.trim().toLowerCase();
+        // Regex cari button tab dengan inner text nama peran (bisa diawali emoji)
+        const roleBtnRegex = new RegExp(`(<button[^>]*class=['"][^'"]*tab-btn[^'"]*['"][^>]*>)\\s*([\\p{Emoji}\\p{Extended_Pictographic}\\s]*)${role.trim()}\\s*(<\\/button>)`, 'gui');
+        repairedHtml = repairedHtml.replace(roleBtnRegex, (match, openTag, emoji, closeTag) => {
+          const cleanEmoji = emoji ? emoji.trim() + ' ' : '';
+          if (rLower === 'admin' || rLower === 'superadmin' || rLower === 'pengelola') {
+            return `${openTag}${cleanEmoji || '👥 '}Kelola Data${closeTag}`;
+          } else if (rLower === 'anggota' || rLower === 'member' || rLower === 'user') {
+            return `${openTag}${cleanEmoji || '🪪 '}Kartu Anggota Digital${closeTag}`;
+          } else if (rLower === 'kasir') {
+            return `${openTag}${cleanEmoji || '🛒 '}Transaksi Penjualan${closeTag}`;
+          } else if (rLower === 'dokter') {
+            return `${openTag}${cleanEmoji || '🩺 '}Pemeriksaan Pasien${closeTag}`;
+          } else {
+            return `${openTag}${cleanEmoji}Menu ${role}${closeTag}`;
           }
-        }
+        });
       }
 
-      // Poin 57: Larangan role switcher langsung di dalam appContainer
+      // Auto-repair: Hapus tombol switch peran langsung (loginAs) yang ditaruh di dalam appContainer
+      const appContainerIdx = repairedHtml.indexOf('id="appContainer"') !== -1 ? repairedHtml.indexOf('id="appContainer"') : repairedHtml.indexOf("id='appContainer'");
+      if (appContainerIdx !== -1) {
+        const preApp = repairedHtml.substring(0, appContainerIdx);
+        let postApp = repairedHtml.substring(appContainerIdx);
+        postApp = postApp.replace(/<button[^>]*onclick=['"](?:javascript:)?loginAs\([^)]*\)['"][^>]*>[\s\S]*?<\/button>/gi, '');
+        repairedHtml = preApp + postApp;
+      }
+
+      // Poin 56 & 57: Pemeriksaan ketat tombol/link berlabel nama peran mentah di dalam appContainer
       const appContainerMatch = repairedHtml.match(/<div[^>]*id=['"]appContainer['"][^>]*>([\s\S]*?)<\/body>/i);
       if (appContainerMatch) {
         const appHtml = appContainerMatch[1];
-        const forbiddenSwitcherMatches = [...appHtml.matchAll(/onclick=['"]loginAs\(['"]([^'"]+)['"]\)/gi)];
-        if (forbiddenSwitcherMatches.length > 0) {
+        const interactiveElements = [...appHtml.matchAll(/<(button|a)([^>]*)>([\s\S]*?)<\/\1>/gi)];
+
+        for (const el of interactiveElements) {
+          const attrs = el[2];
+          const rawContent = el[3].replace(/<[^>]*>/g, '').trim();
+
+          // Abaikan tombol logout / ganti akun
+          if (attrs.includes('logout()') || /keluar|ganti\s*akun/i.test(rawContent)) {
+            continue;
+          }
+
+          // Abaikan tombol aksi form standar
+          if (attrs.includes('tutupModal') || attrs.includes('bukaModal') || /batal|tutup|simpan|hapus|edit|tambah/i.test(rawContent)) {
+            continue;
+          }
+
+          // Bersihkan emoji, icon, dan simbol
+          const cleanText = rawContent.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+          for (const role of expectedRoles!) {
+            const rLower = role.trim().toLowerCase();
+            const isPureRoleName = cleanText === rLower ||
+                                   cleanText === 'role ' + rLower ||
+                                   cleanText === 'peran ' + rLower ||
+                                   cleanText === 'menu ' + rLower ||
+                                   cleanText === 'tab ' + rLower ||
+                                   cleanText === 'halaman ' + rLower;
+
+            if (isPureRoleName) {
+              issues.push(
+                `ROLE_AS_TAB_LABEL: Ditemukan tombol/link dengan label nama peran mentah "${rawContent}" di dalam halaman aplikasi (#appContainer). ` +
+                `DILARANG menamai tombol tab dengan nama peran! Tab di dalam aplikasi adalah NAVIGASI FITUR (contoh: "Kelola Anggota", "Kartu Digital", "Laporan"). ` +
+                `Pergantian peran HANYA dilakukan melalui tombol "Keluar / Ganti Akun" yang kembali ke form login.`
+              );
+            }
+          }
+        }
+
+        // Cek jika masih ada tombol loginAs di dalam appContainer
+        const appLoginAsMatches = [...appHtml.matchAll(/onclick=['"](?:javascript:)?loginAs\(['"]([^'"]+)['"]\)/gi)];
+        if (appLoginAsMatches.length > 0) {
           issues.push(
             `FORBIDDEN_ROLE_SWITCHER_IN_APP: Ditemukan tombol ganti peran langsung di dalam halaman aplikasi (appContainer). ` +
             `DILARANG membuat tombol ganti peran / role switcher di dalam halaman aplikasi! ` +
@@ -405,6 +453,25 @@ function eksekusiHapus() {
           );
         }
       }
+
+      // Auto-repair defensive: Sembunyikan seluruh tombol tab yang punya data-access-roles di markup HTML awal jika belum ada style="display:none"
+      repairedHtml = repairedHtml.replace(/<button([^>]*?)>/gi, (match, attrs) => {
+        if (!attrs.includes('tab-btn')) return match;
+        const accessRolesMatch = attrs.match(/data-access-roles=["']([^"']+)["']/i);
+        if (accessRolesMatch) {
+          const roles = accessRolesMatch[1].split(',').map((r: string) => r.trim().toLowerCase());
+          const hasPublicAccess = roles.some((r: string) => /^(pasien|pelanggan|customer|tamu|guest|publik|client)$/i.test(r));
+          if (!hasPublicAccess && !attrs.includes('style=')) {
+            return `<button${attrs} style="display: none;">`;
+          } else if (!hasPublicAccess && attrs.includes('style="') && !attrs.includes('display: none') && !attrs.includes('display:none')) {
+            return `<button${attrs.replace('style="', 'style="display: none; ')}>`;
+          }
+        }
+        return match;
+      });
+
+      // Bersihkan wrapper div role-switcher yang kosong jika ada
+      repairedHtml = repairedHtml.replace(/<div[^>]*class=['"][^'"]*role(?:-switcher|-buttons)?[^'"]*['"][^>]*>\s*<\/div>/gi, '');
     }
 
     if (isMultiRoleApp && !hasFilterTabsByRole) {
