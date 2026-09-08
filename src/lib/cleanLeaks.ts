@@ -55,7 +55,9 @@ export function cleanConversationalLeaks(html: string): string {
   }
 
   // 3. Bersihkan sisa teks percakapan / markdown yang berada sebelum </body> (meskipun tidak ada script)
-  clean = clean.replace(/(?:Kode prototipe|Berikut adalah|Seluruh kode|###\s*Ringkasan|Integritas Fungsionalitas|Jika Anda ingin)[\s\S]*?(?=<\/body>|$)/gi, '');
+  // 4. Sanitasi otomatis type assertion TypeScript yang tidak sengaja tertulis di tag <script>
+  clean = clean.replace(/\(\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s+as\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*\)/g, '$1')
+               .replace(/\s+as\s+[a-zA-Z_$][a-zA-Z0-9_$]*/g, '');
 
   return clean.trim();
 }

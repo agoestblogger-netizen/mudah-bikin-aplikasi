@@ -55,7 +55,7 @@ function isCodeTruncatedOrBroken(text: string): boolean {
     let hasJsSyntaxError = false;
     if (scriptMatches) {
       for (const s of scriptMatches) {
-        const cleanJs = s.replace(/<\/?script[\s\S]*?>/gi, '').trim();
+        let cleanJs = s.replace(/<\/?script[\s\S]*?>/gi, '').replace(/\s+as\s+[a-zA-Z_$][a-zA-Z0-9_$]*/g, '').trim();
         if (cleanJs) {
           try {
             new Function(cleanJs);
@@ -66,7 +66,7 @@ function isCodeTruncatedOrBroken(text: string): boolean {
         }
       }
     }
-    // Jika tidak ada syntax error dan </html> sudah ada, kode SUDAH LENGKAP dan tidak perlu dipaksa lanjut
+    // Jika </html> sudah ada dan tidak ada syntax error fatal, kode sudah lengkap
     if (!hasJsSyntaxError) {
       return false;
     }
@@ -96,7 +96,7 @@ function isCodeTruncatedOrBroken(text: string): boolean {
     const scriptMatches = htmlContent.match(/<script[\s\S]*?>([\s\S]*?)<\/script>/gi);
     if (scriptMatches) {
       for (const s of scriptMatches) {
-        const cleanJs = s.replace(/<\/?script[\s\S]*?>/gi, '').trim();
+        let cleanJs = s.replace(/<\/?script[\s\S]*?>/gi, '').replace(/\s+as\s+[a-zA-Z_$][a-zA-Z0-9_$]*/g, '').trim();
         if (cleanJs) {
           try {
             new Function(cleanJs);
@@ -1012,7 +1012,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         showTab(matched.landingTab);
       } else {
         const firstTab = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
-        if (firstTab) (firstTab as HTMLElement).click();
+        if (firstTab) firstTab.click();
       }
 
       render();
