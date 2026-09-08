@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { validateAndRepairGeneratedCode } from '@/lib/codeValidator';
+import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import {
   getConciseCatalogSummary,
@@ -1565,10 +1566,8 @@ body: JSON.stringify({
       htmlCode = assistantMessage.trim();
     }
 
-    // SANITASI KETAT ANTI-LEAK: Potong seluruh teks percakapan chat / markdown di luar tag </html>
-    if (htmlCode.includes('</html>')) {
-      htmlCode = htmlCode.slice(0, htmlCode.lastIndexOf('</html>') + 7).trim();
-    }
+    // SANITASI KETAT ANTI-LEAK: Potong seluruh teks percakapan chat / markdown
+    htmlCode = cleanConversationalLeaks(htmlCode);
     if (htmlCode.includes('<!DOCTYPE')) {
       htmlCode = htmlCode.slice(htmlCode.indexOf('<!DOCTYPE')).trim();
     } else if (htmlCode.includes('<html')) {
@@ -1624,12 +1623,12 @@ INSTRUKSI PERBAIKAN WAJIB:
           const repairMsg = repairData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
           const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
           if (repairMatch) {
-            htmlCode = repairMatch[1].trim();
+            htmlCode = cleanConversationalLeaks(repairMatch[1]);
             assistantMessage = repairMsg;
             validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
-            htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
+            htmlCode = cleanConversationalLeaks(repairMsg.split('```html')[1].replace(/```[\s\S]*$/, ''));
             assistantMessage = repairMsg;
             validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             repairSuccess = true;
@@ -1678,12 +1677,12 @@ body: JSON.stringify({
           const repairMsg = repairData.choices?.[0]?.message?.content || '';
           const repairMatch = repairMsg.match(/```html([\s\S]*?)```/);
           if (repairMatch) {
-            htmlCode = repairMatch[1].trim();
+            htmlCode = cleanConversationalLeaks(repairMatch[1]);
             assistantMessage = repairMsg;
             validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
-            htmlCode = repairMsg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
+            htmlCode = cleanConversationalLeaks(repairMsg.split('```html')[1].replace(/```[\s\S]*$/, ''));
             assistantMessage = repairMsg;
             validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             repairSuccess = true;

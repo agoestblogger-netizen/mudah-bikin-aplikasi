@@ -3,6 +3,8 @@
  * Memverifikasi keselarasan event handler HTML vs definisi JS serta eksistensi elemen DOM ID.
  */
 
+import { cleanConversationalLeaks } from './cleanLeaks';
+
 export interface ValidationReport {
   isValid: boolean;
   issues: string[];
@@ -20,13 +22,10 @@ export function validateAndRepairGeneratedCode(
   expectedRoles?: string[]
 ): ValidationReport {
   const issues: string[] = [];
-  let repairedHtml = html;
+  let repairedHtml = cleanConversationalLeaks(html);
   let repairedJs = js;
 
-  // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown di luar tag </html>
-  if (repairedHtml.includes('</html>')) {
-    repairedHtml = repairedHtml.slice(0, repairedHtml.lastIndexOf('</html>') + 7).trim();
-  }
+  // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown
   if (repairedHtml.includes('<!DOCTYPE')) {
     repairedHtml = repairedHtml.slice(repairedHtml.indexOf('<!DOCTYPE')).trim();
   } else if (repairedHtml.includes('<html')) {
@@ -434,6 +433,8 @@ function eksekusiHapus() {
       }
     }
   }
+
+  repairedHtml = cleanConversationalLeaks(repairedHtml);
 
   return {
     isValid: issues.length === 0,

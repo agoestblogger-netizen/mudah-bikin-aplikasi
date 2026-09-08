@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getUserFromRequest } from '@/lib/supabase/user';
+import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 
 function unauthorized() {
   return NextResponse.json({ success: false, error: 'Anda harus login terlebih dahulu.' }, { status: 401 });
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
 
   const title = String(body.title || '').trim().slice(0, 255) || 'Aplikasi Tanpa Nama';
   const description = body.description ? String(body.description).slice(0, 2000) : null;
-  const canvasHtml = body.canvas_html ? String(body.canvas_html) : null;
+  const canvasHtml = body.canvas_html ? cleanConversationalLeaks(String(body.canvas_html)) : null;
   const canvasCss = body.canvas_css ? String(body.canvas_css) : null;
   const canvasJs = body.canvas_js ? String(body.canvas_js) : null;
 

@@ -1,3 +1,5 @@
+import { cleanConversationalLeaks } from './cleanLeaks';
+
 /**
  * Helper untuk menyusun HTML yang valid, modern, dan mandiri (Zero-Dependency) untuk iframe srcDoc.
  * Memastikan styling tajam, ber-kontras tinggi, dan kebal dari restriksi sandbox tanpa CDN CSS eksternal.
@@ -491,12 +493,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   `;
 
   if (isFullDoc) {
-    let cleanDoc = html;
+    let cleanDoc = cleanConversationalLeaks(html);
 
-    // Bersihkan teks percakapan chat / markdown yang bocor setelah tag penutup </html>
-    if (cleanDoc.includes('</html>')) {
-      cleanDoc = cleanDoc.slice(0, cleanDoc.lastIndexOf('</html>') + 7).trim();
-    }
     if (cleanDoc.includes('<!DOCTYPE')) {
       cleanDoc = cleanDoc.slice(cleanDoc.indexOf('<!DOCTYPE')).trim();
     } else if (cleanDoc.includes('<html')) {
@@ -536,8 +534,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   }
 
   // Jika berupa fragmen komponen HTML
-  let cleanFragment = html;
-  cleanFragment = cleanFragment.replace(/(?:Kode prototipe|### Ringkasan|Berikut adalah|Seluruh kode|Integritas Fungsionalitas)[\s\S]*$/i, '').trim();
+  const cleanFragment = cleanConversationalLeaks(html);
 
   return `<!DOCTYPE html>
 <html lang="id">
