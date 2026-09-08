@@ -599,57 +599,135 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         min-height: 100vh;
         padding: 24px;
       }
-      .container { max-width: 1000px; margin: 0 auto; }
+      .container { max-width: 1200px; margin: 0 auto; }
+
+      /* Modern App Header */
+      .app-header {
+        display: flex; justify-content: space-between; align-items: center; background: #ffffff;
+        border-radius: 16px; padding: 18px 24px; border: 1px solid #e2e8f0; margin-bottom: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+      }
+      .brand-box { display: flex; align-items: center; gap: 12px; }
+      .brand-icon {
+        width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 800;
+        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+      }
+      .title { font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.2; }
+      .subtitle { font-size: 13px; color: #64748b; margin-top: 2px; }
+      .header-actions { display: flex; align-items: center; gap: 12px; }
+      .user-badge {
+        display: inline-flex; align-items: center; gap: 8px; background: #f0fdf4; border: 1px solid #bbf7d0;
+        padding: 6px 14px; border-radius: 9999px; color: #166534; font-weight: 700; font-size: 12px;
+      }
+
+      /* KPI Metric Cards Grid */
+      .kpi-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;
+      }
+      .kpi-card {
+        background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 6px;
+        transition: transform 0.15s, box-shadow 0.15s;
+      }
+      .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.06); }
+      .kpi-label { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+      .kpi-value { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+      .kpi-badge { font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
+
+      /* Control Toolbar & Filters */
+      .toolbar {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+        background: #ffffff; border-radius: 12px; padding: 14px 18px; border: 1px solid #e2e8f0; margin-bottom: 18px;
+      }
+      .search-input {
+        padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;
+        min-width: 240px; font-family: inherit;
+      }
+      .search-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+      .filter-select {
+        padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;
+        background: #fff; font-family: inherit; color: #334155;
+      }
+
+      /* Card & Content Boxes */
       .card {
         background: #ffffff;
-        border-radius: 12px;
+        border-radius: 14px;
         border: 1px solid rgba(226, 232, 240, 0.8);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
         padding: 24px;
         margin-bottom: 24px;
       }
-      .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
-      .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+
+      /* Buttons */
       .btn-primary {
-        background: #4f46e5; color: #ffffff; font-weight: 600; padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 8px;
+        background: #4f46e5; color: #ffffff; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
       }
-      .btn-primary:hover { background: #4338ca; }
+      .btn-primary:hover { background: #4338ca; transform: translateY(-1px); }
       .btn-secondary {
-        background: #ffffff; color: #334155; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
+        background: #ffffff; color: #334155; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
       }
-      .btn-secondary:hover { background: #f1f5f9; }
+      .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; }
       .btn-danger {
-        background: #fff1f2; color: #e11d48; font-weight: 500; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: background 0.15s; display: inline-flex; align-items: center; gap: 6px;
+        background: #fff1f2; color: #e11d48; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
       }
       .btn-danger:hover { background: #ffe4e6; }
+      
+      /* Form Controls */
       .form-group { margin-bottom: 16px; }
       .form-label { display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; }
       .form-input {
-        width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+        width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; font-family: inherit;
       }
       .form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
+      
+      /* Data Table Modern */
       .table-container {
-        overflow-x: auto; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); background: #ffffff; margin-top: 16px;
+        overflow-x: auto; border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03); background: #ffffff; margin-top: 14px;
       }
       table { width: 100%; border-collapse: collapse; text-align: left; }
       th {
-        background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 16px; border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
       }
-      td { color: #334155; font-size: 14px; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; }
+      td { color: #334155; font-size: 14px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+      tr:hover td { background-color: #f8fafc; }
       tr:last-child td { border-bottom: none; }
+
+      /* Badges */
+      .badge {
+        display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      }
+      .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+      .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+      .badge-danger { background: #ffe4e6; color: #b91c1c; border: 1px solid #fecdd3; }
+      .badge-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+
+      /* Tabs */
       .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; }
       .tab-btn {
-        padding: 10px 18px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px;
+        padding: 12px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px; display: inline-flex; align-items: center; gap: 8px;
       }
+      .tab-btn:hover { color: #334155; }
       .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; }
       .tab-content { display: none; }
       .tab-content.active { display: block; }
+
+      /* Modals */
       .modal {
         position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
       }
       .modal-box {
-        background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); max-width: 480px; width: 100%; padding: 24px;
+        background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-width: 500px; width: 100%; padding: 26px;
       }
+
+      /* Toast */
+      .toast {
+        position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 13px;
+      }
+      .toast.error { background: #ef4444; }
+      .toast.success { background: #10b981; }
+      .toast.info { background: #3b82f6; }
       \`\`\`
     - Lucide Icons & Google Fonts: Diizinkan di <head> (menggunakan tag <link> font dan <script src="https://unpkg.com/lucide@latest"></script>). Panggil \`if (typeof lucide !== 'undefined' && lucide?.createIcons) lucide.createIcons();\` di fungsi \`render()\`.
 13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
@@ -1031,16 +1109,21 @@ ${staffLandingGuide}
 ================================================================================`;
       }
 
-      if (stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) {
-        systemPrompt += `\n\nATURAN TAHAP 1 (KONFIRMASI SELESAI -> GENERATE MOCKUP TAHAP 2):
-- Pengguna telah mengonfirmasi persetujuan pada lembar "Brief Kebutuhan".
+      if ((stage === 'TAHAP_1_PEMBUKAAN' && hasBriefPresented && isConfirmationApproval) || stage === 'TAHAP_2_MOCKUP' || (!currentCode && activeChatMode === 'BUILD')) {
+        systemPrompt += `\n\nATURAN TAHAP 1 & 2 (PEMBUATAN PROTOTIPE VISUAL LENGKAP & KAYA FITUR):
+- Pengguna meminta pembuatan prototipe aplikasi di mode BUILD.
 - Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
   1. Data awal 3-5 item contoh realistis (Prinsip 1).
-  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}). filterTabsByRole() dipanggil pertama kali di loginAs() SEBELUM showTab(), agar tab yg tidak diizinkan benar-benar tersembunyi setelah login.
-  3. Visibilitas Tab Terbatas Per Role (Prinsip 20 & 21): Setiap tab-btn WAJIB punya data-access-roles="..." sesuai peran resmi yang boleh melihatnya. DILARANG hardcode getElementById('tab-btn-xxx') untuk filter tab.
-  4. Kepatuhan Layout Page Template Baku (Prinsip 22): wujudkan layout visual sesuai fungsi halaman di Brief Kebutuhan (misal: antrean dengan kartu antrean, POS/transaksi dengan layout kasir, dashboard dengan ringkasan metrik).
+  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen/modalLogin + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}).
+  3. Quick Login 1-Klik di Form Login: Pada form login (#modalLogin atau #loginScreen), WAJIB sertakan kotak "⚡ Quick Login (Klik untuk Masuk Instan)" dengan tombol untuk masing-masing peran resmi dan fungsi quickLogin(u, p) agar pengguna dapat login 1-klik dengan sangat mudah!
+  4. STANDAR KUALITAS VISUAL & STRUKTUR TAB KAYA FITUR (ANTI-HALAMAN KOSONG):
+     * DILARANG KERAS membuat tab yang hanya berisi tag teks <p> deskripsi atau tag <ul> kosong!
+     * SETIAP TAB wajib memiliki struktur visual nyata:
+       a) Tab Header & Toolbar: Judul tab yang tegas, input pencarian (search), dropdown filter status, dan tombol aksi utama (misal: "➕ Tambah Data Baru").
+       b) Ringkasan Metrik (KPI Stat Cards): 2-4 kartu statistik dengan icon, angka tebal, label, dan badge status.
+       c) Tampilan Data Utama: Data Table Interaktif (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data.
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
-  6. Styling CSS modern murni tanpa Tailwind Play CDN, event handler 100% selaras.
+  6. Styling CSS modern murni tanpa Tailwind Play CDN, responsive layout, event handler 100% selaras.
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
 
       } else if (stage === 'TAHAP_5_PATCH') {
@@ -1752,24 +1835,51 @@ body: JSON.stringify({
         cleanReplyText += '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**';
       }
 
-      // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D)
-      if (officialRoles.length > 0 && !cleanReplyText.includes('🔑 **Petunjuk Akses')) {
-        let credentialsGuide = '\n\n🔑 **Petunjuk Akses & Akun Demo:**';
-        if (publicRole) {
-          credentialsGuide += `\n- Aplikasi ini dibuka pertama kali di halaman **${publicRole}** (akses publik, tanpa login).`;
-          credentialsGuide += `\n- Untuk masuk sebagai staf, klik tombol **"Login"** di pojok kanan atas, lalu gunakan salah satu akun berikut:`;
-          const staffToDisplay = staffRoles.length > 0 ? staffRoles : officialRoles.filter(r => r !== publicRole);
-          staffToDisplay.forEach(r => {
-            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-            credentialsGuide += `\n  * **${r}**: username \`${u}\` / password \`${u}123\``;
-          });
-        } else {
-          credentialsGuide += `\n- Masuk ke aplikasi menggunakan salah satu akun demo berikut:`;
-          officialRoles.forEach(r => {
-            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-            credentialsGuide += `\n  * **${r}**: username \`${u}\` / password \`${u}123\``;
-          });
+      // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D): USER DAN PASSWORD DI CHAT
+      if (!cleanReplyText.includes('🔑 **Akun Demo') && !cleanReplyText.includes('🔑 **Petunjuk Akses')) {
+        let displayRoles = officialRoles.length > 0 ? [...officialRoles] : [];
+
+        // Fallback: ekstrak role dari DEMO_ACCOUNTS atau loginAs di kode HTML
+        if (displayRoles.length === 0 && htmlCode) {
+          const accMatches = htmlCode.matchAll(/role\s*:\s*['"]([^'"]+)['"]/gi);
+          for (const m of accMatches) {
+            const r = m[1].trim();
+            if (r && !displayRoles.includes(r)) displayRoles.push(r);
+          }
         }
+        if (displayRoles.length === 0 && htmlCode) {
+          const roleMatches = htmlCode.matchAll(/(?:loginAs|switchRole|selectRole)\s*\(\s*['"]([^'"]+)['"]/gi);
+          for (const rm of roleMatches) {
+            const r = rm[1].trim();
+            if (r && !displayRoles.includes(r)) displayRoles.push(r);
+          }
+        }
+        if (displayRoles.length === 0) {
+          displayRoles = ['Admin', 'Petugas / Anggota'];
+        }
+
+        let credentialsGuide = '\n\n🔑 **Akun Demo & Kredensial Login (Username & Password):**\nSilakan gunakan akun demo di bawah ini untuk mencoba prototipe pada Canvas Preview:\n';
+
+        if (publicRole) {
+          credentialsGuide += `\n> ℹ️ *Aplikasi ini dibuka pertama kali di halaman **${publicRole}** (akses publik tanpa login). Untuk mencoba fitur staf/pengelola, silakan login dengan akun berikut:*\n`;
+        }
+
+        credentialsGuide += '\n| Peran (Role) | Username | Password | Hak Akses |';
+        credentialsGuide += '\n| :--- | :--- | :--- | :--- |';
+
+        displayRoles.forEach((r) => {
+          const isPublic = /^(pasien|pelanggan|customer|tamu|guest|publik|client|warga|masyarakat)/i.test(r);
+          if (isPublic) {
+            credentialsGuide += `\n| **${r}** | *(Tanpa Login)* | *(Tanpa Login)* | Akses Publik (Tampilan Awal) |`;
+          } else {
+            const u = r.toLowerCase().replace(/[^a-z0-9]/g, '') || 'admin';
+            const pass = `${u}123`;
+            const desc = /admin/i.test(r) ? 'Akses Penuh (Kelola data & laporan)' : 'Akses Operasional & input data';
+            credentialsGuide += `\n| **${r}** | \`${u}\` | \`${pass}\` | ${desc} |`;
+          }
+        });
+
+        credentialsGuide += '\n\n💡 *Tips: Anda juga dapat langsung mengklik tombol role login instan (Quick Login) yang tersedia pada layar login aplikasi.*';
         cleanReplyText += credentialsGuide;
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {

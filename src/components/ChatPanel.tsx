@@ -20,6 +20,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
+import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
 import { loadModelSettings, getModelLabel, getProviderConfig } from '@/lib/modelConfig';
 import type { ModelSettings } from '@/lib/modelConfig';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
@@ -216,7 +217,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         if (projectState.canvasCode.html) {
           currentStage = 'TAHAP_5_PATCH';
         } else {
-          currentStage = 'TAHAP_1_PEMBUKAAN';
+          currentStage = 'TAHAP_2_MOCKUP';
         }
       }
 
@@ -431,6 +432,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 select-text">
         {messages.map((m) => {
           const briefData = m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
+          const credsData = !briefData && m.sender === 'AI' ? parseDemoCredentials(m.text) : null;
+          const textToDisplay = credsData ? credsData.cleanText : m.text;
 
           return (
             <div
@@ -457,14 +460,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   </span>
                 </div>
               ) : (
-                <div
-                  className={`max-w-[85%] rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
-                    m.sender === 'USER'
-                      ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold'
-                      : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{m.text}</p>
+                <div className="flex-1 max-w-[88%] space-y-2">
+                  <div
+                    className={`rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
+                      m.sender === 'USER'
+                        ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold ml-auto'
+                        : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{textToDisplay}</p>
                   
                   {/* Tombol Pintas: Beralih ke Mode Build jika AI meminta beralih ke Build */}
                   {m.sender === 'AI' && selectedMode === 'PLAN' && (
@@ -505,7 +509,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     {m.timestamp}
                   </span>
                 </div>
-              )}
+
+                {/* Render Kartu Kredensial Akun Demo (DemoCredentialsCard) */}
+                {credsData && (
+                  <DemoCredentialsCard data={credsData} />
+                )}
+              </div>
+            )}
             </div>
           );
         })}
