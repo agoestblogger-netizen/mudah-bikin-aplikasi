@@ -101,11 +101,37 @@ export interface AppProjectState {
     scriptCode: string;
     isConnected: boolean;
   };
+  // OpenDesign-like annotations: marks/comments/patches for prototype canvas
+  annotations: ODAnnotations;
   patchHistory: FeaturePatchRequest[];
   troubleshootIssues: TroubleshootIssue[];
   qualityAudit: QualityAuditResult;
   updatedAt: string;
 }
+
+export type ODAnnotations = {
+  marks: Array<{
+    id: string;
+    kind: 'area' | 'element';
+    bounds: { x: number; y: number; w: number; h: number };
+    elementUid?: string;
+    createdAt: string;
+  }>;
+  notes: Array<{
+    id: string;
+    markId: string;
+    text: string;
+    createdAt: string;
+    updatedAt?: string;
+  }>;
+  patches: Array<{
+    id: string;
+    elementUid: string;
+    patchType: 'textColor' | 'textContent';
+    value: string;
+    createdAt: string;
+  }>;
+};
 
 // Snapshot tersimpan dari sebuah prototype (baris app_projects untuk user)
 export interface SavedProject {
@@ -120,6 +146,7 @@ export interface SavedProject {
   gas_script: string | null;
   gas_web_app_url: string | null;
   spreadsheet_id: string | null;
+  annotations: ODAnnotations | null;
   created_at: string;
   updated_at: string;
 }

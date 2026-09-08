@@ -44,6 +44,56 @@ export default function AppWorkspacePage() {
   const [savedLoaded, setSavedLoaded] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const lastSavedCanvasRef = useRef('');
+  const lastSavedAnnotationsRef = useRef<string>('');
+
+  // OpenDesign-like marks/comments/patches
+  const [interactionMode, setInteractionMode] = useState<'select' | 'mark'>('select');
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const [overlaySize, setOverlaySize] = useState({ w: 0, h: 0 });
+  const [activeSelection, setActiveSelection] = useState<
+    | null
+    | {
+        markId: string;
+        kind: 'area' | 'element';
+        bounds: { x: number; y: number; w: number; h: number };
+        elementUid?: string;
+        initialText?: string;
+        initialColor?: string;
+      }
+  >(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [textColorDraft, setTextColorDraft] = useState('');
+  const [textContentDraft, setTextContentDraft] = useState('');
+
+  const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+  const selectionPx = (() => {
+    if (!activeSelection) return null;
+    if (!overlaySize.w || !overlaySize.h) return null;
+    const left = activeSelection.bounds.x * overlaySize.w;
+    const top = activeSelection.bounds.y * overlaySize.h;
+    const width = activeSelection.bounds.w * overlaySize.w;
+    const height = activeSelection.bounds.h * overlaySize.h;
+    if (width <= 1 || height <= 1) return null;
+    const anchorLeft = clamp(left + width / 2, 120, Math.max(120, overlaySize.w - 120));
+    const anchorTop = clamp(top, 60, Math.max(60, overlaySize.h - 60));
+    return { left, top, width, height, anchorLeft, anchorTop };
+  })();
+
+  const annotationsRef = useRef(projectState.annotations);
+  useEffect(() => {
+    annotationsRef.current = projectState.annotations;
+  }, [projectState.annotations]);
+
+  const canvasHtmlRef = useRef(projectState.canvasCode.html);
+  useEffect(() => {
+    canvasHtmlRef.current = projectState.canvasCode.html;
+  }, [projectState.canvasCode.html]);
+
+  const rightPanelTabRef = useRef(rightPanelTab);
+  useEffect(() => {
+    rightPanelTabRef.current = rightPanelTab;
+  }, [rightPanelTab]);
 
   // Shortcut Keyboard Esc untuk keluar dari Fullscreen (Poin 37)
   useEffect(() => {
@@ -55,6 +105,83 @@ export default function AppWorkspacePage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPreviewFullscreen]);
+
+  useEffect(() => {
+    const el = overlayRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      setOverlaySize({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    const r = el.getBoundingClientRect();
+    setOverlaySize({ w: r.width, h: r.height });
+    return () => ro.disconnect();
+  }, [projectState.canvasCode.html, rightPanelTab, isPreviewFullscreen]);
+
+  const newOdId = () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c: any = typeof crypto !== 'undefined' ? crypto : null;
+      if (c?.randomUUID) return c.randomUUID();
+    } catch {}
+    return 'od_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+  };
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      if (data.source !== 'OD_BRIDGE') return;
+
+      if (rightPanelTabRef.current !== 'PREVIEW') return;
+      if (!canvasHtmlRef.current) return;
+
+      if (data.type === 'OD_SELECT_ELEMENT') {
+        const elementUid: string | undefined = data.elementUid;
+        if (!elementUid) return;
+        const markId = newOdId();
+        const bounds = data.bounds;
+        if (!bounds) return;
+
+        const patches = annotationsRef.current?.patches || [];
+        const lastColor = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textColor');
+        const lastText = [...patches].reverse().find((p) => p.elementUid === elementUid && p.patchType === 'textContent');
+
+        const initialColor = lastColor?.value ?? data.currentColor ?? '';
+        const initialText = lastText?.value ?? data.currentText ?? '';
+
+        setActiveSelection({
+          markId,
+          kind: 'element',
+          bounds,
+          elementUid,
+          initialColor,
+          initialText
+        });
+        setNoteDraft('');
+        setTextColorDraft(String(initialColor || ''));
+        setTextContentDraft(String(initialText || ''));
+      } else if (data.type === 'OD_AREA_MARK') {
+        const markId = newOdId();
+        const bounds = data.bounds;
+        if (!bounds) return;
+        setActiveSelection({ markId, kind: 'area', bounds });
+        setNoteDraft('');
+        setTextColorDraft('');
+        setTextContentDraft('');
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ source: 'OD_BRIDGE', type: 'OD_MODE', mode: interactionMode }, '*');
+  }, [interactionMode]);
 
 
   // Pemeriksaan Sesi Supabase Auth Ketat
@@ -144,7 +271,7 @@ export default function AppWorkspacePage() {
       updatedAt: new Date().toISOString()
     };
     setProjectState(merged);
-    if (updated.canvasCode?.html) {
+    if (updated.canvasCode?.html || updated.annotations) {
       setRightPanelTab('PREVIEW');
       handleAutoSaveProject(merged);
     }
@@ -166,6 +293,7 @@ export default function AppWorkspacePage() {
       updatedAt: new Date().toISOString()
     });
     lastSavedCanvasRef.current = '';
+    lastSavedAnnotationsRef.current = '';
     setRightPanelTab('SAVED');
   };
 
@@ -175,8 +303,11 @@ export default function AppWorkspacePage() {
   const handleAutoSaveProject = useCallback((snapshot: AppProjectState) => {
     if (!isAuthenticated) return;
     const html = snapshot.canvasCode.html || '';
-    if (!html || html === lastSavedCanvasRef.current) return;
+    const annotationsJson = JSON.stringify(snapshot.annotations || { marks: [], notes: [], patches: [] });
+    if (!html) return;
+    if (html === lastSavedCanvasRef.current && annotationsJson === lastSavedAnnotationsRef.current) return;
     lastSavedCanvasRef.current = html;
+    lastSavedAnnotationsRef.current = annotationsJson;
 
     const body = {
       title: snapshot.title || 'Aplikasi Tanpa Nama',
@@ -186,7 +317,8 @@ export default function AppWorkspacePage() {
       canvas_js: snapshot.canvasCode.js || '',
       gas_script: snapshot.gasConfig.scriptCode || '',
       gas_web_app_url: snapshot.gasConfig.webAppUrl || '',
-      spreadsheet_id: snapshot.gasConfig.sheetId || ''
+      spreadsheet_id: snapshot.gasConfig.sheetId || '',
+      annotations: snapshot.annotations || { marks: [], notes: [], patches: [] }
     };
 
     (async () => {
@@ -215,6 +347,7 @@ export default function AppWorkspacePage() {
       id: 'saved-' + project.id,
       title: project.title,
       description: project.description || '',
+      annotations: project.annotations || { marks: [], notes: [], patches: [] },
       updatedAt: project.updated_at || new Date().toISOString(),
       canvasCode: {
         html: project.canvas_html || '',
@@ -239,12 +372,99 @@ export default function AppWorkspacePage() {
       setSavedProjects((prev) => prev.filter((p) => p.id !== id));
       if (lastSavedCanvasRef.current && projectState.id === 'saved-' + id) {
         lastSavedCanvasRef.current = '';
+        lastSavedAnnotationsRef.current = '';
       }
     } catch (err) {
       console.error('Failed to delete project:', err);
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleSaveAndApply = () => {
+    if (!activeSelection) return;
+    const current = projectState.annotations || { marks: [], notes: [], patches: [] };
+    const now = new Date().toISOString();
+
+    const next: typeof current = {
+      marks: Array.isArray(current.marks) ? [...current.marks] : [],
+      notes: Array.isArray(current.notes) ? [...current.notes] : [],
+      patches: Array.isArray(current.patches) ? [...current.patches] : []
+    };
+
+    const markIdx = next.marks.findIndex((m) => m.id === activeSelection.markId);
+    if (markIdx === -1) {
+      next.marks.push({
+        id: activeSelection.markId,
+        kind: activeSelection.kind,
+        bounds: activeSelection.bounds,
+        elementUid: activeSelection.elementUid,
+        createdAt: now
+      });
+    } else {
+      next.marks[markIdx] = {
+        ...next.marks[markIdx],
+        kind: activeSelection.kind,
+        bounds: activeSelection.bounds,
+        elementUid: activeSelection.elementUid
+      };
+    }
+
+    const noteIdx = next.notes.findIndex((n) => n.markId === activeSelection.markId);
+    if (noteIdx === -1) {
+      next.notes.push({
+        id: newOdId(),
+        markId: activeSelection.markId,
+        text: noteDraft,
+        createdAt: now
+      });
+    } else {
+      next.notes[noteIdx] = {
+        ...next.notes[noteIdx],
+        text: noteDraft,
+        updatedAt: now
+      };
+    }
+
+    if (activeSelection.kind === 'element' && activeSelection.elementUid) {
+      const elUid = activeSelection.elementUid;
+      const colorVal = textColorDraft.trim();
+      const textVal = textContentDraft;
+
+      if (colorVal) {
+        const patch = {
+          id: newOdId(),
+          elementUid: elUid,
+          patchType: 'textColor' as const,
+          value: colorVal,
+          createdAt: now
+        };
+        next.patches.push(patch);
+        iframeRef.current?.contentWindow?.postMessage({
+          source: 'OD_BRIDGE',
+          type: 'OD_APPLY_PATCH',
+          patch
+        }, '*');
+      }
+
+      if (textVal.trim()) {
+        const patch = {
+          id: newOdId(),
+          elementUid: elUid,
+          patchType: 'textContent' as const,
+          value: textVal,
+          createdAt: now
+        };
+        next.patches.push(patch);
+        iframeRef.current?.contentWindow?.postMessage({
+          source: 'OD_BRIDGE',
+          type: 'OD_APPLY_PATCH',
+          patch
+        }, '*');
+      }
+    }
+
+    handleUpdateState({ annotations: next });
   };
 
   // Muat daftar prototype tersimpan setelah sesi login terverifikasi (sekali saja)
@@ -360,6 +580,39 @@ export default function AppWorkspacePage() {
                 {rightPanelTab === 'PREVIEW' ? 'Live Preview' : rightPanelTab === 'GAS_SCRIPT' ? 'Backend Apps Script' : 'Tersimpan'}
               </span>
 
+              {rightPanelTab === 'PREVIEW' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setInteractionMode('select');
+                      setActiveSelection(null);
+                    }}
+                    className={`px-2 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
+                      interactionMode === 'select'
+                        ? 'bg-indigo-600 text-white border-indigo-500'
+                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50'
+                    }`}
+                    title="Pilih elemen (klik)"
+                  >
+                    Select
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInteractionMode('mark');
+                      setActiveSelection(null);
+                    }}
+                    className={`px-2 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
+                      interactionMode === 'mark'
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50'
+                    }`}
+                    title="Mark area (drag)"
+                  >
+                    Mark
+                  </button>
+                </div>
+              )}
+
               {/* Tombol Fullscreen Expand / Collapse (Poin 37) */}
               <button
                 onClick={() => setIsPreviewFullscreen(prev => !prev)}
@@ -379,15 +632,109 @@ export default function AppWorkspacePage() {
             {/* Isi Viewport Live Preview / Script */}
             <div className="col-start-1 row-start-2 flex-1 overflow-hidden p-4 relative">
               {rightPanelTab === 'PREVIEW' ? (
-                <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
+                <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner relative">
                   {projectState.canvasCode.html ? (
-                    <iframe
-                      title="Live Preview Canvas"
-                      srcDoc={buildSrcDoc(projectState.canvasCode)}
-                      className="w-full h-full border-none bg-slate-50"
-                      sandbox="allow-scripts allow-forms allow-modals"
-                    />
-                  ) : isGenerating ? (
+                    <div ref={overlayRef} className="relative w-full h-full">
+                      <div className="absolute inset-0 pointer-events-none">
+                        {selectionPx && activeSelection && (
+                          <>
+                            <div
+                              className="absolute border-2 border-indigo-500/80 bg-indigo-500/10"
+                              style={{
+                                left: selectionPx.left,
+                                top: selectionPx.top,
+                                width: selectionPx.width,
+                                height: selectionPx.height
+                              }}
+                            />
+
+                            <div
+                              className="absolute z-50 pointer-events-auto"
+                              style={{
+                                left: selectionPx.anchorLeft,
+                                top: selectionPx.anchorTop,
+                                transform: 'translate(-50%, -100%)'
+                              }}
+                            >
+                              <div className="w-[320px] max-w-[80vw] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3">
+                                <div className="text-[11px] font-bold text-slate-200 mb-2">Mark note</div>
+                                <textarea
+                                  value={noteDraft}
+                                  onChange={(e) => setNoteDraft(e.target.value)}
+                                  rows={2}
+                                  className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
+                                  placeholder="Tulis catatan untuk mark ini..."
+                                />
+
+                                {activeSelection.kind === 'element' && (
+                                  <div className="mt-3 space-y-2">
+                                    <div className="text-[11px] font-semibold text-slate-300">Editor elemen (simple)</div>
+                                    <div className="space-y-1">
+                                      <div className="text-[10px] text-slate-400">Text color</div>
+                                      <input
+                                        value={textColorDraft}
+                                        onChange={(e) => setTextColorDraft(e.target.value)}
+                                        className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                        placeholder="#RRGGBB atau rgb(...)"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <div className="text-[10px] text-slate-400">Text content</div>
+                                      <textarea
+                                        value={textContentDraft}
+                                        onChange={(e) => setTextContentDraft(e.target.value)}
+                                        rows={2}
+                                        className="w-full bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
+                                        placeholder="Isi teks baru..."
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="mt-3 flex justify-end">
+                                  <button
+                                    onClick={handleSaveAndApply}
+                                    className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 disabled:opacity-40"
+                                  >
+                                    Save & Apply
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <iframe
+                        ref={iframeRef}
+                        title="Live Preview Canvas"
+                        srcDoc={buildSrcDoc(projectState.canvasCode)}
+                        className="w-full h-full border-none bg-slate-50"
+                        sandbox="allow-scripts allow-forms allow-modals"
+                        onLoad={() => {
+                          const win = iframeRef.current?.contentWindow;
+                          if (!win) return;
+                          win.postMessage(
+                            {
+                              source: 'OD_BRIDGE',
+                              type: 'OD_SET_PATCHES',
+                              patches: annotationsRef.current?.patches || []
+                            },
+                            '*'
+                          );
+
+                          win.postMessage(
+                            {
+                              source: 'OD_BRIDGE',
+                              type: 'OD_MODE',
+                              mode: interactionMode
+                            },
+                            '*'
+                          );
+                        }}
+                      />
+                    </div>
+                    ) : isGenerating ? (
                     // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===
                     <GeneratingSkeletonPreview />
                   ) : (

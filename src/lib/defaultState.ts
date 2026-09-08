@@ -48,6 +48,11 @@ export const initialProjectState: AppProjectState = {
     scriptCode: '',
     isConnected: false
   },
+  annotations: {
+    marks: [],
+    notes: [],
+    patches: []
+  },
   patchHistory: [],
   troubleshootIssues: [],
   qualityAudit: {
