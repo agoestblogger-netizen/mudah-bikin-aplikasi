@@ -229,9 +229,27 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   staffRoles: string[];
   roleLandingTabs: Record<string, string>; // role -> tab ID default
 } {
-  const aiMessages = (chatHistory || []).filter((m: any) => m.sender === 'AI' && (m.text?.includes('Brief Kebutuhan') || m.text?.includes('Job Description') || m.text?.includes('Struktur Halaman')));
-  const lastBriefMsg = aiMessages[aiMessages.length - 1]?.text || '';
+  const briefMsgs = (chatHistory || []).filter((m: any) => 
+    m.text && (
+      m.text.includes('Brief Kebutuhan') ||
+      (m.text.includes('Nama App:') && m.text.includes('Fitur Utama')) ||
+      m.text.includes('Job Description') ||
+      m.text.includes('Struktur Halaman')
+    )
+  );
+  const lastBriefMsg = briefMsgs[briefMsgs.length - 1]?.text || '';
   
+  // Bersihkan teks brief dari sapaan pembuka dan pertanyaan konfirmasi penutup
+  let rawBrief = lastBriefMsg;
+  const briefMarkerIndex = lastBriefMsg.search(/📋\s*\*\*Brief Kebutuhan\*\*|\*\*Brief Kebutuhan\*\*/i);
+  if (briefMarkerIndex !== -1) {
+    rawBrief = lastBriefMsg.substring(briefMarkerIndex);
+    const closingMatch = rawBrief.search(/\n\s*(Apakah\s+(?:lembar\s+)?Brief\s+Kebutuhan|Apakah\s+ada\s+detail|Silakan\s+konfirmasi)/i);
+    if (closingMatch !== -1) {
+      rawBrief = rawBrief.substring(0, closingMatch).trim();
+    }
+  }
+
   const roles: string[] = [];
   let publicRole: string | null = null;
 
@@ -240,8 +258,8 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
     const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
     const jobDescText = jobDescMatch ? jobDescMatch[1] : lastBriefMsg;
     
-    // Cari baris-baris peran: * **RoleName**: atau * **[RoleName]**:
-    const roleLineRegex = /\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
+    // Cari baris-baris peran: * **RoleName**: atau - **RoleName**: atau 1. **RoleName**:
+    const roleLineRegex = /(?:\*|-|\d+\.)\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
     let m: RegExpExecArray | null;
     const forbiddenKeywords = [
       'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
@@ -254,6 +272,21 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
       const isForbidden = forbiddenKeywords.some(k => roleName.toLowerCase().startsWith(k));
       if (roleName && !isForbidden && !roles.some(r => r.toLowerCase() === roleName.toLowerCase())) {
         roles.push(roleName);
+      }
+    }
+
+    // Fallback: Jika belum ada role yang ditemukan dari Job Description, cari di bagian Target Pengguna / Peran
+    if (roles.length === 0) {
+      const targetRoleMatch = lastBriefMsg.match(/(?:Target Pengguna|Peran Pengguna|Daftar Peran)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Job Description|$))/i);
+      const targetText = targetRoleMatch ? targetRoleMatch[1] : lastBriefMsg;
+      const genericRoleRegex = /(?:\*|-|\d+\.)\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
+      while ((m = genericRoleRegex.exec(targetText)) !== null) {
+        let roleName = m[1].trim();
+        roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
+        const isForbidden = forbiddenKeywords.some(k => roleName.toLowerCase().startsWith(k));
+        if (roleName && !isForbidden && !roles.some(r => r.toLowerCase() === roleName.toLowerCase())) {
+          roles.push(roleName);
+        }
       }
     }
   }
@@ -1055,7 +1088,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         systemPrompt += `\n\n${selectivePTDirective}`;
       }
 
-      if (officialRoles.length > 0) {
+      if (approvedBrief || officialRoles.length > 0) {
         // Build DEMO_ACCOUNTS dengan landingTab per role (Poin 53)
         // landingTab = ID tab default yang langsung ditampilkan saat role ini login
         const credentialsList = officialRoles.map(r => {
@@ -1079,6 +1112,27 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
         systemPrompt += `\n\n` +
 `================================================================================
+📋 BRIEF KEBUTUHAN RESMI YANG TELAH DISETUJUI PENGGUNA (SUMBER KEBENARAN TUNGGAL - WAJIB DIIKUTI 100% PERSIS):
+${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
+================================================================================
+
+⚠️ ATURAN MUTLAK SINKRONISASI PROTOTIPE DENGAN BRIEF KEBUTUHAN:
+1. SATU-SATUNYA SUMBER FITUR & STRUKTUR HALAMAN:
+   - Kode prototipe WAJIB mencerminkan 100% fitur, peran, dan Job Description yang tertulis di Brief Kebutuhan di atas.
+   - DILARANG KERAS mengarang fitur di luar brief atau mengabaikan pembagian tugas per peran yang tercantum.
+2. NAVIGASI TAB PER PERAN (<button class="tab-btn" data-access-roles="...">):
+   - Jika aplikasi memiliki 2 peran atau lebih (${officialRoles.join(', ')}), aplikasi WAJIB memiliki navigasi tab (<div class="tab-nav"> atau <nav class="tabs-nav">) dengan tombol tab (<button class="tab-btn">) yang memisahkan area kerja masing-masing peran.
+   - SETIAP tombol tab WAJIB memiliki atribut \`data-access-roles="NamaPeran"\` (contoh: data-access-roles="${officialRoles[0] || 'Admin'}").
+   - DILARANG KERAS menumpuk seluruh fitur ke dalam 1 tampilan statis tanpa navigasi tab!
+3. PEMISAHAN TAMPILAN & HAK AKSES PER ROLE SECARA NYATA (ROLE-SPECIFIC UI):
+   - Tampilan saat login sebagai peran Administrator/Pengelola: Menampilkan tab-tab administrasi (kelola seluruh data, tombol tambah/edit/hapus data, ringkasan/laporan).
+   - Tampilan saat login sebagai peran Anggota/User/Staff Operasional: HANYA menampilkan tab-tab yang relevan bagi perannya sesuai Brief Kebutuhan (contoh: Profil Saya, Kartu Digital Anggota, Status Iuran Pribadi, Form Pengajuan Mandiri).
+   - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Edit/Hapus seluruh anggota) pada tampilan Anggota biasa!
+4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS:
+   - Fungsi loginAs(role) WAJIB memanggil filterTabsByRole(role) untuk menampilkan HANYA tab yang memiliki data-access-roles sesuai peran aktif, dan menyembunyikan tab peran lainnya.
+   - loginAs(role) kemudian otomatis mengaktifkan tab pertama milik peran tersebut.
+
+================================================================================
 ⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52, 53):
 Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
 ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES PUBLIK - TAMPILAN AWAL)' : '(PERAN STAF/INTERNAL)'}`).join('\n')}
@@ -1142,7 +1196,12 @@ ${staffLandingGuide}
 
       } else if (stage === 'TAHAP_5_PATCH') {
         systemPrompt += `\n\nATURAN TAHAP 5 (PEMBARUAN FITUR / REVISI / PATCH) - VALIDASI FUNGSIONAL WAJIB (NFR-10b):
-- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, tambah tab/modal).
+- Pengguna meminta revisi/patch (misal: ubah warna, tambah kolom, ganti teks, tambah tab/modal, atau perbaikan role yang tidak sinkron dengan brief).
+- SINKRONISASI BRIEF KEBUTUHAN & PEMISAHAN PERAN (MUTLAK):
+  * Jika pengguna melaporkan peran tidak sesuai dengan brief atau meminta sinkronisasi, Anda WAJIB memeriksa lembar Brief Kebutuhan resmi di atas.
+  * Pastikan setiap peran (${officialRoles.join(', ')}) memiliki tab navigasi terpisah (<button class="tab-btn" data-access-roles="...">) dan tampilan UI yang sesuai dengan Job Description masing-masing peran di Brief Kebutuhan.
+  * Role admin/pengelola mendapatkan fitur manajemen data (tabel seluruh data, tombol tambah/edit/hapus).
+  * Role non-admin (misal: "Anggota") HANYA mendapatkan tampilan data miliknya (misal: Profil/Kartu Digital Anggota, Iuran Saya), DILARANG menampilkan tombol edit/hapus seluruh data anggota.
 - KEPATUHAN POLA UI SPESIFIK (PRINSIP 15 & 22): Jika pengguna meminta pola UI spesifik (misal: tab navigasi, antrian, kasir), WAJIB implementasikan PERSIS pola tersebut.
 - PERINGATAN INTEGRITAS FUNGSIONAL: Anda WAJIB mempertahankan SEMUA kode JavaScript yang sudah berfungsi sebelumnya (array data 3-5 item contoh, render(), tambahItem, editItem, hapusItem, modal, event listener).
 - DILARANG KERAS menghilangkan fungsi-fungsi JavaScript atau mengosongkan tag <script> saat melakukan revisi styling CSS atau HTML.
@@ -1745,7 +1804,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 4. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
 5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
 6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
-7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }] }
+7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
+8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
             })
@@ -1789,7 +1849,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 4. Pastikan setiap atribut onclick="fungsi()" memiliki definisi fungsi yang PERSIS SAMA namanya di <script>.
 5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
 6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
-7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).` }
+7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
+8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.` }
         ];
 
         const repairRes = await fetch(`${openaiBaseUrl}/chat/completions`, {

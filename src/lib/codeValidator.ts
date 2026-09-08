@@ -310,7 +310,9 @@ function eksekusiHapus() {
   const hasLoginAsFunc = /function\s+loginAs\s*\(/.test(combinedJs) || /loginAs\s*=\s*(function|\()/.test(combinedJs);
   const hasMultiRoleLogic = /currentRole|loginAs|filterTabsByRole/i.test(combinedJs);
 
-  if (hasMultiRoleLogic || hasLoginAsFunc) {
+  const isMultiRoleApp = Boolean(expectedRoles && expectedRoles.length > 1);
+
+  if (hasMultiRoleLogic || hasLoginAsFunc || isMultiRoleApp) {
     // Cek apakah ada fungsi filterTabsByRole
     const hasFilterTabsByRole = /filterTabsByRole\s*\(/.test(combinedJs) ||
                                  /\.getAttribute\s*\(\s*['"]data-access-roles['"]\s*\)/.test(combinedJs);
@@ -319,12 +321,52 @@ function eksekusiHapus() {
     const tabBtnMatches = [...repairedHtml.matchAll(/<button[^>]*class=[^>]*tab-btn[^>]*>/gi)];
     const tabBtnsWithoutAccessRoles = tabBtnMatches.filter(m => !m[0].includes('data-access-roles'));
 
+    // Poin 54: Jika aplikasi multi-role, WAJIB memiliki navigasi tab untuk memisahkan fitur antar-peran!
+    if (isMultiRoleApp && tabBtnMatches.length === 0) {
+      issues.push(
+        `MULTI_ROLE_MISSING_TABS: Aplikasi multi-role (${expectedRoles!.join(', ')}) WAJIB memiliki navigasi tab (<button class="tab-btn" data-access-roles="...">) untuk masing-masing peran! ` +
+        `DILARANG menumpuk seluruh fitur ke dalam satu tampilan statis tanpa pemisahan peran melalui tab.`
+      );
+    }
+
     if (tabBtnsWithoutAccessRoles.length > 0) {
       issues.push(
         `ROLE_GATING_MISSING_DATA_ATTR: Ditemukan ${tabBtnsWithoutAccessRoles.length} tombol tab-btn TANPA atribut data-access-roles. ` +
         `WAJIB tambahkan data-access-roles="RoleA,RoleB" pada SETIAP <button class="tab-btn"> ` +
         `agar filterTabsByRole() bekerja generik tanpa hardcoded getElementById. ` +
         `Contoh: data-access-roles="Admin,Dokter"`
+      );
+    }
+
+    // Poin 55: Pastikan setiap peran resmi memiliki setidaknya 1 tab navigasi khusus
+    if (isMultiRoleApp && tabBtnMatches.length > 0) {
+      const tabAccessRoles = [...repairedHtml.matchAll(/data-access-roles\s*=\s*['"]([^'"]+)['"]/gi)]
+        .flatMap(m => m[1].split(',').map(r => r.trim().toLowerCase()));
+
+      const missingRoleTabs = expectedRoles!.filter(role => {
+        const roleLower = role.trim().toLowerCase();
+        return !tabAccessRoles.some(ar => ar === roleLower || ar.includes(roleLower) || roleLower.includes(ar));
+      });
+
+      if (missingRoleTabs.length > 0) {
+        issues.push(
+          `ROLE_MISSING_TAB_NAVIGATION: Peran [${missingRoleTabs.join(', ')}] TIDAK memiliki tab khusus dengan data-access-roles="${missingRoleTabs.join(',')}". ` +
+          `Setiap peran dalam Brief Kebutuhan WAJIB memiliki tab dan tampilan UI yang relevan dengan Job Description-nya!`
+        );
+      }
+    }
+
+    if (isMultiRoleApp && !hasFilterTabsByRole) {
+      issues.push(
+        `ROLE_GATING_MISSING_FILTER_FUNC: Aplikasi multi-role WAJIB memiliki fungsi filterTabsByRole(role) di dalam tag <script> ` +
+        `yang membaca atribut data-access-roles pada setiap <button class="tab-btn">.`
+      );
+    }
+
+    if (isMultiRoleApp && !hasLoginAsFunc) {
+      issues.push(
+        `ROLE_GATING_MISSING_LOGIN_AS: Fungsi loginAs(role) tidak ditemukan di dalam tag <script>. ` +
+        `Aplikasi multi-role WAJIB memiliki fungsi loginAs(role) yang memanggil filterTabsByRole(role).`
       );
     }
 
