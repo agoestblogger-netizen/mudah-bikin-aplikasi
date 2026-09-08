@@ -33,9 +33,14 @@ import {
   AlignRight,
   Square,
   Circle,
-  GripHorizontal
+  GripHorizontal,
+  Undo2,
+  Redo2,
+  Loader2
 } from 'lucide-react';
-import { syncPatchesToHtml, stripOdUids } from '@/lib/htmlPatcher';
+import { syncPatchesToHtml, stripOdUids, replaceElementInHtml } from '@/lib/htmlPatcher';
+import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
+import { loadModelSettings } from '@/lib/modelConfig';
 
 // Urutan langkah progress yang ditampilkan di preview saat generate kode batch
 const GENERATE_PROGRESS_STEPS = [
@@ -122,6 +127,8 @@ export default function AppWorkspacePage() {
         initialFontWeight?: string;
         initialTextAlign?: string;
         initialBorderRadius?: string;
+        outerHtml?: string;
+        breadcrumbs?: string[];
       }
   >(null);
   const [noteDraft, setNoteDraft] = useState('');
@@ -132,6 +139,102 @@ export default function AppWorkspacePage() {
   const [fontWeightDraft, setFontWeightDraft] = useState('');
   const [textAlignDraft, setTextAlignDraft] = useState('');
   const [borderRadiusDraft, setBorderRadiusDraft] = useState('');
+  const [isSurgicalLoading, setIsSurgicalLoading] = useState(false);
+
+  // Visual History (Undo / Redo Stack) — Fase 3
+  const [historyStack, setHistoryStack] = useState<Array<{
+    canvasCode: { html: string; css: string; js: string };
+    patches: any[];
+  }>>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToastMessage({ text, type });
+    setTimeout(() => {
+      setToastMessage((curr) => (curr?.text === text ? null : curr));
+    }, 3000);
+  };
+
+  const pushHistory = (newCode: { html: string; css: string; js: string }, newPatches: any[]) => {
+    setHistoryStack((prev) => {
+      const activeIdx = historyIndex >= 0 ? historyIndex : prev.length - 1;
+      const sliced = prev.slice(0, activeIdx + 1);
+      const next = [...sliced, { canvasCode: newCode, patches: newPatches }];
+      if (next.length > 30) next.shift();
+      return next;
+    });
+    setHistoryIndex((prev) => Math.min(prev + 1, 29));
+  };
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex >= 0 && historyIndex < historyStack.length - 1;
+
+  const handleUndo = () => {
+    if (!canUndo) return;
+    const prevIdx = historyIndex - 1;
+    const target = historyStack[prevIdx];
+    if (!target) return;
+    setHistoryIndex(prevIdx);
+    setProjectState((prev) => ({
+      ...prev,
+      canvasCode: target.canvasCode,
+      annotations: {
+        ...(prev.annotations || { marks: [], notes: [], patches: [] }),
+        patches: target.patches
+      }
+    }));
+    annotationsRef.current = {
+      ...(annotationsRef.current || { marks: [], notes: [], patches: [] }),
+      patches: target.patches
+    };
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: 'OD_BRIDGE',
+        type: 'OD_SET_PATCHES',
+        patches: target.patches
+      },
+      '*'
+    );
+    showToast('Undo visual berhasil', 'info');
+  };
+
+  const handleRedo = () => {
+    if (!canRedo) return;
+    const nextIdx = historyIndex + 1;
+    const target = historyStack[nextIdx];
+    if (!target) return;
+    setHistoryIndex(nextIdx);
+    setProjectState((prev) => ({
+      ...prev,
+      canvasCode: target.canvasCode,
+      annotations: {
+        ...(prev.annotations || { marks: [], notes: [], patches: [] }),
+        patches: target.patches
+      }
+    }));
+    annotationsRef.current = {
+      ...(annotationsRef.current || { marks: [], notes: [], patches: [] }),
+      patches: target.patches
+    };
+    iframeRef.current?.contentWindow?.postMessage(
+      {
+        source: 'OD_BRIDGE',
+        type: 'OD_SET_PATCHES',
+        patches: target.patches
+      },
+      '*'
+    );
+    showToast('Redo visual berhasil', 'info');
+  };
+
+  useEffect(() => {
+    if (projectState.canvasCode.html && historyStack.length === 0) {
+      setHistoryStack([{ canvasCode: projectState.canvasCode, patches: annotationsRef.current?.patches || [] }]);
+      setHistoryIndex(0);
+    }
+  }, [projectState.canvasCode.html]);
 
   const [popoverPos, setPopoverPos] = useState<{ x: number; y: number } | null>(null);
   const popoverDragRef = useRef<{
@@ -244,16 +347,34 @@ export default function AppWorkspacePage() {
   const [externalChatSendToken, setExternalChatSendToken] = useState<string | number | null>(null);
   const [externalChatSendText, setExternalChatSendText] = useState<string | null>(null);
 
-  // Shortcut Keyboard Esc untuk keluar dari Fullscreen (Poin 37)
+  // Shortcut Keyboard: Esc untuk Fullscreen, Cmd/Ctrl+Z untuk Undo, Cmd/Ctrl+Shift+Z / Y untuk Redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isPreviewFullscreen) {
         setIsPreviewFullscreen(false);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        handleRedo();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPreviewFullscreen]);
+  }, [isPreviewFullscreen, canUndo, canRedo, historyIndex, historyStack]);
 
   useEffect(() => {
     const el = overlayRef.current;
@@ -322,7 +443,9 @@ export default function AppWorkspacePage() {
           initialFontSize,
           initialFontWeight,
           initialTextAlign,
-          initialBorderRadius
+          initialBorderRadius,
+          outerHtml: data.outerHtml,
+          breadcrumbs: Array.isArray(data.breadcrumbs) ? data.breadcrumbs : []
         });
         setPopoverPos(null);
         setNoteDraft('');
@@ -492,16 +615,16 @@ export default function AppWorkspacePage() {
   }, [router]);
 
   const handleUpdateState = (updated: Partial<AppProjectState>) => {
-    if (updated.canvasCode?.html && updated.canvasCode.html.includes('</html>')) {
-      updated.canvasCode.html = updated.canvasCode.html.slice(0, updated.canvasCode.html.lastIndexOf('</html>') + 7).trim();
+    if (updated.canvasCode?.html) {
+      updated.canvasCode.html = cleanConversationalLeaks(updated.canvasCode.html);
     }
     const merged: AppProjectState = {
       ...projectState,
       ...updated,
       updatedAt: new Date().toISOString()
     };
-    if (merged.canvasCode?.html && merged.canvasCode.html.includes('</html>')) {
-      merged.canvasCode.html = merged.canvasCode.html.slice(0, merged.canvasCode.html.lastIndexOf('</html>') + 7).trim();
+    if (merged.canvasCode?.html) {
+      merged.canvasCode.html = cleanConversationalLeaks(merged.canvasCode.html);
     }
     setProjectState(merged);
     if (typeof window !== 'undefined') {
@@ -515,6 +638,9 @@ export default function AppWorkspacePage() {
     if (updated.canvasCode?.html || updated.annotations) {
       setRightPanelTab('PREVIEW');
       handleAutoSaveProject(merged);
+    }
+    if (updated.canvasCode?.html && updated.canvasCode.html !== projectState.canvasCode.html) {
+      pushHistory(merged.canvasCode, merged.annotations?.patches || []);
     }
   };
 
@@ -796,6 +922,83 @@ export default function AppWorkspacePage() {
     }
   };
 
+  const handleSurgicalEdit = async () => {
+    if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid || !activeSelection.outerHtml) {
+      showToast('Pilih elemen target terlebih dahulu.', 'error');
+      return;
+    }
+    const instruction = noteDraft.trim();
+    if (!instruction) {
+      showToast('Ketik instruksi perubahan untuk elemen ini.', 'error');
+      return;
+    }
+
+    setIsSurgicalLoading(true);
+    try {
+      const authHeaders = await getAuthHeaders();
+      const modelSettings = loadModelSettings();
+
+      const res = await fetch('/api/generate/surgical', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
+        body: JSON.stringify({
+          elementHtml: activeSelection.outerHtml,
+          instruction,
+          appContext: projectState.title || '',
+          tagName: activeSelection.tagName || 'element',
+          provider: modelSettings.provider,
+          apiKey: modelSettings.token || undefined,
+          model: modelSettings.model || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.updatedElementHtml) {
+        throw new Error(data.error || 'Gagal memperbarui elemen via AI Bedah.');
+      }
+
+      const newElementHtml = data.updatedElementHtml;
+      const elUid = activeSelection.elementUid;
+
+      // 1. Ganti elemen di kode sumber HTML secara permanen
+      const updatedHtml = replaceElementInHtml(projectState.canvasCode.html, elUid, newElementHtml);
+
+      // 2. Kirim pesan ke iframe untuk mengganti elemen secara in-place di live DOM
+      iframeRef.current?.contentWindow?.postMessage(
+        {
+          source: 'OD_BRIDGE',
+          type: 'OD_REPLACE_ELEMENT',
+          elementUid: elUid,
+          newElementHtml
+        },
+        '*'
+      );
+
+      // 3. Update state proyek & auto save
+      handleUpdateState({
+        canvasCode: {
+          ...projectState.canvasCode,
+          html: updatedHtml
+        }
+      });
+
+      // 4. Feedback dan bersihkan modal
+      showToast('Komponen berhasil diperbarui via AI Bedah!', 'success');
+      setActiveSelection(null);
+      setPopoverPos(null);
+      setNoteDraft('');
+      setInteractionMode('none');
+    } catch (err: any) {
+      console.error('Surgical edit error:', err);
+      showToast(err.message || 'Gagal menerapkan AI Bedah pada elemen.', 'error');
+    } finally {
+      setIsSurgicalLoading(false);
+    }
+  };
+
   const handleSendToChat = () => {
     if (!activeSelection) return;
 
@@ -988,7 +1191,37 @@ export default function AppWorkspacePage() {
               </span>
 
               {rightPanelTab === 'PREVIEW' && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  {/* Visual History Undo & Redo (Fase 3) */}
+                  <div className="flex items-center gap-0.5 bg-slate-900/60 border border-slate-800 rounded-xl p-0.5 mr-1">
+                    <button
+                      onClick={handleUndo}
+                      disabled={!canUndo}
+                      className={`p-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                        canUndo
+                          ? 'text-slate-200 hover:bg-slate-800 hover:text-white'
+                          : 'text-slate-600 opacity-40 cursor-not-allowed'
+                      }`}
+                      title="Undo Visual (Ctrl+Z / Cmd+Z)"
+                      aria-label="Undo"
+                    >
+                      <Undo2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={handleRedo}
+                      disabled={!canRedo}
+                      className={`p-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                        canRedo
+                          ? 'text-slate-200 hover:bg-slate-800 hover:text-white'
+                          : 'text-slate-600 opacity-40 cursor-not-allowed'
+                      }`}
+                      title="Redo Visual (Ctrl+Shift+Z / Cmd+Shift+Z / Cmd+Y)"
+                      aria-label="Redo"
+                    >
+                      <Redo2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
                   <button
                     onClick={() => {
                       setInteractionMode((prev) => (prev === 'select' ? 'none' : 'select'));
@@ -1241,6 +1474,21 @@ export default function AppWorkspacePage() {
                                 </div>
                               </div>
 
+                              {/* Breadcrumb Hierarki Elemen (Fase 3) */}
+                              {activeSelection.kind === 'element' && activeSelection.breadcrumbs && activeSelection.breadcrumbs.length > 0 && (
+                                <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono overflow-x-auto whitespace-nowrap bg-slate-950/60 px-2.5 py-1.5 rounded-xl border border-slate-800 custom-scrollbar">
+                                  <span className="text-slate-500 text-[9px] font-semibold">DOM:</span>
+                                  {activeSelection.breadcrumbs.map((crumb, idx) => (
+                                    <span key={idx} className="flex items-center gap-1">
+                                      {idx > 0 && <span className="text-slate-600">›</span>}
+                                      <span className={idx === activeSelection.breadcrumbs!.length - 1 ? 'text-indigo-300 font-bold bg-indigo-500/10 px-1 py-0.5 rounded' : 'text-slate-400'}>
+                                        {crumb}
+                                      </span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
                               {/* Quick Visual Styler untuk mode Element */}
                               {activeSelection.kind === 'element' && (
                                 <div className="space-y-2.5 pt-0.5">
@@ -1414,15 +1662,45 @@ export default function AppWorkspacePage() {
                                 />
                               </div>
 
-                              {/* Send to Chat Action Button */}
-                              <button
-                                onClick={handleSendToChat}
-                                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white text-xs font-bold shadow-md shadow-indigo-600/25 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-                                title="Kirim catatan mark ke chat AI untuk mengubah area"
-                              >
-                                <Send className="w-3.5 h-3.5" />
-                                <span>Send to Chat</span>
-                              </button>
+                              {/* Action Buttons: ⚡ AI Bedah (Surgical) & Send to Chat */}
+                              <div className="flex items-center gap-2 pt-1">
+                                {activeSelection.kind === 'element' && (
+                                  <button
+                                    onClick={handleSurgicalEdit}
+                                    disabled={isSurgicalLoading || !noteDraft.trim()}
+                                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
+                                      isSurgicalLoading || !noteDraft.trim()
+                                        ? 'bg-indigo-950/40 text-indigo-400/40 border border-indigo-900/30 cursor-not-allowed'
+                                        : 'bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                                    }`}
+                                    title="Perbarui elemen ini secara instan via AI dalam 2-3 detik tanpa reload halaman"
+                                  >
+                                    {isSurgicalLoading ? (
+                                      <>
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Memproses...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                        <span>⚡ AI Bedah</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={handleSendToChat}
+                                  disabled={isSurgicalLoading}
+                                  className={`${
+                                    activeSelection.kind === 'element' ? 'px-3' : 'w-full'
+                                  } py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]`}
+                                  title="Kirim catatan ke alur percakapan chat utama"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>{activeSelection.kind === 'element' ? 'Ke Chat' : 'Send to Chat'}</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1456,6 +1734,14 @@ export default function AppWorkspacePage() {
                           );
                         }}
                       />
+
+                      {/* Micro Toast Feedback (Fase 3) */}
+                      {toastMessage && (
+                        <div className="absolute bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-slate-900/95 border border-slate-700/80 shadow-2xl backdrop-blur-xl text-xs font-semibold animate-in fade-in slide-in-from-bottom-2 duration-200 pointer-events-none select-none">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${toastMessage.type === 'error' ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]' : toastMessage.type === 'success' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]'}`} />
+                          <span className="text-slate-200">{toastMessage.text}</span>
+                        </div>
+                      )}
                     </div>
                     ) : isGenerating ? (
                     // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===

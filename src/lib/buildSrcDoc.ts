@@ -278,6 +278,16 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         const currentBorderRadius = (cs && cs.borderRadius) ? cs.borderRadius : '';
         const tagName = el.tagName.toLowerCase();
 
+        const outerHtml = (el.outerHTML || '').slice(0, 4000);
+        const breadcrumbs = [];
+        let curr = el;
+        while (curr && curr !== document.body && curr !== document.documentElement && breadcrumbs.length < 3) {
+          const tName = curr.tagName.toLowerCase();
+          const cName = curr.className && typeof curr.className === 'string' ? '.' + curr.className.trim().split(/\s+/)[0] : '';
+          breadcrumbs.unshift(tName + cName);
+          curr = curr.parentElement;
+        }
+
         postToParent({
           type: 'OD_SELECT_ELEMENT',
           elementUid,
@@ -289,7 +299,9 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           currentFontSize,
           currentFontWeight,
           currentTextAlign,
-          currentBorderRadius
+          currentBorderRadius,
+          outerHtml,
+          breadcrumbs
         });
       } catch (err) {}
     }, true);
@@ -376,6 +388,21 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        }
+      } else if (msg.type === 'OD_REPLACE_ELEMENT') {
+        const { elementUid, newElementHtml } = msg;
+        const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
+        if (target && newElementHtml) {
+          const temp = document.createElement('div');
+          temp.innerHTML = newElementHtml;
+          const newEl = temp.firstElementChild;
+          if (newEl) {
+            newEl.setAttribute('data-od-uid', elementUid);
+            target.replaceWith(newEl);
+            if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+              try { window.lucide.createIcons(); } catch(e) {}
+            }
+          }
         }
       }
     });
