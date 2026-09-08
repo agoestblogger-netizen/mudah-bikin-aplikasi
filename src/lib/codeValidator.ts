@@ -397,8 +397,11 @@ function eksekusiHapus() {
       }
 
       if (detectedPublicRole) {
-        // 1. Verifikasi apakah filterTabsByRole dipanggil saat inisialisasi awal publik (di luar loginAs)
-        const hasInitialFilterCall = new RegExp(`filterTabsByRole\\s*\\(\\s*['"]?${detectedPublicRole}['"]?\\s*\\)`, 'i').test(combinedJs) ||
+        // 1. Verifikasi apakah gerbang loginScreen aktif atau filterTabsByRole dipanggil saat inisialisasi awal publik (di luar loginAs)
+        const hasLoginScreenGate = /id\s*=\s*['"]loginScreen['"]/i.test(repairedHtml) &&
+                                   /id\s*=\s*['"]appContainer['"][^>]*style\s*=\s*['"][^'"]*display\s*:\s*none/i.test(repairedHtml);
+        const hasInitialFilterCall = hasLoginScreenGate ||
+                                     new RegExp(`filterTabsByRole\\s*\\(\\s*['"]?${detectedPublicRole}['"]?\\s*\\)`, 'i').test(combinedJs) ||
                                      /DOMContentLoaded[\s\S]*?filterTabsByRole/i.test(combinedJs) ||
                                      /init\(\)[\s\S]*?filterTabsByRole/i.test(combinedJs) ||
                                      /window\.onload[\s\S]*?filterTabsByRole/i.test(combinedJs);

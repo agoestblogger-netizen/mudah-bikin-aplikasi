@@ -905,126 +905,135 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         showToast('Data berhasil dihapus!', 'success');
       }
 
-20. ATURAN PINTU MASUK, HALAMAN PUBLIK DEFAULT, & FORM LOGIN PRODUKSI (POIN 45):
-    - JIKA APLIKASI MEMILIKI LEBIH DARI 1 ROLE (Multi-Role):
+20. LAYAR LOGIN SIMULASI SEBAGAI TAMPILAN AWAL (WAJIB PERSIS SEPERTI GAMBAR 2):
+    - JIKA APLIKASI MEMILIKI LEBIH DARI 1 PERAN (MULTI-ROLE):
+      * TAMPILAN AWAL WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN DI TENGAH LAYAR (#loginScreen).
+      * Container aplikasi utama (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
+      * DILARANG KERAS langsung menampilkan dashboard aplikasi dengan tombol "Login Staf" di header! Pengguna WAJIB disambut oleh Layar Login (#loginScreen) terlebih dahulu.
 
-    === SKENARIO A: APLIKASI MEMILIKI HALAMAN PUBLIK (misal: Pasien / Pelanggan / Tamu tanpa akun) ===
-      1. TAMPILAN AWAL (DEFAULT LANDING):
-         * Aplikasi WAJIB DIBUKA LANGSUNG PADA HALAMAN PUBLIK (misal: tab status antrean, lacak pesanan, atau katalog).
-         * Container utama (#appContainer) langsung tampil aktif (style.display = 'block' atau tanpa display:none).
-         * Pengguna publik dapat langsung melihat dan menggunakan fitur publik tanpa login.
-      2. TOMBOL LOGIN STAF DI HEADER:
-         * Di pojok kanan atas header aplikasi, sediakan tombol kecil:
-           <button type="button" class="btn-primary" id="btnLoginStaff" onclick="bukaModalLogin()" style="padding: 8px 16px; font-size: 13px;">🔐 Login Staf</button>
-         * Sediakan juga tombol logout yang awalnya tersembunyi:
-           <button type="button" class="btn-secondary" id="btnLogout" onclick="logout()" style="display: none; padding: 8px 14px; font-size: 13px;">🚪 Keluar / Ganti Akun</button>
-      3. MODAL POPUP FORM LOGIN GAYA PRODUKSI (#modalLogin):
-         * Saat tombol Login Staf diklik, tampilkan modal popup form login (bukaModalLogin() / tutupModalLogin()).
-
-    === SKENARIO B: APLIKASI MURNI INTERNAL (Semua role memerlukan akun) ===
-      1. TAMPILAN AWAL:
-         * Layar dimulai dari form login produksi (#loginScreen) di tengah layar. #appContainer awalnya style.display = 'none'.
-         * Saat berhasil login, #loginScreen disembunyikan dan #appContainer ditampilkan.
-      2. Header memiliki tombol "🚪 Keluar / Ganti Akun" (onclick="logout()").
-
-    === POLA FORM LOGIN GAYA PRODUKSI (Dipakai di kedua skenario di atas) ===
-      * Judul Form: "[Nama Aplikasi] — Masuk ke Akun Anda" (DILARANG mencantumkan kata "demo", "peran", atau "pilih peran" di judul & form).
-      * Field Input:
-        - Username / Email: <input type="text" id="loginUsername" placeholder="Username / Email" required ...>
-        - Password: <input type="password" id="loginPassword" placeholder="Kata Sandi" required ...>
-        - Tombol Masuk: <button type="button" class="btn-primary" onclick="handleLogin()" style="width: 100%; justify-content: center; padding: 12px;">Masuk</button>
-      * DILARANG membuat tombol "Masuk sebagai [Role]" berjejer di form login! Pengguna login dengan mengetikkan username & password.
-
-    === POLA HTML & JAVASCRIPT WAJIB — AUTENTIKASI SIMULASI CLIENT-SIDE ===
-      <!-- MODAL LOGIN GAYA PRODUKSI (SKENARIO A) -->
-      <div id="modalLogin" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 999; padding: 20px;">
-        <div class="card" style="max-width: 400px; width: 100%; padding: 28px; border-radius: 16px; background: #fff;">
-          <h2 class="title" style="font-size: 20px; margin-bottom: 4px; text-align: center;">Masuk ke Akun Anda</h2>
-          <p class="subtitle" style="font-size: 13px; margin-bottom: 20px; text-align: center;">Silakan masukkan username dan kata sandi staf.</p>
-          <div class="form-group" style="margin-bottom: 14px;">
-            <label class="form-label">Username / Email</label>
-            <input type="text" id="loginUsername" class="form-input" placeholder="Masukkan username" required>
-          </div>
-          <div class="form-group" style="margin-bottom: 20px;">
-            <label class="form-label">Kata Sandi</label>
-            <input type="password" id="loginPassword" class="form-input" placeholder="Masukkan kata sandi" required>
-          </div>
-          <button type="button" class="btn-primary" onclick="handleLogin()" style="width: 100%; justify-content: center; padding: 12px; margin-bottom: 8px;">Masuk</button>
-          <button type="button" class="btn-secondary" onclick="tutupModalLogin()" style="width: 100%; justify-content: center; padding: 12px;">Batal</button>
+    === STRUKTUR HTML LAYAR LOGIN (#loginScreen) — PERSIS SEPERTI GAMBAR 2 ===
+    <!-- LAYAR LOGIN DI TENGAH LAYAR (#loginScreen) -->
+    <div id="loginScreen" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f8fafc; padding: 20px; font-family: system-ui, -apple-system, sans-serif;">
+      <div class="card" style="max-width: 420px; width: 100%; padding: 36px 32px; border-radius: 20px; background: #ffffff; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06), 0 8px 10px -6px rgba(0,0,0,0.02); text-align: center;">
+        
+        <!-- Icon Container Kotak Rounded Biru Lembut -->
+        <div style="width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px; background: #eff6ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 26px;">
+          🏬
         </div>
+
+        <!-- Judul & Subjudul -->
+        <h2 style="font-size: 24px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0;">[Nama Aplikasi]</h2>
+        <p style="font-size: 14px; color: #64748b; margin: 0 0 24px 0;">Masuk ke Akun Anda untuk Memulai</p>
+
+        <!-- Input Username -->
+        <div style="text-align: left; margin-bottom: 16px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Username</label>
+          <input type="text" id="loginUsername" placeholder="Masukkan username" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;" required>
+        </div>
+
+        <!-- Input Password -->
+        <div style="text-align: left; margin-bottom: 20px;">
+          <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Kata Sandi</label>
+          <input type="password" id="loginPassword" placeholder="Masukkan kata sandi" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;" required>
+        </div>
+
+        <!-- Tombol Masuk -->
+        <button type="button" class="btn-primary" onclick="handleLogin()" style="width: 100%; justify-content: center; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; background: #4f46e5; color: #ffffff; border: none;">
+          ➔] Masuk
+        </button>
+
+        <!-- KOTAK AKUN DEMO STAF (PERSIS SEPERTI GAMBAR 2) -->
+        <div style="margin-top: 24px; background: #f1f5f9; border-radius: 12px; padding: 16px; font-size: 13px; text-align: left; color: #334155; line-height: 1.6;">
+          <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px;">🔑 Akun Demo Staf:</div>
+          <!-- Setiap baris role dapat diklik untuk Quick Login instan -->
+          <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('admin', 'admin123')">• Admin: <code style="color: #4f46e5; font-weight: 600;">admin / admin123</code></div>
+          <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('kasir', 'kasir123')">• Kasir: <code style="color: #4f46e5; font-weight: 600;">kasir / kasir123</code></div>
+        </div>
+
       </div>
+    </div>
 
-      <script>
-      const DEMO_ACCOUNTS = [
-        { role: 'NamaPeran1', username: 'namaperan1', password: 'namaperan1123', landingTab: 'tab1' },
-        { role: 'NamaPeran2', username: 'namaperan2', password: 'namaperan2123', landingTab: 'tab2' }
-      ];
+    <!-- CONTAINER UTAMA APLIKASI (#appContainer) TERSEMBUNYI SAAT AWAL LOAD -->
+    <div id="appContainer" style="display: none;">
+      <header class="app-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: #ffffff; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 42px; height: 42px; border-radius: 10px; background: #eff6ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;">
+            🏬
+          </div>
+          <div>
+            <div style="font-size: 18px; font-weight: 700; color: #0f172a;">[Nama Aplikasi]</div>
+            <div style="font-size: 12px; color: #64748b;">Peran: <span id="currentRoleBadge" style="font-weight: 600; color: #4f46e5;">Admin</span></div>
+          </div>
+        </div>
+        <button type="button" class="btn-secondary" onclick="logout()" style="padding: 8px 14px; font-size: 13px; border-radius: 8px;">
+          🚪 Keluar / Ganti Akun
+        </button>
+      </header>
+      <!-- Navigasi Tab & Konten Tab di sini -->
+    </div>
 
-      function bukaModalLogin() {
-        const m = document.getElementById('modalLogin');
-        if (m) m.style.display = 'flex';
+    === JAVASCRIPT AUTENTIKASI, QUICK LOGIN & LOGOUT ===
+    <script>
+    function quickLogin(u, p) {
+      const uInput = document.getElementById('loginUsername');
+      const pInput = document.getElementById('loginPassword');
+      if (uInput) uInput.value = u;
+      if (pInput) pInput.value = p;
+      handleLogin();
+    }
+
+    function handleLogin() {
+      const u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
+      const p = (document.getElementById('loginPassword')?.value || '').trim();
+
+      const matched = DEMO_ACCOUNTS.find(acc => acc.username.toLowerCase() === u && acc.password === p);
+      if (matched) {
+        loginAs(matched.role);
+        showToast('Selamat datang! Masuk sebagai ' + matched.role, 'success');
+      } else {
+        showToast('Username atau kata sandi tidak cocok! Silakan klik salah satu akun demo di bawah.', 'error');
+      }
+    }
+
+    function loginAs(role) {
+      currentRole = role;
+      const loginEl = document.getElementById('loginScreen');
+      const appEl = document.getElementById('appContainer');
+      if (loginEl) loginEl.style.display = 'none';
+      if (appEl) appEl.style.display = 'block';
+
+      filterTabsByRole(role);
+
+      const badgeEl = document.getElementById('currentRoleBadge');
+      if (badgeEl) badgeEl.innerText = role;
+
+      const matched = DEMO_ACCOUNTS.find(a => a.role === role);
+      if (matched && matched.landingTab) {
+        showTab(matched.landingTab);
+      } else {
+        const firstTab = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
+        if (firstTab) (firstTab as HTMLElement).click();
       }
 
-      function tutupModalLogin() {
-        const m = document.getElementById('modalLogin');
-        if (m) m.style.display = 'none';
-      }
+      render();
+    }
 
-      function handleLogin() {
-        const u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
-        const p = (document.getElementById('loginPassword')?.value || '').trim();
+    function filterTabsByRole(role) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim().toLowerCase());
+        btn.style.display = (role && allowed.includes(role.toLowerCase())) ? '' : 'none';
+      });
+    }
 
-        const matched = DEMO_ACCOUNTS.find(acc => acc.username.toLowerCase() === u && acc.password === p);
-        if (matched) {
-          loginAs(matched.role);
-          tutupModalLogin();
-          showToast('Berhasil masuk sebagai ' + matched.role, 'success');
-        } else {
-          showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error');
-        }
-      }
-
-      function loginAs(role) {
-        currentRole = role;
-        const loginEl = document.getElementById('loginScreen');
-        const appEl = document.getElementById('appContainer');
-        if (loginEl) loginEl.style.display = 'none';
-        if (appEl) appEl.style.display = 'block';
-
-        filterTabsByRole(role);
-
-        // POIN 53: Setelah filter, langsung ke landing tab default role ini
-        // JANGAN gunakan tab publik sebagai fallback — harus ke tab staf spesifik role ini
-        const matched = DEMO_ACCOUNTS.find(a => a.role === role);
-        if (matched && matched.landingTab) {
-          showTab(matched.landingTab);
-        } else {
-          // Fallback aman: ambil tab PERTAMA yang dapat diakses role ini (skip tab publik)
-          const publicRoleEl = document.querySelector('.tab-btn[data-access-roles*="Pelanggan"], .tab-btn[data-access-roles*="Pasien"], .tab-btn[data-access-roles*="Customer"]');
-          const publicTabId = publicRoleEl ? publicRoleEl.getAttribute('onclick')?.match(/showTab\(['"]([^'"]+)['"]\)/)?.[1] : null;
-          const firstStaffTab = Array.from(document.querySelectorAll('.tab-btn')).find(btn => {
-            if (btn.style.display === 'none') return false; // tersembunyi
-            const btnTabId = btn.getAttribute('onclick')?.match(/showTab\(['"]([^'"]+)['"]\)/)?.[1];
-            return btnTabId && btnTabId !== publicTabId; // bukan tab publik
-          });
-          if (firstStaffTab) (firstStaffTab as HTMLElement).click();
-        }
-
-        render();
-      }
-
-      function filterTabsByRole(role) {
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-          const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim().toLowerCase());
-          btn.style.display = (role && allowed.includes(role.toLowerCase())) ? '' : 'none';
-        });
-      }
-
-      function logout() {
-        // Logic logout: jika ada role publik, kembalikan ke landing publik & panggil filterTabsByRole(rolePublik)
-        // jika murni internal, kembali ke loginScreen
-      }
-      </script>
+    function logout() {
+      currentRole = '';
+      const loginEl = document.getElementById('loginScreen');
+      const appEl = document.getElementById('appContainer');
+      if (appEl) appEl.style.display = 'none';
+      if (loginEl) loginEl.style.display = 'flex';
+      showToast('Berhasil keluar. Silakan login kembali.', 'info');
+    }
+    </script>
 
 21. DESAIN UI PER ROLE BERDASARKAN JOB DESCRIPTION & STRUKTUR SECTION (ROLE-AWARE UX — WAJIB DITERAPKAN JIKA ADA MULTI-ROLE):
     - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA:
@@ -1077,24 +1086,29 @@ ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES P
 ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK (WAJIB DIPATUHI — POIN 52):
 1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
 2. DILARANG KERAS menambahkan role generic (Admin, Kasir, Washer, Petugas, Owner, Manager) jika TIDAK ADA di daftar resmi di atas!
-${publicRole ? `3. INISIALISASI AWAL HALAMAN PUBLIK & TAB GATING (POIN 52):
-   - Aplikasi WAJIB langsung terbuka di halaman "${publicRole}" (#appContainer display:block).
-   - SAAT HALAMAN PERTAMA KALI DIMUAT (di event DOMContentLoaded / akhir script): WAJIB LANGSUNG PANGGIL \`filterTabsByRole('${publicRole}')\` agar SELURUH TAB STAF LANGSUNG TERSEMBUNYI (display: none).
-   - Seluruh <button class="tab-btn"> untuk tab staf yang tidak bisa diakses "${publicRole}" WAJIB memiliki atribut style="display: none;" di markup HTML bawaan agar tidak berkedip terbuka saat load.
-   - Sediakan tombol "🔐 Login Staf" di pojok kanan header (#appContainer) untuk membuka modal login (#modalLogin).
-4. PERLINDUNGAN ANTI-DATA LEAK DI TAB PUBLIK (POIN 52):
-   - Tab publik ("${publicRole}") HANYA boleh berisi form pencarian/pelacakan spesifik (misal: input nomor nota/telepon → tampilkan kartu status untuk 1 pesanan yang dicari) atau form input pemesanan mandiri baru.
-   - DILARANG KERAS menampilkan tabel master database lengkap dari seluruh pesanan/pelanggan lain di tab publik!
-   - DILARANG KERAS menaruh tombol Edit, Hapus, Ubah Status, atau aksi staf lainnya di tab publik. Seluruh tombol manajemen data staf HANYA boleh ada di tab staf yang terkunci di balik login!
+3. TAMPILAN AWAL: LAYAR LOGIN DI TENGAH LAYAR (#loginScreen — WAJIB PERSIS GAMBAR 2):
+   - Aplikasi WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN (#loginScreen) di tengah layar saat pertama kali dibuka (PERSIS SEPERTI GAMBAR 2).
+   - Container aplikasi (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
+   - DILARANG KERAS langsung menampilkan dashboard aplikasi dengan tombol "Login Staf" di header!
+   - Di kartu login #loginScreen:
+     * Icon aplikasi di dalam box rounded biru lembut
+     * Judul aplikasi + subjudul "Masuk ke Akun Anda untuk Memulai"
+     * Input Username (id="loginUsername" placeholder="Masukkan username")
+     * Input Kata Sandi (id="loginPassword" type="password" placeholder="Masukkan kata sandi")
+     * Tombol "➔] Masuk" (onclick="handleLogin()")
+     * Kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk yang mencantumkan daftar peran resmi dan kredensialnya (dengan onclick quickLogin(u, p)).
+${publicRole ? `     * Di bawah kotak Akun Demo Staf, sediakan link sekunder: "Atau lanjut tanpa login sebagai ${publicRole} ➔" (onclick="loginAs('${publicRole}')").` : ''}
+4. PERLINDUNGAN KEAMANAN TAB STAF (POIN 52):
+   - Seluruh tab manajemen data staf (Edit, Hapus, Ubah Status) HANYA boleh diakses setelah login staf.
 5. LOGOUT HANDLER:
    function logout() {
-     currentRole = '${publicRole}';
-     filterTabsByRole('${publicRole}');
-     const firstPubTab = document.querySelector('.tab-btn:not([style*="display: none"])');
-     if (firstPubTab) firstPubTab.click();
-     showToast('Berhasil keluar. Kembali ke halaman publik.', 'info');
-     render();
-   }` : `3. LAYAR LOGIN AWAL: Karena tidak ada peran publik, aplikasi dimulai dari form login #loginScreen di tengah layar.`}
+     currentRole = '';
+     const loginEl = document.getElementById('loginScreen');
+     const appEl = document.getElementById('appContainer');
+     if (appEl) appEl.style.display = 'none';
+     if (loginEl) loginEl.style.display = 'flex';
+     showToast('Berhasil keluar. Silakan login kembali.', 'info');
+   }
 6. FORM LOGIN GAYA PRODUKSI: Form WAJIB memiliki <input type="text" id="loginUsername" placeholder="Username / Email"> dan <input type="password" id="loginPassword" placeholder="Kata Sandi"> serta tombol <button type="button" onclick="handleLogin()">Masuk</button>. DILARANG membuat tombol "Masuk sebagai [Role]" berjejer di form login!
 7. KREDENSIAL SIMULASI & DEFAULT LANDING TAB PER ROLE (WAJIB — POIN 53):
    Cocokkan login di fungsi handleLogin() dengan array DEMO_ACCOUNTS PERSIS seperti ini:
@@ -1114,8 +1128,8 @@ ${staffLandingGuide}
 - Pengguna meminta pembuatan prototipe aplikasi di mode BUILD.
 - Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
   1. Data awal 3-5 item contoh realistis (Prinsip 1).
-  2. Login Gate & Tab Gating Fungsional Nyata (Prinsip 20): untuk app multi-role WAJIB ada loginScreen/modalLogin + filterTabsByRole(role) + data-access-roles pada SETIAP <button class="tab-btn">. Gunakan HANYA peran resmi (${officialRoles.length > 0 ? officialRoles.join(', ') : 'sesuai Brief Kebutuhan'}).
-  3. Quick Login 1-Klik di Form Login: Pada form login (#modalLogin atau #loginScreen), WAJIB sertakan kotak "⚡ Quick Login (Klik untuk Masuk Instan)" dengan tombol untuk masing-masing peran resmi dan fungsi quickLogin(u, p) agar pengguna dapat login 1-klik dengan sangat mudah!
+  2. Layar Login Simulasi Awal (Prinsip 20 & Gambar 2): Untuk app multi-role WAJIB diawali dengan #loginScreen di tengah layar (PERSIS SEPERTI GAMBAR 2). Kartu login memiliki icon aplikasi di kotak rounded biru, judul aplikasi + "Masuk ke Akun Anda untuk Memulai", input Username & Kata Sandi, tombol Masuk ("➔] Masuk"), dan kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk dengan daftar role resmi dan kredensialnya (dapat diklik untuk quickLogin instan). Container aplikasi utama (#appContainer) WAJIB DIAWALI DENGAN style="display: none;". DILARANG KERAS langsung menampilkan dashboard dengan tombol "Login Staf" di header!
+  3. Quick Login 1-Klik di Form Login: Pada form login #loginScreen, sertakan fungsi quickLogin(u, p) yang otomatis mengisi username & kata sandi serta langsung mengeksekusi handleLogin() saat salah satu baris akun demo diklik!
   4. STANDAR KUALITAS VISUAL & STRUKTUR TAB KAYA FITUR (ANTI-HALAMAN KOSONG):
      * DILARANG KERAS membuat tab yang hanya berisi tag teks <p> deskripsi atau tag <ul> kosong!
      * SETIAP TAB wajib memiliki struktur visual nyata:
