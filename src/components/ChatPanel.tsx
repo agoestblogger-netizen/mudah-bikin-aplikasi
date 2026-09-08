@@ -493,7 +493,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   <Bot className="w-3.5 h-3.5" />
                 </div>
                 <div className="flex-1 max-w-[95%]">
-                  <BriefKebutuhanCard data={briefData} />
+                  <BriefKebutuhanCard
+                    data={briefData}
+                    onSwitchToBuild={() => setSelectedMode('BUILD')}
+                    onUpdateBrief={(newMarkdown) => {
+                      const updated = messages.map((msg) =>
+                        msg.id === m.id ? { ...msg, text: newMarkdown } : msg
+                      );
+                      setMessages(updated);
+                      onUpdateState({ chatMessages: updated });
+                    }}
+                  />
                   <span className="text-[10px] block text-right pt-1 text-zinc-500">
                     {m.timestamp}
                   </span>

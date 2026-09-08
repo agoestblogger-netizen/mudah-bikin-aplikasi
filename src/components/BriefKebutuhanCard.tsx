@@ -1,4 +1,19 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
+import {
+  FileText,
+  Copy,
+  Check,
+  Wrench,
+  Sparkles,
+  Users,
+  Edit3,
+  Save,
+  X,
+  Layers,
+  CheckCircle2
+} from 'lucide-react';
 
 export interface PageSectionDetail {
   pageName: string;
@@ -22,6 +37,7 @@ export interface ParsedBriefKebutuhan {
   usp?: string;
   roles: RoleDetail[];
   closingQuestion?: string;
+  rawMarkdown: string;
 }
 
 /**
@@ -45,8 +61,10 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
     // 1. Ekstrak Pertanyaan Konfirmasi Akhir (di luar kartu)
     let cardContent = briefContent;
     let closingQuestion = '';
-    
-    const closingMatch = briefContent.search(/\n\s*(Apakah\s+(?:lembar\s+)?Brief\s+Kebutuhan|Apakah\s+ada\s+detail|Silakan\s+konfirmasi)/i);
+
+    const closingMatch = briefContent.search(
+      /\n\s*(Apakah\s+(?:lembar\s+)?Brief\s+Kebutuhan|Apakah\s+ada\s+detail|Silakan\s+konfirmasi|Jika\s+sudah\s+pas)/i
+    );
     if (closingMatch !== -1) {
       cardContent = briefContent.substring(0, closingMatch).trim();
       closingQuestion = briefContent.substring(closingMatch).trim();
@@ -66,7 +84,9 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
 
     // 5. Ekstrak Fitur Utama (V1)
     const features: string[] = [];
-    const featuresBlockMatch = cardContent.match(/-\s*\*\*Fitur Utama(?:\s*\(V1\))?\*\*:\s*\n([\s\S]*?)(?=\n-\s*\*\*|$)/i);
+    const featuresBlockMatch = cardContent.match(
+      /-\s*\*\*Fitur Utama(?:\s*\(V1\))?\*\*:\s*\n([\s\S]*?)(?=\n-\s*\*\*|$)/i
+    );
     if (featuresBlockMatch) {
       const lines = featuresBlockMatch[1].split('\n');
       for (const line of lines) {
@@ -77,7 +97,9 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
 
     // 6. Ekstrak Roadmap Lanjutan (V2/V3)
     const roadmap: string[] = [];
-    const roadmapBlockMatch = cardContent.match(/-\s*\*\*Roadmap Lanjutan(?:\s*\(V2\/V3\))?\*\*:\s*\n([\s\S]*?)(?=\n-\s*\*\*|$)/i);
+    const roadmapBlockMatch = cardContent.match(
+      /-\s*\*\*Roadmap Lanjutan(?:\s*\(V2\/V3\))?\*\*:\s*\n([\s\S]*?)(?=\n-\s*\*\*|$)/i
+    );
     if (roadmapBlockMatch) {
       const lines = roadmapBlockMatch[1].split('\n');
       for (const line of lines) {
@@ -93,82 +115,55 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
     // 8. Ekstrak Job Description & Struktur Halaman per Role
     const roles: RoleDetail[] = [];
     const rolesBlockMatch = cardContent.match(/-\s*\*\*Job Description[\s\S]*?\*\*:\s*\n([\s\S]*?)$/i);
-    
+
     if (rolesBlockMatch) {
       const rawRolesText = rolesBlockMatch[1];
       const lines = rawRolesText.split('\n');
       let currentRole: RoleDetail | null = null;
-      let pendingAlurRole: RoleDetail | null = null;
-      const forbiddenKeywords = ['job description', 'struktur halaman', 'alur proses', 'alur', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'nama peran', 'peran 1', 'role 1'];
+      const forbiddenKeywords = ['alur proses', 'job description', 'struktur halaman', 'fitur utama', 'roadmap'];
 
-      for (const line of lines) {
-        const trimmed = line.trim();
+      for (let i = 0; i < lines.length; i++) {
+        const rawLine = lines[i];
+        const trimmed = rawLine.trim();
         if (!trimmed) continue;
 
-        // Jika baris sebelumnya adalah header Alur Proses tanpa isi teks, baris ini adalah isi Alur Prosesnya
-        if (pendingAlurRole) {
-          const cleanText = trimmed.replace(/^[\-\*]\s*/, '').trim();
-          if (cleanText && !cleanText.startsWith('*') && !cleanText.startsWith('#')) {
-            pendingAlurRole.alurProses = cleanText;
-            pendingAlurRole = null;
-            continue;
-          }
-          pendingAlurRole = null;
-        }
-
-        // Cek baris Alur Proses di bawah role saat ini (misal: `- Alur Proses: Klik ...` atau `* **Alur Proses**: Klik ...` atau `* **Alur Proses**:`)
-        if (currentRole && /^(?:[\*\-]\s*)?(?:\*\*)?Alur\s+Proses(?:\*\*)?:?/i.test(trimmed)) {
-          const alurText = trimmed.replace(/^(?:[\*\-]\s*)?(?:\*\*)?Alur\s+Proses(?:\*\*)?:?\s*/i, '').trim();
-          if (alurText) {
-            currentRole.alurProses = alurText;
-          } else {
-            pendingAlurRole = currentRole;
+        // Deteksi baris role: * **RoleName**: atau * **[RoleName]**:
+        const roleMatch = trimmed.match(/^\*\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/);
+        if (roleMatch) {
+          let roleName = roleMatch[1].trim();
+          roleName = roleName.replace(/^(?:Role|Peran)\s+/i, '').replace(/\s*\(.*?\)$/, '').trim();
+          if (roleName && !forbiddenKeywords.some((k) => roleName.toLowerCase().startsWith(k))) {
+            currentRole = {
+              roleName,
+              pages: []
+            };
+            roles.push(currentRole);
           }
           continue;
         }
 
-        // Cek baris Header Role (misal: `* **Admin**:` atau `* **[Admin]**:` atau `- **Kasir**:`)
-        const roleHeaderMatch = trimmed.match(/^[\*\-]\s*\*\*\[?([A-Za-z0-9\s\/\-_]+?)\]?\*\*:?$/) ||
-                                trimmed.match(/^\*\*\[?([A-Za-z0-9\s\/\-_]+?)\]?\*\*:?$/);
-
-        if (roleHeaderMatch) {
-          let rName = roleHeaderMatch[1].replace(/[\*\[\]:]/g, '').trim();
-          const isForbidden = forbiddenKeywords.some(k => rName.toLowerCase().startsWith(k));
-          
-          if (rName && !isForbidden) {
-            rName = rName.replace(/^(?:Role|Peran)\s+/i, '').trim();
-            currentRole = { roleName: rName, pages: [] };
-            roles.push(currentRole);
-            continue;
-          } else if (rName.toLowerCase().includes('alur proses') && currentRole) {
-            pendingAlurRole = currentRole;
-            continue;
+        // Deteksi baris alur proses: - Alur Proses: ...
+        if (currentRole && /^[-\*]\s*(?:\*\*)?Alur\s+Proses(?:\*\*)?\s*:/i.test(trimmed)) {
+          const alurMatch = trimmed.match(/^[-\*]\s*(?:\*\*)?Alur\s+Proses(?:\*\*)?\s*:\s*(.*)/i);
+          if (alurMatch && alurMatch[1].trim()) {
+            currentRole.alurProses = alurMatch[1].trim();
           }
+          continue;
         }
 
-        // Cek baris Halaman/Section di bawah role saat ini (misal: `- Dashboard (default): section ...`)
-        if (currentRole && (trimmed.startsWith('-') || trimmed.startsWith('*'))) {
-          // Abaikan jika baris ini ternyata Alur Proses
-          if (/Alur\s+Proses/i.test(trimmed)) {
-            const alurText = trimmed.replace(/^(?:[\*\-]\s*)?(?:\*\*)?Alur\s+Proses(?:\*\*)?:?\s*/i, '').trim();
-            if (alurText) {
-              currentRole.alurProses = alurText;
-            } else {
-              pendingAlurRole = currentRole;
-            }
-            continue;
-          }
-
-          const lineWithoutBullet = trimmed.replace(/^[\-\*]\s*/, '').trim();
+        // Deteksi baris halaman: - [Halaman 1] (default): section X, section Y
+        if (currentRole && /^[-\*]\s*\[?[^\]]+\]?/.test(trimmed)) {
+          const lineWithoutBullet = trimmed.replace(/^[-\*]\s*/, '').trim();
           const isDefault = /\(default\)/i.test(lineWithoutBullet);
-          
-          let pageName = lineWithoutBullet;
+          let pageName = '';
           const sectionList: string[] = [];
 
-          if (lineWithoutBullet.includes(':')) {
-            const [pNamePart, sectionsPart] = lineWithoutBullet.split(/:\s*(.+)/);
+          const colonIdx = lineWithoutBullet.indexOf(':');
+          if (colonIdx !== -1) {
+            const pNamePart = lineWithoutBullet.substring(0, colonIdx).replace(/\(default\)/i, '');
+            const sectionsPart = lineWithoutBullet.substring(colonIdx + 1);
             pageName = pNamePart.trim();
-            
+
             if (sectionsPart) {
               const rawSecs = sectionsPart.split(/,\s*/);
               for (const s of rawSecs) {
@@ -182,7 +177,7 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
 
           pageName = pageName.replace(/\(default\)/i, '').trim();
 
-          if (pageName && !forbiddenKeywords.some(k => pageName.toLowerCase().startsWith(k))) {
+          if (pageName && !forbiddenKeywords.some((k) => pageName.toLowerCase().startsWith(k))) {
             currentRole.pages.push({
               pageName,
               isDefault,
@@ -193,10 +188,8 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
       }
     }
 
-    // Filter role kosong (tanpa halaman dan tanpa alur)
-    const validRoles = roles.filter(r => r.pages.length > 0 || Boolean(r.alurProses));
+    const validRoles = roles.filter((r) => r.pages.length > 0 || Boolean(r.alurProses));
 
-    // Jika berhasil mengekstrak minimal appName dan (features atau roles)
     if (appName && (features.length > 0 || validRoles.length > 0)) {
       return {
         introText: introText || undefined,
@@ -207,7 +200,8 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
         roadmap,
         usp,
         roles: validRoles,
-        closingQuestion: closingQuestion || undefined
+        closingQuestion: closingQuestion || undefined,
+        rawMarkdown: text
       };
     }
 
@@ -220,59 +214,177 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
 
 interface BriefKebutuhanCardProps {
   data: ParsedBriefKebutuhan;
+  onSwitchToBuild?: () => void;
+  onUpdateBrief?: (updatedMarkdown: string) => void;
 }
 
-export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data }) => {
+export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({
+  data,
+  onSwitchToBuild,
+  onUpdateBrief
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editMarkdown, setEditMarkdown] = useState(data.rawMarkdown || '');
+  const [currentData, setCurrentData] = useState<ParsedBriefKebutuhan>(data);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(currentData.rawMarkdown || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveEdit = () => {
+    const parsed = parseBriefKebutuhan(editMarkdown);
+    if (parsed) {
+      setCurrentData(parsed);
+    } else {
+      setCurrentData((prev) => ({
+        ...prev,
+        rawMarkdown: editMarkdown
+      }));
+    }
+    setIsEditing(false);
+    onUpdateBrief?.(editMarkdown);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMarkdown(currentData.rawMarkdown || '');
+    setIsEditing(false);
+  };
+
   return (
-    <div className="space-y-3 my-1 text-slate-200 text-xs">
+    <div className="w-full max-w-2xl rounded-2xl bg-[#0a0a10] border border-[#10f48e]/35 shadow-2xl overflow-hidden text-zinc-200 my-2 animate-in fade-in duration-200 select-text">
       {/* 1. Teks Pengantar Percakapan (jika ada) */}
-      {data.introText && (
-        <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">
-          {data.introText}
-        </p>
+      {currentData.introText && !isEditing && (
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-[#101018] via-[#0d0d14] to-[#12121c] border-b border-white/10 text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">
+          {currentData.introText}
+        </div>
       )}
 
-      {/* 2. Kotak Sederhana Dokumen Brief Kebutuhan */}
-      <div className="rounded-2xl bg-slate-950 border border-slate-800 p-5 space-y-3.5 shadow-md">
-        {/* Header Kotak Sederhana */}
-        <div className="pb-2.5 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-            <span>📋</span>
-            <span>Brief Kebutuhan:</span>
-            <span className="text-indigo-300 font-semibold">{data.appName}</span>
+      {/* Header Kotak Brief Kebutuhan */}
+      <div className="p-4 sm:p-5 bg-[#0e0e15] border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#10f48e]/15 border border-[#10f48e]/40 text-[#10f48e] text-[10px] font-extrabold uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#10f48e] animate-pulse" />
+              {isEditing ? 'Mode Edit Brief Aktif' : 'Brief Siap Dikonfirmasi'}
+            </span>
+            <span className="text-[11px] text-zinc-400 font-medium">
+              Spesifikasi Fungsional & Alur Kerja
+            </span>
+          </div>
+          <h3 className="text-sm sm:text-base font-extrabold text-white truncate flex items-center gap-2">
+            <FileText className="w-4 h-4 text-[#10f48e] shrink-0" />
+            <span className="truncate">{currentData.appName}</span>
           </h3>
         </div>
 
-        {/* Baris-Baris Field Utama */}
-        <div className="space-y-2.5 leading-relaxed">
-          {/* Nama App */}
-          <div>
-            <span className="font-semibold text-slate-200">• Nama App:</span>{' '}
-            <span className="text-slate-300">{data.appName}</span>
+        {/* Action Buttons: Edit Brief & Copy */}
+        <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+          {!isEditing ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditMarkdown(currentData.rawMarkdown || '');
+                  setIsEditing(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-[#10f48e]/15 hover:bg-[#10f48e]/25 border border-[#10f48e]/40 text-[#10f48e] text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm shadow-[#10f48e]/10"
+                title="Edit teks dokumen Brief Kebutuhan secara langsung"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>✏️ Edit Brief</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="Salin isi lembar Brief Kebutuhan ke clipboard"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#10f48e]" />
+                    <span className="text-[#10f48e]">Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Salin</span>
+                  </>
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white text-xs font-medium transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Batal</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] text-black font-extrabold text-xs shadow-md shadow-[#10f48e]/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <Save className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Simpan</span>
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Konten: Mode Edit vs Mode Visual Card */}
+      {isEditing ? (
+        <div className="p-4 sm:p-5 space-y-3 bg-[#06060a]">
+          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+            <span>Ubah teks lembar Brief Kebutuhan di bawah ini sesuai keinginan Anda:</span>
+            <span className="text-[10px] text-zinc-500 font-mono">Markdown Format</span>
+          </div>
+          <textarea
+            rows={18}
+            value={editMarkdown}
+            onChange={(e) => setEditMarkdown(e.target.value)}
+            className="w-full rounded-xl bg-[#0e0e16] border border-[#10f48e]/40 p-3.5 font-mono text-xs text-zinc-100 leading-relaxed focus:outline-none focus:ring-1 focus:ring-[#10f48e] resize-y scrollbar-thin select-text"
+          />
+        </div>
+      ) : (
+        <div className="p-4 sm:p-5 space-y-3 text-xs leading-relaxed max-h-[520px] overflow-y-auto scrollbar-thin">
+          {/* Metadata Pokok */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-white/[0.02] p-3 rounded-xl border border-white/5">
+            <div>
+              <span className="text-zinc-500 text-[11px] block">Nama Aplikasi</span>
+              <span className="font-bold text-white">{currentData.appName}</span>
+            </div>
+            {currentData.orientation && (
+              <div>
+                <span className="text-zinc-500 text-[11px] block">Orientasi Desain</span>
+                <span className="text-zinc-300">{currentData.orientation}</span>
+              </div>
+            )}
+            {currentData.visualTheme && (
+              <div className="sm:col-span-2 pt-1 border-t border-white/5">
+                <span className="text-zinc-500 text-[11px] block">Tema Visual & Nuansa</span>
+                <span className="text-zinc-300">{currentData.visualTheme}</span>
+              </div>
+            )}
           </div>
 
-          {/* Orientasi UI */}
-          {data.orientation && (
-            <div>
-              <span className="font-semibold text-slate-200">• Orientasi UI:</span>{' '}
-              <span className="text-slate-300">{data.orientation}</span>
-            </div>
-          )}
-
-          {/* Tema Visual */}
-          {data.visualTheme && (
-            <div>
-              <span className="font-semibold text-slate-200">• Tema Visual:</span>{' '}
-              <span className="text-slate-300">{data.visualTheme}</span>
-            </div>
-          )}
-
-          {/* Fitur Utama (V1) - List Bernomor Biasa */}
-          {data.features.length > 0 && (
-            <div className="space-y-1 pt-1">
-              <div className="font-semibold text-slate-200">• Fitur Utama (V1):</div>
-              <ol className="list-decimal list-inside space-y-1 pl-2 text-slate-300">
-                {data.features.map((feat, idx) => (
+          {/* Fitur Utama (V1) */}
+          {currentData.features.length > 0 && (
+            <div className="space-y-1.5 pt-2">
+              <div className="font-bold text-white flex items-center gap-1.5 text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-[#10f48e]" />
+                <span>Fitur Utama yang Akan Dibangun (V1):</span>
+              </div>
+              <ol className="list-decimal list-inside space-y-1 pl-1 text-zinc-300 text-[11.5px]">
+                {currentData.features.map((feat, idx) => (
                   <li key={idx} className="leading-relaxed">
                     {feat}
                   </li>
@@ -281,12 +393,14 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data }) 
             </div>
           )}
 
-          {/* Roadmap Lanjutan (V2/V3) */}
-          {data.roadmap.length > 0 && (
+          {/* Roadmap Lanjutan */}
+          {currentData.roadmap.length > 0 && (
             <div className="space-y-1 pt-1">
-              <div className="font-semibold text-slate-200">• Roadmap Lanjutan (V2/V3):</div>
-              <ul className="list-disc list-inside space-y-1 pl-2 text-slate-400">
-                {data.roadmap.map((item, idx) => (
+              <div className="text-zinc-400 text-[11px] font-semibold">
+                Roadmap Lanjutan (V2/V3):
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 pl-1 text-zinc-500 text-[11px]">
+                {currentData.roadmap.map((item, idx) => (
                   <li key={idx} className="leading-relaxed">
                     {item}
                   </li>
@@ -295,59 +409,90 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data }) 
             </div>
           )}
 
-          {/* Fitur Unik (USP) */}
-          {data.usp && (
-            <div className="pt-1">
-              <span className="font-semibold text-slate-200">• Fitur Unik (USP):</span>{' '}
-              <span className="text-slate-300">{data.usp}</span>
-            </div>
-          )}
-
-          {/* Job Description & Struktur Halaman per Role (Pemisahan Visual Sederhana) */}
-          {data.roles.length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="font-semibold text-slate-200">
-                • Job Description & Struktur Halaman per Role:
+          {/* Job Description & Struktur Halaman per Role */}
+          {currentData.roles.length > 0 && (
+            <div className="space-y-2 pt-3 border-t border-white/10">
+              <div className="font-bold text-white flex items-center gap-1.5 text-xs">
+                <Users className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Pembagian Peran & Struktur Halaman:</span>
               </div>
 
-              <div className="space-y-3 pl-2 pt-1">
-                {data.roles.map((r, rIdx) => {
-                  const cleanRoleTitle = r.roleName.toLowerCase().startsWith('role') ? r.roleName : `Role ${r.roleName}`;
-                  return (
-                    <div key={rIdx} className="space-y-1.5 pt-2.5 first:pt-0 border-t first:border-t-0 border-slate-800/60">
-                      <div className="font-bold text-indigo-300 text-xs">
-                        * {cleanRoleTitle}:
-                      </div>
-
-                      <ul className="space-y-1 pl-3 text-slate-300 text-[11.5px]">
-                        {r.pages.map((p, pIdx) => (
-                          <li key={pIdx} className="leading-relaxed">
-                            - <span className="font-medium text-slate-200">{p.pageName}</span>
-                            {p.isDefault && <span className="text-indigo-400 font-normal"> (default)</span>}
-                            {p.sections.length > 0 && `: section ${p.sections.join(', ')}`}
-                          </li>
-                        ))}
-                        {r.alurProses && (
-                          <li className="leading-relaxed text-slate-400 pt-0.5">
-                            - <span className="font-medium text-indigo-200/90">Alur Proses:</span> {r.alurProses}
-                          </li>
-                        )}
-                      </ul>
+              <div className="space-y-2.5 pt-1">
+                {currentData.roles.map((r, rIdx) => (
+                  <div
+                    key={rIdx}
+                    className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5"
+                  >
+                    <div className="font-extrabold text-[#10f48e] text-xs flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{r.roleName}</span>
                     </div>
-                  );
-                })}
+
+                    <ul className="space-y-1 pl-4 text-zinc-300 text-[11.5px]">
+                      {r.pages.map((p, pIdx) => (
+                        <li key={pIdx} className="leading-relaxed list-disc">
+                          <span className="font-semibold text-white">{p.pageName}</span>
+                          {p.isDefault && (
+                            <span className="text-[#10f48e] font-normal text-[10.5px]"> (Landing Awal)</span>
+                          )}
+                          {p.sections.length > 0 && (
+                            <span className="text-zinc-400">: section {p.sections.join(', ')}</span>
+                          )}
+                        </li>
+                      ))}
+                      {r.alurProses && (
+                        <li className="leading-relaxed text-zinc-400 pt-1 text-[11px] list-none -ml-4 pl-2 border-l-2 border-[#10f48e]/40">
+                          <span className="font-bold text-zinc-200">Alur Kerja:</span> {r.alurProses}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
-      </div>
-
-      {/* 3. Pertanyaan Konfirmasi Akhir (di luar kotak sebagai teks biasa) */}
-      {data.closingQuestion && (
-        <p className="text-slate-300 leading-relaxed pt-1 whitespace-pre-wrap">
-          {data.closingQuestion}
-        </p>
       )}
+
+      {/* Footer Kartu Brief Kebutuhan */}
+      <div className="p-4 bg-[#0e0e15] border-t border-white/10 space-y-3">
+        {currentData.closingQuestion && !isEditing && (
+          <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            {currentData.closingQuestion}
+          </p>
+        )}
+
+        {onSwitchToBuild && !isEditing && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+            <span className="text-[11px] text-zinc-400">
+              Brief Kebutuhan ini menjadi panduan rancangan saat prototipe dibangun.
+            </span>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditMarkdown(currentData.rawMarkdown || '');
+                  setIsEditing(true);
+                }}
+                className="py-2.5 px-3.5 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/40 text-zinc-200 hover:text-[#10f48e] font-bold text-xs transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-[#10f48e]" />
+                <span>Edit Brief</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onSwitchToBuild}
+                className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-[#10f48e]/25 transition-all flex items-center justify-center gap-2 shrink-0 active:scale-98 cursor-pointer"
+              >
+                <Wrench className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Setujui Brief & Beralih ke Mode Build</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

@@ -98,13 +98,13 @@ export const PlanInteractiveCard: React.FC<PlanInteractiveCardProps> = ({
     if (selectedFeatures.length > 0) {
       parts.push(`Fitur yang saya butuhkan: ${selectedFeatures.join(', ')}`);
     }
-    const msg = `${parts.join('. ')}. Tolong susunkan Product Requirements Document (PRD) lengkap untuk aplikasi ini.`;
+    const msg = `${parts.join('. ')}. Tolong buatkan lembar Brief Kebutuhan lengkap untuk aplikasi ini.`;
     onSend(msg);
   };
 
   const handleSendExpress = () => {
     onSend(
-      'Saya setuju dengan rekomendasi peran dan fitur standar di atas. Tolong langsung susunkan Product Requirements Document (PRD) teknis lengkap untuk aplikasi ini.'
+      'Saya setuju dengan rekomendasi peran dan fitur standar di atas. Tolong langsung buatkan lembar Brief Kebutuhan lengkap untuk aplikasi ini.'
     );
   };
 
@@ -304,10 +304,10 @@ export const PlanInteractiveCard: React.FC<PlanInteractiveCardProps> = ({
               disabled={disabled}
               onClick={handleSendExpress}
               className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-amber-500/5 hover:from-amber-500/25 hover:to-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold transition-all flex items-center justify-center gap-1.5 active:scale-98 cursor-pointer"
-              title="Langsung buatkan PRD lengkap dengan rekomendasi standar"
+              title="Langsung buatkan lembar Brief Kebutuhan lengkap dengan rekomendasi standar"
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>⚡ Langsung Buatkan PRD Lengkap</span>
+              <span>⚡ Langsung Buatkan Brief Lengkap</span>
             </button>
 
             <button
