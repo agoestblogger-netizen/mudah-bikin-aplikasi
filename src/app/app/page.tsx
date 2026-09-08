@@ -621,6 +621,9 @@ export default function AppWorkspacePage() {
             breadcrumbs: Array.isArray(data.breadcrumbs) ? data.breadcrumbs : []
           };
         });
+        // Buka popover setelah elemen berhasil di-resolve
+        setPopoverPos(null);
+        setNoteDraft('');
       }
     };
 
