@@ -405,7 +405,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               <Menu className="w-4 h-4" />
             </button>
           )}
-          <div className="w-7 h-7 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-[#10f48e]/15 border border-[#10f48e]/30 flex items-center justify-center text-[#10f48e] shrink-0">
             <Sparkles className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
@@ -418,7 +418,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {/* AI Model Badge / Selector */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-[11px] font-medium text-zinc-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10f48e] animate-pulse shrink-0 shadow-[0_0_6px_#10f48e]" />
             <span className="truncate max-w-[130px] sm:max-w-[180px]">{activeModelName}</span>
           </div>
         </div>
@@ -439,11 +439,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               <div
                 className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
                   m.sender === 'USER'
-                    ? 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
-                    : 'bg-[#14141a] border border-white/10 text-orange-400'
+                    ? 'bg-gradient-to-tr from-emerald-400 to-[#10f48e] text-black shadow-md shadow-[#10f48e]/20'
+                    : 'bg-[#14141a] border border-white/10 text-[#10f48e]'
                 }`}
               >
-                {m.sender === 'USER' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                {m.sender === 'USER' ? <User className="w-3.5 h-3.5 stroke-[2.5]" /> : <Bot className="w-3.5 h-3.5" />}
               </div>
 
               {briefData ? (
@@ -457,7 +457,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 <div
                   className={`max-w-[85%] rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
                     m.sender === 'USER'
-                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg rounded-tr-none font-medium'
+                      ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold'
                       : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
                   }`}
                 >
@@ -470,7 +470,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                         <button
                           key={i}
                           onClick={() => handleSendMessage(opt)}
-                          className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-orange-500/20 border border-white/10 hover:border-orange-500/40 text-[11px] font-medium text-zinc-300 hover:text-orange-300 transition-all text-left active:scale-[0.98]"
+                          className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/35 text-[11px] font-medium text-zinc-300 hover:text-[#10f48e] transition-all text-left active:scale-[0.98]"
                         >
                           {opt}
                         </button>
@@ -490,13 +490,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {/* Ghost Bubble SSE Streaming */}
         {streamingText !== null && (
           <div className="flex items-start gap-3">
-            <div className="w-7 h-7 rounded-xl bg-[#14141a] border border-white/10 flex items-center justify-center shrink-0 text-orange-400">
+            <div className="w-7 h-7 rounded-xl bg-[#14141a] border border-white/10 flex items-center justify-center shrink-0 text-[#10f48e]">
               <Bot className="w-3.5 h-3.5 animate-pulse" />
             </div>
-            <div className="max-w-[85%] bg-[#101015] border border-orange-500/30 rounded-2xl rounded-tl-none p-3.5 text-xs text-zinc-200 shadow-inner leading-relaxed">
+            <div className="max-w-[85%] bg-[#101015] border border-[#10f48e]/30 rounded-2xl rounded-tl-none p-3.5 text-xs text-zinc-200 shadow-inner leading-relaxed">
               <p className="whitespace-pre-wrap">
                 {streamingText}
-                <span className="inline-block w-1.5 h-3.5 bg-orange-400 ml-0.5 animate-pulse rounded-sm align-middle" />
+                <span className="inline-block w-1.5 h-3.5 bg-[#10f48e] ml-0.5 animate-pulse rounded-sm align-middle" />
               </p>
             </div>
           </div>
@@ -505,11 +505,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {/* Loading Indicator */}
         {isGenerating && streamingText === null && (
           <div className="flex items-start gap-3">
-            <div className="w-7 h-7 rounded-xl bg-[#14141a] border border-white/10 flex items-center justify-center shrink-0 text-orange-400">
+            <div className="w-7 h-7 rounded-xl bg-[#14141a] border border-white/10 flex items-center justify-center shrink-0 text-[#10f48e]">
               <Bot className="w-3.5 h-3.5 animate-pulse" />
             </div>
             <div className="bg-[#101015] border border-white/10 rounded-2xl rounded-tl-none p-3 text-xs text-zinc-300 flex items-center gap-2 shadow-inner">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-400" />
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#10f48e]" />
               <span>{loadingText}</span>
             </div>
           </div>
@@ -518,14 +518,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Capsule Prompt Box (Modern Pure Pitch Black + Orange) */}
+      {/* Capsule Prompt Box (Modern Pure Pitch Black + Neon Green) */}
       <div className="p-3 sm:p-4 bg-gradient-to-t from-[#060609] via-[#08080c] to-transparent shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="relative bg-[#101016] border border-white/10 hover:border-white/20 focus-within:border-orange-500/60 rounded-2xl p-2.5 transition-all shadow-xl flex flex-col gap-2"
+          className="relative bg-[#101016] border border-white/10 hover:border-white/20 focus-within:border-[#10f48e]/60 rounded-2xl p-2.5 transition-all shadow-xl flex flex-col gap-2"
         >
           {/* Baris Input Teks */}
           <div className="flex items-start gap-2">
@@ -564,7 +564,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-all"
                 title="Pilih Mode Pengerjaan"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10f48e] shrink-0 shadow-[0_0_6px_#10f48e]" />
                 <span>
                   {selectedMode === 'PLAN' && 'Plan (Brief)'}
                   {selectedMode === 'BUILD' && 'Build (Prototype)'}
@@ -583,14 +583,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       setIsModeDropdownOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMode === 'BUILD' ? 'bg-orange-500/15 text-orange-400 font-semibold' : 'text-zinc-300 hover:bg-white/5'
+                      selectedMode === 'BUILD' ? 'bg-[#10f48e]/15 text-[#10f48e] font-semibold' : 'text-zinc-300 hover:bg-white/5'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <Wrench className="w-3.5 h-3.5" />
                       <span>Build (Prototype)</span>
                     </div>
-                    {selectedMode === 'BUILD' && <Check className="w-3.5 h-3.5" />}
+                    {selectedMode === 'BUILD' && <Check className="w-3.5 h-3.5 text-[#10f48e]" />}
                   </button>
 
                   <button
@@ -600,14 +600,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       setIsModeDropdownOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMode === 'PLAN' ? 'bg-orange-500/15 text-orange-400 font-semibold' : 'text-zinc-300 hover:bg-white/5'
+                      selectedMode === 'PLAN' ? 'bg-[#10f48e]/15 text-[#10f48e] font-semibold' : 'text-zinc-300 hover:bg-white/5'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <FileText className="w-3.5 h-3.5" />
                       <span>Plan (Brief Kebutuhan)</span>
                     </div>
-                    {selectedMode === 'PLAN' && <Check className="w-3.5 h-3.5" />}
+                    {selectedMode === 'PLAN' && <Check className="w-3.5 h-3.5 text-[#10f48e]" />}
                   </button>
 
                   <button
@@ -617,14 +617,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       setIsModeDropdownOpen(false);
                     }}
                     className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMode === 'SYNC_GAS' ? 'bg-orange-500/15 text-orange-400 font-semibold' : 'text-zinc-300 hover:bg-white/5'
+                      selectedMode === 'SYNC_GAS' ? 'bg-[#10f48e]/15 text-[#10f48e] font-semibold' : 'text-zinc-300 hover:bg-white/5'
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <Database className="w-3.5 h-3.5" />
                       <span>Sync GAS (Apps Script)</span>
                     </div>
-                    {selectedMode === 'SYNC_GAS' && <Check className="w-3.5 h-3.5" />}
+                    {selectedMode === 'SYNC_GAS' && <Check className="w-3.5 h-3.5 text-[#10f48e]" />}
                   </button>
                 </div>
               )}
@@ -648,10 +648,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               <button
                 type="submit"
                 disabled={!input.trim() || isGenerating}
-                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold shadow-md shadow-orange-500/20 transition-all disabled:opacity-30 disabled:hover:from-orange-500 disabled:hover:to-amber-500 shrink-0 flex items-center gap-1 active:scale-[0.98]"
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold shadow-md shadow-[#10f48e]/20 transition-all disabled:opacity-30 disabled:hover:from-emerald-400 disabled:hover:to-[#10f48e] shrink-0 flex items-center gap-1 active:scale-[0.98] cursor-pointer"
                 aria-label="Kirim Pesan"
               >
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
             </div>
           </div>

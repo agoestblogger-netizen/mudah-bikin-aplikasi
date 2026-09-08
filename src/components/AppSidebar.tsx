@@ -90,8 +90,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       <div className="h-16 px-3.5 flex items-center justify-between border-b border-white/10">
         {!isCollapsed ? (
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 p-[1.5px] shrink-0">
-              <div className="w-full h-full rounded-full bg-[#121217] flex items-center justify-center text-xs font-bold text-white">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-400 to-[#10f48e] p-[1.5px] shrink-0">
+              <div className="w-full h-full rounded-full bg-[#121217] flex items-center justify-center text-xs font-bold text-[#10f48e]">
                 {initial}
               </div>
             </div>
@@ -105,8 +105,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             </div>
           </div>
         ) : (
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 p-[1.5px] mx-auto shrink-0">
-            <div className="w-full h-full rounded-full bg-[#121217] flex items-center justify-center text-xs font-bold text-white">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-400 to-[#10f48e] p-[1.5px] mx-auto shrink-0">
+            <div className="w-full h-full rounded-full bg-[#121217] flex items-center justify-center text-xs font-bold text-[#10f48e]">
               {initial}
             </div>
           </div>
@@ -129,15 +129,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
       {/* Main Actions & Nav */}
       <div className="p-3 flex-1 flex flex-col gap-2 overflow-y-auto">
-        {/* + Buat Proyek Baru Button */}
+        {/* + Buat Proyek Baru Button (Hijau Neon) */}
         <button
           onClick={onNewProject}
-          className={`w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all ${
+          className={`w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold shadow-lg shadow-[#10f48e]/20 active:scale-[0.98] transition-all ${
             isCollapsed ? 'p-2.5 h-10' : 'px-4 py-2.5 text-xs'
           }`}
           title="Buat Proyek Baru"
         >
-          <Plus className="w-4 h-4 shrink-0 stroke-[2.5]" />
+          <Plus className="w-4 h-4 shrink-0 stroke-[3]" />
           {!isCollapsed && <span>Buat Proyek Baru</span>}
         </button>
 
@@ -150,7 +150,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           title="Buka Proyek Tersimpan"
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <FolderOpen className="w-4 h-4 text-orange-400 shrink-0" />
+            <FolderOpen className="w-4 h-4 text-[#10f48e] shrink-0" />
             {!isCollapsed && <span className="truncate">Proyek Tersimpan</span>}
           </div>
           {!isCollapsed && savedProjectsCount > 0 && (
@@ -182,7 +182,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               </div>
             )}
             {!isCollapsed && hasKey && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-[#10f48e] shrink-0 shadow-[0_0_8px_#10f48e]" />
             )}
           </button>
 
@@ -192,7 +192,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               isCollapsed ? 'left-14' : 'left-0'
             }`}>
               <div className="flex items-center gap-2 pb-2 mb-2 border-b border-white/10">
-                <Bot className="w-4 h-4 text-orange-400" />
+                <Bot className="w-4 h-4 text-[#10f48e]" />
                 <span className="text-xs font-bold text-white">Konfigurasi Model AI</span>
               </div>
               <ModelSettingsMenu

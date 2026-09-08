@@ -1416,7 +1416,7 @@ export default function AppWorkspacePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#07070a] text-slate-100 font-sans selection:bg-orange-500 selection:text-white flex overflow-hidden h-screen">
+    <div className="min-h-screen bg-[#07070a] text-slate-100 font-sans selection:bg-[#10f48e] selection:text-black flex overflow-hidden h-screen">
       {/* Sidebar Navigasi Ramping (Collapsible) */}
       <AppSidebar
         userEmail={userEmail}
@@ -1534,7 +1534,7 @@ export default function AppWorkspacePage() {
                       }}
                       className={`p-1.5 rounded-xl text-xs font-semibold border transition-all ${
                         interactionMode === 'select'
-                          ? 'bg-orange-500 text-white border-orange-400 shadow-md shadow-orange-500/30'
+                          ? 'bg-[#10f48e] text-black font-extrabold border-[#10f48e] shadow-md shadow-[#10f48e]/35'
                           : 'bg-[#14141c] text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
                       }`}
                       aria-label="Select mode (Inspect Element)"
@@ -1556,7 +1556,7 @@ export default function AppWorkspacePage() {
                       }}
                       className={`p-1.5 rounded-xl text-xs font-semibold border transition-all ${
                         interactionMode === 'mark'
-                          ? 'bg-orange-500 text-white border-orange-400 shadow-md shadow-orange-500/30'
+                          ? 'bg-[#10f48e] text-black font-extrabold border-[#10f48e] shadow-md shadow-[#10f48e]/35'
                           : 'bg-[#14141c] text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
                       }`}
                       aria-label="Mark mode (Tandai Area)"
@@ -1575,10 +1575,10 @@ export default function AppWorkspacePage() {
                 <button
                   onClick={handleDownloadIndexHtml}
                   disabled={!projectState.canvasCode.html}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black text-xs font-extrabold shadow-md shadow-[#10f48e]/20 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
                   title="Export / Publish Prototype"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>{downloaded ? 'Tersimpan!' : 'Publish'}</span>
                 </button>
 
@@ -1587,7 +1587,7 @@ export default function AppWorkspacePage() {
                   onClick={() => setIsPreviewFullscreen(prev => !prev)}
                   className={`p-1.5 rounded-xl text-xs font-semibold border transition-all ${
                     isPreviewFullscreen
-                      ? 'bg-orange-500 text-white border-orange-400 shadow-md'
+                      ? 'bg-[#10f48e] text-black font-bold border-[#10f48e] shadow-md shadow-[#10f48e]/30'
                       : 'bg-[#14141c] text-zinc-400 border-white/10 hover:text-white hover:bg-white/5'
                   }`}
                   title={isPreviewFullscreen ? 'Tutup Fullscreen (Esc)' : 'Perbesar Fullscreen'}
