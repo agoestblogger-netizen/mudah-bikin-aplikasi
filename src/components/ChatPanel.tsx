@@ -2,70 +2,62 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
-import { Bot, Send, User, Sparkles, RefreshCw, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { 
+  Bot, 
+  Send, 
+  User, 
+  Sparkles, 
+  RefreshCw, 
+  Plus, 
+  Mic, 
+  MicOff, 
+  ChevronDown, 
+  Check, 
+  Wrench, 
+  FileText, 
+  Database,
+  Menu,
+  ChevronRight
+} from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
-import { loadModelSettings } from '@/lib/modelConfig';
+import { loadModelSettings, getModelLabel, getProviderConfig } from '@/lib/modelConfig';
+import type { ModelSettings } from '@/lib/modelConfig';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
+export type ChatMode = 'BUILD' | 'PLAN' | 'SYNC_GAS';
 
 interface ChatPanelProps {
   projectState: AppProjectState;
   onUpdateState: (updated: Partial<AppProjectState>) => void;
   isGenerating: boolean;
   setIsGenerating: (val: boolean) => void;
-
-  // External trigger untuk mengirim pesan ke ChatPanel dari luar (mis. dari popover mark)
   externalSendToken?: string | number;
   externalSendText?: string | null;
+  onToggleSidebar?: () => void;
+  isSidebarCollapsed?: boolean;
 }
 
 const BRAINSTORMING_LOADING_TEXTS = [
-  'Sedang mikirin ide kamu...',
-  'Lagi nyimak, bentar ya...',
-  'Oke, saya proses dulu...',
-  'Bentar ya, lagi saya rangkai tanggapannya...'
+  'Sedang menganalisa ide Anda...',
+  'Menyiapkan rancangan aplikasi...',
+  'Memproses instruksi Anda...',
+  'Merangkai kode dan antarmuka...'
 ];
 
-function getContextualLoadingText(query: string, hasCode: boolean, hasBrief: boolean): string {
+function getContextualLoadingText(query: string, hasCode: boolean, hasBrief: boolean, mode: ChatMode): string {
+  if (mode === 'PLAN') return 'AI sedang menganalisa dan merancang brief kebutuhan...';
+  if (mode === 'SYNC_GAS') return 'AI sedang meracik script backend Google Apps Script...';
+  
   const lower = query.toLowerCase().trim();
-
-  const hasExplicitQuestion = query.includes('?') || /(^|\b)(apakah|apa\s+kamu\s+paham|paham\s+kah|paham\s+gak|paham\s+kan|ngerti\s+gak|ngerti\s+kan|bisa\s+kah|gimana\s+menurutmu|bagaimana\s+menurutmu|menurut\s+kamu|kenapa|mengapa|bagaimana\s+cara|tolong\s+jelaskan|apa\s+maksud|apakah\s+bisa|jelaskan)($|\b)/i.test(lower);
-  const isExecutionApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang)($|\b)/i.test(lower);
-  const isSignificantRevision = (
-    hasExplicitQuestion ||
-    /(ganti|ubah|rombak|bikin|buat)\s+(sistem\s+login|mekanisme\s+role|role\s+switcher|arsitektur|seluruh\s+role|struktur\s+utama)/i.test(lower) ||
-    /(tambah|kurang|hapus|ganti)\s+role/i.test(lower) ||
-    /(sistem\s+login\s+sungguhan|login\s+asli|multi\s+role\s+baru|rombak\s+total)/i.test(lower) ||
-    (query.length > 220 && (lower.includes('role') || lower.includes('halaman') || lower.includes('fitur')))
-  );
-
-  // Jika sudah ada kode aplikasi (tahap revisi/patch)
   if (hasCode) {
-    if (isSignificantRevision && !isExecutionApproval) {
-      return 'AI sedang menyiapkan penjelasan & konfirmasi...';
+    if (lower.includes('error') || lower.includes('bug') || lower.includes('rusak')) {
+      return 'AI sedang mendiagnosa & memperbaiki error...';
     }
-    if (lower.includes('tambah') || lower.includes('ganti') || lower.includes('ubah') || lower.includes('revisi') || lower.includes('warna') || lower.includes('tombol') || isExecutionApproval) {
-      return 'AI sedang menerapkan revisi...';
-    }
-    return 'AI sedang memperbarui aplikasi...';
+    return 'AI sedang memperbarui prototype aplikasi...';
   }
-
-  // Jika terkait perbaikan kendala / error
-  if (lower.includes('error') || lower.includes('bug') || lower.includes('rusak') || lower.includes('kendala') || lower.includes('kenapa')) {
-    return 'AI sedang menganalisa kendala...';
+  if (hasBrief) {
+    return 'AI sedang membangun prototype awal aplikasi...';
   }
-
-  // Jika terkait backend / spreadsheet
-  if (lower.includes('backend') || lower.includes('spreadsheet') || lower.includes('sheet') || lower.includes('gas') || lower.includes('database')) {
-    return 'AI sedang menyiapkan backend...';
-  }
-
-  // Hanya jika SUDAH ADA Brief Kebutuhan dan pengguna mengonfirmasi persetujuan untuk mulai generate mockup
-  if (hasBrief && isExecutionApproval) {
-    return 'AI sedang membangun aplikasi...';
-  }
-
-  // Tahap diskusi / brainstorming awal santai (rotasi acak)
   const randomIndex = Math.floor(Math.random() * BRAINSTORMING_LOADING_TEXTS.length);
   return BRAINSTORMING_LOADING_TEXTS[randomIndex];
 }
@@ -76,28 +68,43 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   isGenerating,
   setIsGenerating,
   externalSendToken,
-  externalSendText
+  externalSendText,
+  onToggleSidebar,
+  isSidebarCollapsed
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>(projectState.chatMessages);
   const [input, setInput] = useState('');
-  const [railExpanded, setRailExpanded] = useState(false);
-  const [loadingText, setLoadingText] = useState('Sedang mikirin ide kamu...');
-  // streamingText: teks ghost bubble yang sedang di-stream (null = tidak streaming)
+  const [selectedMode, setSelectedMode] = useState<ChatMode>('BUILD');
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [loadingText, setLoadingText] = useState('Sedang menganalisa ide Anda...');
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  
+  const [modelConfig, setModelConfig] = useState<ModelSettings>(() => loadModelSettings());
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
-  // Auto scroll ke bawah saat pesan baru tiba
+  // Sinkronisasi model config secara berkala
+  useEffect(() => {
+    setModelConfig(loadModelSettings());
+  }, []);
+
+  // Auto scroll ke bawah
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating, streamingText]);
 
-  // Sinkronisasi pesan jika state luar berubah (misal reset project)
+  // Sinkronisasi pesan dari state proyek
   useEffect(() => {
     setMessages(projectState.chatMessages);
   }, [projectState.chatMessages]);
 
-  // Auto-resize textarea mengikuti isi baris teks
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -105,13 +112,64 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   }, [input]);
 
+  // Menangani klik luar dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
+        setIsModeDropdownOpen(false);
+      }
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Speech Recognition (Web Speech API)
+  const toggleSpeechRecognition = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('Browser Anda belum mendukung input suara.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.lang = 'id-ID';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = () => setIsListening(false);
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0]?.[0]?.transcript;
+        if (transcript) {
+          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error('Speech recognition error:', err);
+      setIsListening(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter tanpa Shift: kirim pesan
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-    // Shift+Enter: baris baru alami (tidak dicegat)
   };
 
   const handleSendMessage = async (textToSend?: string) => {
@@ -119,8 +177,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     if (!query.trim() || isGenerating) return;
 
     const hasBrief = messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'));
-    // Tentukan teks status loading kontekstual
-    const contextualText = getContextualLoadingText(query, Boolean(projectState.canvasCode?.html), hasBrief);
+    const contextualText = getContextualLoadingText(
+      query, 
+      Boolean(projectState.canvasCode?.html), 
+      hasBrief,
+      selectedMode
+    );
     setLoadingText(contextualText);
 
     const userMsg: ChatMessage = {
@@ -140,23 +202,33 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setStreamingText(null);
 
     try {
-      // Tentukan stage percakapan secara dinamis
+      // Menentukan stage percakapan berdasarkan selectedMode & status saat ini
       let currentStage = 'TAHAP_1_PEMBUKAAN';
-      if (projectState.canvasCode.html) {
-        currentStage = 'TAHAP_5_PATCH';
+      if (selectedMode === 'PLAN') {
+        currentStage = 'TAHAP_1_PEMBUKAAN';
+      } else if (selectedMode === 'SYNC_GAS') {
+        currentStage = 'TAHAP_4_BACKEND';
+      } else {
+        // BUILD MODE
+        if (projectState.canvasCode.html) {
+          currentStage = 'TAHAP_5_PATCH';
+        } else {
+          currentStage = 'TAHAP_1_PEMBUKAAN';
+        }
       }
 
-      const modelSettings = loadModelSettings();
+      const activeSettings = loadModelSettings();
       const payload: Record<string, unknown> = {
         prompt: query,
         chatHistory: updatedMessages,
         stage: currentStage,
-        currentCode: projectState.canvasCode.html
+        currentCode: projectState.canvasCode.html,
+        mode: selectedMode
       };
-      payload.userProvider = modelSettings.provider;
-      if (modelSettings.token) {
-        payload.userApiKey = modelSettings.token;
-        payload.userModel = modelSettings.model;
+      payload.userProvider = activeSettings.provider;
+      if (activeSettings.token) {
+        payload.userApiKey = activeSettings.token;
+        payload.userModel = activeSettings.model;
       }
 
       const res = await fetch('/api/generate', {
@@ -168,9 +240,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       if (!res.ok) {
         let errorMsg = 'Terjadi kesalahan pada server saat memproses permintaan.';
         if (res.status === 504) {
-          errorMsg = '⏱️ Batas waktu server tercapai (Timeout 504). Proses generate/revisi memakan waktu lebih dari 60 detik. Silakan coba kembali atau sederhanakan instruksi.';
+          errorMsg = '⏱️ Batas waktu server tercapai (Timeout 504). Silakan coba kembali atau sederhanakan instruksi.';
         } else if (res.status === 429) {
-          errorMsg = '⏳ Batas kuota request tercapai. Mohon tunggu beberapa detik sebelum mencoba kembali.';
+          errorMsg = '⏳ Batas kuota tercapai. Mohon tunggu beberapa detik sebelum mencoba kembali.';
         } else {
           try {
             const errData = await res.json();
@@ -192,10 +264,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       const contentType = res.headers.get('Content-Type') || '';
 
-      // =====================================================================
-      // PATH A: SSE STREAMING (Ideation mode — text/event-stream)
-      // Token muncul satu per satu di ghost bubble, tanpa menunggu full response
-      // =====================================================================
       if (contentType.includes('text/event-stream') && res.body) {
         const reader = res.body.getReader();
         const dec = new TextDecoder();
@@ -204,7 +272,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         let finalReplyText = '';
         let finalCode: any = null;
 
-        // Mulai tampilkan ghost bubble segera (kosong dulu)
         setStreamingText('');
 
         while (true) {
@@ -218,11 +285,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           for (const line of lines) {
             if (!line.startsWith('data:')) continue;
             const raw = line.slice(5).trim();
-            if (raw === '[DONE]') continue;
+            if (!raw || raw === '[DONE]') continue;
+
             try {
               const parsed = JSON.parse(raw);
-              if (parsed.type === 'chunk' && parsed.text) {
-                accumulated += parsed.text;
+              if (parsed.type === 'token') {
+                accumulated += parsed.content;
                 setStreamingText(accumulated);
               } else if (parsed.type === 'done') {
                 finalReplyText = parsed.replyText || accumulated;
@@ -232,7 +300,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           }
         }
 
-        // Selesai streaming: ghost bubble → pesan permanen
         setStreamingText(null);
 
         const aiMsg: ChatMessage = {
@@ -245,150 +312,121 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         const finalMessages = [...updatedMessages, aiMsg];
         setMessages(finalMessages);
 
-        const stateUpdates: Partial<AppProjectState> = { chatMessages: finalMessages };
-        stateUpdates.title = extractAppTitleFromChat(finalMessages) ?? (query.length < 30 ? query : projectState.title);
-        if (finalCode) {
-          let h = '', c = '', j = '';
-          if (typeof finalCode === 'string') { h = finalCode; }
-          else if (typeof finalCode === 'object') { h = finalCode.html || ''; c = finalCode.css || ''; j = finalCode.js || ''; }
-          stateUpdates.canvasCode = { html: h, css: c, js: j };
+        const extractedTitle = extractAppTitleFromChat(finalMessages);
+        const stateUpdate: Partial<AppProjectState> = { chatMessages: finalMessages };
+        if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru')) {
+          stateUpdate.title = extractedTitle;
         }
-        onUpdateState(stateUpdates);
+
+        if (finalCode) {
+          stateUpdate.canvasCode = {
+            html: finalCode.html || projectState.canvasCode.html,
+            css: finalCode.css || projectState.canvasCode.css,
+            js: finalCode.js || projectState.canvasCode.js
+          };
+        }
+
+        onUpdateState(stateUpdate);
         return;
       }
 
-      // =====================================================================
-      // PATH B: BATCH JSON (Generate kode / Tahap 2-6 — application/json)
-      // Tidak berubah dari implementasi sebelumnya
-      // =====================================================================
+      // JSON Response (Batch Pipeline)
       const data = await res.json();
-      const aiReply = data.replyText || (data.success ? '✨ Perubahan berhasil diproses.' : '⚠️ Permintaan tidak dapat diproses.');
-
       const aiMsg: ChatMessage = {
         id: 'msg-' + (Date.now() + 1),
         sender: 'AI',
-        text: aiReply,
+        text: data.replyText,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
       };
 
       const finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
 
-      const stateUpdates: Partial<AppProjectState> = {
-        chatMessages: finalMessages
-      };
-      stateUpdates.title = extractAppTitleFromChat(finalMessages) ?? (query.length < 30 ? query : projectState.title);
-
-      // Jika AI menghasilkan / memperbarui kode mockup HTML
-      if (data.code) {
-        let h = '', c = '', j = '';
-        if (typeof data.code === 'string') {
-          h = data.code;
-        } else if (typeof data.code === 'object') {
-          h = data.code.html || '';
-          c = data.code.css || '';
-          j = data.code.js || '';
-        }
-        stateUpdates.canvasCode = { html: h, css: c, js: j };
+      const extractedTitle = extractAppTitleFromChat(finalMessages);
+      const stateUpdate: Partial<AppProjectState> = { chatMessages: finalMessages };
+      if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru')) {
+        stateUpdate.title = extractedTitle;
       }
 
-      onUpdateState(stateUpdates);
+      if (data.code) {
+        stateUpdate.canvasCode = {
+          html: data.code.html,
+          css: data.code.css,
+          js: data.code.js
+        };
+      }
+
+      if (data.gasScript) {
+        stateUpdate.gasConfig = {
+          ...projectState.gasConfig,
+          scriptCode: data.gasScript
+        };
+      }
+
+      onUpdateState(stateUpdate);
     } catch (err: any) {
-      console.error('Error in chat generation:', err);
-      const networkErrorMsg: ChatMessage = {
+      const errorAiMsg: ChatMessage = {
         id: 'msg-' + (Date.now() + 1),
         sender: 'AI',
-        text: `⚠️ Gagal terhubung ke server (${err.message || 'Network error'}). Silakan periksa koneksi internet Anda dan coba lagi.`,
+        text: `⚠️ Kendala koneksi: ${err.message || 'Gagal memproses permintaan.'}`,
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
       };
-      const finalMessages = [...updatedMessages, networkErrorMsg];
+      const finalMessages = [...updatedMessages, errorAiMsg];
       setMessages(finalMessages);
       onUpdateState({ chatMessages: finalMessages });
     } finally {
-      setStreamingText(null);
       setIsGenerating(false);
+      setStreamingText(null);
     }
   };
 
-  // Jika ada trigger eksternal, kirim pesan ke AI.
+  // External trigger dari luar (misal dari popover mark)
   useEffect(() => {
-    if (!externalSendToken) return;
-    if (!externalSendText) return;
-    handleSendMessage(externalSendText);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (externalSendToken && externalSendText) {
+      handleSendMessage(externalSendText);
+    }
   }, [externalSendToken]);
 
+  const activeProvider = modelConfig.token ? getProviderConfig(modelConfig.provider).label : 'Server Default';
+  const activeModelName = modelConfig.token ? getModelLabel(modelConfig.model, modelConfig.provider) : 'Gemini 2.5 Flash';
+
   return (
-    <div className="grid h-[calc(100vh-100px)] grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl">
-      {/* Sidebar Kiri: hanya badge/icon, konten judul dipindah ke atas canvas kiri */}
-      <aside
-        className={`col-start-1 row-start-1 row-span-2 flex flex-col border-r border-slate-800/80 bg-slate-950/80 p-2 overflow-hidden transition-[width] duration-300 ease-out ${
-          railExpanded ? 'w-48' : 'w-[68px]'
-        }`}
-      >
-        <button
-          onClick={() => setRailExpanded(v => !v)}
-          className={`h-10 rounded-xl border border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-700 hover:text-white transition-all flex items-center ${
-            railExpanded ? 'w-full justify-between px-3' : 'w-full justify-center'
-          }`}
-          title={railExpanded ? 'Ciutkan panel chat' : 'Perluas panel chat'}
-          aria-label={railExpanded ? 'Ciutkan panel chat' : 'Perluas panel chat'}
-        >
-          {railExpanded && <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Panel Chat</span>}
-          {railExpanded ? <ChevronsLeft className="w-4 h-4" /> : <ChevronsRight className="w-4 h-4" />}
-        </button>
-
-        <div className="mt-3 flex flex-col gap-2 items-center">
-          <div
-            className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-400/25 bg-indigo-500/10 text-indigo-200 shadow-[inset_3px_0_0_0_rgba(99,102,241,0.7)]"
-            title="Percakapan AI"
-          >
-            <Bot className="w-5 h-5" />
-            <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-slate-950 bg-emerald-400" />
+    <div className="flex-1 flex flex-col h-full bg-[#08080c] border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative select-none">
+      
+      {/* Header Panel Chat (Alternatif 1: Nama Proyek + Dropdown Model AI) */}
+      <div className="h-14 px-4 border-b border-white/10 bg-[#0e0e13] flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {onToggleSidebar && isSidebarCollapsed && (
+            <button
+              onClick={onToggleSidebar}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors mr-1"
+              title="Buka Sidebar Navigasi"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          )}
+          <div className="w-7 h-7 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-400 shrink-0">
+            <Sparkles className="w-3.5 h-3.5" />
           </div>
-
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.07] text-emerald-300"
-            title="AI Generator Aktif"
-          >
-            <Sparkles className="w-5 h-5" />
+          <div className="min-w-0">
+            <h2 className="text-xs font-bold text-white truncate flex items-center gap-1.5" title={projectState.title || 'Proyek Baru'}>
+              <span>{projectState.title || 'Proyek Baru'}</span>
+            </h2>
           </div>
         </div>
 
-        <div className="mt-auto px-1 pb-1 text-center">
-          <span className="font-semibold uppercase text-slate-600 text-[8px] tracking-[0.12em]">AI</span>
-        </div>
-      </aside>
-
-      {/* Main Chat Column */}
-      <div className="col-start-2 row-start-1 flex-1 min-h-0 flex flex-col overflow-hidden">
-        {/* Header dipindah ke atas canvas kiri */}
-        <div className="shrink-0 px-6 pt-5 pb-4 border-b border-slate-800/70 bg-slate-950/25">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-400/30 bg-indigo-500/15 text-indigo-300 shrink-0">
-                <Bot className="w-4 h-4" />
-                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-slate-950 bg-emerald-400" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold text-white leading-tight">Percakapan AI</h2>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Deskripsikan ide aplikasi, minta penambahan fitur, atau laporkan kendala.
-                </p>
-              </div>
-            </div>
-
-            {/* Badge status (tanpa kotak terpisah agar tidak terasa “2 kotak”) */}
-            <div className="flex items-center gap-2 text-emerald-300">
-              <Sparkles className="w-4 h-4 shrink-0" />
-              <span className="text-[11px] font-medium whitespace-nowrap">AI Generator Aktif</span>
-            </div>
+        {/* AI Model Badge / Selector */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-[11px] font-medium text-zinc-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse shrink-0" />
+            <span className="truncate max-w-[130px] sm:max-w-[180px]">{activeModelName}</span>
           </div>
         </div>
+      </div>
 
-        {/* Message History Area */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.map((m) => {
+      {/* Message Stream */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 select-text">
+        {messages.map((m) => {
           const briefData = m.sender === 'AI' ? parseBriefKebutuhan(m.text) : null;
 
           return (
@@ -399,40 +437,40 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               }`}
             >
               <div
-                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
+                className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
                   m.sender === 'USER'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                    : 'bg-slate-800 border border-slate-700 text-slate-300'
+                    ? 'bg-gradient-to-tr from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
+                    : 'bg-[#14141a] border border-white/10 text-orange-400'
                 }`}
               >
-                {m.sender === 'USER' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4 text-indigo-400" />}
+                {m.sender === 'USER' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
               </div>
 
               {briefData ? (
                 <div className="flex-1 max-w-[95%]">
                   <BriefKebutuhanCard data={briefData} />
-                  <span className="text-[10px] block text-right pt-1 opacity-60">
+                  <span className="text-[10px] block text-right pt-1 text-zinc-500">
                     {m.timestamp}
                   </span>
                 </div>
               ) : (
                 <div
-                  className={`max-w-[82%] rounded-2xl p-4 space-y-2 text-xs leading-relaxed ${
+                  className={`max-w-[85%] rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
                     m.sender === 'USER'
-                      ? 'bg-indigo-600 text-white shadow-md rounded-tr-none'
-                      : 'bg-slate-950 border border-slate-800/80 text-slate-200 shadow-inner rounded-tl-none'
+                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg rounded-tr-none font-medium'
+                      : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{m.text}</p>
                   
-                  {/* Opsi Saran Cepat (jika ada pada sapaan awal) */}
+                  {/* Quick Action Pills */}
                   {m.suggestedOptions && m.suggestedOptions.length > 0 && messages.length <= 1 && (
-                    <div className="pt-3 border-t border-slate-800/60 flex flex-wrap gap-2">
+                    <div className="pt-3 border-t border-white/10 flex flex-wrap gap-1.5">
                       {m.suggestedOptions.map((opt, i) => (
                         <button
                           key={i}
                           onClick={() => handleSendMessage(opt)}
-                          className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-[11px] font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all text-left"
+                          className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-orange-500/20 border border-white/10 hover:border-orange-500/40 text-[11px] font-medium text-zinc-300 hover:text-orange-300 transition-all text-left active:scale-[0.98]"
                         >
                           {opt}
                         </button>
@@ -449,67 +487,174 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           );
         })}
 
-
-        {/* Ghost Bubble — SSE Streaming (Ideation Mode) */}
+        {/* Ghost Bubble SSE Streaming */}
         {streamingText !== null && (
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4 text-indigo-400 animate-pulse" />
+            <div className="w-7 h-7 rounded-xl bg-[#14141a] border border-white/10 flex items-center justify-center shrink-0 text-orange-400">
+              <Bot className="w-3.5 h-3.5 animate-pulse" />
             </div>
-            <div className="max-w-[82%] bg-slate-950 border border-indigo-500/30 rounded-2xl rounded-tl-none p-4 text-xs text-slate-200 shadow-inner leading-relaxed">
+            <div className="max-w-[85%] bg-[#101015] border border-orange-500/30 rounded-2xl rounded-tl-none p-3.5 text-xs text-zinc-200 shadow-inner leading-relaxed">
               <p className="whitespace-pre-wrap">
                 {streamingText}
-                <span className="inline-block w-1.5 h-3.5 bg-indigo-400 ml-0.5 animate-pulse rounded-sm align-middle" />
+                <span className="inline-block w-1.5 h-3.5 bg-orange-400 ml-0.5 animate-pulse rounded-sm align-middle" />
               </p>
             </div>
           </div>
         )}
 
-        {/* Loading Spinner — Batch Pipeline (Generate Kode) */}
+        {/* Loading Indicator */}
         {isGenerating && streamingText === null && (
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4 text-indigo-400 animate-pulse" />
+            <div className="w-7 h-7 rounded-xl bg-[#14141a] border border-white/10 flex items-center justify-center shrink-0 text-orange-400">
+              <Bot className="w-3.5 h-3.5 animate-pulse" />
             </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl rounded-tl-none p-4 text-xs text-slate-300 flex items-center gap-2 shadow-inner">
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+            <div className="bg-[#101015] border border-white/10 rounded-2xl rounded-tl-none p-3 text-xs text-zinc-300 flex items-center gap-2 shadow-inner">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-400" />
               <span>{loadingText}</span>
             </div>
           </div>
         )}
 
         <div ref={messagesEndRef} />
-
-        </div>
       </div>
 
-      {/* Input Area */}
-      <div className="col-start-2 row-start-2 p-4 border-t border-slate-800 bg-slate-950/60 shrink-0">
+      {/* Capsule Prompt Box (Modern Pure Pitch Black + Orange) */}
+      <div className="p-3 sm:p-4 bg-gradient-to-t from-[#060609] via-[#08080c] to-transparent shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-end gap-2 bg-slate-900 border border-slate-800 rounded-2xl p-2 focus-within:border-indigo-500 transition-all shadow-inner"
+          className="relative bg-[#101016] border border-white/10 hover:border-white/20 focus-within:border-orange-500/60 rounded-2xl p-2.5 transition-all shadow-xl flex flex-col gap-2"
         >
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isGenerating}
-            placeholder="Ketik instruksi aplikasi Anda di sini... (Enter untuk kirim, Shift+Enter untuk baris baru)"
-            className="flex-1 bg-transparent px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none disabled:opacity-50 resize-none max-h-40 min-h-[36px] overflow-y-auto leading-relaxed scrollbar-thin"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isGenerating}
-            className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-30 shadow-md shrink-0 mb-0.5"
-            aria-label="Kirim Pesan"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+          {/* Baris Input Teks */}
+          <div className="flex items-start gap-2">
+            <button
+              type="button"
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors shrink-0 mt-0.5"
+              title="Aksi Cepat / Lampiran"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isGenerating}
+              placeholder={
+                selectedMode === 'PLAN'
+                  ? 'Diskusikan ide & fitur yang ingin Anda rencanakan...'
+                  : selectedMode === 'SYNC_GAS'
+                  ? 'Ketik instruksi backend Google Apps Script / Sheet database...'
+                  : 'Ketik instruksi untuk membangun prototype web app Anda...'
+              }
+              className="flex-1 bg-transparent px-1 py-1 text-xs text-white placeholder-zinc-500 focus:outline-none disabled:opacity-50 resize-none max-h-36 min-h-[32px] overflow-y-auto leading-relaxed scrollbar-thin"
+            />
+          </div>
+
+          {/* Baris Bawah Kapsul: Mode Dropdown, Mic, & Send Button */}
+          <div className="flex items-center justify-between pt-1 border-t border-white/5">
+            {/* Mode Dropdown (Plan / Build / Sync GAS) */}
+            <div className="relative" ref={modeDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsModeDropdownOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-all"
+                title="Pilih Mode Pengerjaan"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                <span>
+                  {selectedMode === 'PLAN' && 'Plan (Brief)'}
+                  {selectedMode === 'BUILD' && 'Build (Prototype)'}
+                  {selectedMode === 'SYNC_GAS' && 'Sync GAS'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
+              </button>
+
+              {/* Dropdown Menu Popover Upward */}
+              {isModeDropdownOpen && (
+                <div className="absolute bottom-full mb-2 left-0 w-52 rounded-xl bg-[#14141c] border border-white/10 shadow-2xl backdrop-blur-xl p-1.5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMode('BUILD');
+                      setIsModeDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      selectedMode === 'BUILD' ? 'bg-orange-500/15 text-orange-400 font-semibold' : 'text-zinc-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Build (Prototype)</span>
+                    </div>
+                    {selectedMode === 'BUILD' && <Check className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMode('PLAN');
+                      setIsModeDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      selectedMode === 'PLAN' ? 'bg-orange-500/15 text-orange-400 font-semibold' : 'text-zinc-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Plan (Brief Kebutuhan)</span>
+                    </div>
+                    {selectedMode === 'PLAN' && <Check className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMode('SYNC_GAS');
+                      setIsModeDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      selectedMode === 'SYNC_GAS' ? 'bg-orange-500/15 text-orange-400 font-semibold' : 'text-zinc-300 hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Sync GAS (Apps Script)</span>
+                    </div>
+                    {selectedMode === 'SYNC_GAS' && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Sisi Kanan: Mic & Send Button */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleSpeechRecognition}
+                className={`p-1.5 rounded-lg transition-all ${
+                  isListening 
+                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse' 
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+                title={isListening ? 'Mendengarkan... (Klik untuk stop)' : 'Input Suara (Mic)'}
+              >
+                {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="submit"
+                disabled={!input.trim() || isGenerating}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold shadow-md shadow-orange-500/20 transition-all disabled:opacity-30 disabled:hover:from-orange-500 disabled:hover:to-amber-500 shrink-0 flex items-center gap-1 active:scale-[0.98]"
+                aria-label="Kirim Pesan"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </div>

@@ -9,6 +9,8 @@ import { AppProjectState, SavedProject } from '@/types/app';
 import { Navbar } from '@/components/Navbar';
 import { ChatPanel } from '@/components/ChatPanel';
 import { SavedProjectsList } from '@/components/SavedProjectsList';
+import { AppSidebar } from '@/components/AppSidebar';
+import { SavedProjectsModal } from '@/components/SavedProjectsModal';
 import { BuildBadge } from '@/components/BuildBadge';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import {
@@ -22,6 +24,8 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
+  MousePointer,
+  Crop,
   Edit3,
   X,
   Send,
@@ -150,6 +154,9 @@ export default function AppWorkspacePage() {
     return initialProjectState;
   });
   const [rightPanelTab, setRightPanelTab] = useState<'PREVIEW' | 'GAS_SCRIPT' | 'SAVED'>('PREVIEW');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSavedProjectsModalOpen, setIsSavedProjectsModalOpen] = useState(false);
+  const [modelSettings, setModelSettings] = useState(() => loadModelSettings());
   const [isGenerating, setIsGenerating] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -1397,15 +1404,24 @@ export default function AppWorkspacePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white flex flex-col">
-      {/* Top Navbar Minimalis (PRD FR-09) */}
-      <Navbar userEmail={userEmail} onNewSession={handleNewSession} />
+    <div className="min-h-screen bg-[#07070a] text-slate-100 font-sans selection:bg-orange-500 selection:text-white flex overflow-hidden h-screen">
+      {/* Sidebar Navigasi Ramping (Collapsible) */}
+      <AppSidebar
+        userEmail={userEmail}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(prev => !prev)}
+        onNewProject={handleNewSession}
+        onOpenSavedProjects={() => setIsSavedProjectsModalOpen(true)}
+        savedProjectsCount={savedProjects.length}
+        modelSettings={modelSettings}
+        onModelSettingsChange={setModelSettings}
+      />
 
-      {/* Main 2-Panel Workspace Murni Sesuai PRD FR-09 */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6">
+      {/* Main Workspace (Chat + Canvas Preview) */}
+      <main className="flex-1 p-2 sm:p-3 lg:p-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)] gap-3 sm:gap-4 overflow-hidden h-full min-w-0">
         
-        {/* PANEL KIRI (±40%): Percakapan AI */}
-        <div className="flex flex-col min-w-0">
+        {/* PANEL TENGAH / KIRI: Percakapan AI & Kapsul Prompt */}
+        <div className="flex flex-col min-w-0 h-full overflow-hidden">
           <ChatPanel
             projectState={projectState}
             onUpdateState={handleUpdateState}
@@ -1413,35 +1429,60 @@ export default function AppWorkspacePage() {
             setIsGenerating={handleSetGenerating}
             externalSendToken={externalChatSendToken ?? undefined}
             externalSendText={externalChatSendText}
+            onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
+            isSidebarCollapsed={isSidebarCollapsed}
           />
         </div>
 
-        {/* PANEL KANAN: Pratinjau (Live Preview) & Backend Apps Script (Mendukung Fullscreen Poin 37) */}
+        {/* PANEL KANAN: Pratinjau (Live Preview) & Backend Apps Script */}
         <div
           className={
             isPreviewFullscreen
-              ? 'fixed inset-0 z-50 p-3 sm:p-5 bg-slate-950/95 backdrop-blur-2xl flex flex-col transition-all duration-300 ease-in-out'
-              : 'flex flex-col min-w-0 bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden backdrop-blur-xl sticky top-20 h-[calc(100vh-100px)] transition-all duration-300 ease-in-out'
+              ? 'fixed inset-0 z-50 p-3 sm:p-5 bg-black/95 backdrop-blur-2xl flex flex-col transition-all duration-300 ease-in-out'
+              : 'flex flex-col min-w-0 bg-[#0a0a0e] border border-white/10 rounded-2xl overflow-hidden shadow-2xl h-full transition-all duration-300 ease-in-out'
           }
         >
-          <div className={isPreviewFullscreen ? 'flex-1 grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl h-full' : 'flex-1 grid grid-cols-[minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)] h-full overflow-hidden'}>
-            {/* Strip atas: label tab aktif + tombol Fullscreen (tetap di atas; menu lain dipindah ke samping kanan) */}
-            <div className="col-span-2 flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-950/60 gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                {rightPanelTab === 'PREVIEW' ? 'Live Preview' : rightPanelTab === 'GAS_SCRIPT' ? 'Backend Apps Script' : 'Tersimpan'}
-              </span>
+          <div className="flex-1 flex flex-col h-full overflow-hidden">
+            {/* Toolbar Atas Panel Kanan: Segmented Switch, Open Design Icons + Tooltip, Publish, Fullscreen */}
+            <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-white/10 bg-[#0e0e14] gap-2 shrink-0">
+              {/* Segmented Control: Preview vs Code */}
+              <div className="flex items-center gap-1 bg-[#14141c] p-1 rounded-xl border border-white/5">
+                <button
+                  onClick={() => setRightPanelTab('PREVIEW')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    rightPanelTab === 'PREVIEW'
+                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Preview</span>
+                </button>
+                <button
+                  onClick={() => setRightPanelTab('GAS_SCRIPT')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    rightPanelTab === 'GAS_SCRIPT'
+                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/20'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  <span>Code</span>
+                </button>
+              </div>
 
+              {/* Open Design Tools: Select & Mark dengan Icon + Tooltip */}
               {rightPanelTab === 'PREVIEW' && (
                 <div className="flex items-center gap-1.5">
-                  {/* Visual History Undo & Redo (Fase 3) */}
-                  <div className="flex items-center gap-0.5 bg-slate-900/60 border border-slate-800 rounded-xl p-0.5 mr-1">
+                  {/* Visual History Undo & Redo & Refresh */}
+                  <div className="flex items-center gap-0.5 bg-[#14141c] border border-white/10 rounded-xl p-0.5 mr-1">
                     <button
                       onClick={handleUndo}
                       disabled={!canUndo}
-                      className={`p-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                      className={`p-1.5 rounded-lg text-xs font-semibold transition-all ${
                         canUndo
-                          ? 'text-slate-200 hover:bg-slate-800 hover:text-white'
-                          : 'text-slate-600 opacity-40 cursor-not-allowed'
+                          ? 'text-zinc-200 hover:bg-white/10 hover:text-white'
+                          : 'text-zinc-600 opacity-40 cursor-not-allowed'
                       }`}
                       title="Undo Visual (Ctrl+Z / Cmd+Z)"
                       aria-label="Undo"
@@ -1451,10 +1492,10 @@ export default function AppWorkspacePage() {
                     <button
                       onClick={handleRedo}
                       disabled={!canRedo}
-                      className={`p-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+                      className={`p-1.5 rounded-lg text-xs font-semibold transition-all ${
                         canRedo
-                          ? 'text-slate-200 hover:bg-slate-800 hover:text-white'
-                          : 'text-slate-600 opacity-40 cursor-not-allowed'
+                          ? 'text-zinc-200 hover:bg-white/10 hover:text-white'
+                          : 'text-zinc-600 opacity-40 cursor-not-allowed'
                       }`}
                       title="Redo Visual (Ctrl+Shift+Z / Cmd+Shift+Z / Cmd+Y)"
                       aria-label="Redo"
@@ -1463,7 +1504,7 @@ export default function AppWorkspacePage() {
                     </button>
                     <button
                       onClick={() => setReloadTrigger((k) => k + 1)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-0.5"
+                      className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-all ml-0.5"
                       title="Muat Ulang Tampilan Canvas (Refresh)"
                       aria-label="Refresh Preview"
                     >
@@ -1471,53 +1512,78 @@ export default function AppWorkspacePage() {
                     </button>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setInteractionMode((prev) => (prev === 'select' ? 'none' : 'select'));
-                      setActiveSelection(null);
-                      setPopoverPos(null);
-                    }}
-                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
-                      interactionMode === 'select'
-                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/30'
-                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50 hover:text-white'
-                    }`}
-                    title={interactionMode === 'select' ? 'Nonaktifkan Select mode' : 'Pilih elemen (klik)'}
-                  >
-                    Select
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInteractionMode((prev) => (prev === 'mark' ? 'none' : 'mark'));
-                      setActiveSelection(null);
-                      setPopoverPos(null);
-                    }}
-                    className={`px-2.5 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
-                      interactionMode === 'mark'
-                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm shadow-emerald-600/30'
-                        : 'bg-slate-900/30 text-slate-300 border-slate-700 hover:bg-slate-900/50 hover:text-white'
-                    }`}
-                    title={interactionMode === 'mark' ? 'Nonaktifkan Mark mode' : 'Mark area (drag)'}
-                  >
-                    Mark
-                  </button>
+                  {/* SELECT ICON WITH TOOLTIP */}
+                  <div className="relative group/tooltip">
+                    <button
+                      onClick={() => {
+                        setInteractionMode((prev) => (prev === 'select' ? 'none' : 'select'));
+                        setActiveSelection(null);
+                        setPopoverPos(null);
+                      }}
+                      className={`p-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                        interactionMode === 'select'
+                          ? 'bg-orange-500 text-white border-orange-400 shadow-md shadow-orange-500/30'
+                          : 'bg-[#14141c] text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
+                      }`}
+                      aria-label="Select mode (Inspect Element)"
+                    >
+                      <MousePointer className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 hidden group-hover/tooltip:flex px-2 py-1 bg-[#1a1a24] border border-white/10 rounded-md text-[10px] text-zinc-200 whitespace-nowrap z-50 pointer-events-none shadow-lg">
+                      Select (Pilih & Edit Elemen)
+                    </div>
+                  </div>
+
+                  {/* MARK ICON WITH TOOLTIP */}
+                  <div className="relative group/tooltip">
+                    <button
+                      onClick={() => {
+                        setInteractionMode((prev) => (prev === 'mark' ? 'none' : 'mark'));
+                        setActiveSelection(null);
+                        setPopoverPos(null);
+                      }}
+                      className={`p-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                        interactionMode === 'mark'
+                          ? 'bg-orange-500 text-white border-orange-400 shadow-md shadow-orange-500/30'
+                          : 'bg-[#14141c] text-zinc-400 border-white/10 hover:border-white/20 hover:text-white'
+                      }`}
+                      aria-label="Mark mode (Tandai Area)"
+                    >
+                      <Crop className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 hidden group-hover/tooltip:flex px-2 py-1 bg-[#1a1a24] border border-white/10 rounded-md text-[10px] text-zinc-200 whitespace-nowrap z-50 pointer-events-none shadow-lg">
+                      Mark (Tandai & Anotasi Area)
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* Tombol Fullscreen Expand / Collapse (Poin 37) */}
-              <button
-                onClick={() => setIsPreviewFullscreen(prev => !prev)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-semibold border transition-all ${
-                  isPreviewFullscreen
-                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
-                    : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-800'
-                }`}
-                title={isPreviewFullscreen ? 'Tutup Fullscreen (Esc)' : 'Perbesar Fullscreen'}
-                aria-label={isPreviewFullscreen ? 'Tutup Fullscreen' : 'Perbesar Fullscreen'}
-              >
-                {isPreviewFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{isPreviewFullscreen ? 'Tutup Fullscreen' : 'Fullscreen'}</span>
-              </button>
+              {/* Sisi Kanan Toolbar: Publish & Fullscreen */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadIndexHtml}
+                  disabled={!projectState.canvasCode.html}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold shadow-md shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-30 disabled:pointer-events-none"
+                  title="Export / Publish Prototype"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{downloaded ? 'Tersimpan!' : 'Publish'}</span>
+                </button>
+
+                {/* Tombol Fullscreen */}
+                <button
+                  onClick={() => setIsPreviewFullscreen(prev => !prev)}
+                  className={`p-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                    isPreviewFullscreen
+                      ? 'bg-orange-500 text-white border-orange-400 shadow-md'
+                      : 'bg-[#14141c] text-zinc-400 border-white/10 hover:text-white hover:bg-white/5'
+                  }`}
+                  title={isPreviewFullscreen ? 'Tutup Fullscreen (Esc)' : 'Perbesar Fullscreen'}
+                  aria-label={isPreviewFullscreen ? 'Tutup Fullscreen' : 'Perbesar Fullscreen'}
+                >
+                  {isPreviewFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
 
             {/* Isi Viewport Live Preview / Script */}
@@ -2247,129 +2313,21 @@ export default function AppWorkspacePage() {
                 </div>
               )}
             </div>
-
-            {/* Sidebar Kanan: badge menu dengan mode ringkas/lengkap */}
-            <aside className={`col-start-2 row-start-2 flex flex-col border-l border-slate-800/80 bg-slate-950/80 p-2 overflow-y-auto overflow-x-hidden transition-[width] duration-300 ease-out ${
-              sideRailExpanded ? 'w-48' : 'w-[68px]'
-            }`}>
-              <button
-                onClick={() => setSideRailExpanded(v => !v)}
-                className={`h-10 rounded-xl border border-slate-800 bg-slate-900/70 text-slate-400 hover:border-slate-700 hover:text-white transition-all flex items-center shrink-0 ${
-                  sideRailExpanded ? 'w-full justify-between px-3' : 'w-full justify-center'
-                }`}
-                title={sideRailExpanded ? 'Ciutkan menu panel' : 'Perluas menu panel'}
-                aria-label={sideRailExpanded ? 'Ciutkan menu panel' : 'Perluas menu panel'}
-              >
-                {sideRailExpanded && <span className="text-[10px] font-bold uppercase tracking-[0.18em]">Menu Panel</span>}
-                {sideRailExpanded ? <ChevronsRight className="w-3.5 h-3.5" /> : <ChevronsLeft className="w-3.5 h-3.5" />}
-              </button>
-
-              <nav className="mt-3 flex flex-col gap-2" aria-label="Menu panel pratinjau">
-                <button
-                  onClick={() => setRightPanelTab('PREVIEW')}
-                  className={`relative flex min-h-12 w-full items-center rounded-2xl border transition-all ${
-                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
-                  } ${
-                    rightPanelTab === 'PREVIEW'
-                      ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-100 shadow-[inset_3px_0_0_0_rgba(99,102,241,0.9)]'
-                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-200'
-                  }`}
-                  title={sideRailExpanded ? undefined : 'Live Preview'}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-400/20 bg-indigo-500/10">
-                    <Eye className="w-4 h-4" />
-                  </span>
-                  {sideRailExpanded && (
-                    <span className="min-w-0 text-left">
-                      <span className="block whitespace-nowrap text-[11px] font-bold text-white">Live Preview</span>
-                      <span className="block whitespace-nowrap text-[9px] text-slate-500">Canvas aplikasi</span>
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setRightPanelTab('GAS_SCRIPT')}
-                  className={`relative flex min-h-12 w-full items-center rounded-2xl border transition-all ${
-                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
-                  } ${
-                    rightPanelTab === 'GAS_SCRIPT'
-                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100 shadow-[inset_3px_0_0_0_rgba(16,185,129,0.9)]'
-                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-200'
-                  }`}
-                  title={sideRailExpanded ? undefined : 'Backend Apps Script'}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-400/20 bg-emerald-500/10">
-                    <Code2 className="w-4 h-4" />
-                  </span>
-                  {sideRailExpanded && (
-                    <span className="min-w-0 text-left">
-                      <span className="block whitespace-nowrap text-[11px] font-bold text-white">Backend Apps Script</span>
-                      <span className="block whitespace-nowrap text-[9px] text-slate-500">Integrasi Google Sheets</span>
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => setRightPanelTab('SAVED')}
-                  className={`relative flex min-h-12 w-full items-center rounded-2xl border transition-all ${
-                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
-                  } ${
-                    rightPanelTab === 'SAVED'
-                      ? 'border-sky-500/40 bg-sky-500/15 text-sky-100 shadow-[inset_3px_0_0_0_rgba(14,165,233,0.9)]'
-                      : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700 hover:bg-slate-900 hover:text-slate-200'
-                  }`}
-                  title={sideRailExpanded ? undefined : 'Tersimpan'}
-                >
-                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-sky-400/20 bg-sky-500/10">
-                    <FolderOpen className="w-4 h-4" />
-                    {!sideRailExpanded && savedProjects.length > 0 && (
-                      <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-slate-950 bg-sky-500 px-0.5 text-[7px] font-bold text-white">
-                        {savedProjects.length}
-                      </span>
-                    )}
-                  </span>
-                  {sideRailExpanded && (
-                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
-                      <span>
-                        <span className="block whitespace-nowrap text-[11px] font-bold text-white">Tersimpan</span>
-                        <span className="block whitespace-nowrap text-[9px] text-slate-500">Proyek Anda</span>
-                      </span>
-                      {savedProjects.length > 0 && (
-                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-500/20 px-1 text-[8px] font-bold text-sky-300">
-                          {savedProjects.length}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </button>
-              </nav>
-
-              <div className="mt-auto border-t border-slate-800/80 pt-2">
-                <button
-                  onClick={handleDownloadIndexHtml}
-                  disabled={!projectState.canvasCode.html}
-                  className={`flex min-h-12 w-full items-center rounded-2xl border border-emerald-400/30 bg-gradient-to-br from-emerald-500/25 to-teal-500/15 text-emerald-100 transition-all hover:border-emerald-400/50 hover:from-emerald-500/35 disabled:cursor-not-allowed disabled:opacity-35 ${
-                    sideRailExpanded ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2.5'
-                  }`}
-                  title={sideRailExpanded ? undefined : downloaded ? 'Tersimpan!' : 'Download index.html'}
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15">
-                    <Download className="w-4 h-4" />
-                  </span>
-                  {sideRailExpanded && (
-                    <span className="min-w-0 text-left">
-                      <span className="block whitespace-nowrap text-[11px] font-bold">{downloaded ? 'Tersimpan!' : 'Download index.html'}</span>
-                      <span className="block whitespace-nowrap text-[9px] text-emerald-200/55">Ekspor prototipe</span>
-                    </span>
-                  )}
-                </button>
-              </div>
-            </aside>
           </div>
         </div>
 
-
       </main>
+
+      {/* Modal Proyek Tersimpan */}
+      <SavedProjectsModal
+        isOpen={isSavedProjectsModalOpen}
+        onClose={() => setIsSavedProjectsModalOpen(false)}
+        projects={savedProjects}
+        loading={!savedLoaded}
+        deletingId={deletingId}
+        onLoad={handleLoadProject}
+        onDelete={handleDeleteProject}
+      />
 
       {/* Poin 17: Build version badge (pojok kanan bawah) */}
       <BuildBadge />
