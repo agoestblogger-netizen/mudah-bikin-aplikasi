@@ -160,10 +160,16 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
                   <div className="flex-1 max-w-[95%]">
                     <BriefKebutuhanCard
                       data={briefData}
-                      onApplyBrief={(compiledMarkdown) => {
-                        handleSendMessage(
-                          `Saya menyetujui Brief Kebutuhan yang sudah disesuaikan ini. Silakan buatkan prototipe aplikasinya sekarang sesuai checklist berikut:\n\n${compiledMarkdown}`
-                        );
+                      onApplyBrief={(compiledMarkdown, targetMode) => {
+                        if (targetMode === 'BUILD') {
+                          handleSendMessage(
+                            `Saya menyetujui skenario dan Brief Kebutuhan ini. Silakan buatkan prototipenya sekarang!`
+                          );
+                        } else {
+                          handleSendMessage(
+                            `Saya telah menyesuaikan rincian brief kebutuhan dan pembagian peran. Mohon sesuaikan skenario alur kerja dan lembar brief aplikasi ini, lalu konfirmasikan kembali:\n\n${compiledMarkdown}`
+                          );
+                        }
                       }}
                     />
                     <span className="text-[10px] block text-right pt-1 opacity-60">

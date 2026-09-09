@@ -400,6 +400,34 @@ interface BriefKebutuhanCardProps {
   onApplyBrief?: (compiledMarkdown: string, targetMode?: 'BUILD' | 'PLAN') => void;
 }
 
+function serializeSnapshot(
+  appN: string,
+  orient: string,
+  theme: string,
+  u: string,
+  feats: ChecklistItem[],
+  rls: RoleDetail[]
+): string {
+  return JSON.stringify({
+    appName: (appN || '').trim(),
+    orientation: (orient || '').trim(),
+    visualTheme: (theme || '').trim(),
+    usp: (u || '').trim(),
+    features: feats.map(f => ({ text: f.text.trim(), checked: f.checked })),
+    roles: rls.map(r => ({
+      roleName: r.roleName.trim(),
+      selected: r.selected,
+      alurProses: (r.alurProses || '').trim(),
+      pages: r.pages.map(p => ({
+        pageName: p.pageName.trim(),
+        isDefault: p.isDefault,
+        fields: p.fields.map(f => ({ text: f.text.trim(), checked: f.checked })),
+        actions: p.actions.map(a => ({ text: a.text.trim(), checked: a.checked }))
+      }))
+    }))
+  });
+}
+
 export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, onApplyBrief }) => {
   // State interaktif lokal dari hasil parsing
   const [appName, setAppName] = useState(data.appName || 'BukuPinjam');
@@ -408,6 +436,11 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
   const [usp, setUsp] = useState(data.usp || '');
   const [features, setFeatures] = useState<ChecklistItem[]>(data.features || []);
   const [roles, setRoles] = useState<RoleDetail[]>(data.roles || []);
+
+  // Snapshot awal dari AI untuk mendeteksi apakah ada perubahan (isModified)
+  const [initialSnapshot, setInitialSnapshot] = useState<string>(() =>
+    serializeSnapshot(data.appName, data.orientation || '', data.visualTheme || '', data.usp || '', data.features || [], data.roles || [])
+  );
 
   // UI state
   const [newFeatureText, setNewFeatureText] = useState('');
@@ -418,7 +451,7 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
   const [newActionInputs, setNewActionInputs] = useState<Record<string, string>>({});
   const [copiedNotification, setCopiedNotification] = useState(false);
 
-  // Perbarui state jika data berubah dari luar
+  // Perbarui state jika data berubah dari luar (misal: AI selesai menyesuaikan skenario)
   useEffect(() => {
     setAppName(data.appName || 'BukuPinjam');
     if (data.orientation) setOrientation(data.orientation);
@@ -426,7 +459,15 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
     if (data.usp) setUsp(data.usp);
     if (data.features) setFeatures(data.features);
     if (data.roles) setRoles(data.roles);
+
+    setInitialSnapshot(
+      serializeSnapshot(data.appName, data.orientation || '', data.visualTheme || '', data.usp || '', data.features || [], data.roles || [])
+    );
   }, [data]);
+
+  // Evaluasi apakah user telah melakukan modifikasi terhadap brief/role
+  const currentSnapshot = serializeSnapshot(appName, orientation, visualTheme, usp, features, roles);
+  const isModified = initialSnapshot !== '' && currentSnapshot !== initialSnapshot;
 
   // Handler: Toggle Role Selection
   const toggleRoleSelection = (index: number) => {
@@ -1090,58 +1131,84 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
           </div>
         </div>
 
-        {/* BAGIAN 5: ACTION BUTTONS (BUAT PROTOTIPE / SINKRONKAN) */}
-        <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
-            </button>
-
-            {/* Salin / Notifikasi */}
-            {copiedNotification && (
-              <span className="text-[11px] text-emerald-400 font-medium animate-fade-in">
-                ✓ Brief diperbarui!
+        {/* BAGIAN 5: ACTION BUTTONS (SINKRONISASI SKENARIO & BUAT PROTOTIPE) */}
+        <div className="pt-3 border-t border-slate-800 space-y-2.5">
+          {/* Status Indicator Banner */}
+          {isModified ? (
+            <div className="w-full bg-amber-950/40 border border-amber-500/40 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-amber-200 text-xs">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span>✏️</span>
+                <span>Rincian peran/fitur telah diedit. Simpan agar AI menyesuaikan skenario alur kerja terlebih dahulu.</span>
               </span>
-            )}
-          </div>
+              <span className="text-[10px] text-amber-300/80 uppercase font-mono tracking-wider font-semibold">
+                Perlu Penyesuaian Skenario
+              </span>
+            </div>
+          ) : (
+            <div className="w-full bg-emerald-950/30 border border-emerald-500/30 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-emerald-300 text-xs">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Skenario alur kerja & rincian peran telah diselaraskan. Siap dibuatkan prototipe!</span>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-mono font-semibold">
+                ✓ Skenario Terkonfirmasi
+              </span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-2">
-            {/* Tombol Sinkronkan Catatan Brief ke Chat */}
-            {onApplyBrief && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-0.5">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  const markdown = currentCompiledBrief();
-                  onApplyBrief(markdown, 'PLAN');
-                  setCopiedNotification(true);
-                  setTimeout(() => setCopiedNotification(false), 2500);
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-semibold transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                onClick={handleReset}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
               >
-                <Send className="w-3 h-3" />
-                <span>Simpan Catatan</span>
+                <RotateCcw className="w-3 h-3" />
+                <span>{isModified ? 'Batal / Reset' : 'Reset'}</span>
               </button>
-            )}
 
-            {/* Tombol Utama: Buat Prototipe Sesuai Checklist Ini */}
-            {onApplyBrief && (
-              <button
-                type="button"
-                onClick={() => {
-                  const markdown = currentCompiledBrief();
-                  onApplyBrief(markdown, 'BUILD');
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-emerald-500/25 hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer"
-              >
-                <Rocket className="w-4 h-4 stroke-[2.5]" />
-                <span>🚀 Buat Prototipe Sesuai Checklist Ini</span>
-              </button>
-            )}
+              {copiedNotification && (
+                <span className="text-[11px] text-emerald-400 font-medium animate-fade-in">
+                  ✓ Perubahan dikirim untuk disesuaikan skenarionya!
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Jika ADA perubahan: Tampilkan tombol Simpan & Sesuaikan Skenario terlebih dahulu */}
+              {isModified ? (
+                onApplyBrief && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const markdown = currentCompiledBrief();
+                      onApplyBrief(markdown, 'PLAN');
+                      setCopiedNotification(true);
+                      setTimeout(() => setCopiedNotification(false), 2500);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>💾 Simpan & Sesuaikan Skenario</span>
+                  </button>
+                )
+              ) : (
+                /* Jika SUDAH terkonfirmasi (tidak ada perubahan pending): Tampilkan tombol Buatkan Prototipe */
+                onApplyBrief && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const markdown = currentCompiledBrief();
+                      onApplyBrief(markdown, 'BUILD');
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-emerald-500/25 hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <Rocket className="w-4 h-4 stroke-[2.5]" />
+                    <span>🚀 Buatkan Prototipe</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </div>
       </div>

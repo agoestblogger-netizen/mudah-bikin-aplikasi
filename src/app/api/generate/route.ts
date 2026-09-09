@@ -365,9 +365,14 @@ export async function POST(req: Request) {
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
     const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
     
+    // Deteksi Permintaan Penyesuaian Skenario / Update Brief oleh Pengguna
+    const isAdjustScenarioRequest = /(sesuaikan\s+skenario|penyesuaian\s+skenario|update\s+brief|perbarui\s+brief|simpan\s+catatan|sesuaikan\s+alur|saya\s+telah\s+(?:menyesuaikan|mengubah)\s+rincian\s+brief)/i.test(prompt);
+
     // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Permintaan Pembuatan Prototipe
-    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
-      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim());
+    const isConfirmationApproval = !isAdjustScenarioRequest && (
+      /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
+      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim())
+    );
 
     // GATE ALUR PLAN VS BUILD (Sama seperti di OpenCode):
     // Jika brief sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
@@ -501,7 +506,8 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
    - DILARANG membuat heading role kosong.
 3. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
 4. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
-5. Akui revisi pengguna dengan ramah (1-2 kalimat), lalu tampilkan kembali lembar "Brief Kebutuhan" yang telah diperbarui dengan format PERSIS:
+5. Akui perubahan pengguna dengan ramah (1-2 kalimat), lalu sesuaikan skenario alur kerja aplikasi (Alur Proses per role, interaksi antar-tab, rincian field input & action) secara LENGKAP & UTUH berdasarkan peran dan checklist yang disimpan pengguna.
+   Tampilkan kembali lembar "Brief Kebutuhan" yang telah disesuaikan skenarionya secara LENGKAP dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi]
    - **Orientasi UI**: [Mobile-first / Desktop-first / Responsif, dengan alasan singkat]
@@ -539,7 +545,7 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
            - [x] onclick: [Nama Tombol] ([deskripsi aksi])
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (jika 1 tab saja, alur fokus di tab tersebut)
 6. Tanyakan konfirmasi eksplisit di baris terakhir:
-   "Apakah lembar Brief Kebutuhan di atas sudah sesuai? Anda dapat langsung mencentang, mengedit catatan, atau menyesuaikan field & action pada editor di atas, lalu klik tombol 🚀 **Buat Prototipe Sesuai Checklist Ini** untuk mulai membuatnya."`;
+   "Apakah penyesuaian skenario dan lembar Brief Kebutuhan di atas sudah sesuai? Jika sudah pas, silakan klik tombol 🚀 **Buatkan Prototipe** untuk mulai membuatnya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
         // KONDISI 3: PROMPT AWAL SANGAT DETAIL (>200 chars) ATAU DISKUSI SUDAH 2+ PUTARAN / USER MENYETUJUI USULAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
@@ -591,7 +597,7 @@ ATURAN MUTLAK PERCAKAPAN:
            - [x] onclick: [Nama Tombol] ([deskripsi aksi])
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (jika 1 tab, alur fokus di tab tersebut; langkah menunggu pasif ditulis sebagai konsekuensi: "saat [Role Lain] klik X, status berubah jadi Y")
 5. WAJIB tanyakan konfirmasi di baris terakhir:
-   "Apakah lembar Brief Kebutuhan di atas sudah sesuai? Anda dapat langsung mencentang, mengedit catatan, atau menyesuaikan field & action pada editor di atas, lalu klik tombol 🚀 **Buat Prototipe Sesuai Checklist Ini** untuk mulai membuatnya."`;
+   "Apakah penyesuaian skenario dan lembar Brief Kebutuhan di atas sudah sesuai? Jika sudah pas, silakan klik tombol 🚀 **Buatkan Prototipe** untuk mulai membuatnya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
       } else {
         // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
