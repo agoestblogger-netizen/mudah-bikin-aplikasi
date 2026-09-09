@@ -454,7 +454,21 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
               {briefData ? (
                 <div className="flex-1 max-w-[95%]">
-                  <BriefKebutuhanCard data={briefData} />
+                  <BriefKebutuhanCard
+                    data={briefData}
+                    onApplyBrief={(compiledMarkdown, targetMode) => {
+                      if (targetMode === 'BUILD') {
+                        setSelectedMode('BUILD');
+                        handleSendMessage(
+                          `Saya menyetujui Brief Kebutuhan yang sudah disesuaikan ini. Silakan buatkan prototipe aplikasinya sekarang sesuai checklist berikut:\n\n${compiledMarkdown}`
+                        );
+                      } else {
+                        handleSendMessage(
+                          `Berikut adalah pembaruan lembar Brief Kebutuhan yang telah saya sesuaikan:\n\n${compiledMarkdown}`
+                        );
+                      }
+                    }}
+                  />
                   <span className="text-[10px] block text-right pt-1 text-zinc-500">
                     {m.timestamp}
                   </span>

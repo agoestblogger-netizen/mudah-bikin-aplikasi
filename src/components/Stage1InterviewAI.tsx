@@ -158,7 +158,14 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
 
                 {briefData ? (
                   <div className="flex-1 max-w-[95%]">
-                    <BriefKebutuhanCard data={briefData} />
+                    <BriefKebutuhanCard
+                      data={briefData}
+                      onApplyBrief={(compiledMarkdown) => {
+                        handleSendMessage(
+                          `Saya menyetujui Brief Kebutuhan yang sudah disesuaikan ini. Silakan buatkan prototipe aplikasinya sekarang sesuai checklist berikut:\n\n${compiledMarkdown}`
+                        );
+                      }}
+                    />
                     <span className="text-[10px] block text-right pt-1 opacity-60">
                       {m.timestamp}
                     </span>
