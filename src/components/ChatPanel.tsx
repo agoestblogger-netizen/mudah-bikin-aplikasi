@@ -372,7 +372,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
             try {
               const parsed = JSON.parse(raw);
-              if (parsed.type === 'token') {
+              // Server mengirim { type: 'chunk', text } atau { type: 'token', content }
+              if (parsed.type === 'chunk' && parsed.text) {
+                accumulated += parsed.text;
+                setStreamingText(accumulated);
+              } else if (parsed.type === 'token' && parsed.content) {
                 accumulated += parsed.content;
                 setStreamingText(accumulated);
               } else if (parsed.type === 'done') {
