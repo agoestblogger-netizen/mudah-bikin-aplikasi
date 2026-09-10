@@ -231,11 +231,27 @@ export default function AppWorkspacePage() {
   const [isSurgicalLoading, setIsSurgicalLoading] = useState(false);
 
   // Visual History (Undo / Redo Stack) — Fase 3
-  const [historyStack, setHistoryStack] = useState<Array<{
+  type HistorySnapshot = {
     canvasCode: { html: string; css: string; js: string };
     patches: any[];
-  }>>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  };
+  type HistoryState = { stack: HistorySnapshot[]; index: number };
+  const HISTORY_LIMIT = 30;
+
+  const [history, setHistory] = useState<HistoryState>({ stack: [], index: -1 });
+  const historyRef = useRef<HistoryState>({ stack: [], index: -1 });
+
+  const commitHistory = (next: HistoryState) => {
+    historyRef.current = next;
+    setHistory(next);
+  };
+
+  const projectStateRef = useRef(projectState);
+  useEffect(() => {
+    projectStateRef.current = projectState;
+  }, [projectState]);
+
+  const autoSaveRef = useRef<((snapshot: AppProjectState) => void) | null>(null);
 
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -246,68 +262,93 @@ export default function AppWorkspacePage() {
     }, 3000);
   };
 
+  // Menambah snapshot baru secara atomik (stack + index sekaligus) agar tidak desync.
+  // Snapshot identik tidak ditambahkan supaya tidak ada langkah undo yang "tidak berefek".
   const pushHistory = (newCode: { html: string; css: string; js: string }, newPatches: any[]) => {
-    setHistoryStack((prev) => {
-      const activeIdx = historyIndex >= 0 ? historyIndex : prev.length - 1;
-      const sliced = prev.slice(0, activeIdx + 1);
-      const next = [...sliced, { canvasCode: newCode, patches: newPatches }];
-      if (next.length > 30) next.shift();
-      return next;
-    });
-    setHistoryIndex((prev) => Math.min(prev + 1, 29));
+    const prev = historyRef.current;
+    const activeIdx = prev.index >= 0 ? prev.index : prev.stack.length - 1;
+    const sliced = prev.stack.slice(0, activeIdx + 1);
+    const last = sliced[sliced.length - 1];
+    if (
+      last &&
+      last.canvasCode.html === newCode.html &&
+      JSON.stringify(last.patches || []) === JSON.stringify(newPatches || [])
+    ) {
+      return;
+    }
+    let nextStack = [...sliced, { canvasCode: newCode, patches: newPatches || [] }];
+    if (nextStack.length > HISTORY_LIMIT) {
+      nextStack = nextStack.slice(nextStack.length - HISTORY_LIMIT);
+    }
+    commitHistory({ stack: nextStack, index: nextStack.length - 1 });
   };
 
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex >= 0 && historyIndex < historyStack.length - 1;
+  // Reset riwayat ketika pindah/buka proyek agar undo tidak membawa HTML proyek lama.
+  const resetHistory = (canvasCode: { html: string; css: string; js: string }, patches: any[] = []) => {
+    if (!canvasCode?.html) {
+      commitHistory({ stack: [], index: -1 });
+      return;
+    }
+    commitHistory({ stack: [{ canvasCode, patches }], index: 0 });
+  };
+
+  const applyHistorySnapshot = (snapshot: HistorySnapshot) => {
+    const prev = projectStateRef.current;
+    const merged: AppProjectState = {
+      ...prev,
+      canvasCode: snapshot.canvasCode,
+      annotations: {
+        ...(prev.annotations || { marks: [], notes: [], patches: snapshot.patches }),
+        patches: snapshot.patches
+      },
+      updatedAt: new Date().toISOString()
+    };
+    projectStateRef.current = merged;
+    annotationsRef.current = merged.annotations;
+    setProjectState(merged);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('mba_active_project', JSON.stringify(merged));
+      } catch {}
+    }
+    // Undo/Redo juga disimpan agar status tidak kembali setelah reload.
+    autoSaveRef.current?.(merged);
+    setActiveSelection(null);
+    setPopoverPos(null);
+    setShortcutPanel('none');
+    setDragDraft(null);
+    setReloadTrigger((k) => k + 1);
+  };
+
+  const canUndo = history.index > 0;
+  const canRedo = history.index >= 0 && history.index < history.stack.length - 1;
 
   const handleUndo = () => {
-    if (!canUndo) return;
-    const prevIdx = historyIndex - 1;
-    const target = historyStack[prevIdx];
+    const h = historyRef.current;
+    if (h.index <= 0) return;
+    const target = h.stack[h.index - 1];
     if (!target) return;
-    setHistoryIndex(prevIdx);
-    setProjectState((prev) => ({
-      ...prev,
-      canvasCode: target.canvasCode,
-      annotations: {
-        ...(prev.annotations || { marks: [], notes: [], patches: target.patches }),
-        patches: target.patches
-      }
-    }));
-    annotationsRef.current = {
-      ...(annotationsRef.current || { marks: [], notes: [], patches: target.patches }),
-      patches: target.patches
-    };
-    setReloadTrigger((k) => k + 1);
+    commitHistory({ ...h, index: h.index - 1 });
+    applyHistorySnapshot(target);
     showToast('Undo visual berhasil', 'info');
   };
 
   const handleRedo = () => {
-    if (!canRedo) return;
-    const nextIdx = historyIndex + 1;
-    const target = historyStack[nextIdx];
+    const h = historyRef.current;
+    if (h.index < 0 || h.index >= h.stack.length - 1) return;
+    const target = h.stack[h.index + 1];
     if (!target) return;
-    setHistoryIndex(nextIdx);
-    setProjectState((prev) => ({
-      ...prev,
-      canvasCode: target.canvasCode,
-      annotations: {
-        ...(prev.annotations || { marks: [], notes: [], patches: target.patches }),
-        patches: target.patches
-      }
-    }));
-    annotationsRef.current = {
-      ...(annotationsRef.current || { marks: [], notes: [], patches: target.patches }),
-      patches: target.patches
-    };
-    setReloadTrigger((k) => k + 1);
+    commitHistory({ ...h, index: h.index + 1 });
+    applyHistorySnapshot(target);
     showToast('Redo visual berhasil', 'info');
   };
 
   useEffect(() => {
-    if (projectState.canvasCode.html && historyStack.length === 0) {
-      setHistoryStack([{ canvasCode: projectState.canvasCode, patches: annotationsRef.current?.patches || [] }]);
-      setHistoryIndex(0);
+    if (projectState.canvasCode.html && historyRef.current.stack.length === 0) {
+      commitHistory({
+        stack: [{ canvasCode: projectState.canvasCode, patches: annotationsRef.current?.patches || [] }],
+        index: 0
+      });
     }
   }, [projectState.canvasCode.html]);
 
@@ -468,7 +509,7 @@ export default function AppWorkspacePage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPreviewFullscreen, canUndo, canRedo, historyIndex, historyStack]);
+  }, [isPreviewFullscreen, canUndo, canRedo]);
 
   useEffect(() => {
     const el = overlayRef.current;
@@ -777,6 +818,7 @@ export default function AppWorkspacePage() {
     };
     setProjectState(fresh);
     setReloadTrigger((k) => k + 1);
+    resetHistory(fresh.canvasCode, []);
     lastSavedCanvasRef.current = '';
     lastSavedAnnotationsRef.current = '';
     autoSavedProjectIdRef.current = null;
@@ -854,6 +896,11 @@ export default function AppWorkspacePage() {
     })();
   }, [isAuthenticated]);
 
+  // Simpan referensi fungsi autosave agar bisa dipakai undo/redo tanpa masalah urutan deklarasi.
+  useEffect(() => {
+    autoSaveRef.current = handleAutoSaveProject;
+  }, [handleAutoSaveProject]);
+
   const handleLoadProject = (project: SavedProject) => {
     let cleanHtml = project.canvas_html || '';
     if (cleanHtml.includes('</html>')) {
@@ -882,6 +929,7 @@ export default function AppWorkspacePage() {
     };
     setProjectState(nextState);
     setReloadTrigger((k) => k + 1);
+    resetHistory(nextState.canvasCode, nextState.annotations.patches);
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('mba_active_project', JSON.stringify(nextState));
@@ -919,9 +967,10 @@ export default function AppWorkspacePage() {
       notes: [],
       patches: Array.isArray(current.patches) ? [...current.patches] : []
     };
+    let changed = false;
+    const elUid = activeSelection.kind === 'element' ? activeSelection.elementUid : undefined;
 
-    if (activeSelection.kind === 'element' && activeSelection.elementUid) {
-      const elUid = activeSelection.elementUid;
+    if (activeSelection.kind === 'element' && elUid) {
       const colorVal = textColorDraft.trim();
       const bgVal = bgColorDraft.trim();
       const textVal = textContentDraft;
@@ -934,7 +983,9 @@ export default function AppWorkspacePage() {
           value: colorVal,
           createdAt: now
         };
+        next.patches = next.patches.filter((p) => !(p.elementUid === elUid && p.patchType === 'textColor'));
         next.patches.push(patch);
+        changed = true;
         iframeRef.current?.contentWindow?.postMessage({
           source: 'OD_BRIDGE',
           type: 'OD_APPLY_PATCH',
@@ -950,7 +1001,9 @@ export default function AppWorkspacePage() {
           value: bgVal,
           createdAt: now
         };
+        next.patches = next.patches.filter((p) => !(p.elementUid === elUid && p.patchType === 'bgColor'));
         next.patches.push(patch);
+        changed = true;
         iframeRef.current?.contentWindow?.postMessage({
           source: 'OD_BRIDGE',
           type: 'OD_APPLY_PATCH',
@@ -966,7 +1019,9 @@ export default function AppWorkspacePage() {
           value: textVal,
           createdAt: now
         };
+        next.patches = next.patches.filter((p) => !(p.elementUid === elUid && p.patchType === 'textContent'));
         next.patches.push(patch);
+        changed = true;
         iframeRef.current?.contentWindow?.postMessage({
           source: 'OD_BRIDGE',
           type: 'OD_APPLY_PATCH',
@@ -975,7 +1030,20 @@ export default function AppWorkspacePage() {
       }
     }
 
-    handleUpdateState({ annotations: next });
+    // Persist ke canvasCode.html dan catat SEKALI sebagai satu langkah undo.
+    const updatedHtml = changed
+      ? syncPatchesToHtml(projectState.canvasCode.html, next.patches)
+      : projectState.canvasCode.html;
+
+    handleUpdateState(
+      changed
+        ? {
+            annotations: next,
+            canvasCode: { ...projectState.canvasCode, html: updatedHtml }
+          }
+        : { annotations: next },
+      { skipIframeReload: true }
+    );
   };
 
   const applyQuickPatch = (
