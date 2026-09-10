@@ -65,8 +65,11 @@ export function validateAndRepairGeneratedCode(
   }
 
   // Cari semua nama fungsi yang didefinisikan di JS
+  // Termasuk: function declaration, async function, const/let/var = function,
+  // arrow function, async arrow function (mis. const handleLogin = async () => {}),
+  // dan assignment ke window / variabel global.
   const definedFunctions = new Set<string>();
-  const funcDefRegex = /(?:function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:function|\([^)]*\)\s*=>|\w+\s*=>)|window\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:function|\([^)]*\)\s*=>|\w+\s*=>)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*function)/g;
+  const funcDefRegex = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>)|window\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?function/g;
   while ((m = funcDefRegex.exec(combinedJs)) !== null) {
     const fnName = m[1] || m[2] || m[3] || m[4];
     if (fnName) definedFunctions.add(fnName);
@@ -187,6 +190,37 @@ function eksekusiHapus() {
 `;
         repairedHtml = repairedHtml.replace('</script>', `${fallbackEksekusiHapus}\n</script>`);
         definedFunctions.add('eksekusiHapus');
+        resolved = true;
+      }
+
+      // Auto-repair untuk fungsi autentikasi login bila benar-benar tidak didefinisikan
+      if (!resolved && (fn === 'handleLogin' || fn === 'quickLogin') && repairedHtml.includes('</script>')) {
+        const fallbackLogin = fn === 'handleLogin'
+          ? `
+function handleLogin() {
+  try {
+    const _u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
+    const _p = (document.getElementById('loginPassword')?.value || '').trim();
+    let _acc = null;
+    if (typeof DEMO_ACCOUNTS !== 'undefined' && Array.isArray(DEMO_ACCOUNTS)) {
+      _acc = DEMO_ACCOUNTS.find(a => String(a.username).toLowerCase() === _u && String(a.password) === _p);
+    }
+    if (_acc && typeof loginAs === 'function') { loginAs(_acc.role); return; }
+    if (typeof showToast === 'function') showToast('Username atau kata sandi tidak cocok!', 'error');
+  } catch (e) { console.log('login error', e); }
+}
+`
+          : `
+function quickLogin(u, p) {
+  const ui = document.getElementById('loginUsername');
+  const pi = document.getElementById('loginPassword');
+  if (ui) ui.value = u;
+  if (pi) pi.value = p;
+  if (typeof handleLogin === 'function') handleLogin();
+}
+`;
+        repairedHtml = repairedHtml.replace('</script>', `${fallbackLogin}\n</script>`);
+        definedFunctions.add(fn);
         resolved = true;
       }
 
