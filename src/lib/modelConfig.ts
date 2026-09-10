@@ -79,19 +79,27 @@ export const CATEGORY_LABELS: Record<ModelCategory, string> = {
 export const CATEGORY_ORDER: ModelCategory[] = ['GRATIS', 'EKONOMIS', 'SEIMBANG', 'UNGGUL'];
 
 // Daftar model yang ditampilkan saat user sudah memasang key provider tersebut.
-// OpenRouter di-fetch live dari API (lihat /api/openrouter/models), di sini hanya fallback statis.
-const ROUTER_STATIC_MODELS: AIModelOption[] = [
-  { id: 'openrouter/free', label: 'OpenRouter Free (auto-select)', category: 'GRATIS', pricePerMInput: '$0', context: 'Auto' },
+export const ROUTER_STATIC_MODELS: AIModelOption[] = [
+  { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini (Cepat & Cerdas)', category: 'EKONOMIS', pricePerMInput: '$0.15', context: '128K' },
+  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Super Cepat)', category: 'EKONOMIS', pricePerMInput: '$0.075', context: '1M' },
+  { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (Coding Unggul)', category: 'UNGGUL', pricePerMInput: '$3.00', context: '200K' },
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3 (Ekonomis & Handal)', category: 'EKONOMIS', pricePerMInput: '$0.14', context: '64K' },
+  { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Penalaran & Logika)', category: 'SEIMBANG', pricePerMInput: '$0.55', context: '64K' },
+  { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (Open Source)', category: 'SEIMBANG', pricePerMInput: '$0.40', context: '128K' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o (Flagship OpenAI)', category: 'UNGGUL', pricePerMInput: '$2.50', context: '128K' },
+  { id: 'openrouter/free', label: 'OpenRouter Free (Auto Gratis)', category: 'GRATIS', pricePerMInput: '$0', context: 'Auto' },
 ];
 
 const OPENAI_MODELS: AIModelOption[] = [
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Cepat)', category: 'EKONOMIS', pricePerMInput: '$0.15', context: '128K' },
+  { id: 'gpt-4o', label: 'GPT-4o (Flagship)', category: 'UNGGUL', pricePerMInput: '$2.50', context: '128K' },
   { id: 'gpt-5-nano', label: 'GPT-5 Nano', category: 'EKONOMIS', pricePerMInput: '$0.05', context: '400K' },
-  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', category: 'EKONOMIS', pricePerMInput: '$0.15', context: '128K' },
 ];
 
 const GEMINI_MODELS: AIModelOption[] = [
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
-  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', category: 'SEIMBANG', pricePerMInput: 'Kuota gratis', context: '2M' },
 ];
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
@@ -115,6 +123,16 @@ export function getModelLabel(modelId: string, provider?: AIProvider): string {
   if (provider) {
     const found = getModelsForProvider(provider).find((m) => m.id === modelId);
     if (found) return found.label;
+  }
+  // Cek di seluruh model
+  const allModels = [...ROUTER_STATIC_MODELS, ...OPENAI_MODELS, ...GEMINI_MODELS];
+  const matched = allModels.find(m => m.id === modelId);
+  if (matched) return matched.label;
+
+  // Format clean jika model ID berupa "openai/gpt-4o-mini"
+  if (modelId.includes('/')) {
+    const parts = modelId.split('/');
+    return parts[parts.length - 1];
   }
   return modelId;
 }
@@ -156,4 +174,8 @@ export function saveModelSettings(settings: ModelSettings): void {
   ls.setItem(PROVIDER_MODEL_STORAGE, settings.model);
   ls.removeItem(LEGACY_OPENROUTER_KEY_STORAGE);
   ls.removeItem(LEGACY_OPENROUTER_MODEL_STORAGE);
+
+  // Broadcast event agar seluruh komponen (ChatPanel, Navbar, Sidebar) langsung tersinkron
+  window.dispatchEvent(new CustomEvent('ai_model_settings_changed', { detail: settings }));
+  window.dispatchEvent(new Event('storage'));
 }

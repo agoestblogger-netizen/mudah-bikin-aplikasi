@@ -58,6 +58,19 @@ export const Navbar: React.FC<NavbarProps> = ({ userEmail, onNewSession, modelSe
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Sinkronisasi otomatis saat model settings berubah di komponen lain
+  useEffect(() => {
+    const syncSettings = () => {
+      setLocalSettings(loadModelSettings());
+    };
+    window.addEventListener('ai_model_settings_changed', syncSettings);
+    window.addEventListener('storage', syncSettings);
+    return () => {
+      window.removeEventListener('ai_model_settings_changed', syncSettings);
+      window.removeEventListener('storage', syncSettings);
+    };
+  }, []);
+
   const initial = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
 
   return (
@@ -78,6 +91,22 @@ export const Navbar: React.FC<NavbarProps> = ({ userEmail, onNewSession, modelSe
 
         {/* User Controls */}
         <div className="flex items-center gap-3">
+          {/* Quick Model Badge di Navbar */}
+          <button
+            type="button"
+            onClick={() => setDropdownOpen(prev => !prev)}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs text-slate-200 transition-all border border-slate-700/80 cursor-pointer shadow-sm group"
+            title="Klik untuk mengubah setelan model AI atau API Key"
+          >
+            <span className={`w-2 h-2 rounded-full ${hasKey ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-indigo-400'} animate-pulse`} />
+            <span className="font-semibold text-[11px] text-white truncate max-w-[160px]">
+              {hasKey ? getModelLabel(activeSettings.model, activeSettings.provider) : 'Gemini 2.5 Flash'}
+            </span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 uppercase font-mono">
+              {hasKey ? activeProviderName : 'Default'}
+            </span>
+          </button>
+
           {onNewSession && (
             <button
               onClick={onNewSession}

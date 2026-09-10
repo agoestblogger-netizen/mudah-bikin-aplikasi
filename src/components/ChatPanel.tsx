@@ -17,12 +17,15 @@ import {
   FileText, 
   Database,
   Menu,
-  ChevronRight
+  ChevronRight,
+  X,
+  Settings
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
-import { loadModelSettings, getModelLabel, getProviderConfig } from '@/lib/modelConfig';
+import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider } from '@/lib/modelConfig';
 import type { ModelSettings } from '@/lib/modelConfig';
+import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
 export type ChatMode = 'BUILD' | 'PLAN' | 'SYNC_GAS';
@@ -93,10 +96,31 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Sinkronisasi model config secara berkala
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Sinkronisasi model config secara berkala & event listener lintas komponen
   useEffect(() => {
-    setModelConfig(loadModelSettings());
+    const syncConfig = () => {
+      setModelConfig(loadModelSettings());
+    };
+    syncConfig();
+    window.addEventListener('ai_model_settings_changed', syncConfig);
+    window.addEventListener('storage', syncConfig);
+    return () => {
+      window.removeEventListener('ai_model_settings_changed', syncConfig);
+      window.removeEventListener('storage', syncConfig);
+    };
   }, []);
+
+  const handleSelectModel = (modelId: string) => {
+    const updated: ModelSettings = {
+      ...modelConfig,
+      model: modelId
+    };
+    saveModelSettings(updated);
+    setModelConfig(updated);
+    setIsModelDropdownOpen(false);
+  };
 
   // Auto scroll ke bawah
   useEffect(() => {
@@ -393,11 +417,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const activeProvider = modelConfig.token ? getProviderConfig(modelConfig.provider).label : 'Server Default';
   const activeModelName = modelConfig.token ? getModelLabel(modelConfig.model, modelConfig.provider) : 'Gemini 2.5 Flash';
+  const availableModels = getModelsForProvider(modelConfig.provider);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#08080c] border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative select-none">
       
-      {/* Header Panel Chat (Alternatif 1: Nama Proyek + Dropdown Model AI) */}
+      {/* Header Panel Chat: Nama Proyek + Dropdown Pemilihan Model AI */}
       <div className="h-14 px-4 border-b border-white/10 bg-[#0e0e13] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           {onToggleSidebar && isSidebarCollapsed && (
@@ -419,12 +444,94 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           </div>
         </div>
 
-        {/* AI Model Badge / Selector */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-[11px] font-medium text-zinc-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10f48e] animate-pulse shrink-0 shadow-[0_0_6px_#10f48e]" />
-            <span className="truncate max-w-[130px] sm:max-w-[180px]">{activeModelName}</span>
-          </div>
+        {/* AI Model Selector Dropdown Interaktif */}
+        <div className="relative" ref={modelDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setIsModelDropdownOpen(prev => !prev)}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#10f48e]/40 text-[11px] font-medium text-zinc-200 transition-all cursor-pointer group shadow-sm"
+            title="Klik untuk memilih model AI atau setel API Key"
+          >
+            <span className={`w-2 h-2 rounded-full ${modelConfig.token ? 'bg-[#10f48e] shadow-[0_0_8px_#10f48e]' : 'bg-emerald-400'} animate-pulse shrink-0`} />
+            <div className="flex items-center gap-1.5 text-left min-w-0">
+              <span className="truncate max-w-[110px] sm:max-w-[160px] font-semibold text-white">
+                {activeModelName}
+              </span>
+              <span className="hidden sm:inline-block text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-zinc-400 uppercase font-mono tracking-wide">
+                {modelConfig.token ? modelConfig.provider : 'Default'}
+              </span>
+            </div>
+            <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-transform duration-200 shrink-0 ${isModelDropdownOpen ? 'rotate-180 text-[#10f48e]' : ''}`} />
+          </button>
+
+          {/* Dropdown Menu Model Selector */}
+          {isModelDropdownOpen && (
+            <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-2 z-50 animate-fadeIn text-left">
+              {/* Header Info Dropdown */}
+              <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Pilih Model AI</p>
+                  <p className="text-xs font-semibold text-white">
+                    Provider: <span className="text-[#10f48e] capitalize">{modelConfig.token ? modelConfig.provider : 'Server Default'}</span>
+                  </p>
+                </div>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${modelConfig.token ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
+                  {modelConfig.token ? 'API Terpasang' : 'Server Default'}
+                </span>
+              </div>
+
+              {/* Daftar Pilihan Model */}
+              <div className="py-1.5 max-h-64 overflow-y-auto space-y-1 scrollbar-thin">
+                {availableModels.map((m) => {
+                  const isSelected = modelConfig.model === m.id || (m.id === 'openrouter/free' && !modelConfig.model);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleSelectModel(m.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all text-xs cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#10f48e]/15 border border-[#10f48e]/30 text-white font-medium'
+                          : 'hover:bg-white/5 text-zinc-300 hover:text-white'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate font-semibold">{m.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-zinc-400">
+                          <span>{m.context} konteks</span>
+                          <span>•</span>
+                          <span className="text-zinc-500">{m.category}</span>
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-[#10f48e] shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Footer Tindakan: Pengaturan API Key */}
+              <div className="pt-2 mt-1 border-t border-white/10 px-2 flex items-center justify-between">
+                <span className="text-[10px] text-zinc-500">
+                  {availableModels.length} model aktif
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModelDropdownOpen(false);
+                    setShowSettingsModal(true);
+                  }}
+                  className="text-[11px] font-semibold text-[#10f48e] hover:underline inline-flex items-center gap-1.5 cursor-pointer py-1 px-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Setel API Key</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -724,6 +831,37 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Modal Pengaturan Model AI & API Key */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-sm sm:max-w-md bg-[#121218] border border-white/15 rounded-2xl shadow-2xl p-5 overflow-hidden">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-2">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-[#10f48e]" />
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Setelan API Key & Model AI</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                title="Tutup"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <ModelSettingsMenu
+              provider={modelConfig.provider}
+              token={modelConfig.token}
+              model={modelConfig.model}
+              onSave={(newSettings) => {
+                setModelConfig(newSettings);
+                setShowSettingsModal(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
