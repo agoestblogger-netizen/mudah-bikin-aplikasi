@@ -1271,6 +1271,10 @@ ${staffLandingGuide}
      * Jika aplikasi bertema Rental / Sewa / Peminjaman (sepeda, mobil, motor, buku, kamera):
        - WAJIB memiliki alur Mulai Sewa (Check-out) DAN Pengembalian (Check-in).
        - Pada tabel transaksi sewa aktif, sediakan tombol aksi "Kembalikan" yang membuka modal pengembalian unit, mencatat kondisi fisik (Bagus/Rusak), menghitung denda jika terlambat, dan mengembalikan status unit kembali menjadi "Tersedia".
+  8. FUNGSI WAJIB NAVIGASI & AUTENTIKASI DI DALAM <script>:
+     - WAJIB definisikan \`function showTab(tabId) { ... }\` di dalam tag <script> jika ada tab navigasi onclick="showTab(...)".
+     - WAJIB definisikan \`function logout() { ... }\` di dalam tag <script> jika ada tombol onclick="logout()".
+     - WAJIB definisikan \`function loginAs(role) { ... }\`, \`function handleLogin() { ... }\`, dan \`function quickLogin(u, p) { ... }\` di dalam tag <script> jika menggunakan login simulation multi-role.
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
 
       } else if (stage === 'TAHAP_5_PATCH') {

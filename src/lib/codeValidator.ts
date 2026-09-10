@@ -24,7 +24,7 @@ export function validateAndRepairGeneratedCode(
 ): ValidationReport {
   const issues: string[] = [];
   let repairedHtml = cleanConversationalLeaks(html);
-  let repairedJs = js;
+  let repairedJs = js || '';
 
   // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown
   if (repairedHtml.includes('<!DOCTYPE')) {
@@ -81,6 +81,9 @@ export function validateAndRepairGeneratedCode(
     'showTab': ['switchTab', 'gantiTab', 'pindahTab', 'changeTab', 'selectTab', 'openTab'],
     'switchTab': ['showTab', 'gantiTab', 'pindahTab', 'changeTab', 'selectTab', 'openTab'],
     'gantiTab': ['showTab', 'switchTab', 'pindahTab', 'changeTab', 'selectTab', 'openTab'],
+    'logout': ['handleLogout', 'keluar', 'logOut', 'userLogout', 'doLogout', 'signOut', 'prosesLogout'],
+    'handleLogout': ['logout', 'keluar', 'logOut'],
+    'keluar': ['logout', 'handleLogout', 'logOut'],
     'switchRole': ['gantiRole', 'toggleRole', 'changeRole', 'setRole', 'pilihRole'],
     'gantiRole': ['switchRole', 'toggleRole', 'changeRole', 'setRole', 'pilihRole'],
     'tutupModalForm': ['closeModal', 'tutupModal', 'closeModalForm', 'hideModal', 'batalForm'],
@@ -220,6 +223,82 @@ function quickLogin(u, p) {
 }
 `;
         repairedHtml = repairedHtml.replace('</script>', `${fallbackLogin}\n</script>`);
+        definedFunctions.add(fn);
+        resolved = true;
+      }
+
+      // Auto-repair untuk fungsi navigasi tab & autentikasi jika dipanggil di onclick tapi belum terdefinisi
+      if (!resolved && (fn === 'logout' || fn === 'showTab' || fn === 'loginAs' || fn === 'filterTabsByRole') && repairedHtml.includes('</script>')) {
+        let fallbackFn = '';
+        if (fn === 'logout') {
+          fallbackFn = `
+function logout() {
+  try {
+    currentRole = '';
+    const loginEl = document.getElementById('loginScreen');
+    const appEl = document.getElementById('appContainer');
+    if (appEl) appEl.style.display = 'none';
+    if (loginEl) loginEl.style.display = 'flex';
+    if (typeof showToast === 'function') showToast('Berhasil keluar. Silakan login kembali.', 'info');
+  } catch (e) { console.log('logout error', e); }
+}
+`;
+        } else if (fn === 'showTab') {
+          fallbackFn = `
+function showTab(tabId) {
+  try {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+    const target = document.getElementById(tabId) || document.querySelector('[id*="' + tabId + '"]');
+    if (target) target.classList.add('active');
+    const targetBtn = document.getElementById('tab-btn-' + tabId) || document.querySelector('[onclick*="' + tabId + '"]');
+    if (targetBtn) targetBtn.classList.add('active');
+    if (typeof render === 'function') render();
+    else if (typeof renderTable === 'function') renderTable();
+  } catch (e) { console.log('showTab error', e); }
+}
+`;
+        } else if (fn === 'loginAs') {
+          fallbackFn = `
+function loginAs(role) {
+  try {
+    currentRole = role;
+    const loginEl = document.getElementById('loginScreen');
+    const appEl = document.getElementById('appContainer');
+    if (loginEl) loginEl.style.display = 'none';
+    if (appEl) appEl.style.display = 'block';
+    const badge = document.getElementById('currentRoleBadge');
+    if (badge) badge.innerText = role;
+    if (typeof filterTabsByRole === 'function') filterTabsByRole(role);
+    if (typeof showTab === 'function') {
+      const firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
+      const tabMatch = firstTab?.getAttribute('onclick')?.match(/showTab\\(['"]([^'"]+)['"]\\)/);
+      if (tabMatch && tabMatch[1]) showTab(tabMatch[1]);
+    }
+    if (typeof render === 'function') render();
+    else if (typeof renderTable === 'function') renderTable();
+  } catch (e) { console.log('loginAs error', e); }
+}
+`;
+        } else if (fn === 'filterTabsByRole') {
+          fallbackFn = `
+function filterTabsByRole(role) {
+  try {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const roles = btn.getAttribute('data-access-roles');
+      if (!roles) return;
+      const allowed = roles.split(',').map(r => r.trim().toLowerCase());
+      if (allowed.includes(String(role).toLowerCase())) {
+        btn.style.display = 'inline-flex';
+      } else {
+        btn.style.display = 'none';
+      }
+    });
+  } catch (e) { console.log('filterTabs error', e); }
+}
+`;
+        }
+        repairedHtml = repairedHtml.replace('</script>', `${fallbackFn}\n</script>`);
         definedFunctions.add(fn);
         resolved = true;
       }
