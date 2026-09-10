@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { isSuperAdminRole, normalizeRoleName, REQUIRED_SYSTEM_ROLE } from '@/lib/rolePolicy';
 
 export interface ChecklistItem {
   id: string;
@@ -69,7 +70,38 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
   const fields: ChecklistItem[] = [];
   const actions: ChecklistItem[] = [];
 
-  if (combined.includes('input') || combined.includes('tambah') || combined.includes('daftar') || combined.includes('kelola') || combined.includes('form') || combined.includes('buku') || combined.includes('master')) {
+  // 1. Deteksi Alur Pengembalian (Check-In) / Return
+  if (combined.includes('kembali') || combined.includes('pengembalian') || combined.includes('return') || combined.includes('check-in')) {
+    fields.push(
+      { id: generateId(), text: 'Pilih Transaksi / Unit Disewa (Dropdown / Search)', checked: true },
+      { id: generateId(), text: 'Waktu Pengembalian Aktual (Datetime)', checked: true },
+      { id: generateId(), text: 'Kondisi Fisik Unit (Radio: Baik / Ada Kerusakan / Lecet)', checked: true },
+      { id: generateId(), text: 'Kalkulasi Denda Keterlambatan / Kerusakan (Number)', checked: true },
+      { id: generateId(), text: 'Penyelesaian Pengembalian Uang Jaminan / Deposit (Number)', checked: true }
+    );
+    actions.push(
+      { id: generateId(), text: 'onclick: Selesaikan Pengembalian Unit (Status unit kembali Tersedia)', checked: true },
+      { id: generateId(), text: 'onclick: Hitung Denda Keterlambatan & Selesaikan Deposit', checked: true },
+      { id: generateId(), text: 'onclick: Cetak Bukti Pengembalian', checked: true }
+    );
+  }
+  // 2. Deteksi Alur Penyewaan / Peminjaman (Check-Out)
+  else if (combined.includes('sewa') || combined.includes('rental') || combined.includes('pinjam') || combined.includes('booking unit') || combined.includes('peminjaman')) {
+    fields.push(
+      { id: generateId(), text: 'Pilihan Unit / Armada Tersedia (Dropdown / Card Select)', checked: true },
+      { id: generateId(), text: 'Nama & No. HP Penyewa / KTP (Text)', checked: true },
+      { id: generateId(), text: 'Waktu Mulai Sewa (Datetime)', checked: true },
+      { id: generateId(), text: 'Durasi / Estimasi Waktu Pengembalian (Hours/Days)', checked: true },
+      { id: generateId(), text: 'Tarif Sewa & Uang Jaminan / Deposit (Number)', checked: true }
+    );
+    actions.push(
+      { id: generateId(), text: 'onclick: Catat Peminjaman / Mulai Sewa Unit (Status jadi Sedang Disewa)', checked: true },
+      { id: generateId(), text: 'onclick: Cetak Nota / Struk Bukti Sewa', checked: true },
+      { id: generateId(), text: 'onclick: Batal / Reset Form', checked: true }
+    );
+  }
+  // 3. Deteksi Input Data / Form Standar
+  else if (combined.includes('input') || combined.includes('tambah') || combined.includes('daftar') || combined.includes('kelola') || combined.includes('form') || combined.includes('buku') || combined.includes('master')) {
     fields.push(
       { id: generateId(), text: 'Judul / Nama Item (Text)', checked: true },
       { id: generateId(), text: 'Kategori / Klasifikasi (Dropdown)', checked: true },
@@ -80,7 +112,9 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
       { id: generateId(), text: 'onclick: Simpan Data Baru (Validasi form & simpan ke state/tabel)', checked: true },
       { id: generateId(), text: 'onclick: Reset / Batal (Kosongkan input form)', checked: true }
     );
-  } else if (combined.includes('riwayat') || combined.includes('laporan') || combined.includes('monitoring') || combined.includes('katalog') || combined.includes('cari')) {
+  }
+  // 4. Deteksi Riwayat / Laporan / Monitoring
+  else if (combined.includes('riwayat') || combined.includes('laporan') || combined.includes('monitoring') || combined.includes('katalog') || combined.includes('cari')) {
     fields.push(
       { id: generateId(), text: 'Kolom Pencarian Kata Kunci (Search Input)', checked: true },
       { id: generateId(), text: 'Filter Periode / Kategori (Dropdown)', checked: true },
@@ -90,7 +124,9 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
       { id: generateId(), text: 'onclick: Terapkan Filter & Cari (Filter real-time tabel)', checked: true },
       { id: generateId(), text: 'onclick: Lihat Detail / Tindakan Cepat (Modal info & aksi status)', checked: true }
     );
-  } else {
+  }
+  // 5. Fallback Default
+  else {
     fields.push(
       { id: generateId(), text: 'Nama / Identitas Pengguna (Text)', checked: true },
       { id: generateId(), text: 'Kategori Pilihan (Dropdown)', checked: true },
@@ -103,6 +139,31 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
   }
 
   return { fields, actions };
+}
+
+function createRequiredSuperAdminRole(): RoleDetail {
+  return {
+    roleName: REQUIRED_SYSTEM_ROLE,
+    selected: true,
+    pages: [
+      {
+        pageName: 'Manajemen Sistem (default)',
+        isDefault: true,
+        sections: ['Akun Staf', 'Role & Permission', 'Konfigurasi Sistem'],
+        fields: [
+          { id: generateId(), text: 'Nama / Email Staf (Text)', checked: true },
+          { id: generateId(), text: 'Role dan Permission (Select)', checked: true },
+          { id: generateId(), text: 'Status Akun (Aktif / Nonaktif)', checked: true }
+        ],
+        actions: [
+          { id: generateId(), text: 'onclick: Tambah Akun Staf (Membuat akun staf baru)', checked: true },
+          { id: generateId(), text: 'onclick: Atur Role & Permission (Mengubah hak akses staf)', checked: true },
+          { id: generateId(), text: 'onclick: Nonaktifkan Akun Staf (Menutup akses akun)', checked: true }
+        ]
+      }
+    ],
+    alurProses: 'Buka "Manajemen Sistem" → Klik "Tambah Akun Staf" → Tetapkan role dan permission → Klik "Simpan Akun" → Akun staf aktif sesuai hak akses'
+  };
 }
 
 /**
@@ -199,7 +260,7 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
           const isForbidden = forbiddenKeywords.some(k => rName.toLowerCase().startsWith(k));
           
           if (rName && !isForbidden) {
-            rName = rName.replace(/^(?:Role|Peran)\s+/i, '').trim();
+            rName = normalizeRoleName(rName.replace(/^(?:Role|Peran)\s+/i, '').trim());
             currentRole = {
               roleName: rName,
               selected: true,
@@ -293,9 +354,17 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
     }
 
     const validRoles = roles.filter(r => r.pages.length > 0 || Boolean(r.alurProses));
+    const standardizedRoles = validRoles.map((role) => ({
+      ...role,
+      roleName: normalizeRoleName(role.roleName)
+    }));
+
+    if (!standardizedRoles.some((role) => isSuperAdminRole(role.roleName))) {
+      standardizedRoles.unshift(createRequiredSuperAdminRole());
+    }
 
     // Pastikan setiap page memiliki minimal fields & actions
-    for (const r of validRoles) {
+    for (const r of standardizedRoles) {
       for (const p of r.pages) {
         if (p.fields.length === 0 || p.actions.length === 0) {
           const defs = createDefaultFieldsAndActions(p.pageName, p.sections);
@@ -305,7 +374,7 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
       }
     }
 
-    if (appName && (features.length > 0 || validRoles.length > 0)) {
+    if (appName && (features.length > 0 || standardizedRoles.length > 0)) {
       return {
         introText: introText || undefined,
         appName,
@@ -314,7 +383,7 @@ export function parseBriefKebutuhan(text: string): ParsedBriefKebutuhan | null {
         features,
         roadmap,
         usp,
-        roles: validRoles,
+        roles: standardizedRoles,
         closingQuestion: closingQuestion || undefined
       };
     }
@@ -400,6 +469,34 @@ interface BriefKebutuhanCardProps {
   onApplyBrief?: (compiledMarkdown: string, targetMode?: 'BUILD' | 'PLAN') => void;
 }
 
+function serializeSnapshot(
+  appN: string,
+  orient: string,
+  theme: string,
+  u: string,
+  feats: ChecklistItem[],
+  rls: RoleDetail[]
+): string {
+  return JSON.stringify({
+    appName: (appN || '').trim(),
+    orientation: (orient || '').trim(),
+    visualTheme: (theme || '').trim(),
+    usp: (u || '').trim(),
+    features: feats.map(f => ({ text: f.text.trim(), checked: f.checked })),
+    roles: rls.map(r => ({
+      roleName: r.roleName.trim(),
+      selected: r.selected,
+      alurProses: (r.alurProses || '').trim(),
+      pages: r.pages.map(p => ({
+        pageName: p.pageName.trim(),
+        isDefault: p.isDefault,
+        fields: p.fields.map(f => ({ text: f.text.trim(), checked: f.checked })),
+        actions: p.actions.map(a => ({ text: a.text.trim(), checked: a.checked }))
+      }))
+    }))
+  });
+}
+
 export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, onApplyBrief }) => {
   // State interaktif lokal dari hasil parsing
   const [appName, setAppName] = useState(data.appName || 'BukuPinjam');
@@ -408,6 +505,11 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
   const [usp, setUsp] = useState(data.usp || '');
   const [features, setFeatures] = useState<ChecklistItem[]>(data.features || []);
   const [roles, setRoles] = useState<RoleDetail[]>(data.roles || []);
+
+  // Snapshot awal dari AI untuk mendeteksi apakah ada perubahan (isModified)
+  const [initialSnapshot, setInitialSnapshot] = useState<string>(() =>
+    serializeSnapshot(data.appName, data.orientation || '', data.visualTheme || '', data.usp || '', data.features || [], data.roles || [])
+  );
 
   // UI state
   const [newFeatureText, setNewFeatureText] = useState('');
@@ -418,7 +520,7 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
   const [newActionInputs, setNewActionInputs] = useState<Record<string, string>>({});
   const [copiedNotification, setCopiedNotification] = useState(false);
 
-  // Perbarui state jika data berubah dari luar
+  // Perbarui state jika data berubah dari luar (misal: AI selesai menyesuaikan skenario)
   useEffect(() => {
     setAppName(data.appName || 'BukuPinjam');
     if (data.orientation) setOrientation(data.orientation);
@@ -426,16 +528,25 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
     if (data.usp) setUsp(data.usp);
     if (data.features) setFeatures(data.features);
     if (data.roles) setRoles(data.roles);
+
+    setInitialSnapshot(
+      serializeSnapshot(data.appName, data.orientation || '', data.visualTheme || '', data.usp || '', data.features || [], data.roles || [])
+    );
   }, [data]);
+
+  // Evaluasi apakah user telah melakukan modifikasi terhadap brief/role
+  const currentSnapshot = serializeSnapshot(appName, orientation, visualTheme, usp, features, roles);
+  const isModified = initialSnapshot !== '' && currentSnapshot !== initialSnapshot;
 
   // Handler: Toggle Role Selection
   const toggleRoleSelection = (index: number) => {
+    if (isSuperAdminRole(roles[index]?.roleName || '')) return;
     setRoles(prev => prev.map((r, i) => i === index ? { ...r, selected: !r.selected } : r));
   };
 
   // Handler: Tambah Peran Baru
   const handleAddCustomRole = () => {
-    const trimmed = newRoleText.trim();
+    const trimmed = normalizeRoleName(newRoleText.trim());
     if (!trimmed) return;
     const defs = createDefaultFieldsAndActions('Halaman Utama', ['Form Entri', 'Daftar']);
     const newRole: RoleDetail = {
@@ -459,6 +570,7 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
 
   // Handler: Hapus Role
   const handleDeleteRole = (index: number) => {
+    if (isSuperAdminRole(roles[index]?.roleName || '')) return;
     setRoles(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -731,13 +843,16 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             {roles.map((r, idx) => {
               const isSelected = r.selected;
+              const isRequiredSystemRole = isSuperAdminRole(r.roleName);
               return (
                 <div
                   key={idx}
                   onClick={() => toggleRoleSelection(idx)}
-                  className={`relative p-2.5 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
+                  className={`relative p-2.5 rounded-xl border transition-all ${isRequiredSystemRole ? 'cursor-not-allowed' : 'cursor-pointer'} select-none flex flex-col justify-between ${
                     isSelected
-                      ? 'bg-emerald-950/30 border-emerald-500/60 shadow-sm shadow-emerald-500/10 text-white'
+                      ? isRequiredSystemRole
+                        ? 'bg-indigo-950/40 border-indigo-400/70 shadow-sm shadow-indigo-500/10 text-white'
+                        : 'bg-emerald-950/30 border-emerald-500/60 shadow-sm shadow-emerald-500/10 text-white'
                       : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'
                   }`}
                 >
@@ -748,12 +863,16 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
                       ) : (
                         <Square className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                       )}
-                      <span className={`text-xs font-bold ${isSelected ? 'text-emerald-300' : 'text-slate-400'}`}>
+                      <span className={`text-xs font-bold ${isSelected ? (isRequiredSystemRole ? 'text-indigo-300' : 'text-emerald-300') : 'text-slate-400'}`}>
                         {r.roleName}
                       </span>
                     </div>
 
-                    {roles.length > 1 && (
+                    {isRequiredSystemRole ? (
+                      <span className="text-[8px] font-bold uppercase tracking-wide text-indigo-300 border border-indigo-400/30 rounded px-1.5 py-0.5">
+                        Wajib
+                      </span>
+                    ) : roles.length > 1 && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1090,58 +1209,84 @@ export const BriefKebutuhanCard: React.FC<BriefKebutuhanCardProps> = ({ data, on
           </div>
         </div>
 
-        {/* BAGIAN 5: ACTION BUTTONS (BUAT PROTOTIPE / SINKRONKAN) */}
-        <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset</span>
-            </button>
-
-            {/* Salin / Notifikasi */}
-            {copiedNotification && (
-              <span className="text-[11px] text-emerald-400 font-medium animate-fade-in">
-                ✓ Brief diperbarui!
+        {/* BAGIAN 5: ACTION BUTTONS (SINKRONISASI SKENARIO & BUAT PROTOTIPE) */}
+        <div className="pt-3 border-t border-slate-800 space-y-2.5">
+          {/* Status Indicator Banner */}
+          {isModified ? (
+            <div className="w-full bg-amber-950/40 border border-amber-500/40 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-amber-200 text-xs">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span>✏️</span>
+                <span>Rincian peran/fitur telah diedit. Simpan agar AI menyesuaikan skenario alur kerja terlebih dahulu.</span>
               </span>
-            )}
-          </div>
+              <span className="text-[10px] text-amber-300/80 uppercase font-mono tracking-wider font-semibold">
+                Perlu Penyesuaian Skenario
+              </span>
+            </div>
+          ) : (
+            <div className="w-full bg-emerald-950/30 border border-emerald-500/30 rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-emerald-300 text-xs">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Skenario alur kerja & rincian peran telah diselaraskan. Siap dibuatkan prototipe!</span>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-mono font-semibold">
+                ✓ Skenario Terkonfirmasi
+              </span>
+            </div>
+          )}
 
-          <div className="flex items-center gap-2">
-            {/* Tombol Sinkronkan Catatan Brief ke Chat */}
-            {onApplyBrief && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-0.5">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  const markdown = currentCompiledBrief();
-                  onApplyBrief(markdown, 'PLAN');
-                  setCopiedNotification(true);
-                  setTimeout(() => setCopiedNotification(false), 2500);
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-semibold transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                onClick={handleReset}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs transition-colors cursor-pointer"
               >
-                <Send className="w-3 h-3" />
-                <span>Simpan Catatan</span>
+                <RotateCcw className="w-3 h-3" />
+                <span>{isModified ? 'Batal / Reset' : 'Reset'}</span>
               </button>
-            )}
 
-            {/* Tombol Utama: Buat Prototipe Sesuai Checklist Ini */}
-            {onApplyBrief && (
-              <button
-                type="button"
-                onClick={() => {
-                  const markdown = currentCompiledBrief();
-                  onApplyBrief(markdown, 'BUILD');
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-emerald-500/25 hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer"
-              >
-                <Rocket className="w-4 h-4 stroke-[2.5]" />
-                <span>🚀 Buat Prototipe Sesuai Checklist Ini</span>
-              </button>
-            )}
+              {copiedNotification && (
+                <span className="text-[11px] text-emerald-400 font-medium animate-fade-in">
+                  ✓ Perubahan dikirim untuk disesuaikan skenarionya!
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Jika ADA perubahan: Tampilkan tombol Simpan & Sesuaikan Skenario terlebih dahulu */}
+              {isModified ? (
+                onApplyBrief && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const markdown = currentCompiledBrief();
+                      onApplyBrief(markdown, 'PLAN');
+                      setCopiedNotification(true);
+                      setTimeout(() => setCopiedNotification(false), 2500);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-xs shadow-lg shadow-indigo-500/25 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>💾 Simpan & Sesuaikan Skenario</span>
+                  </button>
+                )
+              ) : (
+                /* Jika SUDAH terkonfirmasi (tidak ada perubahan pending): Tampilkan tombol Buatkan Prototipe */
+                onApplyBrief && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const markdown = currentCompiledBrief();
+                      onApplyBrief(markdown, 'BUILD');
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-lg shadow-emerald-500/25 hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <Rocket className="w-4 h-4 stroke-[2.5]" />
+                    <span>🚀 Buatkan Prototipe</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </div>
       </div>

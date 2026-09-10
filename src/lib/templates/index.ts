@@ -7,3 +7,4 @@ export * from './types';
 export * from './masterTemplates';
 export * from './pageTemplates';
 export * from './uxPatternRegistry';
+export * from '../rolePolicy';

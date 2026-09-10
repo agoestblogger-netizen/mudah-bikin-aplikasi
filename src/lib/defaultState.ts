@@ -29,7 +29,7 @@ export const initialProjectState: AppProjectState = {
     targetUsers: '',
     requiresLogin: false,
     loginType: 'ROLE_BASED',
-    hasAdminRole: false,
+    hasSuperAdminRole: true,
     hasUserManagement: false,
     keyButtonsActions: [],
     basicValidationRules: []
@@ -58,7 +58,7 @@ export const initialProjectState: AppProjectState = {
   qualityAudit: {
     isCanvasCodeOnly: false,
     hasDynamicState: false,
-    hasAdminUserManagement: false,
+    hasSuperAdminUserManagement: false,
     hasLoginValidation: false,
     isResponsiveGlassmorphism: false,
     hasGasBackend: false,

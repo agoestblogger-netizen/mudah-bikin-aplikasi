@@ -17,7 +17,7 @@ export interface ChatMessage {
 export interface MandatorySpecs {
   requiresLogin: boolean;
   loginType: 'NONE' | 'BASIC_AUTH' | 'ROLE_BASED';
-  hasAdminRole: boolean;
+  hasSuperAdminRole: boolean;
   hasUserManagement: boolean;
   keyButtonsActions: string[];
   basicValidationRules: string[];
@@ -35,8 +35,10 @@ export interface FeatureChecklistItem {
 }
 
 export interface RolePermission {
-  roleName: 'Admin' | 'User' | 'Guest';
+  roleName: string;
   canAddUser: boolean;
+  canManageStaffAccounts?: boolean;
+  canManagePermissions?: boolean;
   canEditData: boolean;
   canViewReports: boolean;
   accessScope: string;
@@ -71,7 +73,7 @@ export interface TroubleshootIssue {
 export interface QualityAuditResult {
   isCanvasCodeOnly: boolean;
   hasDynamicState: boolean;
-  hasAdminUserManagement: boolean;
+  hasSuperAdminUserManagement: boolean;
   hasLoginValidation: boolean;
   isResponsiveGlassmorphism: boolean;
   hasGasBackend: boolean;

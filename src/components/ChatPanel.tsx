@@ -460,11 +460,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                       if (targetMode === 'BUILD') {
                         setSelectedMode('BUILD');
                         handleSendMessage(
-                          `Saya menyetujui Brief Kebutuhan yang sudah disesuaikan ini. Silakan buatkan prototipe aplikasinya sekarang sesuai checklist berikut:\n\n${compiledMarkdown}`
+                          `Saya menyetujui skenario dan Brief Kebutuhan ini. Silakan buatkan prototipe aplikasinya sekarang!`
                         );
                       } else {
+                        setSelectedMode('PLAN');
                         handleSendMessage(
-                          `Berikut adalah pembaruan lembar Brief Kebutuhan yang telah saya sesuaikan:\n\n${compiledMarkdown}`
+                          `Saya telah menyesuaikan rincian brief kebutuhan dan pembagian peran. Mohon sesuaikan skenario alur kerja dan lembar brief aplikasi ini, lalu konfirmasikan kembali:\n\n${compiledMarkdown}`
                         );
                       }
                     }}

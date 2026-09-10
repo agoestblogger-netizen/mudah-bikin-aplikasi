@@ -2,11 +2,19 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const reqUrl = new URL(request.url);
+  const { searchParams } = reqUrl;
   const code = searchParams.get('code');
   const error = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
   const next = searchParams.get('next') ?? '/app';
+
+  // Bangun origin dari header Host agar tidak memakai host internal (mis. 0.0.0.0)
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = forwardedHost || request.headers.get('host') || reqUrl.host;
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  const proto = forwardedProto || reqUrl.protocol.replace(':', '');
+  const origin = `${proto}://${host}`;
 
   if (error || errorDescription) {
     const msg = errorDescription || 'Link konfirmasi tidak valid atau sudah kedaluwarsa.';

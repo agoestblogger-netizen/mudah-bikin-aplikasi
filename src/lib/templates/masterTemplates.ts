@@ -1,10 +1,11 @@
 /**
- * MASTER TEMPLATES REGISTRY (MT-01 s/d MT-20)
+ * MASTER TEMPLATES REGISTRY (MT-01 s/d MT-21)
  * Version: 2.0
  * Status: Structured Specification Data
  */
 
 import { MasterTemplate } from './types';
+import { ensureRequiredSystemRole, normalizeRoleName, REQUIRED_SYSTEM_ROLE } from '../rolePolicy';
 
 export const MASTER_TEMPLATES: MasterTemplate[] = [
   // ===========================================================================
@@ -1238,6 +1239,61 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
     workflow: [
       'Entity → Actor → Action → Status → Approval → Notification'
     ]
+  },
+
+  // ===========================================================================
+  // MT-21 — Rental & Peminjaman (Rental & Lending)
+  // ===========================================================================
+  {
+    id: 'MT-21',
+    nama: 'Rental & Peminjaman',
+    deskripsi: 'Blueprint aplikasi sewa sepeda, rental mobil/motor, sewa kamera/alat, persewaan perlengkapan outdoor, dan peminjaman buku perpustakaan.',
+    modulDanSection: [
+      {
+        modul: 'Unit & Armada (Inventory)',
+        sections: ['Katalog Unit', 'Detail Unit / Armada', 'Status Unit (Tersedia / Sedang Disewa / Servis)', 'Tarif Sewa (per Jam / Hari)', 'Riwayat Unit']
+      },
+      {
+        modul: 'Penyewaan (Check-Out)',
+        sections: ['Form Sewa Baru', 'Pilih Unit Tersedia', 'Data Penyewa & Kontak', 'Waktu Mulai & Estimasi Kembali', 'Uang Jaminan / Deposit', 'Konfirmasi Sewa']
+      },
+      {
+        modul: 'Pengembalian (Check-In) & Denda',
+        sections: ['Form Pengembalian Unit', 'Pilih Transaksi Aktif', 'Cek Kondisi Fisik & Kerusakan', 'Kalkulator Keterlambatan & Denda', 'Pengembalian Deposit / Pelunasan', 'Update Status Unit Kembali Tersedia']
+      },
+      {
+        modul: 'Penyewa & Pelanggan',
+        sections: ['Daftar Penyewa', 'Profil Penyewa', 'Riwayat Sewa & Pengembalian', 'Catatan Deposit Aktif']
+      },
+      {
+        modul: 'Laporan & Keuangan',
+        sections: ['Laporan Omset Sewa', 'Laporan Denda Keterlambatan', 'Tingkat Utilitas Unit', 'Laporan Kerusakan & Pemeliharaan']
+      }
+    ],
+    roleDefault: ['Super Admin', 'Petugas Sewa', 'Penyewa'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, konfigurasi, dan seluruh data sistem. Petugas Sewa menangani pencatatan sewa, pembayaran, serah-terima, pengembalian, pemeriksaan kondisi, dan denda. Penyewa hanya mengakses katalog, pemesanan, pembayaran, dan riwayat miliknya.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Unit & Armada (Inventory)', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Penyewaan (Check-Out)', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Pengembalian (Check-In) & Denda', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Penyewa & Pelanggan', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan & Keuangan', permission: 'R' },
+
+      { role: 'Petugas Sewa', modul: 'Unit & Armada (Inventory)', permission: 'R' },
+      { role: 'Petugas Sewa', modul: 'Penyewaan (Check-Out)', permission: 'CRU' },
+      { role: 'Petugas Sewa', modul: 'Pengembalian (Check-In) & Denda', permission: 'CRU' },
+      { role: 'Petugas Sewa', modul: 'Penyewa & Pelanggan', permission: 'CRU' },
+      { role: 'Petugas Sewa', modul: 'Laporan & Keuangan', permission: 'R-L' },
+
+      { role: 'Penyewa', modul: 'Unit & Armada (Inventory)', permission: 'R' },
+      { role: 'Penyewa', modul: 'Penyewaan (Check-Out)', permission: 'CR' },
+      { role: 'Penyewa', modul: 'Pengembalian (Check-In) & Denda', permission: 'R' },
+      { role: 'Penyewa', modul: 'Penyewa & Pelanggan', permission: 'R' },
+      { role: 'Penyewa', modul: 'Laporan & Keuangan', permission: '-' }
+    ],
+    workflow: [
+      'Penyewa memilih unit tersedia → Petugas mencatat sewa & uang jaminan (deposit) → Status unit beralih jadi "Sedang Disewa" → Penyewa mengembalikan unit → Petugas cek kondisi fisik & kalkulasi denda jika telat → Deposit diselesaikan & status unit kembali "Tersedia"'
+    ]
   }
 ];
 
@@ -1250,18 +1306,28 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
  */
 export function getMasterTemplateById(id: string): MasterTemplate | undefined {
   const cleanId = id.trim().toUpperCase();
-  return MASTER_TEMPLATES.find(t => t.id.toUpperCase() === cleanId);
+  const template = MASTER_TEMPLATES.find(t => t.id.toUpperCase() === cleanId);
+  if (!template) return undefined;
+
+  return {
+    ...template,
+    roleDefault: ensureRequiredSystemRole(template.roleDefault),
+    roleToModule: template.roleToModule.map((entry) => ({
+      ...entry,
+      role: normalizeRoleName(entry.role)
+    }))
+  };
 }
 
 /**
  * Mendapatkan seluruh daftar Master Template
  */
 export function getAllMasterTemplates(): MasterTemplate[] {
-  return MASTER_TEMPLATES;
+  return MASTER_TEMPLATES.map((template) => getMasterTemplateById(template.id) as MasterTemplate);
 }
 
 /**
- * Menghasilkan katalog ringkas 20 Master Template (1 baris per template)
+ * Menghasilkan katalog ringkas seluruh Master Template (1 baris per template)
  * untuk disematkan di IDEATION_SYSTEM_PROMPT tanpa membebani ukuran prompt.
  */
 export function getConciseCatalogSummary(): string {
@@ -1336,6 +1402,15 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
       mtId: 'MT-14'
     },
     {
+      keywords: [
+        'sewa sepeda', 'rental sepeda', 'sewa mobil', 'rental mobil', 'sewa motor', 'rental motor',
+        'sewa kamera', 'rental kamera', 'sewa alat', 'rental alat', 'persewaan', 'sewa tenda',
+        'peminjaman buku', 'pinjam buku', 'perpustakaan', 'sewa kostum', 'sewa gaun',
+        'rental', 'sewa', 'peminjaman', 'pinjam'
+      ],
+      mtId: 'MT-21'
+    },
+    {
       keywords: ['properti', 'sewa gedung', 'sewa apartemen', 'sewa ruko', 'sewa kos', 'kontrak penyewa', 'estate management'],
       mtId: 'MT-13'
     },
@@ -1396,18 +1471,17 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
     .map(m => `  * ${m.modul}: section ${m.sections.join(', ')}`)
     .join('\n');
 
-  const rolesSummary = t.roleDefault
+  // Template lama masih menyimpan beberapa lapisan admin. Keluarkan hanya
+  // Super Admin sebagai role sistem; Owner/Manager tetap dapat ditambahkan
+  // jika konteks pengguna memang membutuhkannya.
+  const suggestedBusinessRoles = t.roleDefault.filter((role) =>
+    !/^(?:admin|super\s*admin|owner|manager)$/i.test(role.trim())
+  );
+  const rolesSummary = ensureRequiredSystemRole(suggestedBusinessRoles)
     .map(r => `  * Role ${r}`)
     .join(', ');
 
-  const adminRoles = t.roleDefault.filter(r => ['Owner', 'Manager', 'Admin', 'Super Admin'].includes(r));
-  const adminNotice = adminRoles.length > 0
-    ? `\nRole Administratif/Pengawas Baku: ${adminRoles.join(', ')} (memiliki izin penuh kelola akun staf & parameter layanan/harga)`
-    : '';
-
-  const adminGuidanceNotice = t.adminRoleGuidance
-    ? `\nPanduan Konsolidasi Role Administratif (Poin 50A): ${t.adminRoleGuidance}`
-    : '';
+  const adminNotice = `\nRole Sistem Wajib: ${REQUIRED_SYSTEM_ROLE} (satu-satunya role yang mengelola akun staf, role, dan permission)`;
 
   let variantNotice = '';
   if (matchedVariant) {
@@ -1422,16 +1496,12 @@ export function formatTemplateContextForIdeation(match: TemplateMatchResult): st
 Pola Bisnis: "${t.nama}" (${t.deskripsi})${variantNotice}
 Modul & Section:
 ${moduleSectionsText}
-Rekomendasi Role: ${rolesSummary}${adminNotice}${adminGuidanceNotice}
+Rekomendasi Role: ${rolesSummary}${adminNotice}
 Alur Kerja: ${t.workflow.slice(0, 4).join(' → ')}
 
-PANDUAN EKSPLORASI & KONSOLIDASI ROLE (POIN 47, 48, 50A):
-1. Gunakan modul & section di atas untuk mengusulkan peran dan alur secara konkret (2-4 kalimat). DILARANG bertanya terbuka. DILARANG menyebutkan kode internal kepada pengguna.
-2. KONSOLIDASI ROLE ADMINISTRATIF (POIN 50A): Ikuti panduan konsolidasi role administratif di atas. Jangan menyalin seluruh role administratif berlapis (Owner, Manager, Admin, Director, dll) sekaligus untuk bisnis skala kecil-menengah. Gunakan 1 role "Admin" (atau "Owner") terpadu kecuali pengguna secara eksplisit meminta struktur manajemen multi-cabang/bertingkat.
-3. CEK ROLE ADMIN SEBELUM MENAWARKAN (ANTI-REDUNDAN POIN 48):
-   - Jika dalam usulan Anda SUDAH ADA role 'Admin', 'Owner', atau 'Manager' (contoh: 1. Admin, 2. Dokter, 3. Pasien), DILARANG KERAS menambahkan kalimat tawaran Admin terpisah di bawahnya. Cukup tutup dengan pertanyaan persetujuan umum.
-   - HANYA tawarkan role Admin terpisah JIKA daftar peran yang dibahas/diusulkan berisi 3+ peran operasional MURNI TANPA role Admin/Owner/Manager sama sekali. Jika ditolak, jangan paksa. Jika hanya 1-2 peran, jangan tawarkan Admin.`;
+ PANDUAN EKSPLORASI & KONSOLIDASI ROLE:
+ 1. Gunakan modul & section di atas untuk mengusulkan peran dan alur secara konkret (2-4 kalimat). DILARANG bertanya terbuka. DILARANG menyebutkan kode internal kepada pengguna.
+ 2. Selalu mulai dari role sistem "Super Admin", lalu tambahkan role bisnis/operasional yang relevan.
+ 3. Jangan menggunakan role generik "Admin". Untuk kegiatan harian gunakan nama pekerjaan seperti "Petugas", "Kasir", atau "Petugas Sewa".
+ 4. Owner dan Manager bersifat opsional dan tidak boleh diberi akses membuat akun staf atau mengubah permission.`;
 }
-
-
-

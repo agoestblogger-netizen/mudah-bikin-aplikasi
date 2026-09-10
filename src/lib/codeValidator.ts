@@ -4,6 +4,7 @@
  */
 
 import { cleanConversationalLeaks } from './cleanLeaks';
+import { isSuperAdminRole } from './rolePolicy';
 
 export interface ValidationReport {
   isValid: boolean;
@@ -334,7 +335,7 @@ function eksekusiHapus() {
         `ROLE_GATING_MISSING_DATA_ATTR: Ditemukan ${tabBtnsWithoutAccessRoles.length} tombol tab-btn TANPA atribut data-access-roles. ` +
         `WAJIB tambahkan data-access-roles="RoleA,RoleB" pada SETIAP <button class="tab-btn"> ` +
         `agar filterTabsByRole() bekerja generik tanpa hardcoded getElementById. ` +
-        `Contoh: data-access-roles="Admin,Dokter"`
+        `Contoh: data-access-roles="Super Admin,Dokter"`
       );
     }
 
@@ -355,7 +356,7 @@ function eksekusiHapus() {
         );
       }
 
-      // Auto-repair cerdas: Ubah label tab peran mentah (misal: "👥 Admin" -> "👥 Kelola Data", "💳 Anggota" -> "🪪 Kartu Anggota Digital")
+      // Auto-repair cerdas: Ubah label tab peran mentah (misal: "⚙️ Super Admin" -> "⚙️ Kelola Sistem", "💳 Anggota" -> "🪪 Kartu Anggota Digital")
       for (const role of expectedRoles!) {
         const rLower = role.trim().toLowerCase();
         // Regex cari button tab dengan inner text nama peran (bisa diawali emoji)
@@ -363,7 +364,7 @@ function eksekusiHapus() {
         repairedHtml = repairedHtml.replace(roleBtnRegex, (match, openTag, emoji, closeTag) => {
           const cleanEmoji = emoji ? emoji.trim() + ' ' : '';
           if (rLower === 'admin' || rLower === 'superadmin' || rLower === 'pengelola') {
-            return `${openTag}${cleanEmoji || '👥 '}Kelola Data${closeTag}`;
+            return `${openTag}${cleanEmoji || '⚙️ '}Kelola Sistem${closeTag}`;
           } else if (rLower === 'anggota' || rLower === 'member' || rLower === 'user') {
             return `${openTag}${cleanEmoji || '🪪 '}Kartu Anggota Digital${closeTag}`;
           } else if (rLower === 'kasir') {
@@ -449,7 +450,7 @@ function eksekusiHapus() {
           issues.push(
             `NO_ROLE_ISOLATION: Seluruh tombol tab memiliki data-access-roles="${expectedRoles!.join(',')}". ` +
             `DILARANG mencampur semua peran di setiap tab! Setiap peran WAJIB memiliki tab spesifik miliknya sendiri ` +
-            `(misal: Tab Admin untuk kelola data master, Tab Anggota untuk kartu digital & status pribadi).`
+            `(misal: Tab Super Admin untuk kelola sistem, Tab Anggota untuk kartu digital & status pribadi).`
           );
         }
       }
@@ -503,6 +504,7 @@ function eksekusiHapus() {
     // 10b. Pemeriksaan Kontaminasi Peran & Form Login Produksi (Poin 44 & 45: Single Source of Truth dari Brief Kebutuhan)
     if (expectedRoles && expectedRoles.length > 0) {
       const normalizedExpected = expectedRoles.map(r => r.trim().toLowerCase());
+      const hasRequiredSuperAdmin = expectedRoles.some(isSuperAdminRole);
       
       // Ambil semua role yang didefinisikan di JS (DEMO_ACCOUNTS, loginAs, dll) & HTML
       const loginAsCalls = [...repairedHtml.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1].trim());
@@ -513,7 +515,30 @@ function eksekusiHapus() {
 
       const allFoundRoles = [...new Set([...loginAsCalls, ...jsLoginAsCalls, ...demoAccountRoles, ...tabAccessRoles])];
 
-      // Deteksi role asing / tercemar (misal: Washer / Kasir / Admin di app klinik)
+      // Manajemen akun staf adalah capability eksklusif Super Admin.
+      if (hasRequiredSuperAdmin) {
+        const accountManagementTerms = /akun\s+staf|kelola\s+(?:akun|pengguna|user)|manajemen\s+(?:akun|pengguna|user)|role\s*&\s*permission|hak\s+akses|tambah\s+staf|hapus\s+staf|nonaktifkan\s+akun/i;
+        const gatedButtons = [...repairedHtml.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)];
+        const managementButtons = gatedButtons.filter((match) => accountManagementTerms.test(match[2].replace(/<[^>]+>/g, ' ')));
+
+        if (managementButtons.length === 0 || !accountManagementTerms.test(repairedHtml)) {
+          issues.push(
+            'SUPER_ADMIN_MANAGEMENT_MISSING: Aplikasi wajib menyediakan area manajemen akun staf, role, dan permission untuk role Super Admin.'
+          );
+        }
+
+        for (const match of managementButtons) {
+          const access = match[1].match(/data-access-roles\s*=\s*["']([^"']+)["']/i)?.[1] || '';
+          const accessRoles = access.split(',').map((role) => role.trim()).filter(Boolean);
+          if (!accessRoles.some(isSuperAdminRole) || accessRoles.some((role) => !isSuperAdminRole(role))) {
+            issues.push(
+              `STAFF_ACCOUNT_ACCESS_LEAK: Tombol manajemen akun staf/permission hanya boleh memiliki data-access-roles="Super Admin" (saat ini: "${access || 'tidak ada'}").`
+            );
+          }
+        }
+      }
+
+      // Deteksi role asing / tercemar (misal: Washer / Kasir / Super Admin di app klinik)
       allFoundRoles.forEach(foundRole => {
         if (!foundRole) return;
         const isMatched = normalizedExpected.some(exp => exp === foundRole.toLowerCase() || foundRole.toLowerCase().includes(exp) || exp.includes(foundRole.toLowerCase()));

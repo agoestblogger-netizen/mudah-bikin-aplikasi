@@ -14,6 +14,13 @@ import {
 import { OPENROUTER_API_BASE, OPENAI_API_BASE } from '@/lib/modelConfig';
 import type { AIProvider } from '@/lib/modelConfig';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
+import {
+  ensureRequiredSystemRole,
+  formatRolePolicyForPrompt,
+  isSuperAdminRole,
+  REQUIRED_SYSTEM_ROLE,
+  standardizeBriefRoleNames
+} from '@/lib/rolePolicy';
 
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
@@ -250,10 +257,11 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
     }
   }
 
-  const roles: string[] = [];
+  let roles: string[] = [];
   let publicRole: string | null = null;
 
   if (lastBriefMsg) {
+    rawBrief = standardizeBriefRoleNames(rawBrief);
     // Cari section Job Description & Struktur Halaman
     const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
     const jobDescText = jobDescMatch ? jobDescMatch[1] : lastBriefMsg;
@@ -290,6 +298,9 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
       }
     }
   }
+
+  // Super Admin adalah role sistem wajib, termasuk saat brief awal belum menyebutkannya.
+  roles = ensureRequiredSystemRole(roles);
 
   // Tentukan apakah ada peran publik (Pasien, Pelanggan, Customer, Tamu, Publik, dll)
   for (const r of roles) {
@@ -365,9 +376,14 @@ export async function POST(req: Request) {
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
     const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
     
+    // Deteksi Permintaan Penyesuaian Skenario / Update Brief oleh Pengguna
+    const isAdjustScenarioRequest = /(sesuaikan\s+skenario|penyesuaian\s+skenario|update\s+brief|perbarui\s+brief|simpan\s+catatan|sesuaikan\s+alur|saya\s+telah\s+(?:menyesuaikan|mengubah)\s+rincian\s+brief)/i.test(prompt);
+
     // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Permintaan Pembuatan Prototipe
-    const isConfirmationApproval = /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
-      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim());
+    const isConfirmationApproval = !isAdjustScenarioRequest && (
+      /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
+      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim())
+    );
 
     // GATE ALUR PLAN VS BUILD (Sama seperti di OpenCode):
     // Jika brief sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
@@ -390,13 +406,9 @@ export async function POST(req: Request) {
     // Deteksi Persetujuan Ringkas Pengguna terhadap Usulan Konsultan di Tahap Diskusi
     const isUserAgreeingToProposal = /(^|\b)(ya|iya|sudah|pas|cocok|setuju|ok|oke|sip|lanjut|bisa|sesuai|siap|cukup|ikut saja|terserah|sop|standar|buatkan|buatkan brief|rangkum)($|\b)/i.test(prompt.trim());
 
-    // Deteksi Apakah Prompt Awal Pengguna Menyebut 3+ Role Operasional Tanpa Role Pengawas (Poin 47)
-    const hasAdminMention = /(admin|superadmin|super\s+admin|owner|manager|pengawas)/i.test(prompt + '\n' + allHistoryText);
-    const hasExplicitNoAdmin = /(tanpa\s+admin|tidak\s+perlu\s+admin|gak\s+usah\s+admin|jangan\s+ada\s+admin|cukup\s+role\s+ini|hanya\s+role\s+ini|tidak\s+usah\s+admin)/i.test(prompt + '\n' + allHistoryText);
-    const operationalRoleKeywords = ['dokter', 'perawat', 'bidan', 'apoteker', 'farmasi', 'receptionist', 'resepsionis', 'kasir', 'washer', 'kurir', 'barista', 'koki', 'waiter', 'pelayan', 'mekanik', 'montir', 'guru', 'siswa', 'murid', 'pasien', 'pelanggan', 'customer', 'tamu', 'terapis', 'staff', 'staf'];
-    const matchedOpsRoles = operationalRoleKeywords.filter(k => (prompt + '\n' + allHistoryText).toLowerCase().includes(k));
-    const has3PlusOperationalRoles = matchedOpsRoles.length >= 3;
-    const shouldAskAdminFirst = has3PlusOperationalRoles && !hasAdminMention && !hasExplicitNoAdmin && userMessageCount < 2 && !isUserAgreeingToProposal;
+    // Super Admin adalah role wajib platform; AI tidak perlu menawarkannya
+    // sebagai pertanyaan tambahan atau menunggu persetujuan pengguna.
+    const shouldAskAdminFirst = false;
 
     // Deteksi Apakah Prompt Awal Pengguna BENAR-BENAR SANGAT DETAIL:
     // WAJIB panjang > 200 karakter DAN secara eksplisit merinci target peran/user/masalah DAN daftar fitur/alur secara bersamaan.
@@ -499,9 +511,23 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
    - MULTI-TAB ALUR PROSES (POIN 51): Jika role memiliki 2 tab/halaman atau lebih, Alur Proses WAJIB melibatkan perpindahan antar-tab (contoh: [Aksi Tab 1] → [Status Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 sub-baris: "- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ...". Batasi maksimal 6-8 langkah total.
    - DILARANG KERAS memisahkan "Alur Proses" menjadi heading role tersendiri (format '* **Alur Proses**:'). Alur proses SELALU menjadi anak (sub-item) dengan indentasi strip (-) di bawah role terkait.
    - DILARANG membuat heading role kosong.
-3. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
-4. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
-5. Akui revisi pengguna dengan ramah (1-2 kalimat), lalu tampilkan kembali lembar "Brief Kebutuhan" yang telah diperbarui dengan format PERSIS:
+3. ATURAN MUTLAK SIKLUS OPERASIONAL DUA SISI & KELENGKAPAN EVENT/ACTION (TWO-WAY BUSINESS LIFECYCLE):
+   - DILARANG KERAS membuat alur operasional yang "buntung" (hanya satu sisi):
+     * SEWA / RENTAL / PEMINJAMAN (Sepeda, Mobil, Motor, Buku, Kamera, dll):
+       WAJIB LENGKAP DUA SISI:
+       a. Sisi Pinjam/Sewa (Check-out): Data penyewa, unit barang yang dipilih, durasi sewa, tanggal kembali, uang jaminan/deposit. Action: \`onclick: Catat Peminjaman / Mulai Sewa Unit\`. Status unit berubah dari "Tersedia" menjadi "Sedang Disewa".
+       b. Sisi Pengembalian (Check-in & Denda — WAJIB ADA): Form pengembalian barang, pemeriksaan kondisi fisik (Bagus / Lecet / Rusak), kalkulasi denda otomatis jika terlambat, penyelesaian uang deposit, tombol \`onclick: Selesaikan Pengembalian & Cek Fisik\`, \`onclick: Hitung Denda Keterlambatan\`. Status unit otomatis kembali jadi "Tersedia".
+     * JASA / SERVICE / BENGKEL / LAUNDRY:
+       WAJIB ADA: Penerimaan/Antrean -> Pengerjaan -> QC Selesai -> Penyerahan/Kasir Pembayaran.
+     * TRANSAKSI JUAL-BELI / POS:
+       WAJIB ADA: Pilih Produk/Keranjang -> Kasir Pembayaran, Cetak Struk, dan Pengurangan Stok Otomatis.
+     * BOOKING / RESERVASI:
+       WAJIB ADA: Booking Jadwal/Slot -> Check-in Kedatangan / Verifikasi Tamu.
+   - Action / Event pada setiap tab WAJIB menggunakan aksi nyata bertanda \`onclick: [Nama Tombol] ([deskripsi aksi])\`, DILARANG hanya menulis teks umum tanpa aksi tombol.
+4. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
+5. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
+6. Akui perubahan pengguna dengan ramah (1-2 kalimat), lalu sesuaikan skenario alur kerja aplikasi (Alur Proses per role, interaksi antar-tab, rincian field input & action) secara LENGKAP & UTUH berdasarkan peran dan checklist yang disimpan pengguna.
+   Tampilkan kembali lembar "Brief Kebutuhan" yang telah disesuaikan skenarionya secara LENGKAP dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi]
    - **Orientasi UI**: [Mobile-first / Desktop-first / Responsif, dengan alasan singkat]
@@ -539,7 +565,7 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
            - [x] onclick: [Nama Tombol] ([deskripsi aksi])
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi yang terlihat di layar] (jika 1 tab saja, alur fokus di tab tersebut)
 6. Tanyakan konfirmasi eksplisit di baris terakhir:
-   "Apakah lembar Brief Kebutuhan di atas sudah sesuai? Anda dapat langsung mencentang, mengedit catatan, atau menyesuaikan field & action pada editor di atas, lalu klik tombol 🚀 **Buat Prototipe Sesuai Checklist Ini** untuk mulai membuatnya."`;
+   "Apakah penyesuaian skenario dan lembar Brief Kebutuhan di atas sudah sesuai? Jika sudah pas, silakan klik tombol 🚀 **Buatkan Prototipe** untuk mulai membuatnya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
       } else if (isVeryDetailedInitialPrompt || userMessageCount >= 2 || (userMessageCount >= 1 && isUserAgreeingToProposal)) {
         // KONDISI 3: PROMPT AWAL SANGAT DETAIL (>200 chars) ATAU DISKUSI SUDAH 2+ PUTARAN / USER MENYETUJUI USULAN -> RANGKUM KE BRIEF KEBUTUHAN + SESI KONFIRMASI
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
@@ -553,7 +579,20 @@ ATURAN MUTLAK PERCAKAPAN:
    - ALUR PROSES 2 TAB (POIN 51): Jika role memiliki 2 tab/halaman, Alur Proses WAJIB melibatkan dan menghubungkan perpindahan antar-tab sebagai bagian dari alur kerja nyata (contoh: [Aksi di Tab 1] → [Status di Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol di Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 baris terpisah ("- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ..."). Batasi maks 6-8 langkah total.
    - Jika role hanya memiliki 1 tab: Alur Proses fokus di 1 tab tersebut (3-5 langkah).
    - Setiap langkah WAJIB menyebutkan nama tombol dalam tanda kutip dan status konkret yang berubah.
-4. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
+4. ATURAN MUTLAK SIKLUS OPERASIONAL DUA SISI & KELENGKAPAN EVENT/ACTION (TWO-WAY BUSINESS LIFECYCLE):
+   - DILARANG KERAS membuat alur operasional yang "buntung" (hanya satu sisi). Model bisnis nyata selalu memiliki siklus tertutup:
+     * SEWA / RENTAL / PEMINJAMAN (Sepeda, Mobil, Motor, Buku, Kamera, dll):
+       WAJIB LENGKAP DUA SISI:
+       a. Sisi Pinjam/Sewa (Check-out): Data penyewa, unit barang yang dipilih, durasi sewa, tanggal kembali, uang jaminan/deposit. Action: \`onclick: Catat Peminjaman / Mulai Sewa Unit\`. Status unit berubah dari "Tersedia" menjadi "Sedang Disewa".
+       b. Sisi Pengembalian (Check-in & Denda — WAJIB ADA): Form pengembalian barang, pemeriksaan kondisi fisik (Bagus / Lecet / Rusak), kalkulasi denda otomatis jika terlambat, penyelesaian uang deposit, tombol \`onclick: Selesaikan Pengembalian & Cek Fisik\`, \`onclick: Hitung Denda Keterlambatan\`. Status unit otomatis kembali jadi "Tersedia".
+     * JASA / SERVICE / BENGKEL / LAUNDRY:
+       WAJIB ADA: Penerimaan/Antrean -> Pengerjaan -> QC Selesai -> Penyerahan/Kasir Pembayaran.
+     * TRANSAKSI JUAL-BELI / POS:
+       WAJIB ADA: Pilih Produk/Keranjang -> Kasir Pembayaran, Cetak Struk, dan Pengurangan Stok Otomatis.
+     * BOOKING / RESERVASI:
+       WAJIB ADA: Booking Jadwal/Slot -> Check-in Kedatangan / Verifikasi Tamu.
+   - Action / Event pada setiap tab WAJIB menggunakan aksi nyata bertanda \`onclick: [Nama Tombol] ([deskripsi aksi])\`, DILARANG hanya menulis teks umum tanpa aksi tombol.
+5. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi yang menarik & relevan]
    - **Orientasi UI**: [Mobile-first / Desktop-first / Responsif, dengan alasan singkat]
@@ -590,8 +629,8 @@ ATURAN MUTLAK PERCAKAPAN:
          * Action / Event:
            - [x] onclick: [Nama Tombol] ([deskripsi aksi])
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (jika 1 tab, alur fokus di tab tersebut; langkah menunggu pasif ditulis sebagai konsekuensi: "saat [Role Lain] klik X, status berubah jadi Y")
-5. WAJIB tanyakan konfirmasi di baris terakhir:
-   "Apakah lembar Brief Kebutuhan di atas sudah sesuai? Anda dapat langsung mencentang, mengedit catatan, atau menyesuaikan field & action pada editor di atas, lalu klik tombol 🚀 **Buat Prototipe Sesuai Checklist Ini** untuk mulai membuatnya."`;
+6. WAJIB tanyakan konfirmasi di baris terakhir:
+   "Apakah penyesuaian skenario dan lembar Brief Kebutuhan di atas sudah sesuai? Jika sudah pas, silakan klik tombol 🚀 **Buatkan Prototipe** untuk mulai membuatnya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
       } else {
         // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
@@ -603,29 +642,23 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
 3. NADA KOMUNIKASI WAJIB: BERIKAN USULAN KONKRET DULU, JANGAN PERNAH MELEMPAR BEBAN BERPIKIR KE USER!
    - DILARANG bertanya dengan nada pasif atau kata-kata terbuka seperti "apakah sudah Anda pikirkan/pertimbangkan?", "bagaimana konsep yang Anda inginkan?", atau "apa fitur yang ingin dibuat?".
    - Karena Anda sudah memiliki acuan struktur modul & peran dari blueprint bisnis, Anda WAJIB langsung MENGUSULKAN pembagian peran dan fitur operasional secara konkret.
+   - PANDUAN SIKLUS TERTUTUP (TWO-WAY LIFECYCLE): Jika model bisnis berupa RENTAL / SEWA / PEMINJAMAN (sepeda, mobil, motor, buku, kamera), usulan alur kerja WAJIB mencakup siklus lengkap dua sisi: Peminjaman (Check-out) DAN Pengembalian (Check-in) beserta pemeriksaan kondisi fisik dan kalkulasi denda keterlambatan.
 
 4. STRUKTUR RESPONS EKSPLORASI IDE (WAJIB IKUTI 3 BAGIAN INI — POIN 47 & 48):
    - BAGIAN 1 (APRESIASI): Sapa & akui ide bisnis pengguna dengan hangat & antusias (1 kalimat).
    - BAGIAN 2 (USULAN ROLE): Usulkan / rangkum pembagian peran konkret beserta tugas utamanya (2-3 kalimat atau list ringkas).
-   - BAGIAN 3 (PENUTUP & KONFIRMASI — PILIH PERSIS SALAH SATU DARI 3 KONDISI BERIKUT):
-     * KONDISI A (Jika di dalam daftar peran yang baru saja Anda sebutkan SUDAH ADA role Admin/Super Admin/Owner/Manager):
-       Tutup LANGSUNG dengan 1 pertanyaan persetujuan umum:
-       "Apakah pembagian peran dan alur kerja ini sudah cukup pas untuk usaha Anda, atau ada peran/penyesuaian lain yang ingin ditambahkan?" (DILARANG KERAS menambahkan kalimat tawaran Admin terpisah di bawahnya).
-     * KONDISI B (Jika peran yang dibahas/diajukan pengguna berisi 3 ROLE OPERASIONAL ATAU LEBIH TANPA role Admin/Owner/Manager, contoh: Dokter, Receptionist, Staf Farmasi, Pasien):
-       Tutup WAJIB DENGAN TAWARAN PROAKTIF 1 ROLE ADMIN (Poin 47):
-       "Selain peran operasional di atas, biasanya aplikasi seperti ini juga butuh 1 role Admin yang mengelola akun staf dan parameter layanan (harga, jenis layanan, tarif, dll) — supaya perubahan kecil tidak perlu ubah kode. Mau ditambahkan sebagai role terpisah, atau digabung ke salah satu role yang sudah ada?"
-     * KONDISI C (Jika aplikasi hanya memiliki 1-2 role sederhana, contoh: Kasir + Pembeli, atau single-user):
-       Tutup dengan 1 pertanyaan persetujuan umum (DILARANG menawarkan role Admin).
-
-5. JIKA PENGGUNA MENOLAK/MERASA TIDAK PERLU ROLE ADMIN ("tidak perlu admin", "tanpa admin", "cukup role ini saja", "tidak usah"): AI DILARANG MEMAKSA. Cukup tawarkan 1 kali. Jika ditolak, lanjutkan tanpa role Admin dan jangan pernah menanyakan lagi.
-6. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
+    - BAGIAN 3 (PENUTUP & KONFIRMASI):
+      Tutup dengan 1 pertanyaan persetujuan umum setelah mengusulkan "Super Admin" sebagai role sistem wajib dan role operasional sesuai kebutuhan bisnis.
+      Jangan menanyakan apakah Super Admin perlu ditambahkan karena role tersebut selalu ada.
+ 5. Jangan membuat role generik "Admin". Gunakan "Super Admin" untuk pengaturan sistem dan nama pekerjaan nyata seperti "Petugas", "Kasir", atau "Petugas Sewa" untuk operasi harian.
+ 6. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
       }
 
       // Suntikkan blueprint terstruktur atau ringkasan katalog internal untuk memandu dialog
       if (blueprintContext) {
         systemPrompt += `\n\n${blueprintContext}`;
       } else {
-        systemPrompt += `\n\n=== KATALOG RINGKAS 20 BLUEPRINT INDUSTRI (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
+        systemPrompt += `\n\n=== KATALOG RINGKAS BLUEPRINT INDUSTRI & ARKETIPE BISNIS (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
       }
 
       // Suntikkan Panduan Standar UX & Prioritas Informasi (Fase D-1)
@@ -647,7 +680,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 2. FUNGSIONAL PENUH PADA SETIAP TITIK RILIS / REVISI: Tombol aksi (Tambah, Edit, Hapus) WAJIB berfungsi nyata memanipulasi array state di memori dan memanggil \`render()\` di baris terakhir. Tipe data ID konsisten string.
 3. ANTI-CUTOFF: Render loop .map() pada tabel / kartu list dari 3-5 item dummy tersebut. Jangan hardcode baris tabel secara manual di HTML, render melalui JS loop.
 4. 3 CHECKLIST EKSPLISIT: Data, Tombol/Aksi, Login/Akses.
-5. FITUR ADMIN DI-GATE: Fitur Tambah User aktif tapi tersembunyi di balik role Admin.
+  5. FITUR SUPER ADMIN DI-GATE: Fitur Tambah User aktif tetapi hanya terlihat oleh role "Super Admin".
 6. LOGIN TANPA KREDENSIAL DEFAULT: Dilarang pakai admin/123 global.
 7. DILARANG confirm(), alert(), prompt() BAWAAN BROWSER: Wajib gunakan modal/banner HTML kustom.
 8. DUMMY DATA BARRIER: Data contoh mockup tidak dikirim ke Google Sheets sungguhan.
@@ -1013,7 +1046,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         <div style="margin-top: 24px; background: #f1f5f9; border-radius: 12px; padding: 16px; font-size: 13px; text-align: left; color: #334155; line-height: 1.6;">
           <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px;">🔑 Akun Demo Staf:</div>
           <!-- Setiap baris role dapat diklik untuk Quick Login instan -->
-          <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('admin', 'admin123')">• Admin: <code style="color: #4f46e5; font-weight: 600;">admin / admin123</code></div>
+          <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('superadmin', 'superadmin123')">• Super Admin: <code style="color: #4f46e5; font-weight: 600;">superadmin / superadmin123</code></div>
           <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('kasir', 'kasir123')">• Kasir: <code style="color: #4f46e5; font-weight: 600;">kasir / kasir123</code></div>
         </div>
 
@@ -1158,13 +1191,13 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
    - Dari layar login itulah pengguna memilih/masuk sebagai akun peran lain.
 
 2. LABEL TOMBOL TAB ADALAH NAMA FITUR, BUKAN NAMA PERAN:
-   - DILARANG KERAS menamai tombol tab dengan nama peran mentah (misal: tombol tab bertuliskan "Admin" atau "Anggota")!
+   - DILARANG KERAS menamai tombol tab dengan nama peran mentah (misal: tombol tab bertuliskan "Super Admin" atau "Anggota")!
    - Tombol tab di dalam aplikasi adalah NAVIGASI FITUR sesuai Job Description di Brief Kebutuhan:
-     * Contoh Tab Admin: <button class="tab-btn" data-access-roles="Admin" onclick="showTab('tab-anggota')">👥 Data Anggota</button>, <button class="tab-btn" data-access-roles="Admin" onclick="showTab('tab-laporan')">📊 Laporan & Kas</button>
+      * Contoh Tab Super Admin: <button class="tab-btn" data-access-roles="Super Admin" onclick="showTab('tab-anggota')">👥 Data Anggota</button>, <button class="tab-btn" data-access-roles="Super Admin" onclick="showTab('tab-laporan')">📊 Laporan & Kas</button>
      * Contoh Tab Anggota: <button class="tab-btn" data-access-roles="Anggota" onclick="showTab('tab-profil')">🪪 Kartu Anggota Digital</button>, <button class="tab-btn" data-access-roles="Anggota" onclick="showTab('tab-iuran')">💳 Riwayat Iuran</button>
 
 3. ISOLASI TOTAL HAK AKSES PER ROLE (ZERO ROLE LEAKAGE):
-   - Setiap tombol tab WAJIB memiliki atribut \`data-access-roles="NamaPeran"\` (contoh: data-access-roles="${officialRoles[0] || 'Admin'}").
+   - Setiap tombol tab WAJIB memiliki atribut \`data-access-roles="NamaPeran"\` (contoh: data-access-roles="${officialRoles[0] || 'Super Admin'}").
    - Fungsi filterTabsByRole(role) WAJIB menyembunyikan (display: none) seluruh tab yang data-access-roles-nya TIDAK mencantumkan peran aktif!
    - Saat pengguna login sebagai "Anggota", tab-tab milik "Admin" WAJIB 100% TERSEMBUNYI! Pengguna "Anggota" HANYA melihat tab fitur miliknya (misal: Kartu Digital, Profil Pribadi, Iuran Saya).
    - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Tambah/Edit/Hapus seluruh anggota) pada tampilan Anggota!
@@ -1181,7 +1214,7 @@ ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES P
 
 ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK (WAJIB DIPATUHI — POIN 52):
 1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
-2. DILARANG KERAS menambahkan role generic (Admin, Kasir, Washer, Petugas, Owner, Manager) jika TIDAK ADA di daftar resmi di atas!
+2. DILARANG KERAS menambahkan role generic (Admin, Kasir, Washer, Petugas, Owner, Manager) jika TIDAK ADA di daftar resmi di atas. Role "Super Admin" adalah pengecualian wajib dan selalu ada!
 3. TAMPILAN AWAL: LAYAR LOGIN DI TENGAH LAYAR (#loginScreen — WAJIB PERSIS GAMBAR 2):
    - Aplikasi WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN (#loginScreen) di tengah layar saat pertama kali dibuka (PERSIS SEPERTI GAMBAR 2).
    - Container aplikasi (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
@@ -1234,6 +1267,10 @@ ${staffLandingGuide}
        c) Tampilan Data Utama: Data Table Interaktif (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data.
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
   6. Styling CSS modern murni tanpa Tailwind Play CDN, responsive layout, event handler 100% selaras.
+  7. SIKLUS OPERASIONAL LENGKAP DUA SISI (TWO-WAY LIFECYCLE):
+     * Jika aplikasi bertema Rental / Sewa / Peminjaman (sepeda, mobil, motor, buku, kamera):
+       - WAJIB memiliki alur Mulai Sewa (Check-out) DAN Pengembalian (Check-in).
+       - Pada tabel transaksi sewa aktif, sediakan tombol aksi "Kembalikan" yang membuka modal pengembalian unit, mencatat kondisi fisik (Bagus/Rusak), menghitung denda jika terlambat, dan mengembalikan status unit kembali menjadi "Tersedia".
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
 
       } else if (stage === 'TAHAP_5_PATCH') {
@@ -1248,8 +1285,9 @@ ${staffLandingGuide}
 - SINKRONISASI BRIEF KEBUTUHAN & PEMISAHAN PERAN (MUTLAK):
   * Jika pengguna melaporkan peran tidak sesuai dengan brief atau meminta sinkronisasi, Anda WAJIB memeriksa lembar Brief Kebutuhan resmi di atas.
   * Pastikan setiap peran (${officialRoles.join(', ')}) memiliki tab navigasi terpisah (<button class="tab-btn" data-access-roles="...">) dan tampilan UI yang sesuai dengan Job Description masing-masing peran di Brief Kebutuhan.
-  * Role admin/pengelola mendapatkan fitur manajemen data (tabel seluruh data, tombol tambah/edit/hapus).
-  * Role non-admin (misal: "Anggota") HANYA mendapatkan tampilan data miliknya (misal: Profil/Kartu Digital Anggota, Iuran Saya), DILARANG menampilkan tombol edit/hapus seluruh data anggota.
+   * Role "Super Admin" mendapatkan fitur akun staf, role, permission, konfigurasi, dan manajemen data penuh.
+   * Owner, Manager, dan petugas tidak boleh mendapatkan fitur membuat, mengubah, menonaktifkan, atau menghapus akun staf.
+   * Role eksternal (misal: "Anggota") HANYA mendapatkan tampilan data miliknya (misal: Profil/Kartu Digital Anggota, Iuran Saya), DILARANG menampilkan tombol edit/hapus seluruh data anggota.
 - KEPATUHAN POLA UI SPESIFIK (PRINSIP 15 & 22): Jika pengguna meminta pola UI spesifik (misal: tab navigasi, antrian, kasir), WAJIB implementasikan PERSIS pola tersebut.
 - PERINGATAN INTEGRITAS FUNGSIONAL: Anda WAJIB mempertahankan SEMUA kode JavaScript yang sudah berfungsi sebelumnya (array data 3-5 item contoh, render(), tambahItem, editItem, hapusItem, modal, event listener).
 - DILARANG KERAS menghilangkan fungsi-fungsi JavaScript atau mengosongkan tag <script> saat melakukan revisi styling CSS atau HTML.
@@ -1262,6 +1300,10 @@ ${staffLandingGuide}
 - Berikan diagnosa akar penyebab dan langkah solusi spesifik.`;
       }
     }
+
+    // Kebijakan role global ditempatkan di bagian akhir agar mengalahkan
+    // referensi template lama yang masih menyebut Admin/Owner sebagai admin sistem.
+    systemPrompt += `\n${formatRolePolicyForPrompt()}`;
 
     const useUserKey = Boolean(userApiKey && userApiKey.trim());
     const provider: AIProvider = ['openrouter', 'openai', 'gemini'].includes(userProvider) ? userProvider : 'openrouter';
@@ -2035,7 +2077,7 @@ body: JSON.stringify({
           }
         }
         if (displayRoles.length === 0) {
-          displayRoles = ['Admin', 'Petugas / Anggota'];
+          displayRoles = [REQUIRED_SYSTEM_ROLE, 'Petugas / Anggota'];
         }
 
         let credentialsGuide = '\n\n🔑 **Akun Demo & Kredensial Login (Username & Password):**\nSilakan gunakan akun demo di bawah ini untuk mencoba prototipe pada Canvas Preview:\n';
@@ -2054,7 +2096,9 @@ body: JSON.stringify({
           } else {
             const u = r.toLowerCase().replace(/[^a-z0-9]/g, '') || 'admin';
             const pass = `${u}123`;
-            const desc = /admin/i.test(r) ? 'Akses Penuh (Kelola data & laporan)' : 'Akses Operasional & input data';
+            const desc = isSuperAdminRole(r)
+              ? 'Akses sistem penuh, akun staf, role & permission'
+              : 'Akses operasional & input data';
             credentialsGuide += `\n| **${r}** | \`${u}\` | \`${pass}\` | ${desc} |`;
           }
         });
@@ -2068,7 +2112,7 @@ body: JSON.stringify({
         ? validated.issues.slice(0, 2).join('; ')
         : (isCodeIncomplete ? 'Kode HTML/JS terpotong di tengah jalan' : 'Pemeriksaan DOM ID & event handler tidak lolos');
       
-      cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
+       cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Super Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
     } else {
       cleanReplyText = sanitizeBriefKebutuhanText(assistantMessage.trim());
     }
