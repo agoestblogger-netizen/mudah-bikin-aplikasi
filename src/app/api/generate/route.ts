@@ -385,7 +385,7 @@ export async function POST(req: Request) {
       /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim())
     );
 
-    // GATE ALUR PLAN VS BUILD (Sama seperti di OpenCode):
+    // GATE ALUR PLAN VS BUILD:
     // Jika brief sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
     // Prototipe TIDAK BOLEH dibuat. AI wajib meminta user mengganti mode ke BUILD di dropdown.
     const isBriefApprovedWhileInPlanMode = Boolean(hasBriefPresented && isConfirmationApproval && isPlanMode);
@@ -461,13 +461,13 @@ ATURAN MUTLAK PERLAKUAN VARIAN ROLE:
     if (isIdeationMode) {
       if (isBriefApprovedWhileInPlanMode) {
         // KONDISI KHUSUS: BRIEF SUDAH LENGKAP & DISETUJUI, TETAPI MODE INPUT MASIH 'PLAN'
-        // Sistem menolak membuat prototipe dan meminta user mengganti mode ke BUILD (sama seperti di OpenCode)
+        // Sistem menolak membuat prototipe dan meminta user mengganti mode ke BUILD
         const appTitle = extractAppTitleFromChat(chatHistory) || 'ini';
         systemPrompt = `Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi".
 Pengguna baru saja menyetujui lembar Brief Kebutuhan atau meminta agar prototipe aplikasi dibuat.
 Namun, sistem mendeteksi bahwa dropdown mode saat ini MASIH berada di mode "Plan (Brief Kebutuhan)".
 
-ATURAN KERJA SISTEM (SAMA SEPERTI DI OPENCODE):
+ATURAN KERJA SISTEM:
 1. Mode "Plan" hanya difungsikan untuk berdiskusi, merancang ide, dan menyusun lembar Brief Kebutuhan.
 2. Di mode "Plan", sistem TIDAK DAPAT dan DILARANG menghasilkan kode prototipe aplikasi.
 3. Pembuatan kode prototipe HANYA DAPAT DILAKUKAN jika pengguna telah mengganti mode pengerjaan ke "Build (Prototype)" pada dropdown di samping kolom chat.
@@ -478,7 +478,7 @@ TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI DENGAN RAMAH, TEGAS & JELAS):
 2. Jelaskan bahwa Anda sudah siap membangun aplikasi ini, TETAPI karena dropdown chat saat ini masih dalam mode "Plan (Brief)", prototipe belum dapat dibuat.
 3. Berikan instruksi jelas kepada pengguna:
    "Silakan ubah dropdown mode di samping kolom chat dari **Plan (Brief)** menjadi **🛠️ Build (Prototype)**, lalu tekan tombol kirim atau konfirmasi untuk mulai membangun prototipe aplikasi Anda."
-4. Ingatkan bahwa pemisahan mode Plan dan Build ini diterapkan agar perencanaan kebutuhan matang terlebih dahulu sebelum kode mulai ditulis (sama seperti sistem di OpenCode).
+4. Ingatkan bahwa pemisahan mode Plan dan Build ini diterapkan agar perencanaan kebutuhan matang terlebih dahulu sebelum kode mulai ditulis.
 5. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript (\`\`\`html ... \`\`\`) di giliran ini!`;
       } else if (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval) {
         // KONDISI KHUSUS (POIN 38): GERBANG DIALOG UNTUK REVISI SIGNIFIKAN / PERTANYAAN EKSPLISIT SAAT MOCKUP SUDAH ADA
