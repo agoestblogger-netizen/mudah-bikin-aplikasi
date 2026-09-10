@@ -984,6 +984,12 @@ export default function AppWorkspacePage() {
   ) => {
     if (!activeSelection || activeSelection.kind !== 'element' || !activeSelection.elementUid) return;
     const elUid = activeSelection.elementUid;
+    const selectedTag = (activeSelection.tagName || '').toLowerCase();
+    const isFormControl = selectedTag === 'select' || selectedTag === 'input' || selectedTag === 'textarea';
+    if (patchType === 'textContent' && isFormControl) {
+      showToast('Edit teks langsung tidak berlaku untuk elemen form (select/input/textarea).', 'error');
+      return;
+    }
     const current = projectState.annotations || { marks: [], notes: [], patches: [] };
     const now = new Date().toISOString();
 
@@ -1081,6 +1087,12 @@ export default function AppWorkspacePage() {
     const cleanName = iconName.trim().toLowerCase();
     if (!cleanName) return;
 
+    const selectedTag = (activeSelection.tagName || '').toLowerCase();
+    if (selectedTag === 'select' || selectedTag === 'input' || selectedTag === 'textarea' || selectedTag === 'option') {
+      showToast('Ikon tidak bisa disisipkan ke elemen form ini. Pilih kontainer di sekitarnya.', 'error');
+      return;
+    }
+
     // 1. Sinkronkan ke canvasCode.html secara permanen
     const updatedHtml = insertIconIntoHtml(projectState.canvasCode.html, elUid, cleanName);
 
@@ -1114,6 +1126,12 @@ export default function AppWorkspacePage() {
     const elUid = activeSelection.elementUid;
     const cleanUrl = imageUrl.trim();
     if (!cleanUrl) return;
+
+    const selectedTag = (activeSelection.tagName || '').toLowerCase();
+    if (selectedTag === 'select' || selectedTag === 'input' || selectedTag === 'textarea' || selectedTag === 'option') {
+      showToast('Gambar tidak bisa disisipkan ke elemen form ini. Pilih kontainer di sekitarnya.', 'error');
+      return;
+    }
 
     // 1. Sinkronkan ke canvasCode.html secara permanen
     const updatedHtml = insertImageIntoHtml(projectState.canvasCode.html, elUid, cleanUrl, styleType);
@@ -1201,7 +1219,11 @@ export default function AppWorkspacePage() {
       };
 
       // 2. Ganti elemen di kode sumber HTML secara permanen
-      const updatedHtml = replaceElementInHtml(projectState.canvasCode.html, elUid, newElementHtml);
+      const replaceResult = replaceElementInHtml(projectState.canvasCode.html, elUid, newElementHtml);
+      if (!replaceResult.applied) {
+        throw new Error('Elemen tidak ditemukan di kode sumber atau hasil AI tidak valid. Silakan pilih ulang elemennya lalu coba lagi.');
+      }
+      const updatedHtml = replaceResult.html;
 
       // 3. Kirim pesan ke iframe untuk mengganti elemen secara in-place di live DOM
       iframeRef.current?.contentWindow?.postMessage(

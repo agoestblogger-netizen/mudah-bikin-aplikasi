@@ -1,3 +1,5 @@
+import { OD_UID_SELECTOR, ensureOdUids } from './odUid';
+
 export type PatchType =
   | 'textColor'
   | 'textContent'
@@ -16,27 +18,7 @@ export interface SinglePatch {
   createdAt: string;
 }
 
-export const ALLOWED_OD_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small,div,section,form,header,nav,main,aside,footer,table,tbody,tr,ul,ol';
-
-function ensureOdUids(doc: Document) {
-  const existingUids = new Set<string>();
-  doc.querySelectorAll('[data-od-uid]').forEach((el) => {
-    const uid = el.getAttribute('data-od-uid');
-    if (uid) existingUids.add(uid);
-  });
-  let counter = 0;
-  const els = Array.from(doc.querySelectorAll(ALLOWED_OD_SELECTOR));
-  els.forEach((el) => {
-    if (!el.hasAttribute('data-od-uid')) {
-      while (existingUids.has('e' + counter)) {
-        counter++;
-      }
-      const newUid = 'e' + counter;
-      el.setAttribute('data-od-uid', newUid);
-      existingUids.add(newUid);
-    }
-  });
-}
+export const ALLOWED_OD_SELECTOR = OD_UID_SELECTOR;
 
 /**
  * Menerapkan patches visual langsung ke dalam string HTML sumber secara permanen.
@@ -152,11 +134,17 @@ export function stripOdUids(html: string): string {
 /**
  * Mengganti satu elemen target secara bedah (surgical) berdasarkan elementUid
  * dengan cuplikan HTML baru di dalam string HTML sumber secara permanen.
+ * Mengembalikan `applied: false` bila target tidak ditemukan atau output AI tidak valid,
+ * sehingga pemanggil tidak menampilkan sukses palsu.
  */
-export function replaceElementInHtml(html: string, elementUid: string, newElementHtml: string): string {
-  if (!html || !elementUid || !newElementHtml) return html;
+export function replaceElementInHtml(
+  html: string,
+  elementUid: string,
+  newElementHtml: string
+): { html: string; applied: boolean } {
+  if (!html || !elementUid || !newElementHtml) return { html, applied: false };
   if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
-    return html;
+    return { html, applied: false };
   }
 
   try {
@@ -174,15 +162,20 @@ export function replaceElementInHtml(html: string, elementUid: string, newElemen
 
     if (!target) {
       console.warn(`Elemen target dengan UID ${elementUid} tidak ditemukan di HTML.`);
-      return html;
+      return { html, applied: false };
     }
 
-    // Parse cuplikan HTML baru
+    // Parse cuplikan HTML baru. Wajib menghasilkan tepat satu elemen root
+    // agar penggantian tidak menghilangkan atau menggandakan konten.
     const tempDoc = parser.parseFromString(newElementHtml, 'text/html');
     const newEl = tempDoc.body.firstElementChild;
     if (!newEl) {
       console.warn('Cuplikan HTML baru tidak menghasilkan elemen valid.');
-      return html;
+      return { html, applied: false };
+    }
+    if (tempDoc.body.children.length > 1) {
+      console.warn('Cuplikan HTML baru memiliki lebih dari satu elemen root; penggantian dibatalkan.');
+      return { html, applied: false };
     }
 
     // Pastikan data-od-uid tetap terpasang pada elemen baru
@@ -194,13 +187,13 @@ export function replaceElementInHtml(html: string, elementUid: string, newElemen
     if (isFullDoc) {
       const hasDoctype = html.includes('<!DOCTYPE') || html.includes('<!doctype');
       const serialized = doc.documentElement.outerHTML;
-      return hasDoctype ? `<!DOCTYPE html>\n${serialized}` : serialized;
+      return { html: hasDoctype ? `<!DOCTYPE html>\n${serialized}` : serialized, applied: true };
     } else {
-      return doc.body.innerHTML;
+      return { html: doc.body.innerHTML, applied: true };
     }
   } catch (err) {
     console.error('Gagal mengganti elemen bedah di HTML:', err);
-    return html;
+    return { html, applied: false };
   }
 }
 

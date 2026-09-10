@@ -1,4 +1,5 @@
 import { cleanConversationalLeaks } from './cleanLeaks';
+import { OD_UID_SELECTOR, assignOdUidsToHtml } from './odUid';
 
 /**
  * Helper untuk menyusun HTML yang valid, modern, dan mandiri (Zero-Dependency) untuk iframe srcDoc.
@@ -16,7 +17,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <script>
   (function() {
     const SOURCE = 'OD_BRIDGE';
-    const ALLOWED_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small,div,section,form,header,nav,main,aside,footer,table,tbody,tr,ul,ol';
+    const ALLOWED_SELECTOR = ${JSON.stringify(OD_UID_SELECTOR)};
     const PATCH_TYPE_TEXT_COLOR = 'textColor';
     const PATCH_TYPE_TEXT_CONTENT = 'textContent';
     const PATCH_TYPE_BG_COLOR = 'bgColor';
@@ -168,6 +169,10 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       const el = target.closest('[data-od-uid]');
       if (!el) return;
 
+      // Elemen form (select/input/textarea) tidak boleh diedit sebagai teks HTML
+      const tag = (el.tagName || '').toLowerCase();
+      if (tag === 'select' || tag === 'input' || tag === 'textarea' || tag === 'option') return;
+
       e.preventDefault();
       e.stopPropagation();
 
@@ -291,7 +296,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         const currentBorderRadius = (cs && cs.borderRadius) ? cs.borderRadius : '';
         const tagName = el.tagName.toLowerCase();
 
-        const outerHtml = (el.outerHTML || '').slice(0, 4000);
+        const outerHtml = (el.outerHTML || '').slice(0, 20000);
         const breadcrumbs = [];
         let curr = el;
         while (curr && curr !== document.body && curr !== document.documentElement && breadcrumbs.length < 3) {
@@ -717,6 +722,10 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       }
     }
 
+    // Tanam UID deterministik ke HTML sumber sebelum bridge disuntikkan,
+    // agar UID runtime sama dengan UID saat patch disimpan ke canvasCode.html.
+    cleanDoc = assignOdUidsToHtml(cleanDoc);
+
     // Append bridge script
     if (cleanDoc.includes('</body>')) {
       cleanDoc = cleanDoc.replace('</body>', odBridgeScript + '</body>');
@@ -729,7 +738,7 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   // Jika berupa fragmen komponen HTML
   const cleanFragment = cleanConversationalLeaks(html);
 
-  return `<!DOCTYPE html>
+  let fragmentDoc = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -739,7 +748,13 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 <body>
   ${cleanFragment}
   ${js ? `<script>\ntry {\n${js}\n} catch(e) { console.error("JS Error:", e); }\n</script>` : ''}
-  ${odBridgeScript}
 </body>
 </html>`;
+
+  fragmentDoc = assignOdUidsToHtml(fragmentDoc);
+
+  if (fragmentDoc.includes('</body>')) {
+    return fragmentDoc.replace('</body>', odBridgeScript + '</body>');
+  }
+  return fragmentDoc + odBridgeScript;
 }
