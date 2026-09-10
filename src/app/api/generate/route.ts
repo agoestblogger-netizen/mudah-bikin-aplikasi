@@ -504,9 +504,22 @@ ATURAN REVISI BRIEF KEBUTUHAN (WAJIB DIPATUHI — POIN 46 & 51):
    - MULTI-TAB ALUR PROSES (POIN 51): Jika role memiliki 2 tab/halaman atau lebih, Alur Proses WAJIB melibatkan perpindahan antar-tab (contoh: [Aksi Tab 1] → [Status Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 sub-baris: "- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ...". Batasi maksimal 6-8 langkah total.
    - DILARANG KERAS memisahkan "Alur Proses" menjadi heading role tersendiri (format '* **Alur Proses**:'). Alur proses SELALU menjadi anak (sub-item) dengan indentasi strip (-) di bawah role terkait.
    - DILARANG membuat heading role kosong.
-3. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
-4. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
-5. Akui perubahan pengguna dengan ramah (1-2 kalimat), lalu sesuaikan skenario alur kerja aplikasi (Alur Proses per role, interaksi antar-tab, rincian field input & action) secara LENGKAP & UTUH berdasarkan peran dan checklist yang disimpan pengguna.
+3. ATURAN MUTLAK SIKLUS OPERASIONAL DUA SISI & KELENGKAPAN EVENT/ACTION (TWO-WAY BUSINESS LIFECYCLE):
+   - DILARANG KERAS membuat alur operasional yang "buntung" (hanya satu sisi):
+     * SEWA / RENTAL / PEMINJAMAN (Sepeda, Mobil, Motor, Buku, Kamera, dll):
+       WAJIB LENGKAP DUA SISI:
+       a. Sisi Pinjam/Sewa (Check-out): Data penyewa, unit barang yang dipilih, durasi sewa, tanggal kembali, uang jaminan/deposit. Action: \`onclick: Catat Peminjaman / Mulai Sewa Unit\`. Status unit berubah dari "Tersedia" menjadi "Sedang Disewa".
+       b. Sisi Pengembalian (Check-in & Denda — WAJIB ADA): Form pengembalian barang, pemeriksaan kondisi fisik (Bagus / Lecet / Rusak), kalkulasi denda otomatis jika terlambat, penyelesaian uang deposit, tombol \`onclick: Selesaikan Pengembalian & Cek Fisik\`, \`onclick: Hitung Denda Keterlambatan\`. Status unit otomatis kembali jadi "Tersedia".
+     * JASA / SERVICE / BENGKEL / LAUNDRY:
+       WAJIB ADA: Penerimaan/Antrean -> Pengerjaan -> QC Selesai -> Penyerahan/Kasir Pembayaran.
+     * TRANSAKSI JUAL-BELI / POS:
+       WAJIB ADA: Pilih Produk/Keranjang -> Kasir Pembayaran, Cetak Struk, dan Pengurangan Stok Otomatis.
+     * BOOKING / RESERVASI:
+       WAJIB ADA: Booking Jadwal/Slot -> Check-in Kedatangan / Verifikasi Tamu.
+   - Action / Event pada setiap tab WAJIB menggunakan aksi nyata bertanda \`onclick: [Nama Tombol] ([deskripsi aksi])\`, DILARANG hanya menulis teks umum tanpa aksi tombol.
+4. DILARANG KERAS menghasilkan blok kode HTML, CSS, JavaScript, atau blok \`\`\`html ... \`\`\`!
+5. DILARANG KERAS menyebutkan kata "kode HTML", "generate kode", "fitur CRUD", "data dummy", "syntax error", atau janji teknis apa pun!
+6. Akui perubahan pengguna dengan ramah (1-2 kalimat), lalu sesuaikan skenario alur kerja aplikasi (Alur Proses per role, interaksi antar-tab, rincian field input & action) secara LENGKAP & UTUH berdasarkan peran dan checklist yang disimpan pengguna.
    Tampilkan kembali lembar "Brief Kebutuhan" yang telah disesuaikan skenarionya secara LENGKAP dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi]
@@ -559,7 +572,20 @@ ATURAN MUTLAK PERCAKAPAN:
    - ALUR PROSES 2 TAB (POIN 51): Jika role memiliki 2 tab/halaman, Alur Proses WAJIB melibatkan dan menghubungkan perpindahan antar-tab sebagai bagian dari alur kerja nyata (contoh: [Aksi di Tab 1] → [Status di Tab 1] → Buka tab "[Nama Tab 2]" (Tab 2) → [Efek/Data di Tab 2] → Klik "[Tombol di Tab 2]" → status "[Nilai Akhir]"), ATAU jika alurnya terpisah tuliskan 2 baris terpisah ("- **Alur Proses Tab 1**: ..." dan "- **Alur Proses Tab 2**: ..."). Batasi maks 6-8 langkah total.
    - Jika role hanya memiliki 1 tab: Alur Proses fokus di 1 tab tersebut (3-5 langkah).
    - Setiap langkah WAJIB menyebutkan nama tombol dalam tanda kutip dan status konkret yang berubah.
-4. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
+4. ATURAN MUTLAK SIKLUS OPERASIONAL DUA SISI & KELENGKAPAN EVENT/ACTION (TWO-WAY BUSINESS LIFECYCLE):
+   - DILARANG KERAS membuat alur operasional yang "buntung" (hanya satu sisi). Model bisnis nyata selalu memiliki siklus tertutup:
+     * SEWA / RENTAL / PEMINJAMAN (Sepeda, Mobil, Motor, Buku, Kamera, dll):
+       WAJIB LENGKAP DUA SISI:
+       a. Sisi Pinjam/Sewa (Check-out): Data penyewa, unit barang yang dipilih, durasi sewa, tanggal kembali, uang jaminan/deposit. Action: \`onclick: Catat Peminjaman / Mulai Sewa Unit\`. Status unit berubah dari "Tersedia" menjadi "Sedang Disewa".
+       b. Sisi Pengembalian (Check-in & Denda — WAJIB ADA): Form pengembalian barang, pemeriksaan kondisi fisik (Bagus / Lecet / Rusak), kalkulasi denda otomatis jika terlambat, penyelesaian uang deposit, tombol \`onclick: Selesaikan Pengembalian & Cek Fisik\`, \`onclick: Hitung Denda Keterlambatan\`. Status unit otomatis kembali jadi "Tersedia".
+     * JASA / SERVICE / BENGKEL / LAUNDRY:
+       WAJIB ADA: Penerimaan/Antrean -> Pengerjaan -> QC Selesai -> Penyerahan/Kasir Pembayaran.
+     * TRANSAKSI JUAL-BELI / POS:
+       WAJIB ADA: Pilih Produk/Keranjang -> Kasir Pembayaran, Cetak Struk, dan Pengurangan Stok Otomatis.
+     * BOOKING / RESERVASI:
+       WAJIB ADA: Booking Jadwal/Slot -> Check-in Kedatangan / Verifikasi Tamu.
+   - Action / Event pada setiap tab WAJIB menggunakan aksi nyata bertanda \`onclick: [Nama Tombol] ([deskripsi aksi])\`, DILARANG hanya menulis teks umum tanpa aksi tombol.
+5. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
    📋 **Brief Kebutuhan**
    - **Nama App**: [nama aplikasi yang menarik & relevan]
    - **Orientasi UI**: [Mobile-first / Desktop-first / Responsif, dengan alasan singkat]
@@ -596,7 +622,7 @@ ATURAN MUTLAK PERCAKAPAN:
          * Action / Event:
            - [x] onclick: [Nama Tombol] ([deskripsi aksi])
        - **Alur Proses**: Klik "[Nama Tombol]" → status berubah jadi "[Nilai Konkret]" → [konsekuensi terlihat di layar] (jika 1 tab, alur fokus di tab tersebut; langkah menunggu pasif ditulis sebagai konsekuensi: "saat [Role Lain] klik X, status berubah jadi Y")
-5. WAJIB tanyakan konfirmasi di baris terakhir:
+6. WAJIB tanyakan konfirmasi di baris terakhir:
    "Apakah penyesuaian skenario dan lembar Brief Kebutuhan di atas sudah sesuai? Jika sudah pas, silakan klik tombol 🚀 **Buatkan Prototipe** untuk mulai membuatnya, atau beri tahu saya jika masih ada detail yang ingin disesuaikan."`;
       } else {
         // KONDISI 4: PROMPT AWAL SINGKAT / VAGUE / DISKUSI ROLE
@@ -609,6 +635,7 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
 3. NADA KOMUNIKASI WAJIB: BERIKAN USULAN KONKRET DULU, JANGAN PERNAH MELEMPAR BEBAN BERPIKIR KE USER!
    - DILARANG bertanya dengan nada pasif atau kata-kata terbuka seperti "apakah sudah Anda pikirkan/pertimbangkan?", "bagaimana konsep yang Anda inginkan?", atau "apa fitur yang ingin dibuat?".
    - Karena Anda sudah memiliki acuan struktur modul & peran dari blueprint bisnis, Anda WAJIB langsung MENGUSULKAN pembagian peran dan fitur operasional secara konkret.
+   - PANDUAN SIKLUS TERTUTUP (TWO-WAY LIFECYCLE): Jika model bisnis berupa RENTAL / SEWA / PEMINJAMAN (sepeda, mobil, motor, buku, kamera), usulan alur kerja WAJIB mencakup siklus lengkap dua sisi: Peminjaman (Check-out) DAN Pengembalian (Check-in) beserta pemeriksaan kondisi fisik dan kalkulasi denda keterlambatan.
 
 4. STRUKTUR RESPONS EKSPLORASI IDE (WAJIB IKUTI 3 BAGIAN INI — POIN 47 & 48):
    - BAGIAN 1 (APRESIASI): Sapa & akui ide bisnis pengguna dengan hangat & antusias (1 kalimat).
@@ -631,7 +658,7 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
       if (blueprintContext) {
         systemPrompt += `\n\n${blueprintContext}`;
       } else {
-        systemPrompt += `\n\n=== KATALOG RINGKAS 20 BLUEPRINT INDUSTRI (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
+        systemPrompt += `\n\n=== KATALOG RINGKAS BLUEPRINT INDUSTRI & ARKETIPE BISNIS (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
       }
 
       // Suntikkan Panduan Standar UX & Prioritas Informasi (Fase D-1)
@@ -1240,6 +1267,10 @@ ${staffLandingGuide}
        c) Tampilan Data Utama: Data Table Interaktif (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data.
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
   6. Styling CSS modern murni tanpa Tailwind Play CDN, responsive layout, event handler 100% selaras.
+  7. SIKLUS OPERASIONAL LENGKAP DUA SISI (TWO-WAY LIFECYCLE):
+     * Jika aplikasi bertema Rental / Sewa / Peminjaman (sepeda, mobil, motor, buku, kamera):
+       - WAJIB memiliki alur Mulai Sewa (Check-out) DAN Pengembalian (Check-in).
+       - Pada tabel transaksi sewa aktif, sediakan tombol aksi "Kembalikan" yang membuka modal pengembalian unit, mencatat kondisi fisik (Bagus/Rusak), menghitung denda jika terlambat, dan mengembalikan status unit kembali menjadi "Tersedia".
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
 
       } else if (stage === 'TAHAP_5_PATCH') {

@@ -69,7 +69,38 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
   const fields: ChecklistItem[] = [];
   const actions: ChecklistItem[] = [];
 
-  if (combined.includes('input') || combined.includes('tambah') || combined.includes('daftar') || combined.includes('kelola') || combined.includes('form') || combined.includes('buku') || combined.includes('master')) {
+  // 1. Deteksi Alur Pengembalian (Check-In) / Return
+  if (combined.includes('kembali') || combined.includes('pengembalian') || combined.includes('return') || combined.includes('check-in')) {
+    fields.push(
+      { id: generateId(), text: 'Pilih Transaksi / Unit Disewa (Dropdown / Search)', checked: true },
+      { id: generateId(), text: 'Waktu Pengembalian Aktual (Datetime)', checked: true },
+      { id: generateId(), text: 'Kondisi Fisik Unit (Radio: Baik / Ada Kerusakan / Lecet)', checked: true },
+      { id: generateId(), text: 'Kalkulasi Denda Keterlambatan / Kerusakan (Number)', checked: true },
+      { id: generateId(), text: 'Penyelesaian Pengembalian Uang Jaminan / Deposit (Number)', checked: true }
+    );
+    actions.push(
+      { id: generateId(), text: 'onclick: Selesaikan Pengembalian Unit (Status unit kembali Tersedia)', checked: true },
+      { id: generateId(), text: 'onclick: Hitung Denda Keterlambatan & Selesaikan Deposit', checked: true },
+      { id: generateId(), text: 'onclick: Cetak Bukti Pengembalian', checked: true }
+    );
+  }
+  // 2. Deteksi Alur Penyewaan / Peminjaman (Check-Out)
+  else if (combined.includes('sewa') || combined.includes('rental') || combined.includes('pinjam') || combined.includes('booking unit') || combined.includes('peminjaman')) {
+    fields.push(
+      { id: generateId(), text: 'Pilihan Unit / Armada Tersedia (Dropdown / Card Select)', checked: true },
+      { id: generateId(), text: 'Nama & No. HP Penyewa / KTP (Text)', checked: true },
+      { id: generateId(), text: 'Waktu Mulai Sewa (Datetime)', checked: true },
+      { id: generateId(), text: 'Durasi / Estimasi Waktu Pengembalian (Hours/Days)', checked: true },
+      { id: generateId(), text: 'Tarif Sewa & Uang Jaminan / Deposit (Number)', checked: true }
+    );
+    actions.push(
+      { id: generateId(), text: 'onclick: Catat Peminjaman / Mulai Sewa Unit (Status jadi Sedang Disewa)', checked: true },
+      { id: generateId(), text: 'onclick: Cetak Nota / Struk Bukti Sewa', checked: true },
+      { id: generateId(), text: 'onclick: Batal / Reset Form', checked: true }
+    );
+  }
+  // 3. Deteksi Input Data / Form Standar
+  else if (combined.includes('input') || combined.includes('tambah') || combined.includes('daftar') || combined.includes('kelola') || combined.includes('form') || combined.includes('buku') || combined.includes('master')) {
     fields.push(
       { id: generateId(), text: 'Judul / Nama Item (Text)', checked: true },
       { id: generateId(), text: 'Kategori / Klasifikasi (Dropdown)', checked: true },
@@ -80,7 +111,9 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
       { id: generateId(), text: 'onclick: Simpan Data Baru (Validasi form & simpan ke state/tabel)', checked: true },
       { id: generateId(), text: 'onclick: Reset / Batal (Kosongkan input form)', checked: true }
     );
-  } else if (combined.includes('riwayat') || combined.includes('laporan') || combined.includes('monitoring') || combined.includes('katalog') || combined.includes('cari')) {
+  }
+  // 4. Deteksi Riwayat / Laporan / Monitoring
+  else if (combined.includes('riwayat') || combined.includes('laporan') || combined.includes('monitoring') || combined.includes('katalog') || combined.includes('cari')) {
     fields.push(
       { id: generateId(), text: 'Kolom Pencarian Kata Kunci (Search Input)', checked: true },
       { id: generateId(), text: 'Filter Periode / Kategori (Dropdown)', checked: true },
@@ -90,7 +123,9 @@ function createDefaultFieldsAndActions(pageName: string, sections: string[]): {
       { id: generateId(), text: 'onclick: Terapkan Filter & Cari (Filter real-time tabel)', checked: true },
       { id: generateId(), text: 'onclick: Lihat Detail / Tindakan Cepat (Modal info & aksi status)', checked: true }
     );
-  } else {
+  }
+  // 5. Fallback Default
+  else {
     fields.push(
       { id: generateId(), text: 'Nama / Identitas Pengguna (Text)', checked: true },
       { id: generateId(), text: 'Kategori Pilihan (Dropdown)', checked: true },

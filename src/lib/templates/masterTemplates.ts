@@ -1238,6 +1238,61 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
     workflow: [
       'Entity → Actor → Action → Status → Approval → Notification'
     ]
+  },
+
+  // ===========================================================================
+  // MT-21 — Rental & Peminjaman (Rental & Lending)
+  // ===========================================================================
+  {
+    id: 'MT-21',
+    nama: 'Rental & Peminjaman',
+    deskripsi: 'Blueprint aplikasi sewa sepeda, rental mobil/motor, sewa kamera/alat, persewaan perlengkapan outdoor, dan peminjaman buku perpustakaan.',
+    modulDanSection: [
+      {
+        modul: 'Unit & Armada (Inventory)',
+        sections: ['Katalog Unit', 'Detail Unit / Armada', 'Status Unit (Tersedia / Sedang Disewa / Servis)', 'Tarif Sewa (per Jam / Hari)', 'Riwayat Unit']
+      },
+      {
+        modul: 'Penyewaan (Check-Out)',
+        sections: ['Form Sewa Baru', 'Pilih Unit Tersedia', 'Data Penyewa & Kontak', 'Waktu Mulai & Estimasi Kembali', 'Uang Jaminan / Deposit', 'Konfirmasi Sewa']
+      },
+      {
+        modul: 'Pengembalian (Check-In) & Denda',
+        sections: ['Form Pengembalian Unit', 'Pilih Transaksi Aktif', 'Cek Kondisi Fisik & Kerusakan', 'Kalkulator Keterlambatan & Denda', 'Pengembalian Deposit / Pelunasan', 'Update Status Unit Kembali Tersedia']
+      },
+      {
+        modul: 'Penyewa & Pelanggan',
+        sections: ['Daftar Penyewa', 'Profil Penyewa', 'Riwayat Sewa & Pengembalian', 'Catatan Deposit Aktif']
+      },
+      {
+        modul: 'Laporan & Keuangan',
+        sections: ['Laporan Omset Sewa', 'Laporan Denda Keterlambatan', 'Tingkat Utilitas Unit', 'Laporan Kerusakan & Pemeliharaan']
+      }
+    ],
+    roleDefault: ['Admin', 'Petugas Sewa', 'Penyewa'],
+    adminRoleGuidance: 'Untuk usaha rental standar (sewa sepeda, rental mobil, rental kamera, peminjaman buku), gunakan 1 role "Admin" untuk kelola master unit/armada, tarif sewa, dan laporan omset; 1 role operasional "Petugas Sewa" untuk kasir pencatatan sewa & penerimaan pengembalian unit; serta 1 role "Penyewa" (Publik) untuk melihat katalog ketersediaan unit dan simulasi sewa.',
+    roleToModule: [
+      { role: 'Admin', modul: 'Unit & Armada (Inventory)', permission: 'CRUD' },
+      { role: 'Admin', modul: 'Penyewaan (Check-Out)', permission: 'CRUD' },
+      { role: 'Admin', modul: 'Pengembalian (Check-In) & Denda', permission: 'CRUD' },
+      { role: 'Admin', modul: 'Penyewa & Pelanggan', permission: 'CRUD' },
+      { role: 'Admin', modul: 'Laporan & Keuangan', permission: 'R' },
+
+      { role: 'Petugas Sewa', modul: 'Unit & Armada (Inventory)', permission: 'R' },
+      { role: 'Petugas Sewa', modul: 'Penyewaan (Check-Out)', permission: 'CRU' },
+      { role: 'Petugas Sewa', modul: 'Pengembalian (Check-In) & Denda', permission: 'CRU' },
+      { role: 'Petugas Sewa', modul: 'Penyewa & Pelanggan', permission: 'CRU' },
+      { role: 'Petugas Sewa', modul: 'Laporan & Keuangan', permission: 'R-L' },
+
+      { role: 'Penyewa', modul: 'Unit & Armada (Inventory)', permission: 'R' },
+      { role: 'Penyewa', modul: 'Penyewaan (Check-Out)', permission: 'CR' },
+      { role: 'Penyewa', modul: 'Pengembalian (Check-In) & Denda', permission: 'R' },
+      { role: 'Penyewa', modul: 'Penyewa & Pelanggan', permission: 'R' },
+      { role: 'Penyewa', modul: 'Laporan & Keuangan', permission: '-' }
+    ],
+    workflow: [
+      'Penyewa memilih unit tersedia → Petugas mencatat sewa & uang jaminan (deposit) → Status unit beralih jadi "Sedang Disewa" → Penyewa mengembalikan unit → Petugas cek kondisi fisik & kalkulasi denda jika telat → Deposit diselesaikan & status unit kembali "Tersedia"'
+    ]
   }
 ];
 
@@ -1334,6 +1389,15 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
     {
       keywords: ['ekspedisi', 'kurir', 'logistik', 'pengiriman barang', 'resi paket', 'armada kurir', 'tracking paket', 'delivery order', 'cod paket'],
       mtId: 'MT-14'
+    },
+    {
+      keywords: [
+        'sewa sepeda', 'rental sepeda', 'sewa mobil', 'rental mobil', 'sewa motor', 'rental motor',
+        'sewa kamera', 'rental kamera', 'sewa alat', 'rental alat', 'persewaan', 'sewa tenda',
+        'peminjaman buku', 'pinjam buku', 'perpustakaan', 'sewa kostum', 'sewa gaun',
+        'rental', 'sewa', 'peminjaman', 'pinjam'
+      ],
+      mtId: 'MT-21'
     },
     {
       keywords: ['properti', 'sewa gedung', 'sewa apartemen', 'sewa ruko', 'sewa kos', 'kontrak penyewa', 'estate management'],

@@ -451,9 +451,9 @@ export function detectSelectivePageTemplates(text: string): PageMappingEntry[] {
       defaultName: 'Dashboard & Ringkasan'
     },
     {
-      keywords: ['pos', 'kasir', 'order baru', 'input order', 'input pesanan', 'transaksi baru', 'pemesanan', 'keranjang'],
+      keywords: ['pos', 'kasir', 'order baru', 'input order', 'input pesanan', 'transaksi baru', 'pemesanan', 'keranjang', 'sewa', 'rental', 'pinjam', 'peminjaman', 'check-out unit'],
       ptId: 'PT-08',
-      defaultName: 'POS / Input Pesanan'
+      defaultName: 'POS / Input Pesanan / Form Sewa'
     },
     {
       keywords: ['antrian', 'antrean', 'queue', 'papan kerja', 'antrian kerja', 'cucian menunggu', 'tugas menunggu', 'loket', 'pemanggil'],
@@ -486,9 +486,9 @@ export function detectSelectivePageTemplates(text: string): PageMappingEntry[] {
       defaultName: 'Approval & Persetujuan'
     },
     {
-      keywords: ['workflow', 'tahapan', 'progres kerja', 'stepper', 'status progres'],
+      keywords: ['workflow', 'tahapan', 'progres kerja', 'stepper', 'status progres', 'pengembalian', 'check-in unit', 'kembali', 'retur'],
       ptId: 'PT-12',
-      defaultName: 'Workflow & Progres'
+      defaultName: 'Workflow & Progres / Pengembalian'
     },
     {
       keywords: ['profil', 'biodata', 'akun', 'data saya', 'member profile'],
@@ -501,7 +501,7 @@ export function detectSelectivePageTemplates(text: string): PageMappingEntry[] {
       defaultName: 'Pengaturan & Master Role'
     },
     {
-      keywords: ['daftar', 'tabel', 'master data', 'katalog', 'kelola', 'list', 'riwayat'],
+      keywords: ['daftar', 'tabel', 'master data', 'katalog', 'kelola', 'list', 'riwayat', 'unit', 'sepeda', 'armada'],
       ptId: 'PT-02',
       defaultName: 'Daftar Data & Tabel'
     }

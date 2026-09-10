@@ -281,6 +281,30 @@ export const UX_PATTERNS: UXPattern[] = [
     ],
     referenceProviders: ['Ant Design Pro', 'Tabler', 'Tremor']
   },
+  {
+    id: 'UX-OPS-07',
+    name: 'Rental & Lending Lifecycle (Check-Out, Check-In, Denda & Status Unit)',
+    category: 'Operations',
+    primaryUser: 'Petugas Sewa / Staf Operasional / Peminjam',
+    userGoal: 'Mencatat penyewaan unit, memproses pengembalian dengan inspeksi fisik, serta menghitung denda keterlambatan',
+    businessContext: 'Sewa sepeda, rental mobil/motor, peminjaman buku perpustakaan, sewa alat kamera/outdoor',
+    informationPriority: {
+      primary: ['Status Unit (Tersedia / Sedang Disewa / Servis)', 'Form Sewa & Pengembalian Unit', 'Kalkulator Denda Telat & Deposit'],
+      secondary: ['Data Penyewa (No KTP, Kontak, Jaminan)', 'Durasi & Tanggal Jatuh Tempo Kembali'],
+      contextual: ['Catatan Kondisi Fisik (Bagus/Lecet/Rusak)', 'Riwayat Unit']
+    },
+    primaryAction: ['Catat Peminjaman / Mulai Sewa Unit', 'Selesaikan Pengembalian & Cek Fisik'],
+    secondaryActions: ['Hitung Denda Keterlambatan', 'Kembalikan Uang Deposit'],
+    requiredData: ['unit_id', 'renter_name', 'rent_start', 'due_date', 'deposit_amount', 'condition_check', 'late_fee'],
+    states: ['Unit Tersedia', 'Sedang Disewa', 'Menunggu Cek Pengembalian', 'Terlambat / Denda Aktif', 'Kembali Tersedia'],
+    uxRules: [
+      'Siklus peminjaman WAJIB memiliki dua sisi tertutup: Form Sewa (Check-out) dan Form Pengembalian (Check-in)',
+      'Form pengembalian wajib memiliki opsi pemeriksaan fisik (Bagus, Lecet, Rusak) dan kalkulasi otomatis denda keterlambatan',
+      'Status unit otomatis kembali menjadi "Tersedia" setelah pengembalian diselesaikan',
+      'Tampilkan badge peringatan merah jika pengembalian melewati batas waktu (overdue)'
+    ],
+    referenceProviders: ['Ant Design Pro', 'Tabler', 'MUI']
+  },
 
   // ===========================================================================
   // 5. DATA MANAGEMENT (UX-DATA)
@@ -451,7 +475,19 @@ export function findRelevantUXPatterns(contextText: string, masterTemplateId?: s
     if (execDash) addPattern(execDash);
   }
 
-  // 5. Default Fallback jika belum ada kecocokan spesifik
+  // 5. Deteksi Rental / Peminjaman / Sewa
+  if (masterTemplateId === 'MT-21' || lower.includes('sewa') || lower.includes('rental') || lower.includes('pinjam') || lower.includes('peminjaman') || lower.includes('kembalikan') || lower.includes('sepeda')) {
+    const rentalLifecycle = getUXPatternById('UX-OPS-07');
+    const dataTable = getUXPatternById('UX-DATA-01');
+    const execDash = getUXPatternById('UX-ANA-01');
+    const posTrx = getUXPatternById('UX-TRX-04');
+    if (rentalLifecycle) addPattern(rentalLifecycle);
+    if (dataTable) addPattern(dataTable);
+    if (execDash) addPattern(execDash);
+    if (posTrx) addPattern(posTrx);
+  }
+
+  // 6. Default Fallback jika belum ada kecocokan spesifik
   if (matchedPatterns.length === 0) {
     const defaultData = getUXPatternById('UX-DATA-01');
     const defaultDash = getUXPatternById('UX-ANA-01');
