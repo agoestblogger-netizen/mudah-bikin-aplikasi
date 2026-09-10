@@ -39,15 +39,25 @@ export const ModelSettingsMenu: React.FC<ModelSettingsMenuProps> = ({
 
   const handleSave = () => {
     const trimmed = key.trim();
-    // Gunakan model yang sudah ada jika cocok dengan provider baru, atau gunakan default provider tersebut
-    const existingModels = getModelsForProvider(providerId);
-    const isModelMatching = existingModels.some(m => m.id === model);
-    const effectiveModel = trimmed ? (isModelMatching ? model : DEFAULT_MODELS[providerId]) : DEFAULT_MODELS.gemini;
+    let effectiveModel = model;
+    if (providerId === 'openrouter') {
+      if (!model || model.startsWith('gemini') || model === 'gpt-4o-mini' || model === 'gpt-4o') {
+        effectiveModel = DEFAULT_MODELS.openrouter;
+      }
+    } else if (providerId === 'openai') {
+      if (!model || !model.startsWith('gpt')) {
+        effectiveModel = DEFAULT_MODELS.openai;
+      }
+    } else if (providerId === 'gemini') {
+      if (!model || !model.startsWith('gemini')) {
+        effectiveModel = DEFAULT_MODELS.gemini;
+      }
+    }
 
     const settings: ModelSettings = {
       provider: providerId,
       token: trimmed,
-      model: effectiveModel,
+      model: effectiveModel || DEFAULT_MODELS[providerId],
     };
     saveModelSettings(settings);
     onSave(settings);
