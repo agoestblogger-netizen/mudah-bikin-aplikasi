@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { AppProjectState, ChatMessage } from '@/types/app';
 import { 
   Bot, 
@@ -19,12 +19,14 @@ import {
   Menu,
   ChevronRight,
   X,
-  Settings
+  Settings,
+  Search,
+  Loader2
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
-import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider } from '@/lib/modelConfig';
-import type { ModelSettings } from '@/lib/modelConfig';
+import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider, ROUTER_STATIC_MODELS } from '@/lib/modelConfig';
+import type { ModelSettings, AIModelOption } from '@/lib/modelConfig';
 import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 
@@ -89,6 +91,36 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const [streamingText, setStreamingText] = useState<string | null>(null);
   
   const [modelConfig, setModelConfig] = useState<ModelSettings>(() => loadModelSettings());
+  const [liveOpenRouterModels, setLiveOpenRouterModels] = useState<AIModelOption[] | null>(null);
+  const [isLoadingLiveModels, setIsLoadingLiveModels] = useState(false);
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelCategoryFilter, setModelCategoryFilter] = useState<'ALL' | 'GRATIS' | 'POPULER' | 'CODING' | 'REASONING'>('ALL');
+  const [showCustomModelInput, setShowCustomModelInput] = useState(false);
+  const [customModelId, setCustomModelId] = useState('');
+
+  // Fetch katalog live OpenRouter (400+ model)
+  useEffect(() => {
+    if (modelConfig.provider === 'openrouter' && !liveOpenRouterModels && !isLoadingLiveModels) {
+      setIsLoadingLiveModels(true);
+      const headers: Record<string, string> = {};
+      if (modelConfig.token) {
+        headers.Authorization = `Bearer ${modelConfig.token}`;
+      }
+      fetch('/api/openrouter/models', { headers })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.models) && data.models.length > 0) {
+            setLiveOpenRouterModels(data.models);
+          }
+        })
+        .catch(err => {
+          console.warn('Gagal memuat katalog model OpenRouter:', err);
+        })
+        .finally(() => {
+          setIsLoadingLiveModels(false);
+        });
+    }
+  }, [modelConfig.provider, modelConfig.token, isModelDropdownOpen, liveOpenRouterModels, isLoadingLiveModels]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -120,6 +152,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     saveModelSettings(updated);
     setModelConfig(updated);
     setIsModelDropdownOpen(false);
+
+    // Jika user memilih model OpenRouter atau OpenAI tapi key belum diisi, langsung buka modal setelan API
+    if ((updated.provider === 'openrouter' || updated.provider === 'openai') && !updated.token) {
+      setShowSettingsModal(true);
+    }
   };
 
   // Auto scroll ke bawah
@@ -246,17 +283,35 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       }
 
       const activeSettings = loadModelSettings();
+
+      // Validasi: Jika user memilih OpenRouter atau OpenAI tetapi API Key belum terpasang
+      if ((activeSettings.provider === 'openrouter' || activeSettings.provider === 'openai') && !activeSettings.token) {
+        const providerName = activeSettings.provider === 'openrouter' ? 'OpenRouter' : 'OpenAI';
+        const modelLabel = getModelLabel(activeSettings.model, activeSettings.provider);
+        const warningMsg: ChatMessage = {
+          id: 'msg-' + (Date.now() + 1),
+          sender: 'AI',
+          text: `⚠️ **API Key ${providerName} Belum Terpasang:**\n\nAnda memilih model **${modelLabel}**, namun API Key ${providerName} belum tersimpan di browser.\n\n👉 Silakan pasang API Key Anda di modal pengaturan atau menu bawah, atau beralih ke **Server Default (Gemini)** jika ingin generate gratis tanpa API key pribadi.`,
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        };
+        const finalMessages = [...updatedMessages, warningMsg];
+        setMessages(finalMessages);
+        setShowSettingsModal(true);
+        setIsGenerating(false);
+        return;
+      }
+
       const payload: Record<string, unknown> = {
         prompt: query,
         chatHistory: updatedMessages,
         stage: currentStage,
         currentCode: projectState.canvasCode.html,
-        mode: selectedMode
+        mode: selectedMode,
+        userProvider: activeSettings.provider,
+        userModel: activeSettings.model
       };
-      payload.userProvider = activeSettings.provider;
       if (activeSettings.token) {
         payload.userApiKey = activeSettings.token;
-        payload.userModel = activeSettings.model;
       }
 
       const res = await fetch('/api/generate', {
@@ -317,7 +372,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
             try {
               const parsed = JSON.parse(raw);
-              if (parsed.type === 'token') {
+              // Server mengirim { type: 'chunk', text } atau { type: 'token', content }
+              if (parsed.type === 'chunk' && parsed.text) {
+                accumulated += parsed.text;
+                setStreamingText(accumulated);
+              } else if (parsed.type === 'token' && parsed.content) {
                 accumulated += parsed.content;
                 setStreamingText(accumulated);
               } else if (parsed.type === 'done') {
@@ -417,7 +476,56 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const activeProvider = modelConfig.token ? getProviderConfig(modelConfig.provider).label : 'Server Default';
   const activeModelName = modelConfig.token ? getModelLabel(modelConfig.model, modelConfig.provider) : 'Gemini 2.5 Flash';
-  const availableModels = getModelsForProvider(modelConfig.provider);
+
+  const allProviderModels: AIModelOption[] = useMemo(() => {
+    if (modelConfig.provider === 'openrouter') {
+      if (liveOpenRouterModels && liveOpenRouterModels.length > 0) {
+        return liveOpenRouterModels;
+      }
+      return ROUTER_STATIC_MODELS;
+    }
+    return getModelsForProvider(modelConfig.provider);
+  }, [modelConfig.provider, liveOpenRouterModels]);
+
+  const filteredModels: AIModelOption[] = useMemo(() => {
+    let list = allProviderModels;
+
+    // Filter Kategori Tab
+    if (modelCategoryFilter === 'GRATIS') {
+      list = list.filter(m => m.category === 'GRATIS' || m.id.endsWith(':free') || m.pricePerMInput === 'Gratis' || m.id === 'openrouter/free');
+    } else if (modelCategoryFilter === 'POPULER') {
+      const popularIds = new Set(ROUTER_STATIC_MODELS.map(m => m.id));
+      list = list.filter(m => popularIds.has(m.id));
+    } else if (modelCategoryFilter === 'CODING') {
+      list = list.filter(m => 
+        m.id.toLowerCase().includes('coder') || 
+        m.id.toLowerCase().includes('claude') || 
+        m.id.toLowerCase().includes('gpt-4') || 
+        m.id.toLowerCase().includes('deepseek') ||
+        m.label.toLowerCase().includes('code')
+      );
+    } else if (modelCategoryFilter === 'REASONING') {
+      list = list.filter(m => 
+        m.id.toLowerCase().includes('r1') || 
+        m.id.toLowerCase().includes('o1') || 
+        m.id.toLowerCase().includes('o3') || 
+        m.id.toLowerCase().includes('reasoning') ||
+        m.label.toLowerCase().includes('penalaran')
+      );
+    }
+
+    // Filter Pencarian Teks
+    if (modelSearch.trim()) {
+      const q = modelSearch.toLowerCase().trim();
+      list = list.filter(m => 
+        m.label.toLowerCase().includes(q) || 
+        m.id.toLowerCase().includes(q) || 
+        m.category.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [allProviderModels, modelCategoryFilter, modelSearch]);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#08080c] border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative select-none">
@@ -454,7 +562,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           >
             <span className={`w-2 h-2 rounded-full ${modelConfig.token ? 'bg-[#10f48e] shadow-[0_0_8px_#10f48e]' : 'bg-emerald-400'} animate-pulse shrink-0`} />
             <div className="flex items-center gap-1.5 text-left min-w-0">
-              <span className="truncate max-w-[110px] sm:max-w-[160px] font-semibold text-white">
+              <span className="truncate max-w-[110px] sm:max-w-[170px] font-semibold text-white">
                 {activeModelName}
               </span>
               <span className="hidden sm:inline-block text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-zinc-400 uppercase font-mono tracking-wide">
@@ -466,69 +574,249 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
           {/* Dropdown Menu Model Selector */}
           {isModelDropdownOpen && (
-            <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-2 z-50 animate-fadeIn text-left">
+            <div className="absolute right-0 top-full mt-2 w-80 sm:w-[420px] rounded-2xl bg-[#121218]/95 backdrop-blur-2xl border border-white/15 shadow-2xl p-3 z-50 animate-fadeIn text-left">
               {/* Header Info Dropdown */}
-              <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+              <div className="pb-2.5 border-b border-white/10 flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Pilih Model AI</p>
-                  <p className="text-xs font-semibold text-white">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Pilih Model AI</p>
+                    {isLoadingLiveModels && (
+                      <span className="flex items-center gap-1 text-[9px] text-[#10f48e] font-mono">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Memuat 400+ model...
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-white mt-0.5">
                     Provider: <span className="text-[#10f48e] capitalize">{modelConfig.token ? modelConfig.provider : 'Server Default'}</span>
                   </p>
                 </div>
-                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${modelConfig.token ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
-                  {modelConfig.token ? 'API Terpasang' : 'Server Default'}
-                </span>
+                <div className="text-right">
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${modelConfig.token ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}`}>
+                    {modelConfig.token ? 'API Terpasang' : 'Server Default'}
+                  </span>
+                  <p className="text-[9px] text-zinc-400 mt-0.5 font-mono">
+                    {allProviderModels.length} model
+                  </p>
+                </div>
               </div>
+
+              {/* Input Pencarian Model */}
+              <div className="pt-2 pb-1.5">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={modelSearch}
+                    onChange={(e) => setModelSearch(e.target.value)}
+                    placeholder={
+                      modelConfig.provider === 'openrouter'
+                        ? 'Cari 400+ model (claude, r1, gpt-4o, free, qwen)...'
+                        : 'Cari nama atau tipe model...'
+                    }
+                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-[#10f48e]/60 transition-colors"
+                  />
+                  {modelSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setModelSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter Tabs (Kategori) untuk OpenRouter */}
+              {modelConfig.provider === 'openrouter' && (
+                <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-none text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setModelCategoryFilter('ALL')}
+                    className={`px-2 py-0.5 rounded-lg font-medium transition-colors shrink-0 ${
+                      modelCategoryFilter === 'ALL'
+                        ? 'bg-white/15 text-white border border-white/20'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    Semua
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModelCategoryFilter('GRATIS')}
+                    className={`px-2 py-0.5 rounded-lg font-medium transition-colors shrink-0 ${
+                      modelCategoryFilter === 'GRATIS'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold'
+                        : 'text-zinc-400 hover:text-emerald-300 hover:bg-white/5'
+                    }`}
+                  >
+                    🆓 Gratis
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModelCategoryFilter('POPULER')}
+                    className={`px-2 py-0.5 rounded-lg font-medium transition-colors shrink-0 ${
+                      modelCategoryFilter === 'POPULER'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold'
+                        : 'text-zinc-400 hover:text-amber-300 hover:bg-white/5'
+                    }`}
+                  >
+                    🔥 Populer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModelCategoryFilter('CODING')}
+                    className={`px-2 py-0.5 rounded-lg font-medium transition-colors shrink-0 ${
+                      modelCategoryFilter === 'CODING'
+                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold'
+                        : 'text-zinc-400 hover:text-indigo-300 hover:bg-white/5'
+                    }`}
+                  >
+                    💻 Coding
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModelCategoryFilter('REASONING')}
+                    className={`px-2 py-0.5 rounded-lg font-medium transition-colors shrink-0 ${
+                      modelCategoryFilter === 'REASONING'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold'
+                        : 'text-zinc-400 hover:text-purple-300 hover:bg-white/5'
+                    }`}
+                  >
+                    🧠 Reasoning
+                  </button>
+                </div>
+              )}
 
               {/* Daftar Pilihan Model */}
-              <div className="py-1.5 max-h-64 overflow-y-auto space-y-1 scrollbar-thin">
-                {availableModels.map((m) => {
-                  const isSelected = modelConfig.model === m.id || (m.id === 'openrouter/free' && !modelConfig.model);
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => handleSelectModel(m.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all text-xs cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#10f48e]/15 border border-[#10f48e]/30 text-white font-medium'
-                          : 'hover:bg-white/5 text-zinc-300 hover:text-white'
-                      }`}
-                    >
-                      <div className="min-w-0 pr-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate font-semibold">{m.label}</span>
+              <div className="py-1 max-h-64 sm:max-h-72 overflow-y-auto space-y-1 scrollbar-thin">
+                {filteredModels.length === 0 ? (
+                  <div className="py-6 px-3 text-center">
+                    <p className="text-xs text-zinc-400">Tidak ada model yang cocok dengan kata kunci.</p>
+                    {modelSearch && (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectModel(modelSearch.trim())}
+                        className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#10f48e]/15 border border-[#10f48e]/30 text-xs font-bold text-[#10f48e] hover:bg-[#10f48e]/25 transition-all cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Gunakan "{modelSearch.trim()}"
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  filteredModels.slice(0, 120).map((m) => {
+                    const isSelected = modelConfig.model === m.id || (m.id === 'openrouter/free' && !modelConfig.model);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => handleSelectModel(m.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-all text-xs cursor-pointer group ${
+                          isSelected
+                            ? 'bg-[#10f48e]/15 border border-[#10f48e]/30 text-white font-medium'
+                            : 'hover:bg-white/5 text-zinc-300 hover:text-white'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-semibold text-white">{m.label}</span>
+                            {m.category === 'GRATIS' && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold">
+                                FREE
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-400 font-mono truncate mt-0.5 opacity-70 group-hover:opacity-100">
+                            {m.id}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-400">
+                            <span>{m.context} konteks</span>
+                            <span>•</span>
+                            <span className="text-zinc-500">{m.category}</span>
+                            {m.pricePerMInput && (
+                              <>
+                                <span>•</span>
+                                <span className={m.pricePerMInput === 'Gratis' ? 'text-emerald-400 font-semibold' : 'text-zinc-400'}>
+                                  {m.pricePerMInput}
+                                </span>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-zinc-400">
-                          <span>{m.context} konteks</span>
-                          <span>•</span>
-                          <span className="text-zinc-500">{m.category}</span>
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <Check className="w-4 h-4 text-[#10f48e] shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
+                        {isSelected && (
+                          <Check className="w-4 h-4 text-[#10f48e] shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+                {filteredModels.length > 120 && (
+                  <p className="text-[10px] text-zinc-500 text-center py-1 font-mono">
+                    Menampilkan 120 dari {filteredModels.length} hasil. Gunakan kolom pencarian untuk mempersempit.
+                  </p>
+                )}
               </div>
 
-              {/* Footer Tindakan: Pengaturan API Key */}
-              <div className="pt-2 mt-1 border-t border-white/10 px-2 flex items-center justify-between">
-                <span className="text-[10px] text-zinc-500">
-                  {availableModels.length} model aktif
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsModelDropdownOpen(false);
-                    setShowSettingsModal(true);
-                  }}
-                  className="text-[11px] font-semibold text-[#10f48e] hover:underline inline-flex items-center gap-1.5 cursor-pointer py-1 px-1.5 rounded-lg hover:bg-white/5 transition-colors"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                  <span>Setel API Key</span>
-                </button>
+              {/* Opsi Ketik Model ID Custom */}
+              <div className="pt-2 mt-1 border-t border-white/10 px-1">
+                {showCustomModelInput ? (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-zinc-400 font-medium">Ketik ID model dari katalog OpenRouter:</p>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={customModelId}
+                        onChange={(e) => setCustomModelId(e.target.value)}
+                        placeholder="misal: mistralai/mistral-large-2411"
+                        className="flex-1 bg-black/40 border border-white/10 rounded-xl px-2.5 py-1 text-xs text-white placeholder:text-zinc-600 font-mono focus:outline-none focus:border-[#10f48e]/60"
+                      />
+                      <button
+                        type="button"
+                        disabled={!customModelId.trim()}
+                        onClick={() => {
+                          if (customModelId.trim()) {
+                            handleSelectModel(customModelId.trim());
+                            setCustomModelId('');
+                            setShowCustomModelInput(false);
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-xl bg-[#10f48e] text-black font-bold text-xs hover:bg-emerald-400 disabled:opacity-40 cursor-pointer"
+                      >
+                        Pilih
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomModelInput(false)}
+                        className="p-1 text-zinc-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomModelInput(true)}
+                      className="text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer inline-flex items-center gap-1 py-0.5"
+                    >
+                      <Plus className="w-3 h-3 text-[#10f48e]" />
+                      <span>Ketik ID Model Lainnya</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModelDropdownOpen(false);
+                        setShowSettingsModal(true);
+                      }}
+                      className="text-[11px] font-semibold text-[#10f48e] hover:underline inline-flex items-center gap-1 cursor-pointer py-0.5"
+                    >
+                      <Settings className="w-3 h-3" />
+                      <span>Setel API Key</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

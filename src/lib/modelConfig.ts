@@ -80,14 +80,30 @@ export const CATEGORY_ORDER: ModelCategory[] = ['GRATIS', 'EKONOMIS', 'SEIMBANG'
 
 // Daftar model yang ditampilkan saat user sudah memasang key provider tersebut.
 export const ROUTER_STATIC_MODELS: AIModelOption[] = [
+  // Populer & Rekomendasi Utama
   { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini (Cepat & Cerdas)', category: 'EKONOMIS', pricePerMInput: '$0.15', context: '128K' },
-  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Super Cepat)', category: 'EKONOMIS', pricePerMInput: '$0.075', context: '1M' },
   { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet (Coding Unggul)', category: 'UNGGUL', pricePerMInput: '$3.00', context: '200K' },
-  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3 (Ekonomis & Handal)', category: 'EKONOMIS', pricePerMInput: '$0.14', context: '64K' },
+  { id: 'anthropic/claude-3.7-sonnet', label: 'Claude 3.7 Sonnet (Hybrid Reasoning)', category: 'UNGGUL', pricePerMInput: '$3.00', context: '200K' },
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3 (Sangat Murah & Handal)', category: 'EKONOMIS', pricePerMInput: '$0.14', context: '64K' },
   { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Penalaran & Logika)', category: 'SEIMBANG', pricePerMInput: '$0.55', context: '64K' },
-  { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (Open Source)', category: 'SEIMBANG', pricePerMInput: '$0.40', context: '128K' },
+  { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Super Cepat)', category: 'EKONOMIS', pricePerMInput: '$0.075', context: '1M' },
+  { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro (Penalaran Kompleks)', category: 'SEIMBANG', pricePerMInput: '$1.25', context: '2M' },
   { id: 'openai/gpt-4o', label: 'GPT-4o (Flagship OpenAI)', category: 'UNGGUL', pricePerMInput: '$2.50', context: '128K' },
+  { id: 'openai/o3-mini', label: 'OpenAI o3-mini (STEM & Coding)', category: 'SEIMBANG', pricePerMInput: '$1.10', context: '200K' },
+  { id: 'openai/o1', label: 'OpenAI o1 (Advanced Reasoning)', category: 'UNGGUL', pricePerMInput: '$15.00', context: '200K' },
+  { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder 32B (Spesialis Kode)', category: 'EKONOMIS', pricePerMInput: '$0.07', context: '128K' },
+  { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (Open Source Terkuat)', category: 'SEIMBANG', pricePerMInput: '$0.40', context: '128K' },
+  { id: 'mistralai/mistral-large-2411', label: 'Mistral Large (Multilingual & Code)', category: 'SEIMBANG', pricePerMInput: '$2.00', context: '128K' },
+  { id: 'anthropic/claude-3.5-haiku', label: 'Claude 3.5 Haiku (Kilat & Efisien)', category: 'EKONOMIS', pricePerMInput: '$0.80', context: '200K' },
+  
+  // Model Gratis (Free Tier)
   { id: 'openrouter/free', label: 'OpenRouter Free (Auto Gratis)', category: 'GRATIS', pricePerMInput: '$0', context: 'Auto' },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free Tier)', category: 'GRATIS', pricePerMInput: 'Gratis', context: '128K' },
+  { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (Free Tier)', category: 'GRATIS', pricePerMInput: 'Gratis', context: '64K' },
+  { id: 'deepseek/deepseek-chat:free', label: 'DeepSeek V3 (Free Tier)', category: 'GRATIS', pricePerMInput: 'Gratis', context: '64K' },
+  { id: 'qwen/qwen-2.5-coder-32b-instruct:free', label: 'Qwen 2.5 Coder (Free Tier)', category: 'GRATIS', pricePerMInput: 'Gratis', context: '32K' },
+  { id: 'google/gemma-2-9b-it:free', label: 'Gemma 2 9B (Free Tier)', category: 'GRATIS', pricePerMInput: 'Gratis', context: '8K' },
+  { id: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B (Free Tier)', category: 'GRATIS', pricePerMInput: 'Gratis', context: '32K' },
 ];
 
 const OPENAI_MODELS: AIModelOption[] = [

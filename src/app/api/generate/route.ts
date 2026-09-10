@@ -38,8 +38,9 @@ function buildOpenAICompatHeaders(apiKey: string | undefined, isOpenRouter: bool
     Authorization: `Bearer ${apiKey}`
   };
   if (isOpenRouter) {
-    headers['X-OpenRouter-Title'] = OPENROUTER_APP_TITLE;
     headers['HTTP-Referer'] = OPENROUTER_SITE_URL;
+    headers['X-Title'] = OPENROUTER_APP_TITLE;
+    headers['X-OpenRouter-Title'] = OPENROUTER_APP_TITLE;
   }
   return headers;
 }
@@ -1410,16 +1411,25 @@ ${staffLandingGuide}
               { role: 'user', content: prompt }
             ];
             try {
+              const bodyPayload: Record<string, any> = {
+                model: activeOpenAIModel,
+                messages: oaiMessages,
+                stream: true
+              };
+              if (isOpenRouter) {
+                bodyPayload.max_tokens = ideationMaxTokens;
+              } else {
+                bodyPayload.max_completion_tokens = ideationMaxTokens;
+              }
+              const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
+              if (!isReasoning) {
+                bodyPayload.temperature = 0.7;
+              }
+
               const oaiRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
                 method: 'POST',
                 headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-                body: JSON.stringify({
-                  model: activeOpenAIModel,
-                  messages: oaiMessages,
-                  max_completion_tokens: ideationMaxTokens,
-                  temperature: 0.7,
-                  stream: true
-                })
+                body: JSON.stringify(bodyPayload)
               });
 
               if (oaiRes.ok && oaiRes.body) {
@@ -1447,6 +1457,21 @@ ${staffLandingGuide}
                   }
                 }
                 streamSuccess = true;
+              } else {
+                const errJson = await oaiRes.json().catch(() => null);
+                const errMsg = errJson?.error?.message || errJson?.error || `HTTP ${oaiRes.status}`;
+                console.warn(`OpenAI/OpenRouter (${activeOpenAIModel}) stream error:`, oaiRes.status, errMsg);
+                if (useUserKey) {
+                  let userMsg = errMsg;
+                  if (oaiRes.status === 401) userMsg = 'API Key yang dimasukkan tidak valid atau tidak memiliki izin akses.';
+                  if (oaiRes.status === 402) userMsg = `Saldo kredit OpenRouter tidak mencukupi untuk model "${activeOpenAIModel}". Silakan pilih model gratis (tab 🆓 Gratis) atau isi saldo akun Anda.`;
+                  if (oaiRes.status === 404) userMsg = `Model "${activeOpenAIModel}" tidak ditemukan di OpenRouter.`;
+                  if (oaiRes.status === 429) userMsg = `Batas rate limit model "${activeOpenAIModel}" tercapai. Mohon tunggu sejenak atau pilih model lain.`;
+                  send({ type: 'chunk', text: `⚠️ **Gagal memanggil model ${activeOpenAIModel}:**\n\n${userMsg}\n\n💡 *Saran: Silakan ganti pilihan model di dropdown bagian atas.*` });
+                  send({ type: 'done', fullText: `⚠️ ${userMsg}` });
+                  controller.close();
+                  return;
+                }
               }
             } catch (oaiStreamErr) {
               console.warn('OpenAI ideation streaming error, will fallback to Gemini:', oaiStreamErr);
@@ -1769,16 +1794,49 @@ body: JSON.stringify({
         { role: 'user', content: userPromptWithContext }
       ];
 
+      const reqBody: Record<string, any> = {
+        model: activeOpenAIModel,
+        messages
+      };
+      if (isOpenRouter) {
+        reqBody.max_tokens = isIdeationMode ? 1024 : 8192;
+      } else {
+        reqBody.max_completion_tokens = isIdeationMode ? 1024 : 8192;
+      }
+      const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
+      if (!isReasoning) {
+        reqBody.temperature = isIdeationMode ? 0.7 : 0.4;
+      }
+
       let response = await fetch(`${openaiBaseUrl}/chat/completions`, {
         method: 'POST',
         headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-body: JSON.stringify({
-          model: activeOpenAIModel,
-          messages,
-          max_completion_tokens: isIdeationMode ? 1024 : 8192,
-          temperature: isIdeationMode ? 0.7 : 0.5
-        })
+        body: JSON.stringify(reqBody)
       });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        const rawErrMsg = errData?.error?.message || errData?.error || `HTTP ${response.status}`;
+        console.error(`OpenAI/OpenRouter error (${response.status}):`, rawErrMsg);
+        let userFacingError = rawErrMsg;
+        if (response.status === 401) {
+          userFacingError = `API Key ${isOpenRouter ? 'OpenRouter' : 'OpenAI'} tidak valid. Silakan periksa kembali API Key di menu bawah.`;
+        } else if (response.status === 402) {
+          userFacingError = `Saldo kredit akun OpenRouter Anda tidak mencukupi untuk menjalankan model "${activeOpenAIModel}". Silakan pilih model dari tab 🆓 Gratis di dropdown atas atau isi saldo kredit di OpenRouter.`;
+        } else if (response.status === 404) {
+          userFacingError = `Model "${activeOpenAIModel}" tidak ditemukan atau belum tersedia di OpenRouter.`;
+        } else if (response.status === 429) {
+          userFacingError = `Batas kuota/rate limit untuk model "${activeOpenAIModel}" tercapai. Mohon tunggu beberapa detik atau pilih model lain.`;
+        }
+
+        return NextResponse.json({
+          success: false,
+          error: userFacingError,
+          replyText: `⚠️ **Gagal memproses dengan model ${activeOpenAIModel}:**\n\n${userFacingError}\n\n💡 *Saran:* Silakan pilih model alternatif di dropdown bagian atas (misalnya model dari tab **🆓 Gratis**).`,
+          code: null,
+          isContinued: false
+        });
+      }
 
       let data = await response.json();
       assistantMessage = data.choices?.[0]?.message?.content || '';
@@ -1803,15 +1861,21 @@ body: JSON.stringify({
 
         let contText = '';
         try {
+          const contReqBody: Record<string, any> = {
+            model: activeOpenAIModel,
+            messages: continuationMessages
+          };
+          if (isOpenRouter) {
+            contReqBody.max_tokens = 8192;
+          } else {
+            contReqBody.max_completion_tokens = 8192;
+          }
+          if (!isReasoning) contReqBody.temperature = 0.2;
+
           const contResponse = await fetch(`${openaiBaseUrl}/chat/completions`, {
             method: 'POST',
             headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-body: JSON.stringify({
-              model: activeOpenAIModel,
-              messages: continuationMessages,
-              max_completion_tokens: 8192,
-              temperature: 0.2
-            })
+            body: JSON.stringify(contReqBody)
           });
 
           if (contResponse.ok) {
@@ -1947,15 +2011,22 @@ INSTRUKSI PERBAIKAN WAJIB:
 8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.` }
         ];
 
+        const repairReqBody: Record<string, any> = {
+          model: activeOpenAIModel,
+          messages: repairPrompt
+        };
+        if (isOpenRouter) {
+          repairReqBody.max_tokens = 8192;
+        } else {
+          repairReqBody.max_completion_tokens = 8192;
+        }
+        const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
+        if (!isReasoning) repairReqBody.temperature = 0.2;
+
         const repairRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
           method: 'POST',
           headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-body: JSON.stringify({
-            model: activeOpenAIModel,
-            messages: repairPrompt,
-            max_completion_tokens: 8192,
-            temperature: 0.2
-          })
+          body: JSON.stringify(repairReqBody)
         });
 
         if (repairRes.ok) {
