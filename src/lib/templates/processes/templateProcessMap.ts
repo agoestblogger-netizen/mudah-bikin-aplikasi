@@ -30,7 +30,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-04',
     patternIds: ['UP-06', 'UP-10'],
-    overlayIds: [],
+    overlayIds: ['IND-17'],
     coreTransitions: ['booking slot', 'konfirmasi/DP', 'check-in', 'layanan selesai', 'renewal paket'],
     advisoryNotes: ['Alokasi terapis/petugas per slot']
   },
@@ -177,28 +177,28 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-25',
     patternIds: ['UP-07', 'UP-10'],
-    overlayIds: [],
+    overlayIds: ['IND-16'],
     coreTransitions: ['ide & kalender editorial', 'produksi konten', 'approval', 'publikasi', 'monetisasi/langganan'],
     advisoryNotes: ['Engagement & sponsor slot']
   },
   {
     templateId: 'MT-26',
     patternIds: ['UP-01', 'UP-08', 'UP-10'],
-    overlayIds: [],
+    overlayIds: ['IND-18'],
     coreTransitions: ['pengajuan polis', 'underwriting', 'premi berkala', 'klaim', 'keputusan & kompensasi'],
     advisoryNotes: ['Investigasi klaim & komisi agen']
   },
   {
     templateId: 'MT-27',
     patternIds: ['UP-02', 'UP-01', 'UP-09'],
-    overlayIds: [],
+    overlayIds: ['IND-19'],
     coreTransitions: ['seller daftar & upload produk', 'checkout & escrow', 'pengiriman', 'konfirmasi terima & lepas dana', 'dispute/refund'],
     advisoryNotes: ['Komisi marketplace & rating seller']
   },
   {
     templateId: 'MT-28',
     patternIds: ['UP-01', 'UP-05'],
-    overlayIds: [],
+    overlayIds: ['IND-20'],
     coreTransitions: ['donasi masuk', 'rekap dana', 'program & penerima manfaat', 'penyaluran', 'laporan transparansi'],
     advisoryNotes: ['Laporan dampak & relawan']
   }

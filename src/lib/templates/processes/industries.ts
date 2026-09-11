@@ -17,7 +17,7 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
   {
     id: 'IND-01',
     nama: 'Retail / Toko',
-    keywords: ['retail', 'toko', 'minimarket', 'kelontong', 'warung', 'butik', 'petshop', 'sembako', 'ritel', 'toko online'],
+    keywords: ['retail', 'toko', 'minimarket', 'kelontong', 'warung', 'butik', 'petshop', 'sembako', 'ritel'],
     patternIds: ['UP-02', 'UP-09', 'UP-01'],
     extraEntities: [
       { name: 'SKU/Varian', fields: ['id', 'produk_id', 'varian', 'barcode', 'harga'] },
@@ -676,6 +676,231 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
     advisoryItems: ['Pengaduan', 'Arsip digital', 'Tanda tangan elektronik'],
     provenance: [
       { source: DOC_SOURCE, note: 'Bagian 2.15 Layanan Publik/Pemerintahan Internal' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-16 — Media & Konten Digital
+  // ===========================================================================
+  {
+    id: 'IND-16',
+    nama: 'Media & Konten Digital',
+    keywords: ['media', 'konten digital', 'editorial', 'penerbitan', 'artikel', 'publisher', 'content creator', 'monetisasi konten', 'audiens'],
+    patternIds: ['UP-07', 'UP-10'],
+    extraEntities: [
+      { name: 'Content Item', fields: ['id', 'judul', 'jenis', 'status', 'penulis', 'channel'] },
+      { name: 'Publishing Schedule', fields: ['id', 'content_id', 'jadwal', 'channel', 'status'] },
+      { name: 'Engagement Metric', fields: ['id', 'content_id', 'views', 'likes', 'share', 'periode'] },
+      { name: 'Sponsor/Ads Slot', fields: ['id', 'sponsor', 'slot', 'nilai', 'periode'] }
+    ],
+    notes: [
+      'Kalender editorial',
+      'Tracking performa konten',
+      'Monetisasi iklan/sponsor'
+    ],
+    painPoints: [
+      { id: 'IND-16-P1', label: 'Jadwal publikasi kacau', severity: 'core' },
+      { id: 'IND-16-P2', label: 'Performa konten tidak terukur', severity: 'core' },
+      { id: 'IND-16-P3', label: 'Ide konten tidak terpusat', severity: 'advisory' },
+      { id: 'IND-16-P4', label: 'Sponsor tidak terkelola', severity: 'advisory' }
+    ],
+    roleLabels: ['Editor', 'Content Creator', 'Approver', 'Sponsor', 'Subscriber'],
+    extraFeatures: [
+      { id: 'IND-16-F01', label: 'Kalender editorial', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-16-F02', label: 'Produksi konten (draft/revisi)', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-16-F03', label: 'Approval konten', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-16-F04', label: 'Penjadwalan publikasi', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-16-F05', label: 'Tracking performa konten', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-16-F06', label: 'Sponsor & ads slot', severity: 'advisory', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-16-F07', label: 'Laporan monetisasi', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-16-F08', label: 'Data audiens/subscriber', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Kalender editorial', 'Produksi konten', 'Approval', 'Publikasi', 'Performa konten'],
+    advisoryItems: ['Sponsor & ads', 'Monetisasi', 'Audiens'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.16 Media & Konten Digital' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-17 — Kecantikan & Wellness (Salon, Spa, Gym)
+  // ===========================================================================
+  {
+    id: 'IND-17',
+    nama: 'Kecantikan & Wellness (Salon, Spa, Gym)',
+    keywords: ['salon', 'spa', 'gym', 'kecantikan', 'wellness', 'massage', 'pijat', 'barbershop', 'treatment', 'fitness', 'yoga', 'refleksi'],
+    patternIds: ['UP-06', 'UP-10'],
+    extraEntities: [
+      { name: 'Terapis/Trainer', fields: ['id', 'nama', 'spesialisasi', 'jadwal', 'status'] },
+      { name: 'Paket Treatment', fields: ['id', 'nama', 'durasi', 'harga', 'include'] },
+      { name: 'Sesi Terpakai', fields: ['id', 'member_id', 'paket_id', 'tanggal', 'terapis'] },
+      { name: 'Alat/Ruang', fields: ['id', 'nama', 'tipe', 'status'] }
+    ],
+    notes: [
+      'Alokasi terapis per slot',
+      'Sisa sesi paket member',
+      'Cross-sell produk retail'
+    ],
+    painPoints: [
+      { id: 'IND-17-P1', label: 'Terapis bentrok jadwal', severity: 'core' },
+      { id: 'IND-17-P2', label: 'Sisa sesi paket member tidak terpantau', severity: 'core' },
+      { id: 'IND-17-P3', label: 'Pelanggan no-show', severity: 'core' },
+      { id: 'IND-17-P4', label: 'Stok produk retail tidak sinkron', severity: 'advisory' }
+    ],
+    roleLabels: ['Terapis/Trainer', 'Resepsionis', 'Admin', 'Pelanggan/Member'],
+    extraFeatures: [
+      { id: 'IND-17-F01', label: 'Booking slot & terapis', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-17-F02', label: 'Paket treatment & harga', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-17-F03', label: 'Sesi paket & pemakaian', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-17-F04', label: 'Membership & renewal', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-17-F05', label: 'Alat/ruang', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-17-F06', label: 'Cross-sell produk retail', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-17-F07', label: 'Reminder & no-show policy', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Booking slot & terapis', 'Paket treatment', 'Sesi paket', 'Membership/renewal'],
+    advisoryItems: ['Alat/ruang', 'Cross-sell retail', 'No-show policy'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.17 Kecantikan & Wellness' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-18 — Asuransi
+  // ===========================================================================
+  {
+    id: 'IND-18',
+    nama: 'Asuransi',
+    keywords: ['asuransi', 'polis', 'premi', 'klaim', 'underwriting', 'pertanggungan', 'adjuster', 'pemegang polis'],
+    patternIds: ['UP-01', 'UP-08', 'UP-10'],
+    extraEntities: [
+      { name: 'Polis', fields: ['id', 'produk', 'pemegang_polis', 'mulai', 'berakhir', 'status'] },
+      { name: 'Premi', fields: ['id', 'polis_id', 'periode', 'jumlah', 'status_bayar'] },
+      { name: 'Klaim', fields: ['id', 'polis_id', 'jenis', 'tanggal_kejadian', 'status'] },
+      { name: 'Underwriting', fields: ['id', 'pengajuan_id', 'penilai', 'risiko', 'keputusan'] },
+      { name: 'Ahli Waris/Penerima Manfaat', fields: ['id', 'polis_id', 'nama', 'hubungan', 'persentase'] }
+    ],
+    notes: [
+      'Underwriting sebelum akad',
+      'Verifikasi klaim (dokumen + investigasi)',
+      'Jadwal pembayaran premi'
+    ],
+    painPoints: [
+      { id: 'IND-18-P1', label: 'Underwriting lambat', severity: 'core' },
+      { id: 'IND-18-P2', label: 'Klaim tidak terverifikasi', severity: 'core' },
+      { id: 'IND-18-P3', label: 'Premi menunggak tidak terdeteksi', severity: 'core' },
+      { id: 'IND-18-P4', label: 'Data penerima manfaat tidak lengkap', severity: 'advisory' }
+    ],
+    roleLabels: ['Agen', 'Underwriter', 'Adjuster/Investigator', 'Finance', 'Pemegang Polis'],
+    extraFeatures: [
+      { id: 'IND-18-F01', label: 'Pengajuan polis', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-18-F02', label: 'Underwriting', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-18-F03', label: 'Jadwal & pembayaran premi', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-18-F04', label: 'Pengajuan klaim & dokumen', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-18-F05', label: 'Investigasi klaim', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-18-F06', label: 'Keputusan & kompensasi', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-18-F07', label: 'Komisi agen', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-18-F08', label: 'Ahli waris/penerima manfaat', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Pengajuan polis', 'Underwriting', 'Premi berkala', 'Klaim & verifikasi', 'Keputusan kompensasi'],
+    advisoryItems: ['Komisi agen', 'Ahli waris', 'Renewal polis'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.18 Asuransi' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-19 — E-commerce Marketplace
+  // ===========================================================================
+  {
+    id: 'IND-19',
+    nama: 'E-commerce Marketplace',
+    keywords: ['marketplace', 'e-commerce', 'ecommerce', 'multi-seller', 'seller', 'escrow', 'toko online', 'mall online'],
+    patternIds: ['UP-02', 'UP-01', 'UP-09'],
+    extraEntities: [
+      { name: 'Seller/Toko', fields: ['id', 'nama', 'pemilik', 'status_verifikasi', 'komisi'] },
+      { name: 'Produk Multi-Seller', fields: ['id', 'seller_id', 'nama', 'harga', 'stok'] },
+      { name: 'Escrow Payment', fields: ['id', 'order_id', 'jumlah', 'status_escrow', 'rilis_pada'] },
+      { name: 'Rating & Review', fields: ['id', 'order_id', 'produk_id', 'rating', 'ulasan'] }
+    ],
+    notes: [
+      'Escrow dana sampai barang diterima',
+      'Dispute buyer-seller',
+      'Komisi marketplace per transaksi'
+    ],
+    painPoints: [
+      { id: 'IND-19-P1', label: 'Dana seller tidak jelas kapan cair', severity: 'core' },
+      { id: 'IND-19-P2', label: 'Dispute tidak tertangani', severity: 'core' },
+      { id: 'IND-19-P3', label: 'Komisi sulit dihitung', severity: 'core' },
+      { id: 'IND-19-P4', label: 'Produk tidak sesuai deskripsi', severity: 'advisory' }
+    ],
+    roleLabels: ['Admin Marketplace', 'Seller', 'Buyer', 'Kurir'],
+    extraFeatures: [
+      { id: 'IND-19-F01', label: 'Pendaftaran & verifikasi seller', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-19-F02', label: 'Katalog multi-seller', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-19-F03', label: 'Checkout & escrow', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-19-F04', label: 'Pengiriman & konfirmasi terima', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-19-F05', label: 'Pelepasan dana & komisi', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-19-F06', label: 'Dispute/refund', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-19-F07', label: 'Rating & ulasan', severity: 'advisory', complexity: 'LOW' },
+      { id: 'IND-19-F08', label: 'Laporan GMV', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Seller & verifikasi', 'Katalog multi-seller', 'Checkout & escrow', 'Pelepasan dana & komisi', 'Dispute'],
+    advisoryItems: ['Rating & ulasan', 'Laporan GMV', 'Program promo'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.19 E-commerce Marketplace' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-20 — NGO / Organisasi Nonprofit
+  // ===========================================================================
+  {
+    id: 'IND-20',
+    nama: 'NGO / Organisasi Nonprofit',
+    keywords: ['ngo', 'nonprofit', 'non-profit', 'donasi', 'donatur', 'organisasi sosial', 'yayasan', 'relawan', 'penerima manfaat'],
+    patternIds: ['UP-01', 'UP-05'],
+    extraEntities: [
+      { name: 'Donatur', fields: ['id', 'nama', 'kontak', 'tipe', 'status'] },
+      { name: 'Donasi/Dana', fields: ['id', 'donatur_id', 'jumlah', 'tanggal', 'program_id'] },
+      { name: 'Program/Kegiatan', fields: ['id', 'nama', 'target_dana', 'realisasi', 'status'] },
+      { name: 'Penerima Manfaat', fields: ['id', 'nama', 'kategori', 'program_id', 'status'] },
+      { name: 'Laporan Pertanggungjawaban', fields: ['id', 'program_id', 'periode', 'file', 'status'] }
+    ],
+    notes: [
+      'Transparansi penyaluran dana',
+      'Laporan dampak program',
+      'Tracking penerima manfaat'
+    ],
+    painPoints: [
+      { id: 'IND-20-P1', label: 'Penyaluran tidak transparan', severity: 'core' },
+      { id: 'IND-20-P2', label: 'Donatur tidak dapat laporan', severity: 'core' },
+      { id: 'IND-20-P3', label: 'Penerima manfaat tidak terdata', severity: 'core' },
+      { id: 'IND-20-P4', label: 'Program tidak terukur dampaknya', severity: 'advisory' }
+    ],
+    roleLabels: ['Pengurus', 'Fundraiser', 'Relawan', 'Donatur', 'Penerima Manfaat'],
+    extraFeatures: [
+      { id: 'IND-20-F01', label: 'Pencatatan donasi', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-20-F02', label: 'Rekap & alokasi dana', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-20-F03', label: 'Program & penerima manfaat', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-20-F04', label: 'Penyaluran & bukti', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-20-F05', label: 'Laporan transparansi', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-20-F06', label: 'Relawan & jadwal', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-20-F07', label: 'Laporan dampak', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Donasi', 'Rekap & alokasi dana', 'Program & penerima', 'Penyaluran & bukti', 'Laporan transparansi'],
+    advisoryItems: ['Relawan', 'Laporan dampak', 'Publikasi program'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.20 NGO/Organisasi Nonprofit' }
     ],
     version: '1.0',
     lastReviewed: REVIEW_DATE
