@@ -23,6 +23,12 @@ import {
   OPENROUTER_APP_TITLE
 } from '@/app/api/generate/route';
 import { OPENROUTER_API_BASE, OPENAI_API_BASE } from '@/lib/modelConfig';
+import {
+  ensureSemanticIndex,
+  resolveSemanticMapping,
+  type SemanticMappingResult,
+  type SemanticMatch
+} from '@/lib/semanticSearch';
 
 export const maxDuration = 60;
 
@@ -178,7 +184,8 @@ async function mapBusinessIntentWithAI(
   prompt: string,
   provider?: string,
   apiKey?: string,
-  model?: string
+  model?: string,
+  candidates?: SemanticMatch[]
 ): Promise<AIBusinessMappingResult | null> {
   const systemInstruction = `Anda adalah Principal Enterprise Architect & Business Analyst dari platform "Aplikasi Generator".
 Tugas Anda: Menganalisis ide bisnis pengguna dan memetakannya secara SANGAT AKURAT ke Master Template (MT) dan Overlay Industri (IND).
@@ -225,6 +232,7 @@ ATURAN KRITIS (SANGAT PENTING):
 2. PISAHKAN BENGKEL vs RENTAL: Jika ide berupa reparasi/servis/bengkel (servis motor, ganti oli, bengkel mobil, bengkel AC), WAJIB pilih MT-05 dan IND-13.
 3. Buat 3-5 pain points (masalah utama) yang SANGAT RELEVAN dan spesifik untuk bisnis tersebut dalam bahasa Indonesia santun.
 4. Buat 3-5 peran operasional yang MASUK AKAL secara nyata untuk bisnis tersebut (contoh rental motor: "Petugas Rental", "Penyewa", "Petugas Cek Fisik Unit").
+5. Gunakan MT-20 (Custom) HANYA jika benar-benar tidak ada template yang cocok. Utamakan template yang paling mendekati.
 
 Kembalikan HANYA JSON valid:
 {
@@ -244,9 +252,18 @@ Kembalikan HANYA JSON valid:
   ]
 }`;
 
+  const candidateHint =
+    candidates && candidates.length > 0
+      ? `\n\nKANDIDAT SEMANTIC (kemiripan embedding dari repository, jadikan pertimbangan utama; tetap validasi dengan aturan kritis):\n` +
+        candidates
+          .slice(0, 6)
+          .map((c) => `- [${c.kind}] ${c.id} ${c.label} (skor ${c.similarity.toFixed(3)})`)
+          .join('\n')
+      : '';
+
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Ide Bisnis Pengguna: "${prompt}"\nPetakan ke Master Template, Overlay, pain points, dan peran yang paling tepat dalam bentuk JSON:`,
+    userPrompt: `Ide Bisnis Pengguna: "${prompt}"\nPetakan ke Master Template, Overlay, pain points, dan peran yang paling tepat dalam bentuk JSON:${candidateHint}`,
     temperature: 0.1,
     maxTokens: 500,
     provider,
@@ -346,8 +363,22 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'prompt wajib diisi untuk START.' }, { status: 400 });
       }
 
-      // 1. Pemetaan cerdas menggunakan AI
-      const aiMapping = await mapBusinessIntentWithAI(prompt, provider, userApiKey, userModel);
+      // 0. Semantic search (Gemini embedding) untuk menemukan kandidat paling mirip.
+      //    Tidak menyimpan teks prompt; hanya embedding repository yang di-index.
+      const geminiKey =
+        provider === 'gemini' && userApiKey && userApiKey.trim()
+          ? userApiKey.trim()
+          : process.env.GEMINI_API_KEY || '';
+
+      let semantic: SemanticMappingResult | null = null;
+      if (geminiKey) {
+        try {
+          await ensureSemanticIndex(geminiKey);
+          semantic = await resolveSemanticMapping(prompt, geminiKey);
+        } catch (err) {
+          console.warn('Semantic mapping dilewati:', err);
+        }
+      }
 
       let templateId: string;
       let overlayIds: string[];
@@ -356,28 +387,57 @@ export async function POST(req: Request) {
       let contextualPainPoints: string[] | undefined;
       let contextualRoles: string[] | undefined;
 
-      if (aiMapping) {
-        templateId = aiMapping.templateId;
-        overlayIds = aiMapping.overlayIds;
-        patternIds = aiMapping.patternIds;
-        businessCategory = aiMapping.businessCategory;
-        contextualPainPoints = aiMapping.contextualPainPoints;
-        contextualRoles = aiMapping.contextualRoles;
-      } else {
-        // Fallback statis deterministik dari repository yang sudah dibersihkan
-        const matched = detectMatchingMasterTemplate(prompt);
-        const detectedOverlays = detectIndustryOverlays(prompt);
-        const map = matched ? getTemplateProcessMap(matched.template.id) : undefined;
-
-        templateId = matched?.template.id || 'MT-20';
-        overlayIds = Array.from(
-          new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
-        );
-        patternIds = Array.from(
-          new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
-        );
+      if (semantic?.confident && semantic.templateId) {
+        // Skor semantic sudah tinggi & jelas: langsung pakai, tanpa AI mapping.
+        templateId = semantic.templateId;
+        overlayIds = semantic.overlayIds && semantic.overlayIds.length > 0 ? semantic.overlayIds : [];
+        patternIds = semantic.patternIds && semantic.patternIds.length > 0 ? semantic.patternIds : ['UP-06', 'UP-09'];
         const firstOverlay = getIndustryOverlayById(overlayIds[0]);
-        businessCategory = firstOverlay ? firstOverlay.nama : matched?.template.nama;
+        const matchedTemplate = getMasterTemplateById(templateId);
+        businessCategory = firstOverlay ? firstOverlay.nama : matchedTemplate?.nama;
+      } else {
+        // 1. Pemetaan cerdas menggunakan AI (dengan petunjuk kandidat semantic bila ada)
+        const aiMapping = await mapBusinessIntentWithAI(
+          prompt,
+          provider,
+          userApiKey,
+          userModel,
+          semantic?.candidates
+        );
+
+        if (aiMapping) {
+          templateId = aiMapping.templateId;
+          overlayIds = aiMapping.overlayIds;
+          patternIds = aiMapping.patternIds;
+          businessCategory = aiMapping.businessCategory;
+          contextualPainPoints = aiMapping.contextualPainPoints;
+          contextualRoles = aiMapping.contextualRoles;
+        } else {
+          // Fallback statis deterministik dari repository yang sudah dibersihkan
+          const matched = detectMatchingMasterTemplate(prompt);
+          const semanticTemplateId = semantic?.templateId;
+          const fallbackTemplateId = matched?.template.id || semanticTemplateId || 'MT-20';
+          const map = getTemplateProcessMap(fallbackTemplateId);
+
+          templateId = fallbackTemplateId;
+          if (!matched && semanticTemplateId) {
+            overlayIds = map?.overlayIds || [];
+            patternIds = map?.patternIds || [];
+            const firstOverlay = getIndustryOverlayById(overlayIds[0]);
+            const tpl = getMasterTemplateById(semanticTemplateId);
+            businessCategory = firstOverlay ? firstOverlay.nama : tpl?.nama;
+          } else {
+            const detectedOverlays = detectIndustryOverlays(prompt);
+            overlayIds = Array.from(
+              new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
+            );
+            patternIds = Array.from(
+              new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
+            );
+            const firstOverlay = getIndustryOverlayById(overlayIds[0]);
+            businessCategory = firstOverlay ? firstOverlay.nama : matched?.template.nama;
+          }
+        }
       }
 
       const tier = detectTier({ patternIds });
@@ -419,7 +479,19 @@ export async function POST(req: Request) {
         narration,
         tier: { tier: tier.tier, reasons: tier.reasons },
         template: matchedTemplate ? { id: matchedTemplate.id, nama: matchedTemplate.nama } : null,
-        overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama }))
+        overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama })),
+        semantic: semantic
+          ? {
+              used: semantic.confident,
+              topScore: Number(semantic.topScore.toFixed(3)),
+              candidates: semantic.candidates.slice(0, 5).map((c) => ({
+                id: c.id,
+                kind: c.kind,
+                label: c.label,
+                similarity: Number(c.similarity.toFixed(3))
+              }))
+            }
+          : null
       });
     }
 
