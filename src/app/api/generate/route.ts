@@ -1650,20 +1650,37 @@ ${staffLandingGuide}
     const acceptFallback = (msg: string, providerName: 'gemini' | 'openai'): boolean => {
       const fbHtml = extractHtmlFromMessage(msg);
       if (!fbHtml) return false;
+
       const fbValidated = validateAndRepairGeneratedCode(fbHtml, '', '', officialRoles);
-      if (!fbValidated || !fbValidated.isValid) {
-        console.warn(
-          `Fallback ${providerName} tidak valid:`,
-          (fbValidated?.issues || []).slice(0, 4).join(' | ').slice(0, 400)
-        );
-        return false;
+      if (fbValidated && fbValidated.isValid) {
+        htmlCode = fbHtml;
+        assistantMessage = msg;
+        validated = fbValidated;
+        usedDefaultFallback = true;
+        actualProviderUsed = providerName;
+        return true;
       }
-      htmlCode = fbHtml;
-      assistantMessage = msg;
-      validated = fbValidated;
-      usedDefaultFallback = true;
-      actualProviderUsed = providerName;
-      return true;
+
+      if (fbValidated) {
+        const healedHtml = injectMissingHandlerStubs(fbValidated.repairedCode?.html || fbHtml, fbValidated.issues);
+        if (healedHtml !== (fbValidated.repairedCode?.html || fbHtml)) {
+          const healedValidated = validateAndRepairGeneratedCode(healedHtml, '', '', officialRoles);
+          if (healedValidated && healedValidated.isValid) {
+            htmlCode = healedHtml;
+            assistantMessage = msg;
+            validated = healedValidated;
+            usedDefaultFallback = true;
+            actualProviderUsed = providerName;
+            return true;
+          }
+        }
+      }
+
+      console.warn(
+        `Fallback ${providerName} tidak valid:`,
+        (fbValidated?.issues || []).slice(0, 4).join(' | ').slice(0, 400)
+      );
+      return false;
     };
 
     const tryServerDefaultFallback = async (reason: string): Promise<boolean> => {
