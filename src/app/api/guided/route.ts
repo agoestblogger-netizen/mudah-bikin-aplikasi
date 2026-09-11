@@ -44,7 +44,7 @@ function buildNarrationPrompt(session: MockupSessionState, action: GuidedAction,
   const roleLabels = session.roles.selected.join(', ') || 'belum dipilih';
   const wajib = session.features.selected.filter((f) => f.priority === 'WAJIB').length;
   const nyusul = session.features.selected.filter((f) => f.priority === 'NYUSUL').length;
-  return `Konteks sesi perancangan aplikasi:
+  return `Konteks sesi Aplikasi Generator:
 - Template: ${session.match.templateId || 'belum terdeteksi'}
 - Industri: ${overlayNames.join(', ') || 'umum'}
 - Pola proses: ${session.match.patternIds.join(', ') || '-'}
@@ -93,7 +93,7 @@ async function generateNarration(
 
   const narrationPrompt = buildNarrationPrompt(session, action, stepTitle);
   const systemInstruction =
-    'Anda adalah Konsultan Aplikasi AI dari platform "Mudah Bikin Aplikasi". Berikan narasi singkat, hangat, dan konkret. Jangan pernah mengubah daftar opsi pilihan pengguna.';
+    'Anda adalah Konsultan Aplikasi AI dari platform "Aplikasi Generator". Berikan narasi singkat, hangat, dan konkret. Sebut kegiatan ini sebagai "Aplikasi Generator", jangan gunakan istilah "perancangan aplikasi". Jangan pernah mengubah daftar opsi pilihan pengguna.';
 
   try {
     if (requestedProvider === 'gemini' && geminiApiKey) {

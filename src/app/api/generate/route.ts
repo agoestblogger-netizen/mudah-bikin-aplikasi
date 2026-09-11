@@ -495,7 +495,7 @@ ATURAN KERJA SISTEM:
 4. Selama mode masih "Plan", Anda DILARANG KERAS membuat prototipe ataupun menghasilkan blok kode HTML/CSS/JS!
 
 TUGAS ANDA PADA GILIRAN INI (WAJIB DIPATUHI DENGAN RAMAH, TEGAS & JELAS):
-1. Berikan apresiasi hangat bahwa perancangan Brief Kebutuhan untuk aplikasi "${appTitle}" sudah selesai dan disepakati.
+1. Berikan apresiasi hangat bahwa penyusunan Brief Kebutuhan untuk aplikasi "${appTitle}" sudah selesai dan disepakati.
 2. Jelaskan bahwa Anda sudah siap membangun aplikasi ini, TETAPI karena dropdown chat saat ini masih dalam mode "Plan (Brief)", prototipe belum dapat dibuat.
 3. Berikan instruksi jelas kepada pengguna:
    "Silakan ubah dropdown mode di samping kolom chat dari **Plan (Brief)** menjadi **🛠️ Build (Prototype)**, lalu tekan tombol kirim atau konfirmasi untuk mulai membangun prototipe aplikasi Anda."
