@@ -456,5 +456,228 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
     ],
     version: '1.0',
     lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-11 — Pertanian & Agribisnis
+  // ===========================================================================
+  {
+    id: 'IND-11',
+    nama: 'Pertanian & Agribisnis',
+    keywords: ['pertanian', 'kebun', 'ladang', 'panen', 'tanam', 'agribisnis', 'peternakan', 'komoditas', 'tani', 'pemupukan'],
+    patternIds: ['UP-07', 'UP-09', 'UP-02'],
+    extraEntities: [
+      { name: 'Lahan/Kebun', fields: ['id', 'nama', 'luas', 'lokasi', 'status'] },
+      { name: 'Siklus Tanam', fields: ['id', 'lahan_id', 'komoditas', 'mulai', 'estimasi_panen', 'status'] },
+      { name: 'Panen', fields: ['id', 'siklus_id', 'tanggal', 'jumlah', 'grade'] },
+      { name: 'Distribusi Hasil', fields: ['id', 'panen_id', 'tujuan', 'qty', 'status'] }
+    ],
+    notes: [
+      'Pencatatan siklus musim tanam',
+      'Hasil panen per lahan',
+      'Harga jual fluktuatif per komoditas'
+    ],
+    painPoints: [
+      { id: 'IND-11-P1', label: 'Siklus tanam tidak tercatat', severity: 'core' },
+      { id: 'IND-11-P2', label: 'Hasil per lahan tidak terukur', severity: 'core' },
+      { id: 'IND-11-P3', label: 'Harga komoditas tidak terpantau', severity: 'advisory' },
+      { id: 'IND-11-P4', label: 'Distribusi hasil tidak efisien', severity: 'advisory' }
+    ],
+    roleLabels: ['Pemilik Lahan', 'Mandor', 'Petani', 'Logistik Gudang', 'Pembeli'],
+    extraFeatures: [
+      { id: 'IND-11-F01', label: 'Data lahan & musim tanam', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-11-F02', label: 'Catatan perawatan/pemupukan', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-11-F03', label: 'Panen & hasil per lahan', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-11-F04', label: 'Grading kualitas', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-11-F05', label: 'Stok hasil gudang', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-11-F06', label: 'Harga komoditas & penjualan', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-11-F07', label: 'Distribusi/pengiriman hasil', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Data lahan & musim', 'Perawatan/pemupukan', 'Panen & hasil per lahan', 'Stok gudang'],
+    advisoryItems: ['Harga komoditas', 'Distribusi hasil', 'Prediksi panen'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.11 Pertanian & Agribisnis' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-12 — Keuangan & Pegadaian/Fintech
+  // ===========================================================================
+  {
+    id: 'IND-12',
+    nama: 'Keuangan & Pegadaian/Fintech',
+    keywords: ['keuangan', 'pegadaian', 'fintech', 'pinjaman', 'gadai', 'kredit', 'cicilan', 'bunga', 'collateral', 'taksiran', 'leasing'],
+    patternIds: ['UP-02', 'UP-10', 'UP-08'],
+    extraEntities: [
+      { name: 'Nasabah', fields: ['id', 'nama', 'identitas', 'kontak', 'status_verifikasi'] },
+      { name: 'Barang Jaminan/Collateral', fields: ['id', 'jenis', 'deskripsi', 'nilai_taksiran', 'status'] },
+      { name: 'Skema Pinjaman', fields: ['id', 'plafon', 'bunga', 'tenor', 'biaya_admin'] },
+      { name: 'Jadwal Cicilan/Bunga', fields: ['id', 'pinjaman_id', 'angsuran_ke', 'jatuh_tempo', 'jumlah', 'status'] },
+      { name: 'Taksiran Nilai', fields: ['id', 'jaminan_id', 'penaksir', 'nilai', 'tanggal'] }
+    ],
+    notes: [
+      'Proses taksir barang jaminan',
+      'Jatuh tempo & lelang',
+      'Perhitungan bunga/biaya administrasi',
+      'Verifikasi identitas nasabah'
+    ],
+    painPoints: [
+      { id: 'IND-12-P1', label: 'Taksiran tidak konsisten', severity: 'core' },
+      { id: 'IND-12-P2', label: 'Jatuh tempo terlewat', severity: 'core' },
+      { id: 'IND-12-P3', label: 'Perhitungan bunga manual', severity: 'core' },
+      { id: 'IND-12-P4', label: 'Identitas nasabah tidak terverifikasi', severity: 'advisory' }
+    ],
+    roleLabels: ['Admin Keuangan', 'Penaksir', 'Kasir', 'Kolektor', 'Nasabah'],
+    extraFeatures: [
+      { id: 'IND-12-F01', label: 'Data nasabah & verifikasi identitas', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-12-F02', label: 'Pengajuan pinjaman & skema', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-12-F03', label: 'Taksiran barang jaminan', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-12-F04', label: 'Jadwal cicilan & bunga', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-12-F05', label: 'Pembayaran angsuran', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-12-F06', label: 'Jatuh tempo & lelang', severity: 'advisory', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-12-F07', label: 'Laporan portofolio pinjaman', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Data nasabah', 'Pengajuan & skema pinjaman', 'Taksiran jaminan', 'Jadwal cicilan/bunga', 'Pembayaran angsuran'],
+    advisoryItems: ['Jatuh tempo & lelang', 'Laporan portofolio', 'Reminder kolektor'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.12 Keuangan & Pegadaian/Fintech' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-13 — Layanan Otomotif (Bengkel, Rental, Dealer)
+  // ===========================================================================
+  {
+    id: 'IND-13',
+    nama: 'Layanan Otomotif (Bengkel, Rental, Dealer)',
+    keywords: ['bengkel', 'otomotif', 'servis motor', 'servis mobil', 'dealer', 'rental mobil', 'rental motor', 'spare part', 'montir', 'mekanik', 'ganti oli'],
+    patternIds: ['UP-05', 'UP-09', 'UP-06'],
+    extraEntities: [
+      { name: 'Kendaraan/Unit', fields: ['id', 'plat', 'merk', 'tipe', 'status'] },
+      { name: 'Riwayat Servis', fields: ['id', 'kendaraan_id', 'tanggal', 'keluhan', 'tindakan', 'biaya'] },
+      { name: 'Spare Part', fields: ['id', 'nama', 'kode', 'stok', 'harga'] },
+      { name: 'Kontrak Sewa/Kredit', fields: ['id', 'kendaraan_id', 'penyewa', 'periode', 'nilai'] }
+    ],
+    notes: [
+      'Riwayat servis per kendaraan',
+      'Estimasi biaya servis',
+      'Tracking unit rental (available/booked)'
+    ],
+    painPoints: [
+      { id: 'IND-13-P1', label: 'Riwayat servis per unit hilang', severity: 'core' },
+      { id: 'IND-13-P2', label: 'Stok spare part tidak sinkron', severity: 'core' },
+      { id: 'IND-13-P3', label: 'Estimasi biaya tidak konsisten', severity: 'advisory' },
+      { id: 'IND-13-P4', label: 'Status unit rental tidak update', severity: 'advisory' }
+    ],
+    roleLabels: ['Service Advisor', 'Mekanik', 'Kasir', 'Gudang Spare Part', 'Pelanggan'],
+    extraFeatures: [
+      { id: 'IND-13-F01', label: 'Terima unit & keluhan', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-13-F02', label: 'Work order servis', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-13-F03', label: 'Riwayat servis per kendaraan', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-13-F04', label: 'Spare part & pengurangan stok', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-13-F05', label: 'Estimasi biaya & persetujuan', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-13-F06', label: 'Booking servis', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-13-F07', label: 'Status unit rental', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Terima unit & keluhan', 'Work order servis', 'Riwayat servis', 'Spare part'],
+    advisoryItems: ['Booking servis', 'Status unit rental', 'Estimasi biaya otomatis'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.13 Layanan Otomotif' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-14 — Event & Hiburan
+  // ===========================================================================
+  {
+    id: 'IND-14',
+    nama: 'Event & Hiburan',
+    keywords: ['event', 'hiburan', 'tiket', 'konser', 'seminar', 'webinar', 'festival', 'pameran', 'e-ticket', 'rundown'],
+    patternIds: ['UP-06', 'UP-01'],
+    extraEntities: [
+      { name: 'Tiket/Kategori Kursi', fields: ['id', 'event_id', 'kategori', 'harga', 'kuota'] },
+      { name: 'Vendor Pendukung', fields: ['id', 'nama', 'layanan', 'kontak', 'status'] },
+      { name: 'Rundown Acara', fields: ['id', 'event_id', 'waktu', 'kegiatan', 'penanggung_jawab'] },
+      { name: 'Guest List', fields: ['id', 'event_id', 'nama', 'kategori', 'status_checkin'] }
+    ],
+    notes: [
+      'Kapasitas venue & seat mapping',
+      'Check-in tiket (QR)',
+      'Koordinasi multi-vendor'
+    ],
+    painPoints: [
+      { id: 'IND-14-P1', label: 'Tiket ganda/palsu', severity: 'core' },
+      { id: 'IND-14-P2', label: 'Seat mapping kacau', severity: 'core' },
+      { id: 'IND-14-P3', label: 'Check-in lambat', severity: 'core' },
+      { id: 'IND-14-P4', label: 'Vendor tidak terkoordinasi', severity: 'advisory' }
+    ],
+    roleLabels: ['Event Manager', 'Ticketing', 'Vendor', 'Staff Check-in', 'Peserta'],
+    extraFeatures: [
+      { id: 'IND-14-F01', label: 'Katalog event & tiket', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-14-F02', label: 'Seat mapping & kapasitas', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-14-F03', label: 'Pembayaran & e-ticket QR', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-14-F04', label: 'Check-in QR', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-14-F05', label: 'Rundown acara', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-14-F06', label: 'Koordinasi vendor', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-14-F07', label: 'Guest list', severity: 'advisory', complexity: 'LOW' },
+      { id: 'IND-14-F08', label: 'Laporan penjualan tiket', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Katalog event & tiket', 'Seat/kapasitas', 'Pembayaran & e-ticket', 'Check-in QR', 'Rundown'],
+    advisoryItems: ['Koordinasi vendor', 'Guest list', 'Laporan penjualan'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.14 Event & Hiburan' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-15 — Layanan Publik/Pemerintahan Internal
+  // ===========================================================================
+  {
+    id: 'IND-15',
+    nama: 'Layanan Publik / Pemerintahan',
+    keywords: ['layanan publik', 'pemerintahan', 'dinas', 'kelurahan', 'kecamatan', 'disposisi', 'surat menyurat', 'warga', 'pelayanan masyarakat', 'izin'],
+    patternIds: ['UP-05', 'UP-08'],
+    extraEntities: [
+      { name: 'Pemohon/Warga', fields: ['id', 'nama', 'nik', 'kontak', 'alamat'] },
+      { name: 'Jenis Layanan', fields: ['id', 'nama', 'persyaratan', 'sla_hari', 'biaya'] },
+      { name: 'Dokumen Persyaratan', fields: ['id', 'pengajuan_id', 'jenis', 'file', 'status_verifikasi'] },
+      { name: 'Disposisi Pejabat', fields: ['id', 'pengajuan_id', 'dari', 'ke', 'catatan', 'waktu'] }
+    ],
+    notes: [
+      'Disposisi berjenjang antar unit',
+      'Tracking dokumen persyaratan',
+      'SLA layanan publik'
+    ],
+    painPoints: [
+      { id: 'IND-15-P1', label: 'Disposisi lambat', severity: 'core' },
+      { id: 'IND-15-P2', label: 'Berkas hilang/tidak lengkap', severity: 'core' },
+      { id: 'IND-15-P3', label: 'Status pengajuan tidak jelas bagi warga', severity: 'core' },
+      { id: 'IND-15-P4', label: 'SLA tidak terukur', severity: 'advisory' }
+    ],
+    roleLabels: ['Petugas Loket', 'Verifikator', 'Pejabat Disposisi', 'Kepala Dinas', 'Warga'],
+    extraFeatures: [
+      { id: 'IND-15-F01', label: 'Katalog jenis layanan & persyaratan', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-15-F02', label: 'Pengajuan warga & upload berkas', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-15-F03', label: 'Verifikasi berkas', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-15-F04', label: 'Disposisi berjenjang', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-15-F05', label: 'Tracking status & SLA', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-15-F06', label: 'Pengaduan', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-15-F07', label: 'Arsip digital & tanda tangan', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Jenis layanan & persyaratan', 'Pengajuan & berkas', 'Verifikasi', 'Disposisi', 'Status & SLA'],
+    advisoryItems: ['Pengaduan', 'Arsip digital', 'Tanda tangan elektronik'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.15 Layanan Publik/Pemerintahan Internal' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
   }
 ];

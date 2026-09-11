@@ -37,7 +37,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-05',
     patternIds: ['UP-05', 'UP-09', 'UP-06'],
-    overlayIds: [],
+    overlayIds: ['IND-13'],
     coreTransitions: ['terima unit & keluhan', 'estimasi biaya', 'pengerjaan', 'selesai & serah terima', 'pemakaian spare part'],
     advisoryNotes: ['Riwayat servis per unit']
   },
@@ -86,7 +86,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-12',
     patternIds: ['UP-02', 'UP-03', 'UP-10'],
-    overlayIds: [],
+    overlayIds: ['IND-12'],
     coreTransitions: ['invoice', 'pembayaran', 'piutang/utang', 'rekonsiliasi', 'laporan keuangan'],
     advisoryNotes: ['Jurnal & buku besar opsional']
   },
@@ -135,7 +135,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-19',
     patternIds: ['UP-06', 'UP-01'],
-    overlayIds: [],
+    overlayIds: ['IND-14'],
     coreTransitions: ['jual tiket/booking', 'pembayaran', 'check-in QR', 'rundown', 'laporan'],
     advisoryNotes: ['Seat mapping opsional']
   },
@@ -163,14 +163,14 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-23',
     patternIds: ['UP-07', 'UP-09', 'UP-02'],
-    overlayIds: [],
+    overlayIds: ['IND-11'],
     coreTransitions: ['rencana tanam', 'perawatan & pemupukan', 'panen & grading', 'stok gudang', 'penjualan hasil'],
     advisoryNotes: ['Harga komoditas fluktuatif']
   },
   {
     templateId: 'MT-24',
     patternIds: ['UP-05', 'UP-08'],
-    overlayIds: [],
+    overlayIds: ['IND-15'],
     coreTransitions: ['pengajuan layanan', 'verifikasi berkas', 'disposisi', 'penyelesaian', 'pengaduan'],
     advisoryNotes: ['SLA layanan publik & arsip dokumen']
   },
