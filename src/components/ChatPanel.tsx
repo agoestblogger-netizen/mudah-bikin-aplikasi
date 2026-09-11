@@ -840,7 +840,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               <div
                 className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
                   m.sender === 'USER'
-                    ? 'bg-gradient-to-tr from-emerald-400 to-[#10f48e] text-black shadow-md shadow-[#10f48e]/20'
+                    ? 'bg-gradient-to-tr from-zinc-600 to-zinc-500 text-white shadow-md shadow-black/20'
                     : 'bg-[#14141a] border border-white/10 text-[#10f48e]'
                 }`}
               >
@@ -874,7 +874,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   <div
                     className={`rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
                       m.sender === 'USER'
-                        ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold ml-auto'
+                        ? 'bg-gradient-to-r from-zinc-700 to-zinc-600 text-zinc-100 shadow-lg rounded-tr-none font-semibold ml-auto'
                         : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
                     }`}
                   >
