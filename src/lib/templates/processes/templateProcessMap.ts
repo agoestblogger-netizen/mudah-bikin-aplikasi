@@ -201,5 +201,13 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
     overlayIds: ['IND-20'],
     coreTransitions: ['donasi masuk', 'rekap dana', 'program & penerima manfaat', 'penyaluran', 'laporan transparansi'],
     advisoryNotes: ['Laporan dampak & relawan']
+  },
+  {
+    templateId: 'MT-29',
+    patternIds: ['UP-05', 'UP-06', 'UP-02'],
+    overlayIds: ['IND-22'],
+    coreTransitions: ['terima cucian & timbang', 'proses cuci & kering', 'setrika & packing', 'siap diambil / antar', 'serah terima & lunas'],
+    advisoryNotes: ['Nomor resi publik untuk pelacakan status cucian', 'Pencatatan berat kg atau satuan']
   }
 ];
+

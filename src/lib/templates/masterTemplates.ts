@@ -1554,6 +1554,35 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
     workflow: [
       'Donatur donasi → rekap dana → rencana program → penyaluran ke penerima manfaat → dokumentasi → laporan transparansi'
     ]
+  },
+
+  // ===========================================================================
+  // MT-29 — Laundry & Jasa Pencucian
+  // ===========================================================================
+  {
+    id: 'MT-29',
+    nama: 'Laundry & Jasa Pencucian',
+    deskripsi: 'Blueprint aplikasi laundry & cuci: penerimaan cucian kiloan/satuan, penimbangan berat, antrean proses (cuci, kering, setrika), lacak nomor resi mandiri oleh pelanggan, kasir pembayaran, dan rak penyimpanan.',
+    modulDanSection: [
+      { modul: 'Kasir & Order', sections: ['Penerimaan Cucian Baru', 'Timbangan & Hitung Biaya', 'Cetak Nota Resi', 'Pembayaran & Kasir'] },
+      { modul: 'Pengerjaan Cuci', sections: ['Papan Antrean Cuci', 'Proses Cuci', 'Pengeringan', 'Setrika & Finishing', 'Siap Diambil'] },
+      { modul: 'Pelacakan', sections: ['Lacak Resi Mandiri', 'Status Progres Cucian', 'Detail Pakaian & Catatan Noda'] },
+      { modul: 'Gudang & Rak', sections: ['Penataan Rak Ambil', 'Pengambilan Cucian', 'Riwayat Selesai'] },
+      { modul: 'Laporan', sections: ['Omset Harian', 'Total Berat Cucian (Kg)', 'Performa Petugas Cuci', 'Metode Pembayaran'] }
+    ],
+    roleDefault: ['Super Admin', 'Kasir Laundry', 'Washer / Petugas Cuci', 'Pelanggan', 'Pemilik Laundry'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, dan tarif layanan laundry. Kasir menerima cucian dan pembayaran. Washer memperbarui tahapan cuci dan setrika. Pelanggan melacak status cucian via nomor resi.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Kasir & Order', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Kasir Laundry', modul: 'Kasir & Order', permission: 'CRUD' },
+      { role: 'Kasir Laundry', modul: 'Gudang & Rak', permission: 'CRUD' },
+      { role: 'Washer / Petugas Cuci', modul: 'Pengerjaan Cuci', permission: 'CRU' },
+      { role: 'Pelanggan', modul: 'Pelacakan', permission: 'R' }
+    ],
+    workflow: [
+      'Pelanggan bawa pakaian → kasir timbang & terbitkan resi → washer cuci & setrika → update siap diambil → pelanggan ambil cucian & bayar'
+    ]
   }
 ];
 
@@ -1607,6 +1636,10 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
   const lower = text.toLowerCase();
 
   // 1. Cek Varian Khusus Terlebih Dahulu
+  if (lower.includes('laundry') || lower.includes('cuci pakaian') || lower.includes('cuci baju') || lower.includes('cuci sepatu') || lower.includes('cuci helm') || lower.includes('dry clean') || lower.includes('penatu')) {
+    const t = getMasterTemplateById('MT-29');
+    if (t) return { template: t, matchedVariant: 'Laundry' };
+  }
   if (lower.includes('barber') || lower.includes('pangkas rambut') || lower.includes('potong rambut')) {
     const t = getMasterTemplateById('MT-04');
     if (t) return { template: t, matchedVariant: 'Barbershop' };
@@ -1623,7 +1656,11 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
   // 2. Cek Berdasarkan Kata Kunci Pola Bisnis Industri
   const keywordMappings: { keywords: string[]; mtId: string }[] = [
     {
-      keywords: ['laundry', 'cuci pakaian', 'cuci baju', 'cuci sepatu', 'cuci mobil', 'car wash', 'janji temu', 'appointment', 'booking service', 'grooming', 'cleaning service', 'penjahit', 'tailor'],
+      keywords: ['laundry', 'cuci pakaian', 'cuci baju', 'cuci sepatu', 'cuci helm', 'cuci karpet', 'dry clean', 'penatu', 'cucian'],
+      mtId: 'MT-29'
+    },
+    {
+      keywords: ['janji temu', 'appointment', 'booking service', 'grooming', 'cleaning service', 'penjahit', 'tailor'],
       mtId: 'MT-04'
     },
     {

@@ -967,5 +967,82 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
     ],
     version: '1.0',
     lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-22 — Laundry & Jasa Pencucian (Kiloan, Satuan, Sepatu, Karpet)
+  // ===========================================================================
+  {
+    id: 'IND-22',
+    nama: 'Laundry & Jasa Pencucian (Kiloan, Satuan, Sepatu, Karpet)',
+    keywords: [
+      'laundry',
+      'cuci',
+      'cucian',
+      'laundry kiloan',
+      'laundry satuan',
+      'cuci pakaian',
+      'cuci baju',
+      'cuci sepatu',
+      'cuci helm',
+      'cuci karpet',
+      'dry clean',
+      'dry cleaning',
+      'setrika',
+      'laundry express',
+      'washer',
+      'penatu',
+      'resi laundry'
+    ],
+    patternIds: ['UP-05', 'UP-06', 'UP-02'],
+    extraEntities: [
+      { name: 'Order Cucian / Resi', fields: ['id', 'no_resi', 'pelanggan', 'no_wa', 'jenis_layanan', 'berat_kg', 'jumlah_pcs', 'total_biaya', 'status', 'tgl_masuk', 'est_selesai', 'status_bayar'] },
+      { name: 'Katalog Layanan & Tarif', fields: ['id', 'nama_layanan', 'kategori', 'tarif', 'satuan', 'durasi_jam'] },
+      { name: 'Item Rincian Cucian', fields: ['id', 'resi_id', 'nama_barang', 'jumlah', 'kondisi_awal', 'catatan_noda'] },
+      { name: 'Papan Kerja & Antrean Cuci', fields: ['id', 'resi_id', 'tahapan', 'petugas_cuci', 'waktu_update', 'rak_penyimpanan'] }
+    ],
+    notes: [
+      'Pemisahan layanan kiloan vs satuan',
+      'Pelacakan status pengerjaan (Antri -> Cuci -> Pengeringan -> Setrika -> Selesai -> Diambil)',
+      'Penimbangan berat akurat & rincian pakaian khusus/noda',
+      'Pemberian nomor resi dan pelacakan mandiri oleh pelanggan',
+      'Pemberitahuan siap ambil via WhatsApp atau status online'
+    ],
+    painPoints: [
+      { id: 'IND-22-P1', label: 'Pelanggan sering bertanya status cucian karena tidak bisa melacak mandiri', severity: 'core' },
+      { id: 'IND-22-P2', label: 'Pakaian pelanggan rawan tertukar atau hilang saat proses cuci dan setrika', severity: 'core' },
+      { id: 'IND-22-P3', label: 'Antrean cucian menumpuk tidak teratur antara paket express dan reguler', severity: 'core' },
+      { id: 'IND-22-P4', label: 'Nota kertas fisik mudah hilang, basah, atau nomor resi tidak terbaca', severity: 'core' },
+      { id: 'IND-22-P5', label: 'Perhitungan berat kiloan dan tambahan biaya noda/express rawan keliru', severity: 'advisory' }
+    ],
+    roleLabels: ['Super Admin', 'Kasir Laundry', 'Washer / Petugas Cuci', 'Pelanggan', 'Kurir Antar Jemput', 'Pemilik Laundry'],
+    extraFeatures: [
+      { id: 'IND-22-F01', label: 'Kasir penerimaan order & kalkulator kiloan/satuan', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-22-F02', label: 'Cetak nota resi digital & nomor tracking', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-22-F03', label: 'Papan antrean pengerjaan (Cuci, Kering, Setrika, Selesai)', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-22-F04', label: 'Lacak status cucian mandiri via nomor resi (Akses Publik)', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-22-F05', label: 'Pencatatan rak penyimpanan & konfirmasi pengambilan', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-22-F06', label: 'Laporan omset harian & total timbangan (kg)', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-22-F07', label: 'Form rincian baju bernoda / permintaan khusus', severity: 'advisory', complexity: 'LOW' },
+      { id: 'IND-22-F08', label: 'Layanan antar-jemput cucian & status kurir', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: [
+      'Penerimaan order & timbangan kiloan/satuan',
+      'Nota resi & nomor pelacakan',
+      'Papan antrean cuci & setrika',
+      'Lacak status mandiri pelanggan',
+      'Pencatatan rak penyimpanan'
+    ],
+    advisoryItems: [
+      'Rincian baju bernoda',
+      'Notifikasi WhatsApp',
+      'Layanan antar jemput'
+    ],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Pemisahan resmi Laundry dari Salon/Spa/MT-04' },
+      { source: 'Evaluasi User', note: 'Laundry adalah proses cuci-setrika-ambil berbasis resi, BUKAN appointment salon/spa/terapis' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
   }
 ];

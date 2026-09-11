@@ -174,6 +174,7 @@ interface AIBusinessMappingResult {
   patternIds: string[];
   contextualPainPoints: string[];
   contextualRoles: string[];
+  processKeywords?: string;
 }
 
 /**
@@ -195,7 +196,7 @@ KATALOG MASTER TEMPLATE:
 - MT-01: Retail & POS (Toko fisik/online, minimarket, kasir, penjualan barang)
 - MT-02: Wholesale & Distribution (Grosir, distributor B2B, gudang)
 - MT-03: F&B & Restaurant (Restoran, kafe, katering, warung makan, menu, dapur)
-- MT-04: Appointment & Service (Salon, spa, pangkas rambut, barbershop, jasa janji temu)
+- MT-04: Appointment & Service (Salon kecantikan, spa, pijat refleksi, pangkas rambut / barbershop, jasa janji temu)
 - MT-05: Workshop & Service Order (Bengkel servis motor/mobil, reparasi elektronik, mekanik, spare part)
 - MT-06: Healthcare (Klinik, dokter, rekam medis, antrean pasien, apotek obat)
 - MT-07: Manufacturing (Pabrik, produksi, konveksi, BOM, work order)
@@ -220,36 +221,43 @@ KATALOG MASTER TEMPLATE:
 - MT-26: Asuransi & Klaim (Polis, premi berkala, klaim & investigasi)
 - MT-27: E-commerce Marketplace (Multi-seller, keranjang, escrow, komisi)
 - MT-28: NGO & Nonprofit (Donasi, program sosial, relawan, transparansi)
+- MT-29: Laundry & Jasa Pencucian (Laundry kiloan, cuci satuan, laundry sepatu/tas/helm/karpet, dry cleaning, timbang kg, antrean cuci-kering-setrika, rak cucian siap ambil, nota resi nomor & lacak status cucian)
 
 KATALOG OVERLAY INDUSTRI:
 IND-01 (Retail), IND-02 (F&B), IND-03 (Jasa Profesional), IND-04 (Kesehatan), IND-05 (Pendidikan),
 IND-06 (Manufaktur), IND-07 (Logistik), IND-08 (Properti), IND-09 (Perhotelan), IND-10 (Konstruksi),
 IND-11 (Pertanian), IND-12 (Keuangan/Pegadaian), IND-13 (Bengkel & Servis Otomotif), IND-14 (Event),
 IND-15 (Layanan Publik), IND-16 (Media), IND-17 (Kecantikan & Wellness), IND-18 (Asuransi),
-IND-19 (Marketplace), IND-20 (NGO), IND-21 (Rental & Persewaan).
+IND-19 (Marketplace), IND-20 (NGO), IND-21 (Rental & Persewaan),
+IND-22 (Laundry & Jasa Pencucian (Kiloan, Satuan, Sepatu, Karpet)).
 
 ATURAN KRITIS (SANGAT PENTING):
-1. PISAHKAN RENTAL vs BENGKEL: Jika ide berupa persewaan/rental (rental motor, rental mobil, sewa kamera, rental sepeda, dll), WAJIB pilih MT-21 dan IND-21. JANGAN PERNAH memilih MT-05 atau IND-13! Dilarang memunculkan peran seperti Service Advisor/Mekanik atau masalah spare part pada bisnis rental!
-2. PISAHKAN BENGKEL vs RENTAL: Jika ide berupa reparasi/servis/bengkel (servis motor, ganti oli, bengkel mobil, bengkel AC), WAJIB pilih MT-05 dan IND-13.
-3. Buat 3-5 pain points (masalah utama) yang SANGAT RELEVAN dan spesifik untuk bisnis tersebut dalam bahasa Indonesia santun.
-4. Buat 3-5 peran operasional yang MASUK AKAL secara nyata untuk bisnis tersebut (contoh rental motor: "Petugas Rental", "Penyewa", "Petugas Cek Fisik Unit").
-5. Gunakan MT-20 (Custom) HANYA jika benar-benar tidak ada template yang cocok. Utamakan template yang paling mendekati.
+1. PISAHKAN LAUNDRY vs SALON/SPA/BEAUTY: Jika ide berupa laundry, jasa cuci pakaian, kiloan, satuan, dry cleaning, cuci sepatu/tas/helm/karpet, WAJIB pilih MT-29 dan IND-22. DILARANG KERAS memilih MT-04 atau IND-17! Dilarang memunculkan peran salon/spa seperti Terapis, Kapster, Beautician, Resepsionis Salon, atau perawatan tubuh/rambut pada bisnis laundry! Peran laundry yang benar adalah Kasir Laundry, Operator Cuci (Washer), Petugas Setrika & Packing, Kurir Antar-Jemput, Pelanggan.
+2. PISAHKAN SALON/SPA vs LAUNDRY: MT-04 dan IND-17 HANYA untuk salon kecantikan, barbershop/pangkas rambut, spa pijat refleksi, klinik estetika.
+3. PISAHKAN RENTAL vs BENGKEL: Jika ide berupa persewaan/rental (rental motor, rental mobil, sewa kamera, rental sepeda, dll), WAJIB pilih MT-21 dan IND-21. JANGAN PERNAH memilih MT-05 atau IND-13!
+4. PISAHKAN BENGKEL vs RENTAL: Jika ide berupa reparasi/servis/bengkel (servis motor, ganti oli, bengkel mobil, bengkel AC), WAJIB pilih MT-05 dan IND-13.
+5. Buat 3-5 pain points (masalah utama) yang SANGAT RELEVAN dan spesifik untuk bisnis tersebut dalam bahasa Indonesia santun.
+6. Buat 3-5 peran operasional yang MASUK AKAL secara nyata untuk bisnis tersebut.
+7. Gunakan MT-20 (Custom) HANYA jika benar-benar tidak ada template yang cocok. Utamakan template yang paling mendekati.
 
 Kembalikan HANYA JSON valid:
 {
-  "templateId": "MT-21",
-  "overlayIds": ["IND-21"],
-  "businessCategory": "Rental & Persewaan Sepeda Motor",
+  "templateId": "MT-29",
+  "overlayIds": ["IND-22"],
+  "businessCategory": "Laundry & Jasa Pencucian Kiloan & Satuan",
+  "processKeywords": "penerimaan pakaian kotor, penimbangan kg, proses cuci, pengeringan mesin, setrika, packing rapi, nota resi nomor urut, rak penyimpanan siap ambil, kasir laundry, pelanggan lacak status",
   "contextualPainPoints": [
-    "Jadwal ketersediaan motor sering bentrok / tumpang tindih",
-    "Penyewa terlambat mengembalikan motor tanpa konfirmasi",
-    "Kondisi fisik motor (lecet/rusak) saat kembali sulit diverifikasi",
-    "Perhitungan denda telat & pengembalian uang jaminan (deposit) rumit"
+    "Pelanggan sering menanyakan status cucian sudah selesai atau belum",
+    "Pakaian pelanggan rawan tertukar atau hilang saat proses cuci dan pengeringan",
+    "Pencatatan nota manual rawan salah timbang kiloan atau hitung tarif layanan",
+    "Penumpukan cucian bersih di rak yang belum diambil oleh pelanggan"
   ],
   "contextualRoles": [
-    "Petugas Rental",
-    "Penyewa",
-    "Petugas Cek Fisik Unit"
+    "Super Admin",
+    "Kasir Laundry",
+    "Washer / Petugas Cuci",
+    "Petugas Setrika & Packing",
+    "Pelanggan"
   ]
 }`;
 
@@ -266,7 +274,7 @@ Kembalikan HANYA JSON valid:
     systemInstruction,
     userPrompt: `Ide Bisnis Pengguna: "${prompt}"\nPetakan ke Master Template, Overlay, pain points, dan peran yang paling tepat dalam bentuk JSON:${candidateHint}`,
     temperature: 0.1,
-    maxTokens: 500,
+    maxTokens: 600,
     provider,
     userApiKey: apiKey,
     userModel: model
@@ -296,6 +304,7 @@ Kembalikan HANYA JSON valid:
       overlayIds: finalOverlayIds,
       patternIds,
       businessCategory: String(parsed.businessCategory || '').trim() || 'Bisnis Anda',
+      processKeywords: typeof parsed.processKeywords === 'string' ? parsed.processKeywords : undefined,
       contextualPainPoints: Array.isArray(parsed.contextualPainPoints) ? parsed.contextualPainPoints.map(String) : [],
       contextualRoles: Array.isArray(parsed.contextualRoles) ? parsed.contextualRoles.map(String) : []
     };
@@ -372,8 +381,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'prompt wajib diisi untuk START.' }, { status: 400 });
       }
 
-      // 0. Semantic search (Gemini embedding) untuk menemukan kandidat paling mirip.
-      //    Tidak menyimpan teks prompt; hanya embedding repository yang di-index.
+      // 1. Identifikasi proses bisnis dan intensi oleh AI terlebih dahulu.
+      // AI menganalisis ide pengguna untuk memahami domain bisnis, template, peran operasional, dan pain points nyata.
+      const aiMapping = await mapBusinessIntentWithAI(
+        prompt,
+        provider,
+        userApiKey,
+        userModel
+      );
+
+      // 2. Pencarian semantik (Gemini embedding) menggunakan proses bisnis yang telah diidentifikasi oleh AI.
+      // Query embedding diperkaya dengan kategori dan alur proses hasil identifikasi AI agar selaras dengan repositori.
       const geminiKey =
         provider === 'gemini' && userApiKey && userApiKey.trim()
           ? userApiKey.trim()
@@ -383,7 +401,10 @@ export async function POST(req: Request) {
       if (geminiKey) {
         try {
           await ensureSemanticIndex(geminiKey);
-          semantic = await resolveSemanticMapping(prompt, geminiKey);
+          const semanticQuery = aiMapping
+            ? `${aiMapping.businessCategory} ${aiMapping.processKeywords || ''} ${prompt}`.trim()
+            : prompt;
+          semantic = await resolveSemanticMapping(semanticQuery, geminiKey);
         } catch (err) {
           console.warn('Semantic mapping dilewati:', err);
         }
@@ -396,8 +417,25 @@ export async function POST(req: Request) {
       let contextualPainPoints: string[] | undefined;
       let contextualRoles: string[] | undefined;
 
-      if (semantic?.confident && semantic.templateId) {
-        // Skor semantic sudah tinggi & jelas: langsung pakai, tanpa AI mapping.
+      if (aiMapping) {
+        // AI berhasil mengidentifikasi proses bisnis:
+        templateId = aiMapping.templateId;
+        overlayIds = aiMapping.overlayIds;
+        businessCategory = aiMapping.businessCategory;
+        contextualPainPoints = aiMapping.contextualPainPoints;
+        contextualRoles = aiMapping.contextualRoles;
+
+        // Ambil pattern dari templateProcessMap untuk template yang dipilih AI
+        const map = getTemplateProcessMap(templateId);
+        const semanticPatterns = semantic?.patternIds || [];
+        patternIds = Array.from(
+          new Set([...(map?.patternIds || aiMapping.patternIds || []), ...semanticPatterns])
+        );
+        if (patternIds.length === 0) {
+          patternIds = ['UP-05', 'UP-06', 'UP-02'];
+        }
+      } else if (semantic?.confident && semantic.templateId) {
+        // Fallback jika AI tidak merespons, namun semantic search confident
         templateId = semantic.templateId;
         overlayIds = semantic.overlayIds && semantic.overlayIds.length > 0 ? semantic.overlayIds : [];
         patternIds = semantic.patternIds && semantic.patternIds.length > 0 ? semantic.patternIds : ['UP-06', 'UP-09'];
@@ -405,47 +443,29 @@ export async function POST(req: Request) {
         const matchedTemplate = getMasterTemplateById(templateId);
         businessCategory = firstOverlay ? firstOverlay.nama : matchedTemplate?.nama;
       } else {
-        // 1. Pemetaan cerdas menggunakan AI (dengan petunjuk kandidat semantic bila ada)
-        const aiMapping = await mapBusinessIntentWithAI(
-          prompt,
-          provider,
-          userApiKey,
-          userModel,
-          semantic?.candidates
-        );
+        // Fallback statis deterministik dari repository yang sudah dibersihkan
+        const matched = detectMatchingMasterTemplate(prompt);
+        const semanticTemplateId = semantic?.templateId;
+        const fallbackTemplateId = matched?.template.id || semanticTemplateId || 'MT-20';
+        const map = getTemplateProcessMap(fallbackTemplateId);
 
-        if (aiMapping) {
-          templateId = aiMapping.templateId;
-          overlayIds = aiMapping.overlayIds;
-          patternIds = aiMapping.patternIds;
-          businessCategory = aiMapping.businessCategory;
-          contextualPainPoints = aiMapping.contextualPainPoints;
-          contextualRoles = aiMapping.contextualRoles;
+        templateId = fallbackTemplateId;
+        if (!matched && semanticTemplateId) {
+          overlayIds = map?.overlayIds || [];
+          patternIds = map?.patternIds || [];
+          const firstOverlay = getIndustryOverlayById(overlayIds[0]);
+          const tpl = getMasterTemplateById(semanticTemplateId);
+          businessCategory = firstOverlay ? firstOverlay.nama : tpl?.nama;
         } else {
-          // Fallback statis deterministik dari repository yang sudah dibersihkan
-          const matched = detectMatchingMasterTemplate(prompt);
-          const semanticTemplateId = semantic?.templateId;
-          const fallbackTemplateId = matched?.template.id || semanticTemplateId || 'MT-20';
-          const map = getTemplateProcessMap(fallbackTemplateId);
-
-          templateId = fallbackTemplateId;
-          if (!matched && semanticTemplateId) {
-            overlayIds = map?.overlayIds || [];
-            patternIds = map?.patternIds || [];
-            const firstOverlay = getIndustryOverlayById(overlayIds[0]);
-            const tpl = getMasterTemplateById(semanticTemplateId);
-            businessCategory = firstOverlay ? firstOverlay.nama : tpl?.nama;
-          } else {
-            const detectedOverlays = detectIndustryOverlays(prompt);
-            overlayIds = Array.from(
-              new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
-            );
-            patternIds = Array.from(
-              new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
-            );
-            const firstOverlay = getIndustryOverlayById(overlayIds[0]);
-            businessCategory = firstOverlay ? firstOverlay.nama : matched?.template.nama;
-          }
+          const detectedOverlays = detectIndustryOverlays(prompt);
+          overlayIds = Array.from(
+            new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
+          );
+          patternIds = Array.from(
+            new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
+          );
+          const firstOverlay = getIndustryOverlayById(overlayIds[0]);
+          businessCategory = firstOverlay ? firstOverlay.nama : matched?.template.nama;
         }
       }
 

@@ -442,7 +442,7 @@ export function findRelevantUXPatterns(contextText: string, masterTemplateId?: s
   }
 
   // 2. Deteksi Laundry / Jasa Service / Tracking Resi
-  if (masterTemplateId === 'MT-03' || lower.includes('laundry') || lower.includes('cucian') || lower.includes('lacak') || lower.includes('resi') || lower.includes('washer')) {
+  if (masterTemplateId === 'MT-29' || lower.includes('laundry') || lower.includes('cucian') || lower.includes('lacak') || lower.includes('resi') || lower.includes('washer')) {
     const trackCust = getUXPatternById('UX-CUST-05');
     const workQueue = getUXPatternById('UX-OPS-01');
     const posTrx = getUXPatternById('UX-TRX-04');
