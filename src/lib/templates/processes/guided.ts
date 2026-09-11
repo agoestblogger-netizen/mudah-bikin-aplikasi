@@ -41,6 +41,8 @@ interface FeatureInfo {
   complexity: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
+export type { FeatureInfo };
+
 function collectFeatures(session: MockupSessionState): FeatureInfo[] {
   const patterns = getProcessPatternsByIds(session.match.patternIds);
   const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
@@ -62,6 +64,10 @@ function collectFeatures(session: MockupSessionState): FeatureInfo[] {
 
 export function findFeatureInfo(session: MockupSessionState, featureId: string): FeatureInfo | undefined {
   return collectFeatures(session).find((f) => f.id === featureId);
+}
+
+export function listSessionFeatures(session: MockupSessionState): FeatureInfo[] {
+  return collectFeatures(session);
 }
 
 function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {

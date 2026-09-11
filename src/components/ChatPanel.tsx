@@ -25,10 +25,12 @@ import {
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
+import { GuidedStepCard } from './GuidedStepCard';
 import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider, ROUTER_STATIC_MODELS } from '@/lib/modelConfig';
 import type { ModelSettings, AIModelOption } from '@/lib/modelConfig';
 import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
+import type { GuidedStepPayload, GuidedStepId, MockupSessionState } from '@/lib/templates/processes/types';
 
 export type ChatMode = 'BUILD' | 'PLAN' | 'SYNC_GAS';
 
@@ -39,6 +41,7 @@ interface ChatPanelProps {
   setIsGenerating: (val: boolean) => void;
   externalSendToken?: string | number;
   externalSendText?: string | null;
+  externalSendMode?: ChatMode;
   onToggleSidebar?: () => void;
   isSidebarCollapsed?: boolean;
 }
@@ -75,6 +78,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   setIsGenerating,
   externalSendToken,
   externalSendText,
+  externalSendMode,
   onToggleSidebar,
   isSidebarCollapsed
 }) => {
@@ -237,16 +241,200 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const guidedApiPayload = () => {
+    const settings = loadModelSettings();
+    const payload: Record<string, unknown> = { provider: settings.provider, model: settings.model };
+    if (settings.token) payload.apiKey = settings.token;
+    return payload;
+  };
+
+  const startGuidedSession = async (prompt: string) => {
+    const userMsg: ChatMessage = {
+      id: 'msg-' + Date.now(),
+      sender: 'USER',
+      text: prompt,
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    };
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+    setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    setIsGenerating(true);
+    setStreamingText(null);
+    setLoadingText('Menyiapkan pertanyaan terpandu...');
+
+    try {
+      const res = await fetch('/api/guided', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'START', prompt, ...guidedApiPayload() })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal memulai sesi terpandu.');
+      }
+
+      const aiMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: data.narration || 'Silakan pilih opsi berikut.',
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        guidedStep: data.guidedStep || undefined
+      };
+      const finalMessages = [...updatedMessages, aiMsg];
+      setMessages(finalMessages);
+
+      const stateUpdate: Partial<AppProjectState> = {
+        chatMessages: finalMessages,
+        sessionState: data.session as MockupSessionState
+      };
+      const extractedTitle = extractAppTitleFromChat(finalMessages);
+      if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru')) {
+        stateUpdate.title = extractedTitle;
+      }
+      onUpdateState(stateUpdate);
+    } catch (err: any) {
+      const errorAiMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: `⚠️ ${err.message || 'Gagal memulai sesi terpandu.'}`,
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      };
+      const finalMessages = [...updatedMessages, errorAiMsg];
+      setMessages(finalMessages);
+      onUpdateState({ chatMessages: finalMessages });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const summarizeGuidedAnswer = (
+    payload: GuidedStepPayload | undefined,
+    selected: string[],
+    other?: string
+  ): string => {
+    if (!payload) return [selected.join(', '), other].filter(Boolean).join(' + ') || 'Lanjut';
+    const labels = payload.options.filter((o) => selected.includes(o.id)).map((o) => o.label);
+    return [labels.join(', '), other].filter(Boolean).join(' + ') || 'Lanjut';
+  };
+
+  const handleGuidedAnswer = async (
+    messageId: string,
+    stepId: GuidedStepId,
+    selected: string[],
+    other?: string
+  ) => {
+    const session = projectState.sessionState;
+    if (!session || isGenerating) return;
+
+    const stepPayload = messages.find((m) => m.id === messageId)?.guidedStep;
+    const userMsg: ChatMessage = {
+      id: 'msg-' + Date.now(),
+      sender: 'USER',
+      text: summarizeGuidedAnswer(stepPayload, selected, other),
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    };
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+    setIsGenerating(true);
+    setLoadingText('Memproses pilihan Anda...');
+
+    try {
+      const res = await fetch('/api/guided', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'NEXT',
+          session,
+          stepId,
+          selected,
+          other,
+          ...guidedApiPayload()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal memproses pilihan.');
+      }
+
+      let nextSession = data.session as MockupSessionState;
+      const aiMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: data.narration || 'Lanjut ke langkah berikutnya.',
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        guidedStep: data.guidedStep || undefined
+      };
+      let finalMessages = [...updatedMessages, aiMsg];
+      setMessages(finalMessages);
+
+      // Langkah E selesai: langsung COMPILE brief untuk halaman validasi (E.5)
+      if (!data.guidedStep) {
+        const compRes = await fetch('/api/guided', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'COMPILE',
+            session: nextSession,
+            ...guidedApiPayload()
+          })
+        });
+        const compData = await compRes.json();
+        if (compRes.ok && compData.success) {
+          nextSession = { ...(compData.session as MockupSessionState), compiledBrief: compData.brief };
+          const briefMsg: ChatMessage = {
+            id: 'msg-' + (Date.now() + 2),
+            sender: 'AI',
+            text: compData.narration || 'Brief sudah siap. Silakan periksa halaman Brief lalu setujui.',
+            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          };
+          finalMessages = [...finalMessages, briefMsg];
+          setMessages(finalMessages);
+        }
+      }
+
+      onUpdateState({ chatMessages: finalMessages, sessionState: nextSession });
+    } catch (err: any) {
+      const errorAiMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: `⚠️ ${err.message || 'Gagal memproses pilihan.'}`,
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      };
+      const finalMessages = [...updatedMessages, errorAiMsg];
+      setMessages(finalMessages);
+      onUpdateState({ chatMessages: finalMessages });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSendMessage = async (textToSend?: string, modeOverride?: ChatMode) => {
     const query = textToSend || input;
     if (!query.trim() || isGenerating) return;
+    const activeMode = modeOverride || selectedMode;
+
+    // Sesi terpandu (Multiple-Choice Flow): mulai otomatis pada pesan ide pertama
+    const looksLikeIdea =
+      query.trim().length > 12 &&
+      !/^(apa|apakah|bagaimana|kenapa|mengapa|bisa|boleh|hallo|halo|hai|selamat)\b/i.test(query.trim()) &&
+      !query.trim().endsWith('?');
+    if (
+      activeMode === 'PLAN' &&
+      !projectState.canvasCode?.html &&
+      !projectState.sessionState &&
+      looksLikeIdea
+    ) {
+      await startGuidedSession(query);
+      return;
+    }
 
     const hasBrief = messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'));
     const contextualText = getContextualLoadingText(
       query, 
       Boolean(projectState.canvasCode?.html), 
       hasBrief,
-      selectedMode
+      activeMode
     );
     setLoadingText(contextualText);
 
@@ -267,11 +455,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setStreamingText(null);
 
     try {
-      // Menentukan stage percakapan berdasarkan selectedMode & status saat ini
+      // Menentukan stage percakapan berdasarkan activeMode & status saat ini
       let currentStage = 'TAHAP_1_PEMBUKAAN';
-      if (selectedMode === 'PLAN') {
+      if (activeMode === 'PLAN') {
         currentStage = 'TAHAP_1_PEMBUKAAN';
-      } else if (selectedMode === 'SYNC_GAS') {
+      } else if (activeMode === 'SYNC_GAS') {
         currentStage = 'TAHAP_4_BACKEND';
       } else {
         // BUILD MODE
@@ -306,7 +494,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         chatHistory: updatedMessages,
         stage: currentStage,
         currentCode: projectState.canvasCode.html,
-        mode: selectedMode,
+        mode: activeMode,
         userProvider: activeSettings.provider,
         userModel: activeSettings.model
       };
@@ -467,10 +655,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
-  // External trigger dari luar (misal dari popover mark)
+  // External trigger dari luar (misal dari popover mark / halaman Brief)
   useEffect(() => {
     if (externalSendToken && externalSendText) {
-      handleSendMessage(externalSendText);
+      handleSendMessage(externalSendText, externalSendMode);
     }
   }, [externalSendToken]);
 
@@ -840,7 +1028,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               <div
                 className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
                   m.sender === 'USER'
-                    ? 'bg-gradient-to-tr from-emerald-400 to-[#10f48e] text-black shadow-md shadow-[#10f48e]/20'
+                    ? 'bg-gradient-to-tr from-zinc-600 to-zinc-500 text-white shadow-md shadow-black/20'
                     : 'bg-[#14141a] border border-white/10 text-[#10f48e]'
                 }`}
               >
@@ -874,7 +1062,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   <div
                     className={`rounded-2xl p-3.5 space-y-2 text-xs leading-relaxed ${
                       m.sender === 'USER'
-                        ? 'bg-gradient-to-r from-emerald-500 to-[#0df28a] text-black shadow-lg rounded-tr-none font-semibold ml-auto'
+                        ? 'bg-gradient-to-r from-zinc-700 to-zinc-600 text-zinc-100 shadow-lg rounded-tr-none font-semibold ml-auto'
                         : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
                     }`}
                   >
@@ -919,6 +1107,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     {m.timestamp}
                   </span>
                 </div>
+
+                {/* Kartu pilihan sesi terpandu (Multiple-Choice Flow) */}
+                {m.sender === 'AI' && m.guidedStep && (
+                  <GuidedStepCard
+                    key={`${m.id}-guided`}
+                    payload={m.guidedStep}
+                    disabled={isGenerating}
+                    onSubmit={(selected, other) =>
+                      handleGuidedAnswer(m.id, m.guidedStep!.stepId, selected, other)
+                    }
+                  />
+                )}
 
                 {/* Render Kartu Kredensial Akun Demo (DemoCredentialsCard) */}
                 {credsData && (

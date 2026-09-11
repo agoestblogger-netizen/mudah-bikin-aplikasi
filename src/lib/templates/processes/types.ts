@@ -173,6 +173,7 @@ export interface MockupSessionState {
     selected: { id: string; priority: 'WAJIB' | 'NYUSUL' }[];
     other?: string;
   };
+  compiledBrief?: string;
 }
 
 export const BASIC_FEATURE_TIER_THRESHOLD = 6;

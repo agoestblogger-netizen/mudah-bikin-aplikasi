@@ -6,7 +6,7 @@ export type PRDStage =
   | 'TAHAP_5_PATCH'
   | 'TAHAP_6_TROUBLESHOOTING';
 
-import type { MockupSessionState } from '@/lib/templates/processes/types';
+import type { MockupSessionState, GuidedStepPayload } from '@/lib/templates/processes/types';
 
 export interface ChatMessage {
   id: string;
@@ -14,6 +14,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   suggestedOptions?: string[];
+  guidedStep?: GuidedStepPayload;
 }
 
 export interface MandatorySpecs {

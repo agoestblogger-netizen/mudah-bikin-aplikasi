@@ -8,6 +8,7 @@ import { initialProjectState } from '@/lib/defaultState';
 import { AppProjectState, SavedProject } from '@/types/app';
 import { Navbar } from '@/components/Navbar';
 import { ChatPanel } from '@/components/ChatPanel';
+import { BriefEditorPage } from '@/components/BriefEditorPage';
 import { SavedProjectsList } from '@/components/SavedProjectsList';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SavedProjectsModal } from '@/components/SavedProjectsModal';
@@ -481,6 +482,7 @@ export default function AppWorkspacePage() {
 
   const [externalChatSendToken, setExternalChatSendToken] = useState<string | number | null>(null);
   const [externalChatSendText, setExternalChatSendText] = useState<string | null>(null);
+  const [externalChatSendMode, setExternalChatSendMode] = useState<'BUILD' | 'PLAN' | 'SYNC_GAS' | undefined>(undefined);
 
   // Shortcut Keyboard: Esc untuk Fullscreen, Cmd/Ctrl+Z untuk Undo, Cmd/Ctrl+Shift+Z / Y untuk Redo
   useEffect(() => {
@@ -789,7 +791,7 @@ export default function AppWorkspacePage() {
         }
       } catch {}
     }
-    if (updated.canvasCode?.html || updated.annotations) {
+    if (updated.canvasCode?.html || updated.annotations || updated.sessionState) {
       setRightPanelTab('PREVIEW');
       handleAutoSaveProject(merged);
     }
@@ -1337,6 +1339,14 @@ export default function AppWorkspacePage() {
     }
   };
 
+  const handleApproveGuidedBrief = (brief: string) => {
+    setExternalChatSendMode('BUILD');
+    setExternalChatSendText(
+      `Saya menyetujui Brief Kebutuhan ini. Silakan buatkan prototipe aplikasinya sekarang.\n\n${brief}`
+    );
+    setExternalChatSendToken(Date.now());
+  };
+
   const handleSendToChat = () => {
     if (!activeSelection) return;
 
@@ -1534,6 +1544,7 @@ export default function AppWorkspacePage() {
             setIsGenerating={handleSetGenerating}
             externalSendToken={externalChatSendToken ?? undefined}
             externalSendText={externalChatSendText}
+            externalSendMode={externalChatSendMode}
             onToggleSidebar={() => setIsSidebarCollapsed(prev => !prev)}
             isSidebarCollapsed={isSidebarCollapsed}
           />
@@ -1695,7 +1706,18 @@ export default function AppWorkspacePage() {
             <div className="col-start-1 row-start-2 flex-1 overflow-hidden p-4 relative">
               {rightPanelTab === 'PREVIEW' ? (
                 <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner relative">
-                  {projectState.canvasCode.html ? (
+                  {projectState.sessionState?.step === 'BRIEF_REVIEW' &&
+                  projectState.sessionState?.compiledBrief &&
+                  !projectState.canvasCode.html &&
+                  !isGenerating ? (
+                    <BriefEditorPage
+                      session={projectState.sessionState}
+                      onApprove={handleApproveGuidedBrief}
+                      onUpdateSession={(next) =>
+                        handleUpdateState({ sessionState: next }, { skipIframeReload: true })
+                      }
+                    />
+                  ) : projectState.canvasCode.html ? (
                     <div ref={overlayRef} className="relative w-full h-full">
                       <div
                         className={`absolute inset-0 z-20 ${interactionMode === 'mark' ? 'pointer-events-auto' : 'pointer-events-none'}`}
