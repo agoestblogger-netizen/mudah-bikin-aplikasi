@@ -86,3 +86,18 @@ CREATE POLICY "Allow public insert/update to visual_assets" ON public.visual_ass
 
 CREATE POLICY "Allow public read access to quality_audits" ON public.quality_audits FOR SELECT USING (true);
 CREATE POLICY "Allow public insert/update to quality_audits" ON public.quality_audits FOR ALL USING (true);
+
+-- 4. Table: Rate Limits (Persistent Rate Limiter — tidak reset saat container restart)
+-- Identifier: user_id (jika login) atau IP sebagai fallback
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+    identifier TEXT PRIMARY KEY,
+    request_count INT NOT NULL DEFAULT 1,
+    window_start TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- RLS dinonaktifkan — diakses langsung via supabaseAdmin (service role key)
+ALTER TABLE public.rate_limits DISABLE ROW LEVEL SECURITY;
+
+-- Index untuk cleanup window expired (opsional, bisa dijadikan cron)
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON public.rate_limits (window_start);

@@ -1,52 +1,84 @@
 /**
- * IN-MEMORY SLIDING WINDOW RATE LIMITER (PRD Bagian 10)
- * Membatasi panggilan AI per IP untuk mencegah eksploitasi biaya API OpenAI.
+ * PERSISTENT SLIDING WINDOW RATE LIMITER (Supabase-backed)
+ * Menggantikan implementasi in-memory yang tidak efektif di multi-instance / redeploy.
+ * Data tersimpan di tabel `public.rate_limits` — tidak hilang saat container restart.
+ *
+ * Identifier: user_id (jika terautentikasi) atau IP sebagai fallback.
  */
 
-interface RateLimitRecord {
-  count: number;
-  firstRequestTime: number;
-}
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
-const ipRequestMap = new Map<string, RateLimitRecord>();
-
-// Konfigurasi Batas: Maksimal 15 request per 5 menit per IP
+// Konfigurasi Batas: Maksimal 15 request per 5 menit per user
 const MAX_REQUESTS_PER_WINDOW = 15;
 const WINDOW_DURATION_MS = 5 * 60 * 1000; // 5 menit
 
-export function checkRateLimit(clientIp: string): { allowed: boolean; remaining: number; resetInSeconds: number } {
-  const now = Date.now();
-  const record = ipRequestMap.get(clientIp);
+export async function checkRateLimit(identifier: string): Promise<{
+  allowed: boolean;
+  remaining: number;
+  resetInSeconds: number;
+}> {
+  const now = new Date();
+  const windowCutoff = new Date(now.getTime() - WINDOW_DURATION_MS);
 
-  // Jika belum ada record atau window sudah kadaluarsa
-  if (!record || now - record.firstRequestTime > WINDOW_DURATION_MS) {
-    ipRequestMap.set(clientIp, {
-      count: 1,
-      firstRequestTime: now
-    });
+  try {
+    // Ambil record rate limit untuk identifier ini
+    const { data: record, error } = await supabaseAdmin
+      .from('rate_limits')
+      .select('request_count, window_start')
+      .eq('identifier', identifier)
+      .single();
+
+    // Jika tabel belum ada / error koneksi — default allow agar user tidak terblokir
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[RateLimit] DB error (fallback allow):', error.message);
+      return { allowed: true, remaining: MAX_REQUESTS_PER_WINDOW - 1, resetInSeconds: 300 };
+    }
+
+    const windowStart = record ? new Date(record.window_start) : null;
+    const isWindowExpired = !windowStart || windowStart < windowCutoff;
+
+    if (isWindowExpired) {
+      // Window expired atau record baru — reset counter
+      await supabaseAdmin
+        .from('rate_limits')
+        .upsert(
+          { identifier, request_count: 1, window_start: now.toISOString(), updated_at: now.toISOString() },
+          { onConflict: 'identifier' }
+        );
+      return {
+        allowed: true,
+        remaining: MAX_REQUESTS_PER_WINDOW - 1,
+        resetInSeconds: Math.ceil(WINDOW_DURATION_MS / 1000),
+      };
+    }
+
+    const currentCount = record!.request_count;
+
+    if (currentCount >= MAX_REQUESTS_PER_WINDOW) {
+      // Melebihi batas — hitung sisa waktu reset
+      const resetInSeconds = Math.ceil(
+        (windowStart!.getTime() + WINDOW_DURATION_MS - now.getTime()) / 1000
+      );
+      return { allowed: false, remaining: 0, resetInSeconds: Math.max(resetInSeconds, 1) };
+    }
+
+    // Increment counter
+    await supabaseAdmin
+      .from('rate_limits')
+      .update({ request_count: currentCount + 1, updated_at: now.toISOString() })
+      .eq('identifier', identifier);
+
+    const resetInSeconds = Math.ceil(
+      (windowStart!.getTime() + WINDOW_DURATION_MS - now.getTime()) / 1000
+    );
     return {
       allowed: true,
-      remaining: MAX_REQUESTS_PER_WINDOW - 1,
-      resetInSeconds: Math.ceil(WINDOW_DURATION_MS / 1000)
+      remaining: MAX_REQUESTS_PER_WINDOW - currentCount - 1,
+      resetInSeconds: Math.max(resetInSeconds, 1),
     };
+  } catch (err) {
+    // Fallback allow jika terjadi exception tak terduga
+    console.warn('[RateLimit] Unexpected error (fallback allow):', err);
+    return { allowed: true, remaining: MAX_REQUESTS_PER_WINDOW - 1, resetInSeconds: 300 };
   }
-
-  // Jika dalam window dan melebihi batas
-  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
-    const resetInSeconds = Math.ceil((record.firstRequestTime + WINDOW_DURATION_MS - now) / 1000);
-    return {
-      allowed: false,
-      remaining: 0,
-      resetInSeconds
-    };
-  }
-
-  // Tambah hitungan
-  record.count += 1;
-  const resetInSeconds = Math.ceil((record.firstRequestTime + WINDOW_DURATION_MS - now) / 1000);
-  return {
-    allowed: true,
-    remaining: MAX_REQUESTS_PER_WINDOW - record.count,
-    resetInSeconds
-  };
 }

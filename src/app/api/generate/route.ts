@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { validateAndRepairGeneratedCode, injectMissingHandlerStubs } from '@/lib/codeValidator';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { getUserFromRequest } from '@/lib/supabase/user';
 import {
   getConciseCatalogSummary,
   detectMatchingMasterTemplate,
@@ -358,18 +359,40 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
   return { rawBrief: lastBriefMsg, roles, publicRole, staffRoles, roleLandingTabs };
 }
 
+// Helper: Strip blok ```html ... ``` dari pesan AI di chatHistory sebelum dikirim ke model
+// Mencegah payload membengkak dengan HTML prototipe yang bisa mencapai 50-100KB per pesan.
+function stripHtmlFromHistory(history: any[]): any[] {
+  return (history || []).map((m: any) => {
+    if (m.sender !== 'AI' || !m.text?.includes('```html')) return m;
+    return {
+      ...m,
+      text: m.text.replace(/```html[\s\S]*?```/g, '[Kode HTML prototipe sebelumnya telah digenerate — gunakan kode terkini di Canvas Preview]')
+    };
+  });
+}
+
 export async function POST(req: Request) {
   try {
-    // 1. Rate Limiting Check (PRD Bagian 10)
+    // 1. Auth Check — wajib login untuk menggunakan AI generator
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Anda harus login terlebih dahulu untuk menggunakan AI generator.' },
+        { status: 401 }
+      );
+    }
+
+    // 2. Rate Limiting Check — per user ID (persistent, tidak reset saat redeploy)
     const forwardedFor = req.headers.get('x-forwarded-for');
     const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : '127.0.0.1';
-    const rateLimit = checkRateLimit(clientIp);
+    const rateLimitIdentifier = user.id || clientIp;
+    const rateLimit = await checkRateLimit(rateLimitIdentifier);
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
         {
           success: false,
-          error: `Batas kuota request tercapai (${clientIp}). Mohon tunggu ${rateLimit.resetInSeconds} detik sebelum mencoba kembali.`
+          error: `Batas kuota request tercapai. Mohon tunggu ${rateLimit.resetInSeconds} detik sebelum mencoba kembali.`
         },
         { status: 429 }
       );
@@ -1398,7 +1421,8 @@ ${staffLandingGuide}
       userPromptWithContext = `KODE HTML & JS SAAT INI YANG SUDAH BERJALAN AKTIF:\n\`\`\`html\n${currentCode}\n\`\`\`\n\nPERMINTAAN REVISI DARI PENGGUNA: "${prompt}".\n\nINSTRUKSI KHUSUS NFR-10b (VALIDASI FUNGSIONAL LENGKAP): Terapkan perubahan yang diminta pengguna di atas, namun TETAP PERTAHANKAN seluruh fungsi JavaScript, array data 3-5 item dummy, tombol Tambah/Edit/Hapus, dan render() agar tetap 100% berfungsi. Kembalikan KODE HTML LENGKAP UTUH di dalam blok \`\`\`html ... \`\`\`.`;
     }
 
-    const recentHistory = (chatHistory || []).slice(-6);
+    // Strip HTML besar dari chatHistory sebelum dikirim ke AI (hemat token & bandwidth)
+    const recentHistory = stripHtmlFromHistory((chatHistory || []).slice(-6));
 
     // =========================================================================
     // JALUR STREAMING (SSE) — KHUSUS UNTUK MODE IDEATION (Sub-langkah 1-4)

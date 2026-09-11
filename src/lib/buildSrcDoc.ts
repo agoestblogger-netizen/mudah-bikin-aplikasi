@@ -33,7 +33,12 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
     function postToParent(payload) {
       try {
         if (window.parent && window.parent !== window) {
-          window.parent.postMessage(Object.assign({ source: SOURCE }, payload), '*');
+          // Gunakan origin parent yang spesifik alih-alih '*'
+          // ancestorOrigins[0]: Chrome/Edge | document.referrer: Firefox fallback
+          var _parentOrigin =
+            (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) ||
+            (document.referrer ? (new URL(document.referrer)).origin : '*');
+          window.parent.postMessage(Object.assign({ source: SOURCE }, payload), _parentOrigin);
         }
       } catch (e) {}
     }

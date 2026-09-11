@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
+import { getUserFromRequest } from '@/lib/supabase/user';
 import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_OPENAI_MODEL,
@@ -28,9 +29,17 @@ export const maxDuration = 60; // 60 detik batas maksimal
 
 export async function POST(req: Request) {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Anda harus login terlebih dahulu.' },
+        { status: 401 }
+      );
+    }
+
     const forwardedFor = req.headers.get('x-forwarded-for');
     const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : '127.0.0.1';
-    const rateLimit = checkRateLimit(clientIp);
+    const rateLimit = await checkRateLimit(user.id || clientIp);
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { success: false, error: 'Rate limit tercapai. Silakan coba lagi beberapa saat lagi.' },

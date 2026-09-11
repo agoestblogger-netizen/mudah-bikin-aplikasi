@@ -11,7 +11,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 jam
 export async function GET(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for');
   const clientIp = forwardedFor ? forwardedFor.split(',')[0].trim() : '127.0.0.1';
-  const rateLimit = checkRateLimit(clientIp);
+  const rateLimit = await checkRateLimit(clientIp);
 
   if (!rateLimit.allowed) {
     // Jika kena rate limit tapi cache tersedia, berikan cache
