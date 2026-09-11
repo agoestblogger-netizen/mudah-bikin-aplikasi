@@ -3,7 +3,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   CheckCircle2,
-  Lock,
   Layers,
   Users,
   ListChecks,
@@ -94,7 +93,6 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
   };
 
   const toggleRole = (role: string) => {
-    if (role === REQUIRED_ROLE) return;
     const selected = selectedRoleSet.has(role)
       ? draft.roles.selected.filter((r) => r !== role)
       : [...draft.roles.selected, role];
@@ -110,18 +108,15 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
     setNewRole('');
   };
 
-  const toggleFeature = (id: string, isCore: boolean) => {
+  const toggleFeature = (id: string) => {
     const exists = selectedMap.has(id);
-    // Fitur inti boleh ditambahkan kembali, tetapi tidak boleh dilepas.
-    if (isCore && exists) return;
     const selected = exists
       ? draft.features.selected.filter((f) => f.id !== id)
       : [...draft.features.selected, { id, priority: 'WAJIB' as const }];
     update({ ...draft, features: { ...draft.features, selected } });
   };
 
-  const setPriority = (id: string, priority: 'WAJIB' | 'NYUSUL', isCore: boolean) => {
-    if (isCore && priority === 'NYUSUL') return;
+  const setPriority = (id: string, priority: 'WAJIB' | 'NYUSUL') => {
     const selected = draft.features.selected.map((f) => (f.id === id ? { ...f, priority } : f));
     update({ ...draft, features: { ...draft.features, selected } });
   };
@@ -298,11 +293,11 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
 
           {checklist.coreTransitions.length > 0 && (
             <div>
-              <p className="text-[10.5px] font-semibold text-zinc-400 mb-1">Transisi Inti (terkunci)</p>
+              <p className="text-[10.5px] font-semibold text-zinc-400 mb-1">Transisi Inti</p>
               <div className="flex flex-wrap gap-1.5">
                 {checklist.coreTransitions.map((t) => (
                   <span key={t} className="inline-flex items-center gap-1 text-[10.5px] px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-zinc-300">
-                    <Lock className="w-3 h-3 text-indigo-300" />
+                    <CheckCircle2 className="w-3 h-3 text-[#10f48e]" />
                     {t}
                   </span>
                 ))}
@@ -312,11 +307,11 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
 
           {checklist.coreRules.length > 0 && (
             <div>
-              <p className="text-[10.5px] font-semibold text-zinc-400 mb-1">Aturan Bisnis Inti (terkunci)</p>
+              <p className="text-[10.5px] font-semibold text-zinc-400 mb-1">Aturan Bisnis Inti</p>
               <ul className="space-y-0.5">
                 {checklist.coreRules.map((r) => (
                   <li key={r} className="flex items-start gap-1.5 text-[11px] text-zinc-300">
-                    <Lock className="w-3 h-3 text-indigo-300 shrink-0 mt-0.5" />
+                    <CheckCircle2 className="w-3 h-3 text-[#10f48e] shrink-0 mt-0.5" />
                     <span>{r}</span>
                   </li>
                 ))}
@@ -326,11 +321,11 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
 
           {checklist.coreEdgeCases.length > 0 && (
             <div>
-              <p className="text-[10.5px] font-semibold text-zinc-400 mb-1">Edge Case Inti (terkunci)</p>
+              <p className="text-[10.5px] font-semibold text-zinc-400 mb-1">Edge Case Inti</p>
               <div className="flex flex-wrap gap-1.5">
                 {checklist.coreEdgeCases.map((e) => (
                   <span key={e} className="inline-flex items-center gap-1 text-[10.5px] px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-zinc-300">
-                    <Lock className="w-3 h-3 text-indigo-300" />
+                    <CheckCircle2 className="w-3 h-3 text-[#10f48e]" />
                     {e}
                   </span>
                 ))}
@@ -362,7 +357,6 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
             {features.map((f) => {
               const priority = selectedMap.get(f.id);
               const isSelected = Boolean(priority);
-              const isCore = f.severity === 'core';
               return (
                 <div
                   key={f.id}
@@ -372,24 +366,22 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
                 >
                   <button
                     type="button"
-                    onClick={() => toggleFeature(f.id, isCore)}
-                    disabled={isCore}
+                    onClick={() => toggleFeature(f.id)}
                     className={`w-3.5 h-3.5 rounded border shrink-0 flex items-center justify-center ${
                       isSelected ? 'bg-[#10f48e] border-[#10f48e]' : 'border-zinc-600'
-                    } ${isCore ? 'opacity-80 cursor-default' : 'cursor-pointer'}`}
+                    } cursor-pointer`}
                   >
                     {isSelected && <CheckCircle2 className="w-3 h-3 text-black" />}
                   </button>
                   <span className="flex-1 text-[11.5px] text-zinc-200 truncate">
                     {f.label}
-                    {isCore && <Lock className="inline w-3 h-3 text-indigo-300 ml-1.5 -mt-0.5" />}
                   </span>
                   <span className="text-[9.5px] text-zinc-500 shrink-0">{f.complexity}</span>
                   {isSelected && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setPriority(f.id, 'WAJIB', isCore)}
+                        onClick={() => setPriority(f.id, 'WAJIB')}
                         className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border ${
                           priority === 'WAJIB'
                             ? 'bg-[#10f48e]/15 border-[#10f48e]/40 text-[#10f48e]'
@@ -400,13 +392,12 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPriority(f.id, 'NYUSUL', isCore)}
-                        disabled={isCore}
+                        onClick={() => setPriority(f.id, 'NYUSUL')}
                         className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border ${
                           priority === 'NYUSUL'
                             ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                             : 'border-white/10 text-zinc-500 hover:text-zinc-300'
-                        } ${isCore ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        }`}
                       >
                         V2
                       </button>
@@ -447,23 +438,20 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
           </h2>
           <div className="flex flex-wrap gap-1.5">
             {dedupeRoleLabels([REQUIRED_ROLE, ...checklist.roles, ...draft.roles.selected]).map((role) => {
-              const isLocked = role === REQUIRED_ROLE;
-              const isSelected = role === REQUIRED_ROLE || selectedRoleSet.has(role);
+              const isSelected = selectedRoleSet.has(role);
               return (
                 <button
                   key={role}
                   type="button"
                   onClick={() => toggleRole(role)}
-                  disabled={isLocked}
                   className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[10.5px] transition-colors ${
                     isSelected
                       ? 'bg-[#10f48e]/10 border-[#10f48e]/35 text-zinc-100'
                       : 'bg-white/[0.03] border-white/10 text-zinc-400 hover:text-zinc-200'
-                  } ${isLocked ? 'cursor-default' : 'cursor-pointer'}`}
+                  } cursor-pointer`}
                 >
-                  {isLocked && <Lock className="w-3 h-3 text-indigo-300" />}
                   {role}
-                  {!isLocked && isSelected && <X className="w-3 h-3 opacity-60" />}
+                  {isSelected && <X className="w-3 h-3 opacity-60" />}
                 </button>
               );
             })}

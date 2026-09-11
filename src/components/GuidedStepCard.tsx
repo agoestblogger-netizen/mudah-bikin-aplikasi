@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { CheckSquare, Square, CheckCircle2, Circle, Lock, Sparkles, Plus } from 'lucide-react';
+import { CheckSquare, Square, CheckCircle2, Circle, Sparkles, Plus } from 'lucide-react';
 import type { GuidedStepPayload } from '@/lib/templates/processes/types';
 
 interface GuidedStepCardProps {
@@ -22,15 +22,15 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
   onSubmit
 }) => {
   const initialSelected = payload.options
-    .filter((o) => o.locked || (preselectRecommended && o.recommended))
+    .filter((o) => preselectRecommended && o.recommended)
     .map((o) => o.id);
   const [selected, setSelected] = useState<string[]>(initialSelected);
   const [otherOpen, setOtherOpen] = useState(false);
   const [other, setOther] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
-  const toggle = (id: string, locked?: boolean) => {
-    if (locked || disabled || submitted) return;
+  const toggle = (id: string) => {
+    if (disabled || submitted) return;
     if (payload.multi) {
       setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     } else {
@@ -76,18 +76,17 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
       <div className="space-y-1.5 max-h-72 overflow-y-auto no-scrollbar pr-0.5">
         {payload.options.map((opt) => {
           const isSelected = selected.includes(opt.id);
-          const isLocked = Boolean(opt.locked);
           return (
             <button
               key={opt.id}
               type="button"
-              onClick={() => toggle(opt.id, isLocked)}
-              disabled={disabled || isLocked}
+              onClick={() => toggle(opt.id)}
+              disabled={disabled}
               className={`w-full flex items-start gap-2 px-2.5 py-2 rounded-xl border text-left transition-all ${
                 isSelected
                   ? 'bg-[#10f48e]/10 border-[#10f48e]/40 text-zinc-100'
                   : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:border-white/20'
-              } ${isLocked ? 'opacity-90 cursor-default' : 'cursor-pointer active:scale-[0.99]'}`}
+              } cursor-pointer active:scale-[0.99]`}
             >
               <span className="mt-0.5 shrink-0">
                 {payload.multi ? (
@@ -105,8 +104,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
               <span className="flex-1 min-w-0">
                 <span className="flex items-center gap-1.5">
                   <span className="text-[11.5px] font-medium truncate">{opt.label}</span>
-                  {isLocked && <Lock className="w-3 h-3 text-indigo-300 shrink-0" />}
-                  {opt.recommended && !isLocked && (
+                  {opt.recommended && (
                     <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1 py-0.5 shrink-0">
                       Disarankan
                     </span>

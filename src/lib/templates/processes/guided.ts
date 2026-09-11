@@ -300,7 +300,6 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
         id: REQUIRED_ROLE,
         label: REQUIRED_ROLE,
         description: 'Kelola akun staf, role & permission, konfigurasi sistem',
-        locked: true,
         recommended: true
       },
       ...options.slice(0, 13)
@@ -343,8 +342,7 @@ function buildFeaturesStep(session: MockupSessionState): GuidedStepPayload {
       id: f.id,
       label: f.label,
       recommended: f.severity === 'core',
-      locked: f.severity === 'core',
-      description: f.severity === 'core' ? 'Fitur inti (wajib)' : `Kompleksitas: ${f.complexity}`
+      description: f.severity === 'core' ? 'Fitur inti (disarankan)' : `Kompleksitas: ${f.complexity}`
     }))
   };
 }
@@ -362,8 +360,7 @@ function buildPriorityStep(session: MockupSessionState): GuidedStepPayload {
       id: f.id,
       label: f.label,
       recommended: f.severity === 'core',
-      locked: f.severity === 'core',
-      description: f.severity === 'core' ? 'Fitur inti (wajib ada)' : 'Boleh menyusul'
+      description: f.severity === 'core' ? 'Fitur inti (disarankan)' : 'Boleh menyusul'
     }))
   };
 }
@@ -399,27 +396,18 @@ export function applyGuidedAnswer(
   if (stepId === 'PAIN') {
     next.painPoints = { selected: [...selected], ...(other ? { other } : {}) };
   } else if (stepId === 'ROLES') {
-    const roles = dedupeRoleLabels([REQUIRED_ROLE, ...selected]);
+    const roles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE]);
     next.roles = { selected: roles, ...(other ? { other } : {}) };
   } else if (stepId === 'FLOW') {
     next.flow = { ...(selected[0] ? { selectedId: selected[0] } : {}), ...(other ? { other } : {}) };
   } else if (stepId === 'FEATURES') {
-    // Fitur inti tidak boleh hilang, apa pun yang dikirim klien.
-    const coreIds = collectFeatures(next)
-      .filter((f) => f.severity === 'core')
-      .map((f) => f.id);
-    const mergedIds = Array.from(new Set([...coreIds, ...selected]));
+    const featureIds = selected.length > 0 ? selected : collectFeatures(next).filter((f) => f.severity === 'core').map((f) => f.id);
     next.features = {
-      selected: mergedIds.map((id) => ({ id, priority: 'WAJIB' as const })),
+      selected: featureIds.map((id) => ({ id, priority: 'WAJIB' as const })),
       ...(other ? { other } : {})
     };
   } else if (stepId === 'PRIORITY') {
-    const coreIds = new Set(
-      collectFeatures(next)
-        .filter((f) => f.severity === 'core')
-        .map((f) => f.id)
-    );
-    const wajib = new Set([...selected, ...coreIds]);
+    const wajib = new Set(selected);
     next.features = {
       ...next.features,
       selected: next.features.selected.map((f) => ({
@@ -439,42 +427,27 @@ export interface BriefCompleteness {
 }
 
 /**
- * Gate proses inti: semua fitur core & Super Admin harus ada sebelum build.
+ * Gate proses: validasi kelengkapan data sebelum build.
  */
 export function isBriefBusinessComplete(session: MockupSessionState): BriefCompleteness {
   const missing: string[] = [];
-  const checklist = buildBusinessProcessChecklist(
-    session.match.patternIds,
-    session.match.overlayIds,
-    session.match.templateId
-  );
-  const features = collectFeatures(session);
-  const selectedWajib = new Set(
-    session.features.selected.filter((f) => f.priority === 'WAJIB').map((f) => f.id)
-  );
-
-  if (!session.roles.selected.includes(REQUIRED_ROLE)) {
-    missing.push('Peran Super Admin wajib ada');
-  }
-  if (session.roles.selected.filter((r) => r !== REQUIRED_ROLE).length === 0) {
-    missing.push('Minimal 1 peran operasional/pengguna');
+  if (!session.roles.selected || session.roles.selected.length === 0) {
+    missing.push('Minimal 1 peran aplikasi dipilih');
   }
   if (!session.flow.selectedId) {
     missing.push('Alur kerja utama belum dipilih');
   }
-
-  const coreFeatures = features.filter((f) => f.severity === 'core');
-  for (const f of coreFeatures) {
-    if (!selectedWajib.has(f.id)) missing.push(`Fitur inti "${f.label}" wajib ada (Wajib)`);
+  if (!session.features.selected || session.features.selected.length === 0) {
+    missing.push('Minimal 1 fitur aplikasi dipilih');
   }
 
-  for (const label of checklist.coreRules) {
-    // Aturan inti tidak bisa dimatikan; hanya dicatat bila fitur intinya hilang.
-    void label;
-  }
-
-  return { complete: missing.length === 0, missing };
+  return {
+    complete: missing.length === 0,
+    missing
+  };
 }
+
+
 
 export interface BriefMeta {
   appName?: string;
