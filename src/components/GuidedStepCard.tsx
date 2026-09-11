@@ -7,6 +7,7 @@ import type { GuidedStepPayload } from '@/lib/templates/processes/types';
 interface GuidedStepCardProps {
   payload: GuidedStepPayload;
   disabled?: boolean;
+  preselectRecommended?: boolean;
   onSubmit: (selected: string[], other?: string) => void;
 }
 
@@ -14,9 +15,16 @@ interface GuidedStepCardProps {
  * Kartu pilihan sesi mockup terpandu (checklist / single-select) + opsi "Lainnya".
  * Opsi berasal dari repository proses bisnis (dikirim server), bukan dari AI bebas.
  */
-export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({ payload, disabled, onSubmit }) => {
-  const lockedIds = payload.options.filter((o) => o.locked).map((o) => o.id);
-  const [selected, setSelected] = useState<string[]>(lockedIds);
+export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
+  payload,
+  disabled,
+  preselectRecommended,
+  onSubmit
+}) => {
+  const initialSelected = payload.options
+    .filter((o) => o.locked || (preselectRecommended && o.recommended))
+    .map((o) => o.id);
+  const [selected, setSelected] = useState<string[]>(initialSelected);
   const [otherOpen, setOtherOpen] = useState(false);
   const [other, setOther] = useState('');
   const [submitted, setSubmitted] = useState(false);

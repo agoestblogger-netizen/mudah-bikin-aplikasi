@@ -1114,6 +1114,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     key={`${m.id}-guided`}
                     payload={m.guidedStep}
                     disabled={isGenerating}
+                    preselectRecommended
                     onSubmit={(selected, other) =>
                       handleGuidedAnswer(m.id, m.guidedStep!.stepId, selected, other)
                     }

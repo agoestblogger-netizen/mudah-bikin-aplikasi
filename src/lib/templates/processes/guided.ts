@@ -274,7 +274,9 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
   }
 
   // 2. Prioritas utama: peran khas industri dari overlay yang terdeteksi.
-  overlays.forEach((o) => o.roleLabels.forEach((role) => addRole(role, o.nama)));
+  //    Semua roleLabels overlay dianggap disarankan (termasuk peran pelanggan/penyewa)
+  //    karena sudah dikurasi khusus untuk industri tersebut.
+  overlays.forEach((o) => o.roleLabels.forEach((role) => addRole(role, o.nama, true)));
 
   // 3. Pelengkap: peran dari Master Template (mis. Petugas Sewa / Penyewa untuk MT-21).
   if (template) {
@@ -341,7 +343,8 @@ function buildFeaturesStep(session: MockupSessionState): GuidedStepPayload {
       id: f.id,
       label: f.label,
       recommended: f.severity === 'core',
-      description: `Kompleksitas: ${f.complexity}`
+      locked: f.severity === 'core',
+      description: f.severity === 'core' ? 'Fitur inti (wajib)' : `Kompleksitas: ${f.complexity}`
     }))
   };
 }
@@ -359,7 +362,8 @@ function buildPriorityStep(session: MockupSessionState): GuidedStepPayload {
       id: f.id,
       label: f.label,
       recommended: f.severity === 'core',
-      description: f.severity === 'core' ? 'Disarankan Wajib' : 'Boleh menyusul'
+      locked: f.severity === 'core',
+      description: f.severity === 'core' ? 'Fitur inti (wajib ada)' : 'Boleh menyusul'
     }))
   };
 }
@@ -400,12 +404,22 @@ export function applyGuidedAnswer(
   } else if (stepId === 'FLOW') {
     next.flow = { ...(selected[0] ? { selectedId: selected[0] } : {}), ...(other ? { other } : {}) };
   } else if (stepId === 'FEATURES') {
+    // Fitur inti tidak boleh hilang, apa pun yang dikirim klien.
+    const coreIds = collectFeatures(next)
+      .filter((f) => f.severity === 'core')
+      .map((f) => f.id);
+    const mergedIds = Array.from(new Set([...coreIds, ...selected]));
     next.features = {
-      selected: selected.map((id) => ({ id, priority: 'WAJIB' as const })),
+      selected: mergedIds.map((id) => ({ id, priority: 'WAJIB' as const })),
       ...(other ? { other } : {})
     };
   } else if (stepId === 'PRIORITY') {
-    const wajib = new Set(selected);
+    const coreIds = new Set(
+      collectFeatures(next)
+        .filter((f) => f.severity === 'core')
+        .map((f) => f.id)
+    );
+    const wajib = new Set([...selected, ...coreIds]);
     next.features = {
       ...next.features,
       selected: next.features.selected.map((f) => ({

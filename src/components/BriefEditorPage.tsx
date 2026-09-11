@@ -111,8 +111,9 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
   };
 
   const toggleFeature = (id: string, isCore: boolean) => {
-    if (isCore) return;
     const exists = selectedMap.has(id);
+    // Fitur inti boleh ditambahkan kembali, tetapi tidak boleh dilepas.
+    if (isCore && exists) return;
     const selected = exists
       ? draft.features.selected.filter((f) => f.id !== id)
       : [...draft.features.selected, { id, priority: 'WAJIB' as const }];
@@ -242,6 +243,38 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
             Alur terpilih: <span className="text-zinc-300">{flowLabel}</span>
           </p>
         </section>
+
+        {/* Alur Kerja */}
+        {patterns.some((p) => p.flowVariants.length > 0) && (
+          <section className="rounded-2xl border border-white/10 bg-[#101016] p-4 space-y-3">
+            <h2 className="text-[11.5px] font-bold text-zinc-200 flex items-center gap-2">
+              <ListChecks className="w-3.5 h-3.5 text-[#10f48e]" />
+              Alur Kerja
+            </h2>
+            <div className="space-y-1.5">
+              {patterns.flatMap((p) =>
+                p.flowVariants.map((v) => {
+                  const isActive = draft.flow.selectedId === v.id;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => update({ ...draft, flow: { selectedId: v.id } })}
+                      className={`w-full text-left px-3 py-2 rounded-xl border transition-colors ${
+                        isActive
+                          ? 'bg-[#10f48e]/10 border-[#10f48e]/35 text-zinc-100'
+                          : 'bg-white/[0.02] border-white/10 text-zinc-300 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="block text-[11.5px] font-medium">{v.label}</span>
+                      <span className="block text-[10px] text-zinc-500 mt-0.5">{v.summary}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Peta Proses Bisnis */}
         <section className="rounded-2xl border border-white/10 bg-[#101016] p-4 space-y-3">
@@ -484,28 +517,37 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
 
       {/* Footer aksi */}
       <div className="sticky bottom-0 left-0 right-0 mt-4 bg-gradient-to-t from-[#0b0b10] via-[#0b0b10] to-transparent pt-3 pb-2">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setExpanded(false)}
-            className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 text-[11px] font-semibold flex items-center gap-1"
-          >
-            <ChevronUp className="w-3.5 h-3.5" />
-            Ringkas
-          </button>
-          <button
-            type="button"
-            onClick={handleApprove}
-            disabled={!completeness.complete}
-            className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all ${
-              completeness.complete
-                ? 'bg-gradient-to-r from-emerald-400 to-[#10f48e] text-black active:scale-[0.99]'
-                : 'bg-white/5 text-zinc-600 cursor-not-allowed'
-            }`}
-          >
-            <Rocket className="w-4 h-4" />
-            Setujui & Buat Prototype
-          </button>
+        <div className="max-w-3xl mx-auto space-y-2">
+          {!completeness.complete && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[10.5px] text-amber-200">
+              <span className="font-semibold">Belum bisa disetujui:</span>{' '}
+              {completeness.missing.slice(0, 2).join('; ')}
+              {completeness.missing.length > 2 ? ` (+${completeness.missing.length - 2} lagi)` : ''}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 text-[11px] font-semibold flex items-center gap-1"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+              Ringkas
+            </button>
+            <button
+              type="button"
+              onClick={handleApprove}
+              disabled={!completeness.complete}
+              className={`flex-1 py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 transition-all ${
+                completeness.complete
+                  ? 'bg-gradient-to-r from-emerald-400 to-[#10f48e] text-black active:scale-[0.99]'
+                  : 'bg-white/5 text-zinc-600 cursor-not-allowed'
+              }`}
+            >
+              <Rocket className="w-4 h-4" />
+              Setujui & Buat Prototype
+            </button>
+          </div>
         </div>
       </div>
     </div>
