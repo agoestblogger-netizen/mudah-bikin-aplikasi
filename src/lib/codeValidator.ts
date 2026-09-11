@@ -17,22 +17,37 @@ export interface ValidationReport {
 }
 
 function injectBeforeLastScriptClose(html: string, code: string): string {
+  // Pisahkan jika ada script eksternal yang diisi kode inline
+  let sanitizedHtml = html.replace(/<script(?=[^>]*\bsrc\s*=)([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, innerCode) => {
+    if (innerCode && innerCode.trim().length > 0) {
+      return `<script${attrs}></script>\n<script>\n${innerCode}\n</script>`;
+    }
+    return match;
+  });
+
+  // Tutup comment yang tidak tertutup terlebih dahulu jika ada
+  const lastOpenComment = sanitizedHtml.lastIndexOf('<!--');
+  const lastCloseComment = sanitizedHtml.lastIndexOf('-->');
+  if (lastOpenComment !== -1 && (lastCloseComment === -1 || lastCloseComment < lastOpenComment)) {
+    sanitizedHtml += '\n-->';
+  }
+
   // Cari <script ...>...</script> inline (yang TIDAK memiliki atribut src=)
-  const matches = [...html.matchAll(/<script(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)];
+  const matches = [...sanitizedHtml.matchAll(/<script(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi)];
   if (matches.length > 0) {
     const lastMatch = matches[matches.length - 1];
     const insertPos = lastMatch.index! + lastMatch[0].lastIndexOf('</script>');
-    return html.slice(0, insertPos) + '\n' + code + '\n' + html.slice(insertPos);
+    return sanitizedHtml.slice(0, insertPos) + '\n' + code + '\n' + sanitizedHtml.slice(insertPos);
   }
 
   // Jika tidak ada tag script inline yang bisa diinjeksi, buat tag script baru sebelum </body> atau </html>
-  if (html.includes('</body>')) {
-    return html.replace('</body>', `<script>\n${code}\n</script>\n</body>`);
+  if (sanitizedHtml.includes('</body>')) {
+    return sanitizedHtml.replace('</body>', `<script>\n${code}\n</script>\n</body>`);
   }
-  if (html.includes('</html>')) {
-    return html.replace('</html>', `<script>\n${code}\n</script>\n</html>`);
+  if (sanitizedHtml.includes('</html>')) {
+    return sanitizedHtml.replace('</html>', `<script>\n${code}\n</script>\n</html>`);
   }
-  return html + `\n<script>\n${code}\n</script>`;
+  return sanitizedHtml + `\n<script>\n${code}\n</script>\n</body>\n</html>`;
 }
 
 export function injectMissingHandlerStubs(html: string, issues: string[]): string {

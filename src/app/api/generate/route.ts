@@ -101,6 +101,13 @@ function isCodeTruncatedOrBroken(text: string): boolean {
     return true;
   }
 
+  // 2b. Cek komentar HTML yang belum ditutup
+  const lastOpenComment = text.lastIndexOf('<!--');
+  const lastCloseComment = text.lastIndexOf('-->');
+  if (lastOpenComment !== -1 && (lastCloseComment === -1 || lastCloseComment < lastOpenComment)) {
+    return true;
+  }
+
   // 3. Ekstrak HTML dan verifikasi sintaks JS di dalam <script>
   const match = text.match(/```html([\s\S]*?)```/);
   const htmlContent = match ? match[1] : (text.includes('<!DOCTYPE') ? text : '');
@@ -1728,7 +1735,7 @@ ${staffLandingGuide}
               body: JSON.stringify({
                 systemInstruction: { parts: [{ text: systemPrompt }] },
                 contents: geminiContents,
-                generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+                generationConfig: { temperature: 0.3, maxOutputTokens: 16384 }
               })
             }
           );
@@ -2178,7 +2185,7 @@ INSTRUKSI PERBAIKAN WAJIB:
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.` }] }
               ],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+              generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
           });
           const repairData = await repairRes.json();

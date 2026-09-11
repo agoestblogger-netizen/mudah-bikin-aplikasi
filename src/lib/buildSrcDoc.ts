@@ -661,14 +661,16 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           try { window.showToast('Data berhasil dihapus!', 'success'); } catch (e) {}
         }
       };
-    // Runtime Safety Net: Menjamin fungsi login, quickLogin, loginAs, dan filterTabsByRole selalu aktif
+    }
+
+    // Runtime Safety Net: Menjamin fungsi login, quickLogin, loginAs, dan filterTabsByRole selalu aktif 100%
     (function ensureAuthRuntime() {
       if (!window.quickLogin) {
         window.quickLogin = function(u, p) {
           var uInput = document.getElementById('loginUsername');
           var pInput = document.getElementById('loginPassword');
-          if (uInput) uInput.value = u;
-          if (pInput) pInput.value = p;
+          if (uInput) uInput.value = u || '';
+          if (pInput) pInput.value = p || '';
           if (typeof window.handleLogin === 'function') {
             window.handleLogin();
           }
@@ -677,34 +679,44 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 
       if (!window.loginAs) {
         window.loginAs = function(role) {
-          window.currentRole = role;
-          var loginEl = document.getElementById('loginScreen');
-          var appEl = document.getElementById('appContainer');
+          var targetRole = role || 'Super Admin';
+          window.currentRole = targetRole;
+          var loginEl = document.getElementById('loginScreen') || document.querySelector('.login-screen, #loginModal, .login-container');
+          var appEl = document.getElementById('appContainer') || document.querySelector('.app-container, #mainContainer, .container');
           if (loginEl) loginEl.style.display = 'none';
           if (appEl) appEl.style.display = 'block';
           document.querySelectorAll('.app-layout, #mainLayout, .main-container').forEach(function(el) {
             if (el !== loginEl) el.style.display = '';
           });
-          var badge = document.getElementById('currentRoleBadge') || document.querySelector('.role-badge');
-          if (badge) badge.innerText = role;
+          var badge = document.getElementById('currentRoleBadge') || document.querySelector('.role-badge, [data-role-badge]');
+          if (badge) badge.innerText = targetRole;
           if (typeof window.filterTabsByRole === 'function') {
-            window.filterTabsByRole(role);
+            try { window.filterTabsByRole(targetRole); } catch(e){}
           }
           if (typeof window.showTab === 'function') {
-            var firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
-            var tabMatch = firstTab && firstTab.getAttribute('onclick') && firstTab.getAttribute('onclick').match(/showTab\(['"]([^'"]+)['"]\)/);
-            if (tabMatch && tabMatch[1]) window.showTab(tabMatch[1]);
+            try {
+              var firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
+              var tabMatch = firstTab && firstTab.getAttribute('onclick') && firstTab.getAttribute('onclick').match(/showTab\(['"]([^'"]+)['"]\)/);
+              if (tabMatch && tabMatch[1]) window.showTab(tabMatch[1]);
+            } catch(e){}
           }
-          if (typeof window.render === 'function') {
-            try { window.render(); } catch(e){}
+          ['render', 'renderTable', 'renderPOSCatalog', 'renderSKU', 'renderProduk', 'renderAll'].forEach(function(fn) {
+            if (typeof window[fn] === 'function') {
+              try { window[fn](); } catch(e){}
+            }
+          });
+          if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+            try { window.lucide.createIcons(); } catch(e){}
           }
         };
       }
 
       if (!window.handleLogin) {
         window.handleLogin = function() {
-          var u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
-          var p = (document.getElementById('loginPassword')?.value || '').trim();
+          var uInp = document.getElementById('loginUsername');
+          var pInp = document.getElementById('loginPassword');
+          var u = (uInp && uInp.value ? uInp.value : '').trim().toLowerCase();
+          var p = (pInp && pInp.value ? pInp.value : '').trim();
           var acc = null;
           if (typeof window.DEMO_ACCOUNTS !== 'undefined' && Array.isArray(window.DEMO_ACCOUNTS)) {
             acc = window.DEMO_ACCOUNTS.find(function(a) {
@@ -733,8 +745,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       if (!window.logout) {
         window.logout = function() {
           window.currentRole = '';
-          var loginEl = document.getElementById('loginScreen');
-          var appEl = document.getElementById('appContainer');
+          var loginEl = document.getElementById('loginScreen') || document.querySelector('.login-screen, #loginModal, .login-container');
+          var appEl = document.getElementById('appContainer') || document.querySelector('.app-container, #mainContainer, .container');
           if (appEl) appEl.style.display = 'none';
           if (loginEl) loginEl.style.display = 'flex';
           if (typeof window.showToast === 'function') {
@@ -750,6 +762,46 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
             btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
           });
         };
+      }
+
+      // Auto-bind event listeners jika elemen login ada
+      function bindLoginEvents() {
+        try {
+          var loginForm = document.querySelector('form#loginForm, #loginScreen form, .login-form');
+          if (loginForm) {
+            loginForm.onsubmit = function(e) {
+              if (e) e.preventDefault();
+              if (typeof window.handleLogin === 'function') window.handleLogin();
+              return false;
+            };
+          }
+          var loginBtns = document.querySelectorAll('#loginScreen button, .login-btn, button[type="submit"]');
+          loginBtns.forEach(function(btn) {
+            if (!btn.getAttribute('onclick')) {
+              btn.addEventListener('click', function(e) {
+                if (e) e.preventDefault();
+                if (typeof window.handleLogin === 'function') window.handleLogin();
+              });
+            }
+          });
+          var inputs = [document.getElementById('loginUsername'), document.getElementById('loginPassword')];
+          inputs.forEach(function(inp) {
+            if (inp) {
+              inp.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                  if (e) e.preventDefault();
+                  if (typeof window.handleLogin === 'function') window.handleLogin();
+                }
+              });
+            }
+          });
+        } catch(e) {}
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindLoginEvents);
+      } else {
+        setTimeout(bindLoginEvents, 50);
       }
     })();
 
@@ -787,6 +839,36 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       cleanDoc = cleanDoc.slice(cleanDoc.indexOf('<!DOCTYPE')).trim();
     } else if (cleanDoc.includes('<html')) {
       cleanDoc = cleanDoc.slice(cleanDoc.indexOf('<html')).trim();
+    }
+
+    // Perbaiki script eksternal yang terisi kode inline secara keliru (misal <script src="...">code</script>)
+    cleanDoc = cleanDoc.replace(/<script(?=[^>]*\bsrc\s*=)([^>]*)>([\s\S]*?)<\/script>/gi, (match, attrs, innerCode) => {
+      if (innerCode && innerCode.trim().length > 0) {
+        return `<script${attrs}></script>\n<script>\n${innerCode}\n</script>`;
+      }
+      return match;
+    });
+
+    // Tutup HTML comment yang terpotong/belum tertutup jika ada (agar tidak menelan script setelahnya)
+    const lastOpenComment = cleanDoc.lastIndexOf('<!--');
+    const lastCloseComment = cleanDoc.lastIndexOf('-->');
+    if (lastOpenComment !== -1 && (lastCloseComment === -1 || lastCloseComment < lastOpenComment)) {
+      cleanDoc += '\n-->';
+    }
+
+    // Tutup tag script yang belum tertutup jika ada
+    const lastOpenScript = cleanDoc.lastIndexOf('<script');
+    const lastCloseScript = cleanDoc.lastIndexOf('</script>');
+    if (lastOpenScript !== -1 && (lastCloseScript === -1 || lastCloseScript < lastOpenScript)) {
+      cleanDoc += '\n</script>';
+    }
+
+    // Pastikan tag penutup dasar ada jika terpotong
+    if (!cleanDoc.includes('</body>')) {
+      cleanDoc += '\n</body>';
+    }
+    if (!cleanDoc.includes('</html>')) {
+      cleanDoc += '\n</html>';
     }
 
     // Bersihkan script Tailwind CDN Play jika ada agar tidak memicu SecurityError
