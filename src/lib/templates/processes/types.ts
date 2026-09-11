@@ -165,6 +165,9 @@ export interface MockupSessionState {
     overlayIds: string[];
     patternIds: string[];
     tier: BusinessTier;
+    businessCategory?: string;
+    contextualPainPoints?: string[];
+    contextualRoles?: string[];
   };
   painPoints: { selected: string[]; other?: string };
   roles: { selected: string[]; other?: string };

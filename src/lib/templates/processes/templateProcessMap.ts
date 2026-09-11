@@ -149,7 +149,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-21',
     patternIds: ['UP-06', 'UP-09'],
-    overlayIds: [],
+    overlayIds: ['IND-21'],
     coreTransitions: ['pemesanan unit', 'pembayaran/DP', 'serah terima', 'pengembalian & cek kondisi', 'denda & deposit'],
     advisoryNotes: ['Perpanjangan sewa & unit servis']
   },

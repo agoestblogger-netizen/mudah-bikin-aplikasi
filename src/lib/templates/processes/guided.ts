@@ -83,6 +83,7 @@ const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
   { key: 'driver', re: /kurir|driver|sopir/i },
   { key: 'adjuster', re: /adjuster|investigator|investigasi/i },
   { key: 'consultant', re: /konsultan|consultant/i },
+  { key: 'rental-staff', re: /petugas\s*rental|petugas\s*sewa|staf\s*rental|staf\s*sewa/i },
   { key: 'service-staff', re: /service\s*staff|staff\s*layanan|petugas\s*layanan|staf\s*layanan/i },
   { key: 'customer', re: /pelanggan|customer|pembeli|buyer|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b/i },
   { key: 'owner', re: /owner|pemilik|pengurus|direktur|director|partner|founder|foundation|yayasan/i },
@@ -146,6 +147,30 @@ export function listSessionFeatures(session: MockupSessionState): FeatureInfo[] 
   return collectFeatures(session);
 }
 
+function cleanStopWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(
+      (w) =>
+        w.length > 3 &&
+        !/^(yang|dan|atau|dengan|untuk|pada|dari|saat|dalam|tidak|sering|sulit|bisa|adalah)$/.test(w)
+    );
+}
+
+function isSimilarOptionLabel(a: string, b: string): boolean {
+  if (a.trim().toLowerCase() === b.trim().toLowerCase()) return true;
+  const wordsA = new Set(cleanStopWords(a));
+  const wordsB = cleanStopWords(b);
+  if (wordsA.size === 0 || wordsB.length === 0) return false;
+  let matches = 0;
+  for (const w of wordsB) {
+    if (wordsA.has(w)) matches++;
+  }
+  return matches >= 3 || (matches >= 2 && matches / Math.min(wordsA.size, wordsB.length) >= 0.6);
+}
+
 function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
   const seenId = new Set<string>();
   const seenLabel = new Set<string>();
@@ -153,6 +178,8 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
   for (const opt of options) {
     const labelKey = opt.label.trim().toLowerCase();
     if (seenId.has(opt.id) || seenLabel.has(labelKey)) continue;
+    const isDuplicate = result.some((existing) => isSimilarOptionLabel(existing.label, opt.label));
+    if (isDuplicate) continue;
     seenId.add(opt.id);
     seenLabel.add(labelKey);
     result.push(opt);
@@ -165,6 +192,19 @@ function buildPainStep(session: MockupSessionState): GuidedStepPayload {
   const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
   const options: GuidedStepOption[] = [];
 
+  // 1. Masalah kontekstual hasil pemetaan AI cerdas (diposisikan paling atas)
+  if (session.match.contextualPainPoints && session.match.contextualPainPoints.length > 0) {
+    session.match.contextualPainPoints.forEach((p, idx) => {
+      options.push({
+        id: `ctx-p-${idx}`,
+        label: p,
+        recommended: true,
+        description: session.match.businessCategory || 'Spesifik Kebutuhan Anda'
+      });
+    });
+  }
+
+  // 2. Masalah dari overlay industri
   overlays.forEach((o) =>
     o.painPoints.forEach((p) =>
       options.push({
@@ -175,16 +215,20 @@ function buildPainStep(session: MockupSessionState): GuidedStepPayload {
       })
     )
   );
-  patterns.forEach((p) =>
-    p.painPoints.forEach((pp) =>
-      options.push({
-        id: pp.id,
-        label: pp.label,
-        recommended: pp.severity === 'core',
-        description: p.nama
-      })
-    )
-  );
+
+  // 3. Masalah dari pola universal (hanya jika opsi masih sedikit)
+  if (options.length < 4) {
+    patterns.forEach((p) =>
+      p.painPoints.forEach((pp) =>
+        options.push({
+          id: pp.id,
+          label: pp.label,
+          recommended: pp.severity === 'core',
+          description: p.nama
+        })
+      )
+    );
+  }
 
   return {
     stepId: 'PAIN',
@@ -222,15 +266,22 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
     });
   };
 
-  // 1. Prioritas utama: peran khas industri dari overlay yang terdeteksi.
+  // 1. Peran kontekstual dari hasil pemetaan AI cerdas (diposisikan paling atas)
+  if (session.match.contextualRoles && session.match.contextualRoles.length > 0) {
+    session.match.contextualRoles.forEach((role) =>
+      addRole(role, session.match.businessCategory || 'Spesifik Kebutuhan Anda', true)
+    );
+  }
+
+  // 2. Prioritas utama: peran khas industri dari overlay yang terdeteksi.
   overlays.forEach((o) => o.roleLabels.forEach((role) => addRole(role, o.nama)));
 
-  // 2. Pelengkap: peran dari Master Template (mis. Petugas Sewa / Penyewa untuk MT-21).
+  // 3. Pelengkap: peran dari Master Template (mis. Petugas Sewa / Penyewa untuk MT-21).
   if (template) {
     template.roleDefault.forEach((role) => addRole(role, template.nama));
   }
 
-  // 3. Fallback: aktor pola universal HANYA jika total peran masih kurang dari 2.
+  // 4. Fallback: aktor pola universal HANYA jika total peran masih kurang dari 2.
   if (options.length < 2) {
     patterns.forEach((p) =>
       p.actors.forEach((a) => addRole(a.role, p.nama, a.category !== 'external'))

@@ -4,6 +4,8 @@ import {
   detectMatchingMasterTemplate,
   detectIndustryOverlays,
   getIndustryOverlaysByIds,
+  getIndustryOverlayById,
+  getMasterTemplateById,
   getTemplateProcessMap,
   detectTier,
   buildGuidedStep,
@@ -40,13 +42,13 @@ interface GuidedBody {
 }
 
 function buildNarrationPrompt(session: MockupSessionState, action: GuidedAction, stepTitle?: string): string {
-  const overlayNames = getIndustryOverlaysByIds(session.match.overlayIds).map((o) => o.nama);
+  const category = session.match.businessCategory || getIndustryOverlaysByIds(session.match.overlayIds)[0]?.nama || session.match.templateId || 'kebutuhan bisnis Anda';
   const roleLabels = session.roles.selected.join(', ') || 'belum dipilih';
   const wajib = session.features.selected.filter((f) => f.priority === 'WAJIB').length;
   const nyusul = session.features.selected.filter((f) => f.priority === 'NYUSUL').length;
   return `Konteks sesi Aplikasi Generator:
+- Kategori/Industri Bisnis: ${category}
 - Template: ${session.match.templateId || 'belum terdeteksi'}
-- Industri: ${overlayNames.join(', ') || 'umum'}
 - Pola proses: ${session.match.patternIds.join(', ') || '-'}
 - Tier: ${session.match.tier}
 - Peran terpilih: ${roleLabels}
@@ -55,17 +57,29 @@ function buildNarrationPrompt(session: MockupSessionState, action: GuidedAction,
 - Aksi: ${action}${stepTitle ? ` (langkah: ${stepTitle})` : ''}
 
 Tulis 1-2 kalimat narasi ramah dalam bahasa Indonesia untuk memandu pengguna.
+PENTING: Jangan gunakan istilah "perancangan aplikasi".
 DILARANG mengubah, menambah, atau menghapus opsi pilihan; opsi ditentukan sistem.`;
 }
 
-async function generateNarration(
-  session: MockupSessionState,
-  action: GuidedAction,
-  stepTitle: string | undefined,
-  provider: string | undefined,
-  userApiKey: string | undefined,
-  userModel: string | undefined
-): Promise<string> {
+async function invokeAIChat(options: {
+  systemInstruction: string;
+  userPrompt: string;
+  temperature?: number;
+  maxTokens?: number;
+  provider?: string;
+  userApiKey?: string;
+  userModel?: string;
+}): Promise<string | null> {
+  const {
+    systemInstruction,
+    userPrompt,
+    temperature = 0.4,
+    maxTokens = 350,
+    provider,
+    userApiKey,
+    userModel
+  } = options;
+
   const hasUserKey = Boolean(userApiKey && userApiKey.trim());
   const requestedProvider = hasUserKey
     ? provider === 'gemini'
@@ -91,10 +105,6 @@ async function generateNarration(
     ? userModel || (isOpenRouter ? OPENROUTER_DEFAULT_MODEL : DEFAULT_OPENAI_MODEL)
     : process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
 
-  const narrationPrompt = buildNarrationPrompt(session, action, stepTitle);
-  const systemInstruction =
-    'Anda adalah Konsultan Aplikasi AI dari platform "Aplikasi Generator". Berikan narasi singkat, hangat, dan konkret. Sebut kegiatan ini sebagai "Aplikasi Generator", jangan gunakan istilah "perancangan aplikasi". Jangan pernah mengubah daftar opsi pilihan pengguna.';
-
   try {
     if (requestedProvider === 'gemini' && geminiApiKey) {
       const res = await fetch(
@@ -104,8 +114,8 @@ async function generateNarration(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemInstruction }] },
-            contents: [{ role: 'user', parts: [{ text: narrationPrompt }] }],
-            generationConfig: { temperature: 0.5, maxOutputTokens: 220 }
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+            generationConfig: { temperature, maxOutputTokens: maxTokens }
           })
         }
       );
@@ -131,10 +141,10 @@ async function generateNarration(
           model: openaiModel,
           messages: [
             { role: 'system', content: systemInstruction },
-            { role: 'user', content: narrationPrompt }
+            { role: 'user', content: userPrompt }
           ],
-          max_tokens: 220,
-          temperature: 0.5
+          max_tokens: maxTokens,
+          temperature
         })
       });
       if (res.ok) {
@@ -144,14 +154,167 @@ async function generateNarration(
       }
     }
   } catch (err) {
-    console.warn('Narration fallback to template:', err);
+    console.warn('AI invocation failed:', err);
   }
 
+  return null;
+}
+
+interface AIBusinessMappingResult {
+  businessCategory: string;
+  templateId: string;
+  overlayIds: string[];
+  patternIds: string[];
+  contextualPainPoints: string[];
+  contextualRoles: string[];
+}
+
+/**
+ * Langkah 0 (AI Discovery):
+ * Menganalisis ide pengguna untuk memetakan template, overlay, pain points,
+ * dan peran yang 100% kontekstual dan masuk akal secara bisnis.
+ */
+async function mapBusinessIntentWithAI(
+  prompt: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<AIBusinessMappingResult | null> {
+  const systemInstruction = `Anda adalah Principal Enterprise Architect & Business Analyst dari platform "Aplikasi Generator".
+Tugas Anda: Menganalisis ide bisnis pengguna dan memetakannya secara SANGAT AKURAT ke Master Template (MT) dan Overlay Industri (IND).
+
+KATALOG MASTER TEMPLATE:
+- MT-01: Retail & POS (Toko fisik/online, minimarket, kasir, penjualan barang)
+- MT-02: Wholesale & Distribution (Grosir, distributor B2B, gudang)
+- MT-03: F&B & Restaurant (Restoran, kafe, katering, warung makan, menu, dapur)
+- MT-04: Appointment & Service (Salon, spa, pangkas rambut, barbershop, jasa janji temu)
+- MT-05: Workshop & Service Order (Bengkel servis motor/mobil, reparasi elektronik, mekanik, spare part)
+- MT-06: Healthcare (Klinik, dokter, rekam medis, antrean pasien, apotek obat)
+- MT-07: Manufacturing (Pabrik, produksi, konveksi, BOM, work order)
+- MT-08: Project & Professional Service (Konsultan, agensi, software house, timesheet)
+- MT-09: Booking & Hospitality (Hotel, villa, homestay, sewa kamar harian)
+- MT-10: Education (Sekolah, bimbel, kursus, siswa, kelas, rapor, SPP)
+- MT-11: CRM & Sales (Manajemen prospek/leads, pipeline deals)
+- MT-12: Finance & Accounting (Keuangan, pembukuan, pinjaman/kredit, angsuran)
+- MT-13: Property Management (Kost, sewa ruko/apartemen, kontrak penyewa properti)
+- MT-14: Logistics & Delivery (Ekspedisi, kurir pengiriman barang, resi, armada)
+- MT-15: Membership & Subscription (Gym, fitness, komunitas berbayar, iuran member)
+- MT-16: Human Resources (HR, absensi karyawan, cuti, payroll gaji)
+- MT-17: Procurement & Inventory (Pengadaan barang, purchase order, stok gudang)
+- MT-18: Asset & Maintenance (Manajemen aset tetap, jadwal pemeliharaan alat)
+- MT-19: Event Management (Tiket konser/seminar, check-in QR, rundown)
+- MT-20: Custom Application (Aplikasi kustom umum)
+- MT-21: Rental & Peminjaman (Sewa sepeda, rental motor, rental mobil, sewa kamera/alat, persewaan perlengkapan)
+- MT-22: Konstruksi & Proyek Lapangan (Kontraktor, RAB, progres termin, subkon)
+- MT-23: Pertanian & Agribisnis (Kebun, lahan, panen, komoditas tani)
+- MT-24: Layanan Publik & Pemerintahan (Dinas, kelurahan, izin, disposisi warga)
+- MT-25: Media & Konten Digital (Editorial, artikel, jadwal publikasi konten)
+- MT-26: Asuransi & Klaim (Polis, premi berkala, klaim & investigasi)
+- MT-27: E-commerce Marketplace (Multi-seller, keranjang, escrow, komisi)
+- MT-28: NGO & Nonprofit (Donasi, program sosial, relawan, transparansi)
+
+KATALOG OVERLAY INDUSTRI:
+IND-01 (Retail), IND-02 (F&B), IND-03 (Jasa Profesional), IND-04 (Kesehatan), IND-05 (Pendidikan),
+IND-06 (Manufaktur), IND-07 (Logistik), IND-08 (Properti), IND-09 (Perhotelan), IND-10 (Konstruksi),
+IND-11 (Pertanian), IND-12 (Keuangan/Pegadaian), IND-13 (Bengkel & Servis Otomotif), IND-14 (Event),
+IND-15 (Layanan Publik), IND-16 (Media), IND-17 (Kecantikan & Wellness), IND-18 (Asuransi),
+IND-19 (Marketplace), IND-20 (NGO), IND-21 (Rental & Persewaan).
+
+ATURAN KRITIS (SANGAT PENTING):
+1. PISAHKAN RENTAL vs BENGKEL: Jika ide berupa persewaan/rental (rental motor, rental mobil, sewa kamera, rental sepeda, dll), WAJIB pilih MT-21 dan IND-21. JANGAN PERNAH memilih MT-05 atau IND-13! Dilarang memunculkan peran seperti Service Advisor/Mekanik atau masalah spare part pada bisnis rental!
+2. PISAHKAN BENGKEL vs RENTAL: Jika ide berupa reparasi/servis/bengkel (servis motor, ganti oli, bengkel mobil, bengkel AC), WAJIB pilih MT-05 dan IND-13.
+3. Buat 3-5 pain points (masalah utama) yang SANGAT RELEVAN dan spesifik untuk bisnis tersebut dalam bahasa Indonesia santun.
+4. Buat 3-5 peran operasional yang MASUK AKAL secara nyata untuk bisnis tersebut (contoh rental motor: "Petugas Rental", "Penyewa", "Petugas Cek Fisik Unit").
+
+Kembalikan HANYA JSON valid:
+{
+  "templateId": "MT-21",
+  "overlayIds": ["IND-21"],
+  "businessCategory": "Rental & Persewaan Sepeda Motor",
+  "contextualPainPoints": [
+    "Jadwal ketersediaan motor sering bentrok / tumpang tindih",
+    "Penyewa terlambat mengembalikan motor tanpa konfirmasi",
+    "Kondisi fisik motor (lecet/rusak) saat kembali sulit diverifikasi",
+    "Perhitungan denda telat & pengembalian uang jaminan (deposit) rumit"
+  ],
+  "contextualRoles": [
+    "Petugas Rental",
+    "Penyewa",
+    "Petugas Cek Fisik Unit"
+  ]
+}`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt: `Ide Bisnis Pengguna: "${prompt}"\nPetakan ke Master Template, Overlay, pain points, dan peran yang paling tepat dalam bentuk JSON:`,
+    temperature: 0.1,
+    maxTokens: 500,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  if (!raw) return null;
+
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    if (!parsed.templateId || !getMasterTemplateById(parsed.templateId)) {
+      return null;
+    }
+
+    const map = getTemplateProcessMap(parsed.templateId);
+    const validOverlayIds = Array.isArray(parsed.overlayIds)
+      ? parsed.overlayIds.filter((id: string) => Boolean(getIndustryOverlayById(id)))
+      : [];
+
+    const finalOverlayIds = validOverlayIds.length > 0 ? validOverlayIds : (map?.overlayIds || []);
+    const patternIds = map?.patternIds && map.patternIds.length > 0 ? map.patternIds : ['UP-06', 'UP-09'];
+
+    return {
+      templateId: parsed.templateId,
+      overlayIds: finalOverlayIds,
+      patternIds,
+      businessCategory: String(parsed.businessCategory || '').trim() || 'Bisnis Anda',
+      contextualPainPoints: Array.isArray(parsed.contextualPainPoints) ? parsed.contextualPainPoints.map(String) : [],
+      contextualRoles: Array.isArray(parsed.contextualRoles) ? parsed.contextualRoles.map(String) : []
+    };
+  } catch (e) {
+    console.warn('Gagal mem-parse JSON hasil pemetaan bisnis AI:', e);
+    return null;
+  }
+}
+
+async function generateNarration(
+  session: MockupSessionState,
+  action: GuidedAction,
+  stepTitle: string | undefined,
+  provider: string | undefined,
+  userApiKey: string | undefined,
+  userModel: string | undefined
+): Promise<string> {
+  const narrationPrompt = buildNarrationPrompt(session, action, stepTitle);
+  const systemInstruction =
+    'Anda adalah Konsultan Aplikasi AI dari platform "Aplikasi Generator". Berikan narasi singkat, hangat, dan konkret. Sebut kegiatan ini sebagai "Aplikasi Generator", jangan gunakan istilah "perancangan aplikasi". Jangan pernah mengubah daftar opsi pilihan pengguna.';
+
+  const aiText = await invokeAIChat({
+    systemInstruction,
+    userPrompt: narrationPrompt,
+    temperature: 0.5,
+    maxTokens: 220,
+    provider,
+    userApiKey,
+    userModel
+  });
+
+  if (aiText) return aiText;
+
   // Fallback deterministik bila AI tidak tersedia
-  const overlayNames = getIndustryOverlaysByIds(session.match.overlayIds).map((o) => o.nama);
+  const category = session.match.businessCategory || getIndustryOverlaysByIds(session.match.overlayIds)[0]?.nama || session.match.templateId || 'kebutuhan bisnis Anda';
   if (action === 'START') {
-    const label = overlayNames.length ? overlayNames.join(', ') : session.match.templateId || 'kebutuhan Anda';
-    return `Baik, saya kenali ini sebagai ${label}. Saya pandu beberapa pertanyaan singkat dulu, lalu kita susun brief-nya.`;
+    return `Selamat datang di Aplikasi Generator! Mari kita mulai dengan menentukan masalah utama yang ingin Anda selesaikan untuk ${category}. Anda bisa memilih lebih dari satu opsi.`;
   }
   if (action === 'COMPILE') {
     return 'Brief sudah dirapikan dari pilihan Anda. Silakan cek halaman Brief, edit bila perlu, lalu setujui untuk membuat prototipe.';
@@ -183,26 +346,52 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'prompt wajib diisi untuk START.' }, { status: 400 });
       }
 
-      const matched = detectMatchingMasterTemplate(prompt);
-      const detectedOverlays = detectIndustryOverlays(prompt);
-      const map = matched ? getTemplateProcessMap(matched.template.id) : undefined;
+      // 1. Pemetaan cerdas menggunakan AI
+      const aiMapping = await mapBusinessIntentWithAI(prompt, provider, userApiKey, userModel);
 
-      const patternIds = Array.from(
-        new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
-      );
-      const overlayIds = Array.from(
-        new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
-      );
+      let templateId: string;
+      let overlayIds: string[];
+      let patternIds: string[];
+      let businessCategory: string | undefined;
+      let contextualPainPoints: string[] | undefined;
+      let contextualRoles: string[] | undefined;
+
+      if (aiMapping) {
+        templateId = aiMapping.templateId;
+        overlayIds = aiMapping.overlayIds;
+        patternIds = aiMapping.patternIds;
+        businessCategory = aiMapping.businessCategory;
+        contextualPainPoints = aiMapping.contextualPainPoints;
+        contextualRoles = aiMapping.contextualRoles;
+      } else {
+        // Fallback statis deterministik dari repository yang sudah dibersihkan
+        const matched = detectMatchingMasterTemplate(prompt);
+        const detectedOverlays = detectIndustryOverlays(prompt);
+        const map = matched ? getTemplateProcessMap(matched.template.id) : undefined;
+
+        templateId = matched?.template.id || 'MT-20';
+        overlayIds = Array.from(
+          new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
+        );
+        patternIds = Array.from(
+          new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
+        );
+        const firstOverlay = getIndustryOverlayById(overlayIds[0]);
+        businessCategory = firstOverlay ? firstOverlay.nama : matched?.template.nama;
+      }
 
       const tier = detectTier({ patternIds });
 
       const session: MockupSessionState = {
         step: 'PAIN',
         match: {
-          templateId: matched?.template.id || '',
+          templateId,
           overlayIds,
           patternIds,
-          tier: tier.tier
+          tier: tier.tier,
+          businessCategory,
+          contextualPainPoints,
+          contextualRoles
         },
         painPoints: { selected: [] },
         roles: { selected: [] },
@@ -220,6 +409,8 @@ export async function POST(req: Request) {
         userModel
       );
 
+      const matchedTemplate = getMasterTemplateById(templateId);
+
       return NextResponse.json({
         success: true,
         action,
@@ -227,7 +418,7 @@ export async function POST(req: Request) {
         guidedStep,
         narration,
         tier: { tier: tier.tier, reasons: tier.reasons },
-        template: matched ? { id: matched.template.id, nama: matched.template.nama } : null,
+        template: matchedTemplate ? { id: matchedTemplate.id, nama: matchedTemplate.nama } : null,
         overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama }))
       });
     }

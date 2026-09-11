@@ -549,29 +549,29 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
   },
 
   // ===========================================================================
-  // IND-13 — Layanan Otomotif (Bengkel, Rental, Dealer)
+  // IND-13 — Bengkel & Servis Otomotif
   // ===========================================================================
   {
     id: 'IND-13',
-    nama: 'Layanan Otomotif (Bengkel, Rental, Dealer)',
-    keywords: ['bengkel', 'otomotif', 'servis motor', 'servis mobil', 'dealer', 'rental mobil', 'rental motor', 'spare part', 'montir', 'mekanik', 'ganti oli'],
+    nama: 'Bengkel & Servis Otomotif',
+    keywords: ['bengkel', 'otomotif', 'servis motor', 'servis mobil', 'dealer', 'bengkel motor', 'bengkel mobil', 'spare part', 'montir', 'mekanik', 'ganti oli', 'reparasi kendaraan'],
     patternIds: ['UP-05', 'UP-09', 'UP-06'],
     extraEntities: [
       { name: 'Kendaraan/Unit', fields: ['id', 'plat', 'merk', 'tipe', 'status'] },
       { name: 'Riwayat Servis', fields: ['id', 'kendaraan_id', 'tanggal', 'keluhan', 'tindakan', 'biaya'] },
       { name: 'Spare Part', fields: ['id', 'nama', 'kode', 'stok', 'harga'] },
-      { name: 'Kontrak Sewa/Kredit', fields: ['id', 'kendaraan_id', 'penyewa', 'periode', 'nilai'] }
+      { name: 'Work Order', fields: ['id', 'kendaraan_id', 'mekanik', 'status', 'total_biaya'] }
     ],
     notes: [
       'Riwayat servis per kendaraan',
       'Estimasi biaya servis',
-      'Tracking unit rental (available/booked)'
+      'Manajemen antrean kendaraan masuk'
     ],
     painPoints: [
       { id: 'IND-13-P1', label: 'Riwayat servis per unit hilang', severity: 'core' },
       { id: 'IND-13-P2', label: 'Stok spare part tidak sinkron', severity: 'core' },
       { id: 'IND-13-P3', label: 'Estimasi biaya tidak konsisten', severity: 'advisory' },
-      { id: 'IND-13-P4', label: 'Status unit rental tidak update', severity: 'advisory' }
+      { id: 'IND-13-P4', label: 'Antrean kendaraan servis menumpuk', severity: 'advisory' }
     ],
     roleLabels: ['Service Advisor', 'Mekanik', 'Kasir', 'Gudang Spare Part', 'Pelanggan'],
     extraFeatures: [
@@ -581,14 +581,14 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
       { id: 'IND-13-F04', label: 'Spare part & pengurangan stok', severity: 'core', complexity: 'MEDIUM' },
       { id: 'IND-13-F05', label: 'Estimasi biaya & persetujuan', severity: 'core', complexity: 'MEDIUM' },
       { id: 'IND-13-F06', label: 'Booking servis', severity: 'advisory', complexity: 'MEDIUM' },
-      { id: 'IND-13-F07', label: 'Status unit rental', severity: 'advisory', complexity: 'MEDIUM' }
+      { id: 'IND-13-F07', label: 'Monitoring progres servis mekanik', severity: 'advisory', complexity: 'MEDIUM' }
     ],
     coreItems: ['Terima unit & keluhan', 'Work order servis', 'Riwayat servis', 'Spare part'],
-    advisoryItems: ['Booking servis', 'Status unit rental', 'Estimasi biaya otomatis'],
+    advisoryItems: ['Booking servis', 'Monitoring mekanik', 'Estimasi biaya otomatis'],
     provenance: [
-      { source: DOC_SOURCE, note: 'Bagian 2.13 Layanan Otomotif' }
+      { source: DOC_SOURCE, note: 'Bagian 2.13 Bengkel & Servis Otomotif' }
     ],
-    version: '1.0',
+    version: '1.1',
     lastReviewed: REVIEW_DATE
   },
 
@@ -901,6 +901,69 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
     advisoryItems: ['Relawan', 'Laporan dampak', 'Publikasi program'],
     provenance: [
       { source: DOC_SOURCE, note: 'Bagian 2.20 NGO/Organisasi Nonprofit' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-21 — Rental & Persewaan (Kendaraan, Alat, Properti Bergerak)
+  // ===========================================================================
+  {
+    id: 'IND-21',
+    nama: 'Rental & Persewaan (Kendaraan, Alat, Properti Bergerak)',
+    keywords: [
+      'rental', 'sewa', 'persewaan', 'rental motor', 'rental mobil', 'sewa motor', 'sewa mobil',
+      'sewa sepeda', 'rental sepeda', 'sewa alat', 'rental kamera', 'sewa tenda', 'rental laptop',
+      'peminjaman barang', 'rent car', 'rent bike'
+    ],
+    patternIds: ['UP-06', 'UP-09'],
+    extraEntities: [
+      { name: 'Kendaraan/Unit Rental', fields: ['id', 'nama', 'plat_nomor', 'tipe', 'tarif_jam', 'tarif_hari', 'status'] },
+      { name: 'Booking & Jadwal Sewa', fields: ['id', 'unit_id', 'penyewa', 'mulai', 'selesai', 'deposit', 'status'] },
+      { name: 'Form Cek Fisik', fields: ['id', 'booking_id', 'kondisi_awal', 'kondisi_kembali', 'catatan_lecet', 'petugas'] },
+      { name: 'Deposit & Denda', fields: ['id', 'booking_id', 'nominal_deposit', 'denda_telat', 'denda_rusak', 'sisa_kembali'] }
+    ],
+    notes: [
+      'Ketersediaan unit & jadwal rental real-time',
+      'Uang jaminan (deposit) & pengembalian',
+      'Inspeksi fisik lecet/rusak saat pengembalian',
+      'Kalkulator denda keterlambatan per jam/hari',
+      'Verifikasi identitas penyewa (KTP/SIM)'
+    ],
+    painPoints: [
+      { id: 'IND-21-P1', label: 'Jadwal ketersediaan unit bentrok / tumpang tindih', severity: 'core' },
+      { id: 'IND-21-P2', label: 'Penyewa terlambat mengembalikan unit tanpa konfirmasi', severity: 'core' },
+      { id: 'IND-21-P3', label: 'Kondisi fisik unit (lecet/rusak) saat kembali sulit dibuktikan', severity: 'core' },
+      { id: 'IND-21-P4', label: 'Uang jaminan (deposit) dan denda telat sulit dihitung', severity: 'core' },
+      { id: 'IND-21-P5', label: 'Data identitas penyewa (KTP/SIM) belum terverifikasi', severity: 'advisory' }
+    ],
+    roleLabels: ['Super Admin', 'Petugas Rental', 'Penyewa', 'Petugas Cek Fisik Unit', 'Pemilik Rental'],
+    extraFeatures: [
+      { id: 'IND-21-F01', label: 'Katalog unit & tarif per jam/hari', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-21-F02', label: 'Form sewa & pencatatan deposit', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-21-F03', label: 'Serah terima unit (check-out) & foto kondisi awal', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-21-F04', label: 'Pengembalian unit (check-in) & cek fisik lecet/rusak', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-21-F05', label: 'Kalkulator denda keterlambatan otomatis', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-21-F06', label: 'Pengembalian uang deposit', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-21-F07', label: 'Verifikasi KTP/SIM penyewa', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-21-F08', label: 'Riwayat peminjaman per penyewa', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: [
+      'Katalog unit & tarif',
+      'Booking sewa & deposit',
+      'Serah terima unit (check-out)',
+      'Pengembalian & cek fisik (check-in)',
+      'Kalkulator denda & deposit'
+    ],
+    advisoryItems: [
+      'Verifikasi identitas',
+      'Riwayat peminjaman',
+      'Perpanjangan durasi sewa'
+    ],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Pemisahan spesifik Rental dari Bengkel (MT-21)' },
+      { source: 'Evaluasi User', note: 'Rental Motor memerlukan peran Petugas Rental & Penyewa, bukan mekanik/sparepart' }
     ],
     version: '1.0',
     lastReviewed: REVIEW_DATE
