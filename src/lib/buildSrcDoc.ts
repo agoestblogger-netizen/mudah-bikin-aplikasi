@@ -661,7 +661,97 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           try { window.showToast('Data berhasil dihapus!', 'success'); } catch (e) {}
         }
       };
-    }
+    // Runtime Safety Net: Menjamin fungsi login, quickLogin, loginAs, dan filterTabsByRole selalu aktif
+    (function ensureAuthRuntime() {
+      if (!window.quickLogin) {
+        window.quickLogin = function(u, p) {
+          var uInput = document.getElementById('loginUsername');
+          var pInput = document.getElementById('loginPassword');
+          if (uInput) uInput.value = u;
+          if (pInput) pInput.value = p;
+          if (typeof window.handleLogin === 'function') {
+            window.handleLogin();
+          }
+        };
+      }
+
+      if (!window.loginAs) {
+        window.loginAs = function(role) {
+          window.currentRole = role;
+          var loginEl = document.getElementById('loginScreen');
+          var appEl = document.getElementById('appContainer');
+          if (loginEl) loginEl.style.display = 'none';
+          if (appEl) appEl.style.display = 'block';
+          document.querySelectorAll('.app-layout, #mainLayout, .main-container').forEach(function(el) {
+            if (el !== loginEl) el.style.display = '';
+          });
+          var badge = document.getElementById('currentRoleBadge') || document.querySelector('.role-badge');
+          if (badge) badge.innerText = role;
+          if (typeof window.filterTabsByRole === 'function') {
+            window.filterTabsByRole(role);
+          }
+          if (typeof window.showTab === 'function') {
+            var firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
+            var tabMatch = firstTab && firstTab.getAttribute('onclick') && firstTab.getAttribute('onclick').match(/showTab\(['"]([^'"]+)['"]\)/);
+            if (tabMatch && tabMatch[1]) window.showTab(tabMatch[1]);
+          }
+          if (typeof window.render === 'function') {
+            try { window.render(); } catch(e){}
+          }
+        };
+      }
+
+      if (!window.handleLogin) {
+        window.handleLogin = function() {
+          var u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
+          var p = (document.getElementById('loginPassword')?.value || '').trim();
+          var acc = null;
+          if (typeof window.DEMO_ACCOUNTS !== 'undefined' && Array.isArray(window.DEMO_ACCOUNTS)) {
+            acc = window.DEMO_ACCOUNTS.find(function(a) {
+              return String(a.username).toLowerCase() === u && (String(a.password) === p || !p);
+            });
+          }
+          if (!acc) {
+            if (u.includes('super') || u === 'superadmin') acc = { role: 'Super Admin' };
+            else if (u.includes('admin')) acc = { role: 'Admin' };
+            else if (u.includes('kasir')) acc = { role: 'Kasir' };
+            else if (u.includes('staf') || u.includes('staff')) acc = { role: 'Staff' };
+            else if (u.includes('owner') || u.includes('pemilik')) acc = { role: 'Pemilik' };
+            else if (u.includes('user') || u.includes('pelanggan')) acc = { role: 'Pelanggan' };
+            else if (u) acc = { role: u.charAt(0).toUpperCase() + u.slice(1) };
+            else acc = { role: 'Super Admin' };
+          }
+          if (acc && typeof window.loginAs === 'function') {
+            window.loginAs(acc.role);
+            if (typeof window.showToast === 'function') {
+              window.showToast('Selamat datang! Masuk sebagai ' + acc.role, 'success');
+            }
+          }
+        };
+      }
+
+      if (!window.logout) {
+        window.logout = function() {
+          window.currentRole = '';
+          var loginEl = document.getElementById('loginScreen');
+          var appEl = document.getElementById('appContainer');
+          if (appEl) appEl.style.display = 'none';
+          if (loginEl) loginEl.style.display = 'flex';
+          if (typeof window.showToast === 'function') {
+            window.showToast('Berhasil keluar. Silakan login kembali.', 'info');
+          }
+        };
+      }
+
+      if (!window.filterTabsByRole) {
+        window.filterTabsByRole = function(role) {
+          document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
+            btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
+          });
+        };
+      }
+    })();
 
     // Init
     assignElementUids();

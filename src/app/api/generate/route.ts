@@ -1831,7 +1831,7 @@ ${staffLandingGuide}
               contents: geminiContents,
               generationConfig: {
                 temperature: isIdeationMode ? 0.7 : 0.4,
-                maxOutputTokens: isIdeationMode ? 1024 : 8192
+                maxOutputTokens: isIdeationMode ? 1024 : 16384
               }
             })
           });
@@ -1920,7 +1920,7 @@ body: JSON.stringify({
               body: JSON.stringify({
                 systemInstruction: { parts: [{ text: systemPrompt }] },
                 contents: continuationContents,
-                generationConfig: { temperature: 0.2, maxOutputTokens: 8192 }
+                generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
               })
             });
 
