@@ -25,6 +25,7 @@ import {
   compileBriefFromSession,
   isBriefBusinessComplete,
   listSessionFeatures,
+  dedupeRoleLabels,
   REQUIRED_ROLE
 } from '@/lib/templates/processes/guided';
 
@@ -412,7 +413,7 @@ export const BriefEditorPage: React.FC<BriefEditorPageProps> = ({
             Peran & Halaman
           </h2>
           <div className="flex flex-wrap gap-1.5">
-            {Array.from(new Set([REQUIRED_ROLE, ...checklist.roles, ...draft.roles.selected])).map((role) => {
+            {dedupeRoleLabels([REQUIRED_ROLE, ...checklist.roles, ...draft.roles.selected]).map((role) => {
               const isLocked = role === REQUIRED_ROLE;
               const isSelected = role === REQUIRED_ROLE || selectedRoleSet.has(role);
               return (

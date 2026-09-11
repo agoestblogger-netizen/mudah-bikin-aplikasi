@@ -56,10 +56,86 @@ function collectFeatures(session: MockupSessionState): FeatureInfo[] {
     byLabel.add(key);
   };
 
-  patterns.forEach((p) => p.features.forEach((f) => push({ ...f })));
+  // Overlay industri dulu agar fitur khas industri lebih diutamakan,
+  // baru fitur generik dari pola universal.
   overlays.forEach((o) => o.extraFeatures.forEach((f) => push({ ...f })));
+  patterns.forEach((p) => p.features.forEach((f) => push({ ...f })));
 
   return Array.from(byId.values());
+}
+
+/**
+ * Kelompok makna peran agar tidak ada duplikat seperti "Pelanggan" vs "Customer".
+ * Urutan penting: kelompok yang lebih spesifik dicek lebih dulu.
+ */
+const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
+  { key: 'super-admin', re: /^super\s*admin$/i },
+  { key: 'customer-service', re: /customer\s*(service|success)|cs\b/i },
+  { key: 'front-office', re: /resepsionis|front\s*office|front\s*desk|loket|receptionist|petugas\s*loket/i },
+  { key: 'cashier', re: /kasir|cashier/i },
+  { key: 'warehouse', re: /gudang|warehouse|wh\s*staff|storekeeper/i },
+  { key: 'finance', re: /finance|keuangan|akuntan|accountant|bendahara|penaksir|kolektor|bookkeeper|ar\/ap|\btax\b|auditor/i },
+  { key: 'kitchen', re: /dapur|kitchen|koki|chef|barista/i },
+  { key: 'waiter', re: /pelayan|waiter|waitress|pramusaji/i },
+  { key: 'medical', re: /dokter|doctor|perawat|nurse|bidan|apoteker|pharmacist|farmasi|terapis|trainer|fisioterapi|rekam\s*medis|medical\s*record/i },
+  { key: 'teacher', re: /guru|teacher|pengajar|tutor|instruktur|principal|kepala\s*sekolah|homeroom/i },
+  { key: 'technician', re: /mekanik|montir|teknisi|operator|service\s*advisor|maintenance/i },
+  { key: 'driver', re: /kurir|driver|sopir/i },
+  { key: 'adjuster', re: /adjuster|investigator|investigasi/i },
+  { key: 'consultant', re: /konsultan|consultant/i },
+  { key: 'service-staff', re: /service\s*staff|staff\s*layanan|petugas\s*layanan|staf\s*layanan/i },
+  { key: 'customer', re: /pelanggan|customer|pembeli|buyer|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b/i },
+  { key: 'owner', re: /owner|pemilik|pengurus|direktur|director|partner|founder|foundation|yayasan/i },
+  { key: 'manager', re: /manager|manajer|supervisor|pengawas|kepala|principal/i },
+  { key: 'admin-staff', re: /\badmin\b|administrator/i },
+];
+
+const GENERIC_ROLE_RE = /^(staff|staf|user|pengguna)$/i;
+
+/**
+ * Padanan Indonesia untuk label peran bawaan Master Template (bahasa Inggris).
+ * Hanya berlaku persis sama; label overlay industri selalu diutamakan.
+ */
+const EN_ROLE_LABEL_MAP: Record<string, string> = {
+  customer: 'Pelanggan',
+  cashier: 'Kasir',
+  warehouse: 'Gudang',
+  'wh staff': 'Gudang',
+  owner: 'Pemilik',
+  manager: 'Manajer',
+  receptionist: 'Resepsionis',
+  employee: 'Karyawan',
+  bookkeeper: 'Pembukuan'
+};
+
+export function canonicalRoleKey(role: string): string {
+  const clean = role.trim();
+  for (const group of ROLE_GROUPS) {
+    if (group.re.test(clean)) return group.key;
+  }
+  return clean.toLowerCase();
+}
+
+/**
+ * Dedupe label peran berdasarkan makna, mempertahankan urutan kemunculan pertama.
+ * Super Admin selalu dipertahankan paling depan.
+ */
+export function dedupeRoleLabels(labels: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const label of labels) {
+    const clean = label.trim();
+    if (!clean) continue;
+    const key = canonicalRoleKey(clean);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+  }
+  return result.sort((a, b) => {
+    if (canonicalRoleKey(a) === 'super-admin') return -1;
+    if (canonicalRoleKey(b) === 'super-admin') return 1;
+    return 0;
+  });
 }
 
 export function findFeatureInfo(session: MockupSessionState, featureId: string): FeatureInfo | undefined {
@@ -119,53 +195,46 @@ function buildPainStep(session: MockupSessionState): GuidedStepPayload {
   };
 }
 
+function isExternalRole(label: string): boolean {
+  return canonicalRoleKey(label) === 'customer';
+}
+
 function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
   const patterns = getProcessPatternsByIds(session.match.patternIds);
   const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
-  const options: GuidedStepOption[] = [
-    {
-      id: REQUIRED_ROLE,
-      label: REQUIRED_ROLE,
-      description: 'Kelola akun staf, role & permission, konfigurasi sistem',
-      locked: true,
-      recommended: true
-    }
-  ];
-
-  overlays.forEach((o) =>
-    o.roleLabels.forEach((role) =>
-      options.push({
-        id: role,
-        label: role,
-        recommended: !/pelanggan|pembeli|pasien|siswa|warga|donatur|penyewa|tamu|member|subscriber|penerima/i.test(role),
-        description: o.nama
-      })
-    )
-  );
-  patterns.forEach((p) =>
-    p.actors.forEach((a) =>
-      options.push({
-        id: a.role,
-        label: a.role,
-        recommended: a.category !== 'external',
-        description: p.nama
-      })
-    )
-  );
-
-  // Peran dari Master Template (mis. Petugas Sewa / Penyewa untuk MT-21)
   const template = session.match.templateId ? getMasterTemplateById(session.match.templateId) : undefined;
+
+  const seen = new Set<string>([canonicalRoleKey(REQUIRED_ROLE)]);
+  const options: GuidedStepOption[] = [];
+
+  const addRole = (label: string, source: string, recommended?: boolean) => {
+    const clean = label.trim();
+    if (!clean || GENERIC_ROLE_RE.test(clean)) return;
+    const key = canonicalRoleKey(clean);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const display = EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean;
+    options.push({
+      id: display,
+      label: display,
+      recommended: recommended ?? !isExternalRole(display),
+      description: source
+    });
+  };
+
+  // 1. Prioritas utama: peran khas industri dari overlay yang terdeteksi.
+  overlays.forEach((o) => o.roleLabels.forEach((role) => addRole(role, o.nama)));
+
+  // 2. Pelengkap: peran dari Master Template (mis. Petugas Sewa / Penyewa untuk MT-21).
   if (template) {
-    template.roleDefault
-      .filter((role) => !/^(?:owner|manager|admin)$/i.test(role.trim()))
-      .forEach((role) =>
-        options.push({
-          id: role,
-          label: role,
-          recommended: !/pelanggan|pembeli|pasien|siswa|warga|donatur|penyewa|tamu|member|subscriber|penerima/i.test(role),
-          description: template.nama
-        })
-      );
+    template.roleDefault.forEach((role) => addRole(role, template.nama));
+  }
+
+  // 3. Fallback: aktor pola universal HANYA jika total peran masih kurang dari 2.
+  if (options.length < 2) {
+    patterns.forEach((p) =>
+      p.actors.forEach((a) => addRole(a.role, p.nama, a.category !== 'external'))
+    );
   }
 
   return {
@@ -173,7 +242,16 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
     title: 'Siapa saja yang akan memakai aplikasi ini? (boleh pilih lebih dari satu)',
     multi: true,
     allowOther: true,
-    options: dedupeOptions(options).slice(0, 14)
+    options: [
+      {
+        id: REQUIRED_ROLE,
+        label: REQUIRED_ROLE,
+        description: 'Kelola akun staf, role & permission, konfigurasi sistem',
+        locked: true,
+        recommended: true
+      },
+      ...options.slice(0, 13)
+    ]
   };
 }
 
@@ -266,8 +344,8 @@ export function applyGuidedAnswer(
   if (stepId === 'PAIN') {
     next.painPoints = { selected: [...selected], ...(other ? { other } : {}) };
   } else if (stepId === 'ROLES') {
-    const roles = [REQUIRED_ROLE, ...selected.filter((r) => r !== REQUIRED_ROLE)];
-    next.roles = { selected: Array.from(new Set(roles)), ...(other ? { other } : {}) };
+    const roles = dedupeRoleLabels([REQUIRED_ROLE, ...selected]);
+    next.roles = { selected: roles, ...(other ? { other } : {}) };
   } else if (stepId === 'FLOW') {
     next.flow = { ...(selected[0] ? { selectedId: selected[0] } : {}), ...(other ? { other } : {}) };
   } else if (stepId === 'FEATURES') {

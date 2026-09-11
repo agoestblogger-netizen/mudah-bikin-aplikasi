@@ -395,7 +395,7 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
       { id: 'IND-09-P3', label: 'Housekeeping tidak sinkron', severity: 'core' },
       { id: 'IND-09-P4', label: 'Harga kamar tidak fleksibel per musim', severity: 'advisory' }
     ],
-    roleLabels: ['Resepsionis', 'Housekeeping', 'F&B', 'Manajer Hotel', 'Tamu'],
+    roleLabels: ['Resepsionis', 'Housekeeping', 'Staf F&B', 'Manajer Hotel', 'Tamu'],
     extraFeatures: [
       { id: 'IND-09-F01', label: 'Kalender ketersediaan kamar', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
       { id: 'IND-09-F02', label: 'Booking & check-in/out', severity: 'core', complexity: 'MEDIUM' },
