@@ -1294,8 +1294,269 @@ export const MASTER_TEMPLATES: MasterTemplate[] = [
     workflow: [
       'Penyewa memilih unit tersedia → Petugas mencatat sewa & uang jaminan (deposit) → Status unit beralih jadi "Sedang Disewa" → Penyewa mengembalikan unit → Petugas cek kondisi fisik & kalkulasi denda jika telat → Deposit diselesaikan & status unit kembali "Tersedia"'
     ]
+  },
+
+  // ===========================================================================
+  // MT-22 — Konstruksi & Proyek Lapangan
+  // ===========================================================================
+  {
+    id: 'MT-22',
+    nama: 'Konstruksi & Proyek Lapangan',
+    deskripsi: 'Blueprint aplikasi konstruksi: RAB, progres termin, subkontraktor, laporan lapangan, material site, dan opname pekerjaan.',
+    modulDanSection: [
+      { modul: 'Proyek', sections: ['Daftar Proyek', 'RAB (Rencana Anggaran Biaya)', 'Timeline & Milestone', 'Tim Proyek'] },
+      { modul: 'Lapangan', sections: ['Laporan Harian', 'Foto & Lokasi', 'Kendala Lapangan', 'Cuaca & Kondisi'] },
+      { modul: 'Material & Alat', sections: ['Material Site', 'Alat Berat', 'Permintaan Material', 'Pemakaian Material'] },
+      { modul: 'Subkontraktor', sections: ['Data Subkontraktor', 'Kontrak Kerja', 'Progress Subkon', 'Pembayaran Termin'] },
+      { modul: 'Keuangan', sections: ['Opname Progres', 'Termin Pembayaran', 'Kas Proyek', 'Retensi'] },
+      { modul: 'Laporan', sections: ['Progres vs RAB', 'Biaya Proyek', 'Laporan Owner', 'Laporan Kendala'] }
+    ],
+    roleDefault: ['Super Admin', 'Direktur Proyek', 'Project Manager', 'Site Engineer', 'Pengawas Lapangan', 'Logistik Material', 'Finance', 'Subkontraktor'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, dan konfigurasi sistem. Project Manager mengelola proyek, RAB, dan tim. Super Admin tidak mengerjakan opname harian; itu tugas Site Engineer/Pengawas.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Proyek', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Direktur Proyek', modul: 'Proyek', permission: 'R' },
+      { role: 'Direktur Proyek', modul: 'Keuangan', permission: 'R' },
+      { role: 'Direktur Proyek', modul: 'Laporan', permission: 'R' },
+      { role: 'Project Manager', modul: 'Proyek', permission: 'CRUD' },
+      { role: 'Project Manager', modul: 'Subkontraktor', permission: 'CRUD' },
+      { role: 'Project Manager', modul: 'Keuangan', permission: 'CRU' },
+      { role: 'Site Engineer', modul: 'Lapangan', permission: 'CRUD' },
+      { role: 'Site Engineer', modul: 'Material & Alat', permission: 'CRU' },
+      { role: 'Pengawas Lapangan', modul: 'Lapangan', permission: 'CRUD' },
+      { role: 'Pengawas Lapangan', modul: 'Proyek', permission: 'R' },
+      { role: 'Logistik Material', modul: 'Material & Alat', permission: 'CRUD' },
+      { role: 'Finance', modul: 'Keuangan', permission: 'CRUD' },
+      { role: 'Finance', modul: 'Laporan', permission: 'R' },
+      { role: 'Subkontraktor', modul: 'Subkontraktor', permission: 'RU-O' }
+    ],
+    workflow: [
+      'RAB & rencana → pengadaan material → eksekusi & laporan harian → opname progres → termin pembayaran → serah terima'
+    ]
+  },
+
+  // ===========================================================================
+  // MT-23 — Pertanian & Agribisnis
+  // ===========================================================================
+  {
+    id: 'MT-23',
+    nama: 'Pertanian & Agribisnis',
+    deskripsi: 'Blueprint aplikasi pertanian: lahan, siklus tanam, perawatan, panen, grading, stok hasil, dan penjualan komoditas.',
+    modulDanSection: [
+      { modul: 'Lahan', sections: ['Data Lahan/Kebun', 'Pemetaan Blok', 'Riwayat Musim', 'Status Lahan'] },
+      { modul: 'Budidaya', sections: ['Rencana Tanam', 'Perawatan', 'Pemupukan', 'Pengendalian Hama', 'Panen'] },
+      { modul: 'Hasil', sections: ['Hasil Panen per Lahan', 'Grading Kualitas', 'Stok Gudang', 'Susut/Kehilangan'] },
+      { modul: 'Penjualan', sections: ['Harga Komoditas', 'Pesanan Pembeli', 'Pengiriman Hasil', 'Piutang Pembeli'] },
+      { modul: 'Keuangan', sections: ['Biaya Produksi', 'Pendapatan', 'Laba per Lahan'] },
+      { modul: 'Laporan', sections: ['Produktivitas', 'Analisis Musim', 'Prediksi Panen'] }
+    ],
+    roleDefault: ['Super Admin', 'Pemilik', 'Mandor', 'Petani', 'Logistik Gudang', 'Pembeli'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, dan master data sistem. Pemilik memantau hasil dan keuangan. Mandor mengatur jadwal kerja lapangan; Petani mencatat aktivitas harian.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Lahan', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Keuangan', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Pemilik', modul: 'Keuangan', permission: 'R' },
+      { role: 'Pemilik', modul: 'Laporan', permission: 'R' },
+      { role: 'Pemilik', modul: 'Penjualan', permission: 'R' },
+      { role: 'Mandor', modul: 'Budidaya', permission: 'CRUD' },
+      { role: 'Mandor', modul: 'Lahan', permission: 'R' },
+      { role: 'Petani', modul: 'Budidaya', permission: 'CRU' },
+      { role: 'Logistik Gudang', modul: 'Hasil', permission: 'CRUD' },
+      { role: 'Logistik Gudang', modul: 'Penjualan', permission: 'CRU' },
+      { role: 'Pembeli', modul: 'Penjualan', permission: 'CR-O' },
+      { role: 'Pembeli', modul: 'Hasil', permission: 'R' }
+    ],
+    workflow: [
+      'Rencana tanam → perawatan & pemupukan → panen → grading kualitas → masuk gudang → jual/distribusi → catat hasil & biaya'
+    ]
+  },
+
+  // ===========================================================================
+  // MT-24 — Layanan Publik & Pemerintahan
+  // ===========================================================================
+  {
+    id: 'MT-24',
+    nama: 'Layanan Publik & Pemerintahan',
+    deskripsi: 'Blueprint aplikasi layanan publik: pengajuan warga, verifikasi berkas, disposisi pejabat, SLA layanan, pengaduan, dan arsip dokumen.',
+    modulDanSection: [
+      { modul: 'Layanan', sections: ['Jenis Layanan', 'Persyaratan Dokumen', 'Pengajuan Warga', 'Kuota Layanan'] },
+      { modul: 'Verifikasi', sections: ['Triage Berkas', 'Disposisi Pejabat', 'Persetujuan', 'Penolakan & Alasan'] },
+      { modul: 'Pelacakan', sections: ['Status Pengajuan', 'SLA Layanan', 'Riwayat Proses', 'Notifikasi Pemohon'] },
+      { modul: 'Pengaduan', sections: ['Form Pengaduan', 'Tindak Lanjut', 'Eskalasi', 'Kepuasan Pemohon'] },
+      { modul: 'Dokumen', sections: ['Arsip Digital', 'Template Surat', 'Tanda Tangan Pejabat'] },
+      { modul: 'Laporan', sections: ['Statistik Layanan', 'Kinerja SLA', 'Laporan Pengaduan'] }
+    ],
+    roleDefault: ['Super Admin', 'Kepala Dinas', 'Pejabat Disposisi', 'Petugas Loket', 'Verifikator', 'Warga'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, jenis layanan, dan konfigurasi sistem. Pejabat hanya melakukan disposisi/persetujuan; Petugas Loket dan Verifikator menangani proses harian.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Layanan', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Dokumen', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Kepala Dinas', modul: 'Laporan', permission: 'R' },
+      { role: 'Kepala Dinas', modul: 'Verifikasi', permission: 'A' },
+      { role: 'Pejabat Disposisi', modul: 'Verifikasi', permission: 'RU' },
+      { role: 'Petugas Loket', modul: 'Layanan', permission: 'CRU' },
+      { role: 'Petugas Loket', modul: 'Pelacakan', permission: 'R' },
+      { role: 'Verifikator', modul: 'Verifikasi', permission: 'CRU' },
+      { role: 'Verifikator', modul: 'Dokumen', permission: 'CRU' },
+      { role: 'Warga', modul: 'Layanan', permission: 'CR-O' },
+      { role: 'Warga', modul: 'Pelacakan', permission: 'R-O' },
+      { role: 'Warga', modul: 'Pengaduan', permission: 'CR-O' }
+    ],
+    workflow: [
+      'Warga ajukan → verifikasi berkas → disposisi pejabat → proses layanan → selesai & arsip → pengaduan bila ada'
+    ]
+  },
+
+  // ===========================================================================
+  // MT-25 — Media & Konten Digital
+  // ===========================================================================
+  {
+    id: 'MT-25',
+    nama: 'Media & Konten Digital',
+    deskripsi: 'Blueprint aplikasi media: kalender editorial, produksi & approval konten, publikasi multi-channel, engagement audiens, dan monetisasi sponsor.',
+    modulDanSection: [
+      { modul: 'Editorial', sections: ['Kalender Editorial', 'Ide Konten', 'Approval Konten', 'Brief Konten'] },
+      { modul: 'Produksi', sections: ['Draft Konten', 'Revisi', 'Jadwal Publikasi', 'Aset Media'] },
+      { modul: 'Publikasi', sections: ['Channel', 'Publikasi Konten', 'Arsip Konten', 'Penjadwalan'] },
+      { modul: 'Audiens', sections: ['Data Subscriber', 'Engagement Metric', 'Feedback Komentar'] },
+      { modul: 'Monetisasi', sections: ['Sponsor & Ads Slot', 'Kontrak Sponsor', 'Laporan Campaign'] },
+      { modul: 'Laporan', sections: ['Performa Konten', 'Pertumbuhan Audiens', 'Pendapatan Iklan'] }
+    ],
+    roleDefault: ['Super Admin', 'Editor', 'Content Creator', 'Approver', 'Sponsor', 'Subscriber'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, dan konfigurasi. Editor mengatur kalender dan approval konten; Content Creator memproduksi draft. Sponsor hanya melihat laporan campaign miliknya.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Editorial', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Monetisasi', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Editor', modul: 'Editorial', permission: 'CRUD' },
+      { role: 'Editor', modul: 'Publikasi', permission: 'CRUD' },
+      { role: 'Content Creator', modul: 'Produksi', permission: 'CRUD' },
+      { role: 'Content Creator', modul: 'Editorial', permission: 'CR' },
+      { role: 'Approver', modul: 'Editorial', permission: 'A' },
+      { role: 'Approver', modul: 'Laporan', permission: 'R' },
+      { role: 'Sponsor', modul: 'Monetisasi', permission: 'R-O' },
+      { role: 'Subscriber', modul: 'Audiens', permission: 'R-O' },
+      { role: 'Subscriber', modul: 'Publikasi', permission: 'R' }
+    ],
+    workflow: [
+      'Ide konten → draft → review/approval → jadwal publikasi → publikasi → pantau engagement → monetisasi sponsor'
+    ]
+  },
+
+  // ===========================================================================
+  // MT-26 — Asuransi & Klaim
+  // ===========================================================================
+  {
+    id: 'MT-26',
+    nama: 'Asuransi & Klaim',
+    deskripsi: 'Blueprint aplikasi asuransi: pengajuan polis, underwriting, premi berkala, klaim, investigasi, keputusan kompensasi, dan komisi agen.',
+    modulDanSection: [
+      { modul: 'Polis', sections: ['Produk Asuransi', 'Pengajuan Polis', 'Underwriting', 'Polis Aktif', 'Perpanjangan Polis'] },
+      { modul: 'Premi', sections: ['Jadwal Premi', 'Pembayaran Premi', 'Tunggakan', 'Kwitansi'] },
+      { modul: 'Klaim', sections: ['Form Klaim', 'Verifikasi Dokumen', 'Investigasi', 'Keputusan Klaim'] },
+      { modul: 'Kompensasi', sections: ['Perhitungan Kompensasi', 'Approval Kompensasi', 'Pembayaran Klaim'] },
+      { modul: 'Agen', sections: ['Data Agen', 'Komisi Agen', 'Target Agen'] },
+      { modul: 'Laporan', sections: ['Portofolio Polis', 'Rasio Klaim', 'Pendapatan Premi', 'Aging Premi'] }
+    ],
+    roleDefault: ['Super Admin', 'Manajer Asuransi', 'Agen', 'Underwriter', 'Adjuster', 'Finance', 'Pemegang Polis'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, produk, dan konfigurasi. Manajer memantau portofolio; Underwriter menilai risiko; Adjuster menginvestigasi klaim. Keputusan kompensasi butuh approval berjenjang.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Polis', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Manajer Asuransi', modul: 'Polis', permission: 'CRU' },
+      { role: 'Manajer Asuransi', modul: 'Kompensasi', permission: 'A' },
+      { role: 'Manajer Asuransi', modul: 'Laporan', permission: 'R' },
+      { role: 'Agen', modul: 'Polis', permission: 'CR-O' },
+      { role: 'Agen', modul: 'Agen', permission: 'R-O' },
+      { role: 'Underwriter', modul: 'Polis', permission: 'CRU' },
+      { role: 'Adjuster', modul: 'Klaim', permission: 'CRU' },
+      { role: 'Finance', modul: 'Premi', permission: 'CRUD' },
+      { role: 'Finance', modul: 'Kompensasi', permission: 'CRU' },
+      { role: 'Pemegang Polis', modul: 'Polis', permission: 'R-O' },
+      { role: 'Pemegang Polis', modul: 'Premi', permission: 'R-O' },
+      { role: 'Pemegang Polis', modul: 'Klaim', permission: 'CR-O' }
+    ],
+    workflow: [
+      'Pengajuan polis → underwriting → polis aktif → premi berkala → klaim → verifikasi & investigasi → keputusan → kompensasi'
+    ]
+  },
+
+  // ===========================================================================
+  // MT-27 — E-commerce Marketplace
+  // ===========================================================================
+  {
+    id: 'MT-27',
+    nama: 'E-commerce Marketplace',
+    deskripsi: 'Blueprint marketplace multi-seller: katalog, checkout escrow, pengiriman, pelepasan dana ke seller, dispute, dan rating.',
+    modulDanSection: [
+      { modul: 'Seller', sections: ['Pendaftaran Seller', 'Verifikasi Toko', 'Komisi', 'Performa Seller'] },
+      { modul: 'Produk', sections: ['Katalog Multi-Seller', 'Kategori', 'Stok Seller', 'Harga & Promo'] },
+      { modul: 'Pesanan', sections: ['Keranjang', 'Checkout', 'Escrow Dana', 'Riwayat Pesanan'] },
+      { modul: 'Pengiriman', sections: ['Pilih Kurir', 'Tracking Pengiriman', 'Konfirmasi Terima', 'Pengembalian Barang'] },
+      { modul: 'Sengketa', sections: ['Dispute Buyer-Seller', 'Mediasi', 'Refund', 'Keputusan Admin'] },
+      { modul: 'Ulasan', sections: ['Rating Produk', 'Ulasan Seller', 'Laporan Ulasan'] },
+      { modul: 'Laporan', sections: ['GMV', 'Komisi Marketplace', 'Transaksi per Seller'] }
+    ],
+    roleDefault: ['Super Admin', 'Admin Marketplace', 'Seller', 'Buyer', 'Kurir'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, dan konfigurasi platform. Admin Marketplace memoderasi seller, dispute, dan komisi. Seller hanya mengelola toko & produknya; Buyer hanya data pesanannya.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Seller', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Laporan', permission: 'R' },
+      { role: 'Admin Marketplace', modul: 'Sengketa', permission: 'CRUD' },
+      { role: 'Admin Marketplace', modul: 'Seller', permission: 'CRU' },
+      { role: 'Admin Marketplace', modul: 'Laporan', permission: 'R' },
+      { role: 'Seller', modul: 'Produk', permission: 'CRUD-O' },
+      { role: 'Seller', modul: 'Pesanan', permission: 'RU-O' },
+      { role: 'Seller', modul: 'Seller', permission: 'RU-O' },
+      { role: 'Buyer', modul: 'Pesanan', permission: 'CR-O' },
+      { role: 'Buyer', modul: 'Ulasan', permission: 'CR-O' },
+      { role: 'Kurir', modul: 'Pengiriman', permission: 'RU-S' }
+    ],
+    workflow: [
+      'Seller daftar → upload produk → buyer checkout & bayar (escrow) → kirim → buyer terima → dana dilepas ke seller → ulasan'
+    ]
+  },
+
+  // ===========================================================================
+  // MT-28 — NGO & Nonprofit
+  // ===========================================================================
+  {
+    id: 'MT-28',
+    nama: 'NGO & Nonprofit',
+    deskripsi: 'Blueprint organisasi nonprofit: donasi, rekap dana, program bantuan, penyaluran ke penerima manfaat, relawan, dan laporan transparansi.',
+    modulDanSection: [
+      { modul: 'Donatur', sections: ['Data Donatur', 'Riwayat Donasi', 'Donatur Rutin'] },
+      { modul: 'Donasi', sections: ['Form Donasi', 'Konfirmasi Donasi', 'Rekap Dana', 'Kwitansi Donasi'] },
+      { modul: 'Program', sections: ['Program & Kegiatan', 'Penerima Manfaat', 'Target Program', 'Realisasi Program'] },
+      { modul: 'Penyaluran', sections: ['Rencana Penyaluran', 'Realisasi Penyaluran', 'Bukti Penyaluran', 'Dokumentasi'] },
+      { modul: 'Relawan', sections: ['Data Relawan', 'Jadwal Relawan', 'Kontribusi Relawan'] },
+      { modul: 'Transparansi', sections: ['Laporan Dana', 'Laporan Dampak', 'Publikasi Laporan'] }
+    ],
+    roleDefault: ['Super Admin', 'Pengurus', 'Fundraiser', 'Relawan', 'Donatur', 'Penerima Manfaat'],
+    adminRoleGuidance: 'Super Admin mengelola akun staf, role, permission, dan konfigurasi. Pengurus menetapkan program dan menyetujui penyaluran. Fundraiser menghimpun donasi; Donatur hanya melihat riwayat donasinya.',
+    roleToModule: [
+      { role: 'Super Admin', modul: 'Donasi', permission: 'CRUD' },
+      { role: 'Super Admin', modul: 'Transparansi', permission: 'CRUD' },
+      { role: 'Pengurus', modul: 'Program', permission: 'CRUD' },
+      { role: 'Pengurus', modul: 'Penyaluran', permission: 'A' },
+      { role: 'Pengurus', modul: 'Transparansi', permission: 'R' },
+      { role: 'Fundraiser', modul: 'Donasi', permission: 'CRU' },
+      { role: 'Fundraiser', modul: 'Donatur', permission: 'CRU' },
+      { role: 'Relawan', modul: 'Relawan', permission: 'RU-O' },
+      { role: 'Relawan', modul: 'Penyaluran', permission: 'R' },
+      { role: 'Donatur', modul: 'Donasi', permission: 'CR-O' },
+      { role: 'Donatur', modul: 'Transparansi', permission: 'R' },
+      { role: 'Penerima Manfaat', modul: 'Program', permission: 'R-O' }
+    ],
+    workflow: [
+      'Donatur donasi → rekap dana → rencana program → penyaluran ke penerima manfaat → dokumentasi → laporan transparansi'
+    ]
   }
 ];
+
 
 // =============================================================================
 // QUERY & IDEATION INTEGRATION HELPERS (FASE B)
@@ -1445,6 +1706,34 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
     {
       keywords: ['event organizer', 'seminar', 'webinar', 'workshop event', 'konser', 'tiket seminar', 'e-ticket', 'qr check-in', 'sertifikat event'],
       mtId: 'MT-19'
+    },
+    {
+      keywords: ['konstruksi', 'kontraktor', 'pembangunan', 'proyek bangunan', 'rab', 'rencana anggaran biaya', 'site engineer', 'subkontraktor', 'opname pekerjaan', 'proyek lapangan'],
+      mtId: 'MT-22'
+    },
+    {
+      keywords: ['pertanian', 'kebun', 'ladang', 'panen', 'tanam', 'agribisnis', 'peternakan', 'komoditas', 'tani', 'pemupukan'],
+      mtId: 'MT-23'
+    },
+    {
+      keywords: ['layanan publik', 'pemerintah', 'pemerintahan', 'dinas', 'disposisi', 'surat menyurat', 'warga', 'kelurahan', 'kecamatan', 'pelayanan masyarakat'],
+      mtId: 'MT-24'
+    },
+    {
+      keywords: ['media', 'konten digital', 'editorial', 'penerbitan', 'artikel', 'publisher', 'content creator', 'monetisasi konten', 'audiens'],
+      mtId: 'MT-25'
+    },
+    {
+      keywords: ['asuransi', 'polis', 'premi', 'klaim', 'underwriting', 'pertanggungan', 'adjuster', 'pemegang polis'],
+      mtId: 'MT-26'
+    },
+    {
+      keywords: ['marketplace', 'e-commerce', 'ecommerce', 'multi-seller', 'seller', 'escrow', 'toko online', 'mall online'],
+      mtId: 'MT-27'
+    },
+    {
+      keywords: ['ngo', 'nonprofit', 'non-profit', 'donasi', 'donatur', 'organisasi sosial', 'yayasan', 'relawan', 'penerima manfaat'],
+      mtId: 'MT-28'
     }
   ];
 
