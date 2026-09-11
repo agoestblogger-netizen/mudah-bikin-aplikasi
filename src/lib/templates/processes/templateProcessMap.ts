@@ -9,7 +9,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-01',
     patternIds: ['UP-02', 'UP-09', 'UP-01'],
-    overlayIds: [],
+    overlayIds: ['IND-01'],
     coreTransitions: ['buat pesanan', 'konfirmasi & kurangi stok', 'pembayaran', 'retur/refund'],
     advisoryNotes: ['Loyalty pelanggan opsional lewat UP-01']
   },
@@ -23,7 +23,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-03',
     patternIds: ['UP-02', 'UP-09', 'UP-06'],
-    overlayIds: [],
+    overlayIds: ['IND-02'],
     coreTransitions: ['input pesanan', 'kirim ke dapur', 'pembayaran/split bill', 'pengurangan stok bahan', 'reservasi meja'],
     advisoryNotes: ['Resep/BOM dan waste tracking menyusul']
   },
@@ -44,7 +44,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-06',
     patternIds: ['UP-06', 'UP-09'],
-    overlayIds: [],
+    overlayIds: ['IND-04'],
     coreTransitions: ['pendaftaran & booking', 'antrian', 'pemeriksaan', 'resep & stok obat', 'pembayaran'],
     advisoryNotes: ['Kerahasiaan data pasien']
   },
@@ -58,7 +58,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-08',
     patternIds: ['UP-07', 'UP-01', 'UP-02'],
-    overlayIds: [],
+    overlayIds: ['IND-03'],
     coreTransitions: ['lead & penawaran', 'kontrak', 'task & timesheet', 'invoice termin', 'serah terima'],
     advisoryNotes: ['Billing berbasis jam (billable)']
   },
@@ -72,7 +72,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-10',
     patternIds: ['UP-06', 'UP-10'],
-    overlayIds: [],
+    overlayIds: ['IND-05'],
     coreTransitions: ['pendaftaran kelas', 'pembayaran SPP', 'kehadiran', 'penilaian', 'rapor/sertifikat'],
     advisoryNotes: ['Kelas berulang per batch']
   },
