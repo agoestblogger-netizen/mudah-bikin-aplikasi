@@ -5,6 +5,7 @@ import { AppProjectState, ChatMessage } from '@/types/app';
 import { Bot, Send, User, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
+import { getAuthHeaders } from '@/lib/supabase/client';
 
 
 interface Stage1InterviewAIProps {
@@ -50,9 +51,10 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
 
     try {
       // Panggilan nyata ke /api/generate secara server-side
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           prompt: query,
           chatHistory: updatedMessages,

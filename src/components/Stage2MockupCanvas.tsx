@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { AppProjectState } from '@/types/app';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import { Palette, Code2, Eye, Copy, ArrowRight, ShieldCheck, Sparkles, RefreshCw, Layers, CheckCircle2, FileCode } from 'lucide-react';
+import { getAuthHeaders } from '@/lib/supabase/client';
 
 interface Stage2MockupCanvasProps {
   projectState: AppProjectState;
@@ -34,9 +35,10 @@ export const Stage2MockupCanvas: React.FC<Stage2MockupCanvasProps> = ({
     setLoading(true);
     try {
       const prompt = `Bangun mockup fungsional pertama untuk aplikasi: ${projectState.title}. Kebutuhan: ${projectState.description || 'Aplikasi web interaktif dengan state JS'}.`;
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           prompt,
           chatHistory: projectState.chatMessages,

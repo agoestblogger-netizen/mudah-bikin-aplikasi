@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { AppProjectState, TroubleshootIssue } from '@/types/app';
 import { ShieldAlert, AlertTriangle, CheckCircle2, Send, HelpCircle, ArrowRight, RefreshCw, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { getAuthHeaders } from '@/lib/supabase/client';
 
 interface Stage6TroubleshooterProps {
   projectState: AppProjectState;
@@ -23,9 +24,10 @@ export const Stage6Troubleshooter: React.FC<Stage6TroubleshooterProps> = ({ proj
 
     try {
       // Panggil API Route dengan stage: TAHAP_6_TROUBLESHOOTING (Instruksi: minta error dari Console dulu sebelum kasih solusi)
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           prompt: customError,
           stage: 'TAHAP_6_TROUBLESHOOTING'

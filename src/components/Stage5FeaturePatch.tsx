@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { AppProjectState, FeaturePatchRequest } from '@/types/app';
 import { Wrench, Sparkles, Plus, Clock, ArrowRight, RefreshCw } from 'lucide-react';
+import { getAuthHeaders } from '@/lib/supabase/client';
 
 interface Stage5FeaturePatchProps {
   projectState: AppProjectState;
@@ -26,9 +27,10 @@ export const Stage5FeaturePatch: React.FC<Stage5FeaturePatchProps> = ({
 
     try {
       // Panggil API Route dengan stage: TAHAP_5_PATCH (Instruksi: jangan generate ulang semua, cukup jelaskan + kirim bagian yang berubah)
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           prompt: `Terapkan pembaruan fitur pada ${targetComp}: ${patchDesc}`,
           stage: 'TAHAP_5_PATCH',

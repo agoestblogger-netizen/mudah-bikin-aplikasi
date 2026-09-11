@@ -31,6 +31,7 @@ import type { ModelSettings, AIModelOption } from '@/lib/modelConfig';
 import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 import type { GuidedStepPayload, GuidedStepId, MockupSessionState } from '@/lib/templates/processes/types';
+import { getAuthHeaders } from '@/lib/supabase/client';
 
 export type ChatMode = 'BUILD' | 'PLAN' | 'SYNC_GAS';
 
@@ -264,9 +265,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setLoadingText('Menyiapkan pertanyaan terpandu...');
 
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/guided', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ action: 'START', prompt, ...guidedApiPayload() })
       });
       const data = await res.json();
@@ -340,9 +342,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setLoadingText('Memproses pilihan Anda...');
 
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/guided', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           action: 'NEXT',
           session,
@@ -370,9 +373,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       // Langkah E selesai: langsung COMPILE brief untuk halaman validasi (E.5)
       if (!data.guidedStep) {
+        const authHeaders = await getAuthHeaders();
         const compRes = await fetch('/api/guided', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
           body: JSON.stringify({
             action: 'COMPILE',
             session: nextSession,
@@ -489,9 +493,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         payload.userApiKey = activeSettings.token;
       }
 
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(payload)
       });
 

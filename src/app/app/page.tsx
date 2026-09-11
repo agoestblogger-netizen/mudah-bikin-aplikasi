@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, getAuthHeaders } from '@/lib/supabase/client';
 import { initialProjectState } from '@/lib/defaultState';
 import { AppProjectState, SavedProject } from '@/types/app';
 import { Navbar } from '@/components/Navbar';
@@ -129,12 +129,7 @@ const GENERATE_PROGRESS_STEPS = [
   { label: 'Menyelesaikan & menyiapkan preview...', pct: 97 },
 ];
 
-// Klien menyimpan sesi di localStorage; sertakan token akses ke route server
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+
 
 export default function AppWorkspacePage() {
   const router = useRouter();
