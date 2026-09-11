@@ -33,11 +33,11 @@ export const PROVIDER_MODEL_STORAGE = 'ai_provider_model';
 const LEGACY_OPENROUTER_KEY_STORAGE = 'openrouter_api_key';
 const LEGACY_OPENROUTER_MODEL_STORAGE = 'selected_model';
 
-export const DEFAULT_PROVIDER: AIProvider = 'openrouter';
+export const DEFAULT_PROVIDER: AIProvider = 'gemini';
 
 export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-4o-mini';
 export const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
-export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
+export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
 
 export const OPENROUTER_SIGNUP_URL = 'https://openrouter.ai/settings/keys';
 export const OPENAI_SIGNUP_URL = 'https://platform.openai.com/api-keys';
@@ -113,9 +113,11 @@ const OPENAI_MODELS: AIModelOption[] = [
 ];
 
 const GEMINI_MODELS: AIModelOption[] = [
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
-  { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
-  { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', category: 'SEIMBANG', pricePerMInput: 'Kuota gratis', context: '2M' },
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (Rekomendasi)', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', category: 'SEIMBANG', pricePerMInput: 'Kuota gratis', context: '2M' },
 ];
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {

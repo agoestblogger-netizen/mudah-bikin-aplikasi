@@ -29,7 +29,7 @@ import {
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
 // =============================================================================
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-4o-mini';
 export const OPENROUTER_SITE_URL = 'https://mudahbikinapps.store';
@@ -401,7 +401,7 @@ export async function POST(req: Request) {
     const { prompt, chatHistory, stage, currentCode, userProvider, userApiKey, userModel, mode } = await req.json();
 
     // Deteksi Mode Dropdown Chat ('BUILD' | 'PLAN' | 'SYNC_GAS')
-    const activeChatMode = (mode || (stage === 'TAHAP_4_BACKEND' ? 'SYNC_GAS' : currentCode ? 'BUILD' : 'PLAN')).toUpperCase();
+    const activeChatMode = (mode || (stage === 'TAHAP_4_BACKEND' ? 'SYNC_GAS' : (stage === 'TAHAP_2_MOCKUP' || stage === 'TAHAP_5_PATCH' || currentCode) ? 'BUILD' : 'PLAN')).toUpperCase();
     const isPlanMode = activeChatMode === 'PLAN';
 
     // Analisis Riwayat & Konteks Percakapan Tahap 1
@@ -415,7 +415,10 @@ export async function POST(req: Request) {
     // Deteksi Persetujuan/Konfirmasi Pengguna terhadap Brief Kebutuhan atau Permintaan Pembuatan Prototipe
     const isConfirmationApproval = !isAdjustScenarioRequest && (
       /(^|\b)(ok|oke|sip|setuju|lanjut|lanjutkan|siap|deal|sudah sesuai|sesuai|buatkan|buatkan sekarang|bikin sekarang|gas|kerjakan|terapkan|eksekusi|ganti sekarang|ubah sekarang|update sekarang|buat|bikin|generate|mulai)($|\b)/i.test(prompt.trim()) ||
-      /(buatkan|buat|bikin|generate|mulai)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim())
+      /(buatkan|buat|bikin|generate|mulai|kembangkan)\s*(prototype|prototipe|aplikasi|app|kodenya|kode)/i.test(prompt.trim()) ||
+      prompt.toLowerCase().includes('buatkan prototipe') ||
+      prompt.toLowerCase().includes('buat prototipe') ||
+      prompt.toLowerCase().includes('menyetujui skenario')
     );
 
     // GATE ALUR PLAN VS BUILD:
@@ -451,13 +454,16 @@ export async function POST(req: Request) {
     );
 
     // Kapan masuk Mode Dialog/Streaming (Bukan eksekusi kode langsung):
-    // 1. Mode PLAN aktif (selalu dialog ideation/planning, dilarang buat kode di mode ini)
-    // 2. Tahap 1 Ideation (belum ada kode & belum konfirmasi di mode BUILD)
-    // 3. ATAU Tahap Revisi (sudah ada kode) TETAPI ada Pertanyaan Eksplisit atau Revisi Signifikan yang belum disetujui untuk dieksekusi (Poin 38)
+    // 1. Stage bukan TAHAP_2_MOCKUP / TAHAP_5_PATCH (keduanya khusus eksekusi kode prototipe)
+    // 2. Mode PLAN aktif (selalu dialog ideation/planning, dilarang buat kode di mode ini)
+    // 3. Tahap 1 Ideation (belum ada kode & belum konfirmasi di mode BUILD)
+    // 4. ATAU Tahap Revisi (sudah ada kode) TETAPI ada Pertanyaan Eksplisit atau Revisi Signifikan yang belum disetujui untuk dieksekusi (Poin 38)
     const isIdeationMode = (
-      isPlanMode ||
-      ((stage === 'TAHAP_1_PEMBUKAAN' || !currentCode) && !(hasBriefPresented && isConfirmationApproval)) ||
-      (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval)
+      !['TAHAP_2_MOCKUP', 'TAHAP_3_REVIEW', 'TAHAP_5_PATCH'].includes(stage) && (
+        isPlanMode ||
+        (!currentCode && !(hasBriefPresented && isConfirmationApproval)) ||
+        (Boolean(currentCode) && isSignificantRevision && !isConfirmationApproval)
+      )
     );
 
     // Alokasi budget token streaming ideation yang universal, aman, & anti-terpotong:
@@ -1793,7 +1799,10 @@ ${staffLandingGuide}
 
       const candidateModels = [
         activeGeminiModel,
-        'gemini-3.6-flash'
+        'gemini-3.5-flash',
+        'gemini-flash-latest',
+        'gemini-3.7-flash',
+        'gemini-3.8-flash'
       ].filter((m, idx, self) => self.indexOf(m) === idx);
 
       const candidateEndpoints = candidateModels.map(
