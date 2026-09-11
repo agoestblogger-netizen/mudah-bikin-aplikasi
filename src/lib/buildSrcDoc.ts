@@ -663,8 +663,49 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       };
     }
 
-    // Runtime Safety Net: Menjamin fungsi login, quickLogin, loginAs, dan filterTabsByRole selalu aktif 100%
+    // Runtime Safety Net: Menjamin fungsi login, quickLogin, loginAs, showTab, dan filterTabsByRole selalu aktif dan mengisolasi role 100%
     (function ensureAuthRuntime() {
+      // 1. Helper Isolasi Fisik Tab Konten
+      var _origShowTab = window.showTab;
+      window.showTab = function(tabId) {
+        try {
+          var contents = document.querySelectorAll('.tab-content, .tab-pane, [data-tab-content]');
+          contents.forEach(function(c) {
+            c.classList.remove('active');
+            c.style.display = 'none';
+          });
+          var target = document.getElementById(tabId) ||
+                       document.getElementById('tab-' + tabId) ||
+                       document.querySelector('[data-tab-id="' + tabId + '"]') ||
+                       document.querySelector('[id*="' + tabId + '"]');
+          if (target) {
+            target.classList.add('active');
+            target.style.display = 'block';
+          }
+          var btns = document.querySelectorAll('.tab-btn, [data-tab-btn]');
+          btns.forEach(function(b) {
+            b.classList.remove('active');
+          });
+          var activeBtn = document.getElementById('tab-btn-' + tabId) ||
+                          document.querySelector('[onclick*="' + tabId + '"]') ||
+                          document.querySelector('[data-tab-target="' + tabId + '"]');
+          if (activeBtn) activeBtn.classList.add('active');
+        } catch(e) { console.warn('showTab DOM update error:', e); }
+
+        if (typeof _origShowTab === 'function' && _origShowTab !== window.showTab) {
+          try { _origShowTab(tabId); } catch(e){}
+        }
+
+        ['render', 'renderTable', 'renderPOSCatalog', 'renderSKU', 'renderProduk', 'renderAll'].forEach(function(fn) {
+          if (typeof window[fn] === 'function') {
+            try { window[fn](); } catch(e){}
+          }
+        });
+        if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+          try { window.lucide.createIcons(); } catch(e){}
+        }
+      };
+
       if (!window.quickLogin) {
         window.quickLogin = function(u, p) {
           var uInput = document.getElementById('loginUsername');
@@ -677,39 +718,62 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         };
       }
 
-      if (!window.loginAs) {
-        window.loginAs = function(role) {
-          var targetRole = role || 'Super Admin';
-          window.currentRole = targetRole;
-          var loginEl = document.getElementById('loginScreen') || document.querySelector('.login-screen, #loginModal, .login-container');
-          var appEl = document.getElementById('appContainer') || document.querySelector('.app-container, #mainContainer, .container');
-          if (loginEl) loginEl.style.display = 'none';
-          if (appEl) appEl.style.display = 'block';
-          document.querySelectorAll('.app-layout, #mainLayout, .main-container').forEach(function(el) {
-            if (el !== loginEl) el.style.display = '';
-          });
-          var badge = document.getElementById('currentRoleBadge') || document.querySelector('.role-badge, [data-role-badge]');
-          if (badge) badge.innerText = targetRole;
-          if (typeof window.filterTabsByRole === 'function') {
-            try { window.filterTabsByRole(targetRole); } catch(e){}
+      var _origLoginAs = window.loginAs;
+      window.loginAs = function(role) {
+        var targetRole = role || 'Super Admin';
+        window.currentRole = targetRole;
+        var loginEl = document.getElementById('loginScreen') || document.querySelector('.login-screen, #loginModal, .login-container');
+        var appEl = document.getElementById('appContainer') || document.querySelector('.app-container, #mainContainer, .container');
+        if (loginEl) loginEl.style.display = 'none';
+        if (appEl) appEl.style.display = 'block';
+        document.querySelectorAll('.app-layout, #mainLayout, .main-container').forEach(function(el) {
+          if (el !== loginEl) el.style.display = '';
+        });
+        var badge = document.getElementById('currentRoleBadge') || document.querySelector('.role-badge, [data-role-badge]');
+        if (badge) badge.innerText = targetRole;
+
+        if (typeof window.filterTabsByRole === 'function') {
+          try { window.filterTabsByRole(targetRole); } catch(e){}
+        }
+
+        // Gate role-restricted sections
+        document.querySelectorAll('[data-access-roles]').forEach(function(el) {
+          if (el.classList.contains('tab-btn')) return;
+          var allowed = (el.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
+          var roleMatch = allowed.some(function(r) { return r === targetRole.toLowerCase() || targetRole.toLowerCase().includes(r); });
+          el.style.display = roleMatch ? '' : 'none';
+        });
+
+        // Buka landingTab resmi atau tab pertama yang visible
+        var activeTabId = null;
+        if (typeof window.DEMO_ACCOUNTS !== 'undefined' && Array.isArray(window.DEMO_ACCOUNTS)) {
+          var acc = window.DEMO_ACCOUNTS.find(function(a) { return String(a.role).toLowerCase() === targetRole.toLowerCase(); });
+          if (acc && acc.landingTab) activeTabId = acc.landingTab;
+        }
+        if (!activeTabId) {
+          var firstVisibleBtn = document.querySelector('.tab-btn:not([style*="display: none"])');
+          if (firstVisibleBtn) {
+            var tabMatch = (firstVisibleBtn.getAttribute('onclick') || '').match(/showTab\(['"]([^'"]+)['"]\)/);
+            if (tabMatch && tabMatch[1]) activeTabId = tabMatch[1];
           }
-          if (typeof window.showTab === 'function') {
-            try {
-              var firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
-              var tabMatch = firstTab && firstTab.getAttribute('onclick') && firstTab.getAttribute('onclick').match(/showTab\(['"]([^'"]+)['"]\)/);
-              if (tabMatch && tabMatch[1]) window.showTab(tabMatch[1]);
-            } catch(e){}
+        }
+        if (activeTabId && typeof window.showTab === 'function') {
+          window.showTab(activeTabId);
+        }
+
+        if (typeof _origLoginAs === 'function' && _origLoginAs !== window.loginAs) {
+          try { _origLoginAs(targetRole); } catch(e){}
+        }
+
+        ['render', 'renderTable', 'renderPOSCatalog', 'renderSKU', 'renderProduk', 'renderAll'].forEach(function(fn) {
+          if (typeof window[fn] === 'function') {
+            try { window[fn](); } catch(e){}
           }
-          ['render', 'renderTable', 'renderPOSCatalog', 'renderSKU', 'renderProduk', 'renderAll'].forEach(function(fn) {
-            if (typeof window[fn] === 'function') {
-              try { window[fn](); } catch(e){}
-            }
-          });
-          if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
-            try { window.lucide.createIcons(); } catch(e){}
-          }
-        };
-      }
+        });
+        if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+          try { window.lucide.createIcons(); } catch(e){}
+        }
+      };
 
       if (!window.handleLogin) {
         window.handleLogin = function() {
@@ -755,14 +819,16 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         };
       }
 
-      if (!window.filterTabsByRole) {
-        window.filterTabsByRole = function(role) {
-          document.querySelectorAll('.tab-btn').forEach(function(btn) {
-            var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
-            btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
-          });
-        };
-      }
+      var _origFilterTabs = window.filterTabsByRole;
+      window.filterTabsByRole = function(role) {
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+          var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
+          btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
+        });
+        if (typeof _origFilterTabs === 'function' && _origFilterTabs !== window.filterTabsByRole) {
+          try { _origFilterTabs(role); } catch(e){}
+        }
+      };
 
       // Auto-bind event listeners jika elemen login ada
       function bindLoginEvents() {
@@ -827,6 +893,13 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       color: #0f172a;
       min-height: 100vh;
       padding: 24px;
+    }
+    /* Anti-Stacked Multi-Role Tab Content Isolation */
+    .tab-content, .tab-pane, [data-tab-content] {
+      display: none;
+    }
+    .tab-content.active, .tab-pane.active, [data-tab-content].active {
+      display: block;
     }
     ${css}
   </style>

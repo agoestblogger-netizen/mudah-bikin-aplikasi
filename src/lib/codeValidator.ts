@@ -373,10 +373,16 @@ function logout() {
           fallbackFn = `
 function showTab(tabId) {
   try {
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content, .tab-pane').forEach(t => {
+      t.classList.remove('active');
+      t.style.display = 'none';
+    });
     document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
-    const target = document.getElementById(tabId) || document.querySelector('[id*="' + tabId + '"]');
-    if (target) target.classList.add('active');
+    const target = document.getElementById(tabId) || document.getElementById('tab-' + tabId) || document.querySelector('[id*="' + tabId + '"]');
+    if (target) {
+      target.classList.add('active');
+      target.style.display = 'block';
+    }
     const targetBtn = document.getElementById('tab-btn-' + tabId) || document.querySelector('[onclick*="' + tabId + '"]');
     if (targetBtn) targetBtn.classList.add('active');
     if (typeof render === 'function') render();
@@ -544,6 +550,22 @@ function filterTabsByRole(role) {
     });
   }
   repairedHtml = repairedHtml.replace(/<button(?![^>]*type=)([^>]*)>/gi, '<button type="button"$1>');
+
+  // 9b. Auto-Repair: Pastikan CSS memiliki aturan display untuk .tab-content (Anti-Stacked Pages & Normalisasi Tab)
+  if (repairedHtml.includes('tab-content') || repairedHtml.includes('tab-pane') || repairedHtml.includes('showTab(')) {
+    const hasTabContentCss = /\.tab-content[^{]*\{[^}]*display\s*:\s*none/i.test(repairedHtml) ||
+                             /\.tab-pane[^{]*\{[^}]*display\s*:\s*none/i.test(repairedHtml);
+    if (!hasTabContentCss) {
+      const tabCssRule = `\n    /* Auto-Injected Tab Isolation CSS (Poin 54) */\n    .tab-content, .tab-pane { display: none; }\n    .tab-content.active, .tab-pane.active { display: block; }\n`;
+      if (repairedHtml.includes('</style>')) {
+        repairedHtml = repairedHtml.replace('</style>', `${tabCssRule}</style>`);
+      } else if (repairedHtml.includes('</head>')) {
+        repairedHtml = repairedHtml.replace('</head>', `  <style>${tabCssRule}  </style>\n</head>`);
+      } else {
+        repairedHtml = `<style>${tabCssRule}</style>\n` + repairedHtml;
+      }
+    }
+  }
 
   // 10. Pemeriksaan Integritas Pembatasan Akses Role per Tab (Poin 40 — data-access-roles)
   // Jika kode memiliki loginAs() atau multi-role logic, SETIAP .tab-btn WAJIB punya data-access-roles

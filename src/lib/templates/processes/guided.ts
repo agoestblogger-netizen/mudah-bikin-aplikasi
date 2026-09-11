@@ -4,6 +4,7 @@ import {
   buildBusinessProcessChecklist
 } from './registry';
 import { getMasterTemplateById } from '../masterTemplates';
+import { getRoleCategory } from '../../rolePolicy';
 import type {
   GuidedStepOption,
   GuidedStepPayload,
@@ -555,14 +556,82 @@ export function compileBriefFromSession(
         lines.push('        - [x] onclick: Tambah Akun Staf (Membuat akun staf baru)');
         lines.push('        - [x] onclick: Atur Role & Permission (Mengubah hak akses staf)');
       } else {
-        const roleFeatures = wajib
-          .map((f) => features.find((x) => x.id === f.id)?.label)
-          .filter(Boolean)
-          .slice(0, 5);
-        const sectionText = roleFeatures.length
-          ? `: section ${roleFeatures.join(', section ')}`
+        const cat = getRoleCategory(role);
+        let pageName = 'Operasional & Layanan (default)';
+        let roleSections: string[] = [];
+
+        if (cat === 'external') {
+          if (/sewa|nyewa|rental|booking|peminjam/i.test(role)) {
+            pageName = 'Katalog & Sewa Mandiri (default)';
+          } else if (/pasien|klinik|antri/i.test(role)) {
+            pageName = 'Pendaftaran & Antrean Mandiri (default)';
+          } else if (/siswa|murid|pelajar/i.test(role)) {
+            pageName = 'Portal Belajar & Jadwal (default)';
+          } else if (/anggota|member/i.test(role)) {
+            pageName = 'Kartu Digital & Iuran (default)';
+          } else {
+            pageName = 'Layanan & Pemesanan Mandiri (default)';
+          }
+
+          // Filter fitur yang relevan untuk pengguna eksternal / pelanggan (hilangkan fitur khusus staf)
+          const customerFeatures = wajib
+            .map((f) => features.find((x) => x.id === f.id)?.label)
+            .filter((lbl): lbl is string => Boolean(lbl))
+            .filter((lbl) => {
+              const isStaffOnly = /akun staf|staf|karyawan|serah terima|cek fisik|pengembalian unit|kalkulator denda|opname|disposal|mutasi|audit|omset/i.test(lbl);
+              return !isStaffOnly;
+            });
+
+          if (customerFeatures.length > 0) {
+            roleSections = customerFeatures.slice(0, 4);
+          } else {
+            roleSections = ['Katalog & Ketersediaan', 'Form Pemesanan / Sewa Mandiri', 'Status & Riwayat Saya'];
+          }
+        } else if (cat === 'business') {
+          pageName = 'Dashboard & Laporan (default)';
+          const businessFeatures = wajib
+            .map((f) => features.find((x) => x.id === f.id)?.label)
+            .filter((lbl): lbl is string => Boolean(lbl))
+            .filter((lbl) => /laporan|omset|rekap|analisis|dashboard|statistik|performa|ringkasan/i.test(lbl));
+
+          if (businessFeatures.length > 0) {
+            roleSections = businessFeatures.slice(0, 4);
+          } else {
+            roleSections = ['Ringkasan Performa & Omset', 'Laporan Transaksi', 'Monitoring Operasional'];
+          }
+        } else {
+          // Operational role (Petugas Rental, Kasir, Washer, Montir, dll)
+          if (/rental|sewa/i.test(role)) {
+            pageName = 'Operasional Rental (default)';
+          } else if (/kasir|cashier/i.test(role)) {
+            pageName = 'Kasir & Transaksi (default)';
+          } else if (/washer|cuci/i.test(role)) {
+            pageName = 'Antrean Pengerjaan Cuci (default)';
+          } else if (/gudang|stok|warehouse/i.test(role)) {
+            pageName = 'Stok & Gudang (default)';
+          } else {
+            pageName = `Operasional ${role.trim()} (default)`;
+          }
+
+          const opFeatures = wajib
+            .map((f) => features.find((x) => x.id === f.id)?.label)
+            .filter((lbl): lbl is string => Boolean(lbl))
+            .filter((lbl) => {
+              const isCustomerOnly = /mandiri|kartu saya|pesanan saya|portal belajar/i.test(lbl);
+              return !isCustomerOnly;
+            });
+
+          if (opFeatures.length > 0) {
+            roleSections = opFeatures.slice(0, 5);
+          } else {
+            roleSections = ['Katalog & Ketersediaan Unit', 'Pencatatan Transaksi', 'Update Status & Proses'];
+          }
+        }
+
+        const sectionText = roleSections.length
+          ? `: section ${roleSections.join(', section ')}`
           : '';
-        lines.push(`    - Halaman Utama (default)${sectionText}`);
+        lines.push(`    - ${pageName}${sectionText}`);
       }
     }
   }

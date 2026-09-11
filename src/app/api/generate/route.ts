@@ -1280,6 +1280,20 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
    - loginAs(role) kemudian otomatis mengaktifkan tab pertama milik peran tersebut.
    - Navigasi tab WAJIB memiliki styling CSS modern (.tab-nav dan .tab-btn dengan border-radius, background, dan warna tegas, bukan button polos HTML bawaan).
 
+5. ISOLASI KONTEN TAB DALAM CSS (WAJIB MUTLAK — ANTI-TUMPUK HALAMAN):
+   - Di dalam tag <style>, WAJIB menyertakan aturan CSS untuk menyembunyikan konten tab tidak aktif:
+     .tab-content, .tab-pane { display: none; }
+     .tab-content.active, .tab-pane.active { display: block; }
+   - DILARANG KERAS membiarkan .tab-content tanpa aturan CSS di atas! Tanpa display: none, seluruh halaman role akan tampil menumpuk di satu layar.
+   - Fungsi showTab(tabId) di tag <script> WAJIB menyembunyikan seluruh .tab-content (t.classList.remove('active') dan t.style.display = 'none') dan mengaktifkan HANYA tab target (target.classList.add('active') dan target.style.display = 'block').
+
+6. PEMISAHAN DATA, TABEL & FORM PER ROLE (NORMALISASI TAMPILAN):
+   - SETIAP ROLE WAJIB MEMILIKI KONTEN/HALAMAN YANG BERBEDA SECARA FISIK SESUAI BRIEF:
+     * Role Super Admin: HANYA berisi tabel akun staf, hak akses / permission, dan audit log sistem.
+     * Role Operasional (misal: Petugas Rental, Kasir, Washer): Berisi katalog/tabel operasional, form transaksi/alur kerja (serah terima, cek fisik, hitung denda, perbaikan/status).
+     * Role Eksternal (misal: Penyewa, Pelanggan, Pasien): Berisi katalog ketersediaan mandiri, form pemesanan/booking mandiri, atau kartu identitas/status pesanan pribadi. DILARANG memuat tabel akun staf atau tombol aksi manajemen staf!
+   - DILARANG KERAS menampilkan data, tabel, atau formulir yang sama persis di semua role!
+
 ================================================================================
 ⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52, 53):
 Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
@@ -2183,7 +2197,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
 6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
-8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.` }] }
+8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.
+9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
@@ -2228,7 +2243,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 5. Pastikan setiap document.getElementById('id') memiliki elemen HTML dengan ID yang sama.
 6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
-8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.` }
+8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.
+9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!` }
         ];
 
         const repairReqBody: Record<string, any> = {
