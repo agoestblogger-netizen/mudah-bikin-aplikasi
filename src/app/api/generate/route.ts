@@ -1625,6 +1625,126 @@ ${staffLandingGuide}
       });
     }
 
+    // Deklarasi awal agar bisa dipakai helper fallback (dijalankan di dua titik).
+    let htmlCode = '';
+    let validated: ReturnType<typeof validateAndRepairGeneratedCode> | null = null;
+    let usedDefaultFallback = false;
+
+    // =========================================================================
+    // FALLBACK: Server Default (Gemini → OpenAI) bila BYOK gagal
+    // (error provider atau kode hasil model tidak valid)
+    // =========================================================================
+    const extractHtmlFromMessage = (msg: string): string => {
+      let out = '';
+      const m = msg.match(/```html([\s\S]*?)```/);
+      if (m) out = m[1].trim();
+      else if (msg.includes('```html')) out = msg.split('```html')[1].replace(/```[\s\S]*$/, '').trim();
+      else if (msg.includes('<!DOCTYPE') || msg.includes('<html')) out = msg.trim();
+      if (!out) return '';
+      out = cleanConversationalLeaks(out);
+      if (out.includes('<!DOCTYPE')) out = out.slice(out.indexOf('<!DOCTYPE')).trim();
+      else if (out.includes('<html')) out = out.slice(out.indexOf('<html')).trim();
+      return out;
+    };
+
+    const acceptFallback = (msg: string, providerName: 'gemini' | 'openai'): boolean => {
+      const fbHtml = extractHtmlFromMessage(msg);
+      if (!fbHtml) return false;
+      const fbValidated = validateAndRepairGeneratedCode(fbHtml, '', '', officialRoles);
+      if (!fbValidated || !fbValidated.isValid) {
+        console.warn(
+          `Fallback ${providerName} tidak valid:`,
+          (fbValidated?.issues || []).slice(0, 4).join(' | ').slice(0, 400)
+        );
+        return false;
+      }
+      htmlCode = fbHtml;
+      assistantMessage = msg;
+      validated = fbValidated;
+      usedDefaultFallback = true;
+      actualProviderUsed = providerName;
+      return true;
+    };
+
+    const tryServerDefaultFallback = async (reason: string): Promise<boolean> => {
+      if (isIdeationMode || !useUserKey || usedDefaultFallback) return false;
+
+      // 1) Coba Server Default Gemini (gratis).
+      const serverGeminiKey = process.env.GEMINI_API_KEY;
+      if (serverGeminiKey) {
+        try {
+          const fbRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${getGeminiModel()}:generateContent?key=${serverGeminiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: geminiContents,
+                generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
+              })
+            }
+          );
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            const fbMsg = fbData.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join('') || '';
+            if (fbMsg && acceptFallback(fbMsg, 'gemini')) {
+              console.log(`Server Default (Gemini) fallback berhasil setelah: ${reason}`);
+              return true;
+            }
+            console.warn(`Gemini fallback tidak valid (${reason})`);
+          } else {
+            console.warn(`Gemini fallback HTTP ${fbRes.status} (${reason})`);
+          }
+        } catch (err) {
+          console.warn('Gemini server fallback error:', err);
+        }
+      }
+
+      // 2) Coba Server Default OpenAI (jika key server tersedia).
+      const serverOpenAIKey = process.env.OPENAI_API_KEY;
+      if (serverOpenAIKey) {
+        try {
+          const oaMessages = [
+            { role: 'system', content: systemPrompt },
+            ...recentHistory.map((m: any) => ({
+              role: m.sender === 'USER' ? 'user' : 'assistant',
+              content: m.text
+            })),
+            { role: 'user', content: userPromptWithContext }
+          ];
+          const oaRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${serverOpenAIKey}`
+            },
+            body: JSON.stringify({
+              model: getOpenAIModel(),
+              messages: oaMessages,
+              max_completion_tokens: 16384,
+              temperature: 0.3
+            })
+          });
+          if (oaRes.ok) {
+            const oaData = await oaRes.json();
+            const oaMsg = oaData.choices?.[0]?.message?.content || '';
+            if (oaMsg && acceptFallback(oaMsg, 'openai')) {
+              console.log(`Server Default (OpenAI) fallback berhasil setelah: ${reason}`);
+              return true;
+            }
+            console.warn(`OpenAI fallback tidak valid (${reason})`);
+          } else {
+            console.warn(`OpenAI fallback HTTP ${oaRes.status} (${reason})`);
+          }
+        } catch (err) {
+          console.warn('OpenAI server fallback error:', err);
+        }
+      }
+
+      return false;
+    };
+
     // =========================================================================
     // JALUR 1: GEMINI API (DIPENGARUHI OLEH getGeminiModel())
     // =========================================================================
@@ -1772,10 +1892,10 @@ body: JSON.stringify({
             try {
               const contMessages = [
                 { role: 'system', content: systemPrompt },
-                ...recentHistory.map((m: any) => ({
-                  role: m.sender === 'USER' ? 'user' : 'assistant',
-                  content: m.text
-                })),
+            ...recentHistory.map((m: { sender?: string; text?: string }) => ({
+              role: m.sender === 'USER' ? 'user' : 'assistant',
+              content: m.text
+            })),
                 { role: 'user', content: userPromptWithContext },
                 { role: 'assistant', content: assistantMessage },
                 { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan seluruh script JavaScript dan penutup tag HTML lengkap.' }
@@ -1865,35 +1985,42 @@ body: JSON.stringify({
           userFacingError = `Batas kuota/rate limit untuk model "${activeOpenAIModel}" tercapai. Mohon tunggu beberapa detik atau pilih model lain.`;
         }
 
-        return NextResponse.json({
-          success: false,
-          error: userFacingError,
-          replyText: `⚠️ **Gagal memproses dengan model ${activeOpenAIModel}:**\n\n${userFacingError}\n\n💡 *Saran:* Silakan pilih model alternatif di dropdown bagian atas (misalnya model dari tab **🆓 Gratis**).`,
-          code: null,
-          isContinued: false
-        });
+        // Fallback ke Server Default (Gemini) untuk error provider yang lazim.
+        const retryableStatus = [401, 402, 404, 429].includes(response.status);
+        if (retryableStatus && (await tryServerDefaultFallback(`provider HTTP ${response.status}`))) {
+          // Lanjut ke tahap finalisasi dengan hasil Gemini.
+        } else {
+          return NextResponse.json({
+            success: false,
+            error: userFacingError,
+            replyText: `⚠️ **Gagal memproses dengan model ${activeOpenAIModel}:**\n\n${userFacingError}\n\n💡 *Saran:* Silakan pilih model alternatif di dropdown bagian atas (misalnya model dari tab **🆓 Gratis**).`,
+            code: null,
+            isContinued: false
+          });
+        }
       }
 
-      let data = await response.json();
-      assistantMessage = data.choices?.[0]?.message?.content || '';
-      let finishReason = data.choices?.[0]?.finish_reason;
+      if (!usedDefaultFallback) {
+        let data = await response.json();
+        assistantMessage = data.choices?.[0]?.message?.content || '';
+        let finishReason = data.choices?.[0]?.finish_reason;
 
-      // ANTI-CUTOFF OPENAI (Hanya aktif pada mode generate kode jika finish_reason === 'length' atau kode terpotong)
-      while (!isIdeationMode && retryCount < maxRetries) {
-        const isFinishReasonLength = finishReason === 'length';
-        const isTruncatedOrBroken = isCodeTruncatedOrBroken(assistantMessage);
+        // ANTI-CUTOFF OPENAI (Hanya aktif pada mode generate kode jika finish_reason === 'length' atau kode terpotong)
+        while (!isIdeationMode && retryCount < maxRetries) {
+          const isFinishReasonLength = finishReason === 'length';
+          const isTruncatedOrBroken = isCodeTruncatedOrBroken(assistantMessage);
 
-        if (!isFinishReasonLength && !isTruncatedOrBroken) {
-          break;
-        }
+          if (!isFinishReasonLength && !isTruncatedOrBroken) {
+            break;
+          }
 
-        console.log(`OpenAI Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}, isBroken: ${isTruncatedOrBroken}`);
+          console.log(`OpenAI Anti-cutoff triggered (Attempt ${retryCount + 1}). Finish reason: ${finishReason}, isBroken: ${isTruncatedOrBroken}`);
 
-        const continuationMessages = [
-          ...messages,
-          { role: 'assistant', content: assistantMessage },
-          { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript tersambung dengan benar tanpa terpotong.' }
-        ];
+          const continuationMessages = [
+            ...messages,
+            { role: 'assistant', content: assistantMessage },
+            { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan tanda kutip serta sintaks script JavaScript tersambung dengan benar tanpa terpotong.' }
+          ];
 
         let contText = '';
         try {
@@ -1935,10 +2062,10 @@ body: JSON.stringify({
         assistantMessage += contText;
         retryCount++;
       }
+      }
     }
 
     // Ekstraksi Blok Kode HTML (Mendukung fence lengkap maupun unclosed jika terpotong)
-    let htmlCode = '';
     const match = assistantMessage.match(/```html([\s\S]*?)```/);
     if (match) {
       htmlCode = match[1].trim();
@@ -1959,7 +2086,7 @@ body: JSON.stringify({
     }
 
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan pada mode generate kode)
-    let validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles) : null;
+    validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles) : null;
 
     // NFR-10b: Pemeriksaan Integritas, Kelengkapan Tag, Sintaks JavaScript, & Keselarasan DOM Otomatis (Hanya pada mode generate kode)
     const isCodeIncomplete = !htmlCode || !htmlCode.includes('</html>') || !htmlCode.includes('</script>');
@@ -2087,6 +2214,20 @@ INSTRUKSI PERBAIKAN WAJIB:
     // PERLINDUNGAN TAHAP 1 MUTLAK: DILARANG mengirimkan kode sebelum Brief Kebutuhan disetujui pengguna!
     const isStage1AwaitingConfirmation = (stage === 'TAHAP_1_PEMBUKAAN') && !(hasBriefPresented && isConfirmationApproval);
 
+    // Fallback: bila model BYOK tetap menghasilkan kode tidak valid setelah auto-repair,
+    // coba sekali lagi dengan Server Default (Gemini).
+    if (
+      !isIdeationMode &&
+      !usedDefaultFallback &&
+      useUserKey &&
+      actualProviderUsed !== 'gemini' &&
+      htmlCode &&
+      validated &&
+      validated.issues.length > 0
+    ) {
+      await tryServerDefaultFallback(`validasi gagal (${validated.issues.slice(0, 2).join('; ').slice(0, 120)})`);
+    }
+
     // SELF-HEALING FINAL PASS: Jika setelah upaya perbaikan AI masih menyisakan MISMATCH_HANDLER atau MISMATCH_DOM_ID,
     // lakukan auto-patch fallback cerdas agar user tidak dihadapkan pada layar error dan prototipe tetap dapat dijalankan 100%!
     if (!isStage1AwaitingConfirmation && validated && !validated.isValid && htmlCode && htmlCode.includes('</html>') && htmlCode.includes('</script>')) {
@@ -2166,6 +2307,12 @@ INSTRUKSI PERBAIKAN WAJIB:
         .trim();
       if (!cleanReplyText.includes('✨ **Prototipe aplikasi berhasil dibuat')) {
         cleanReplyText += '\n\n✨ **Prototipe aplikasi berhasil dibuat dan dimuat langsung ke Canvas Preview.**';
+      }
+
+      if (usedDefaultFallback) {
+        cleanReplyText =
+          `⚠️ *Model pilihan Anda gagal menghasilkan kode valid. Sistem otomatis memakai **Server Default (${actualProviderUsed === 'gemini' ? 'Gemini' : 'OpenAI'})** untuk prototipe ini.*\n\n` +
+          cleanReplyText;
       }
 
       // PETUNJUK PENGGUNAAN & KREDENSIAL DEMO (POIN 45-D): USER DAN PASSWORD DI CHAT
