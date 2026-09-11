@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from('app_projects')
-    .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, annotations, created_at, updated_at')
+    .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, annotations, session_state, created_at, updated_at')
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
     .limit(50);
@@ -57,9 +57,10 @@ export async function POST(req: Request) {
       gas_script: body.gas_script ? String(body.gas_script) : null,
       gas_web_app_url: body.gas_web_app_url ? String(body.gas_web_app_url) : null,
       spreadsheet_id: body.spreadsheet_id ? String(body.spreadsheet_id) : null,
-      annotations: body.annotations ? body.annotations : {}
+      annotations: body.annotations ? body.annotations : {},
+      session_state: body.session_state && typeof body.session_state === 'object' ? body.session_state : {}
     })
-    .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, annotations, created_at, updated_at')
+    .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, annotations, session_state, created_at, updated_at')
     .single();
 
   if (error) {

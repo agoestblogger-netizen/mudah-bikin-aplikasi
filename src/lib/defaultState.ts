@@ -53,6 +53,7 @@ export const initialProjectState: AppProjectState = {
     notes: [],
     patches: []
   },
+  sessionState: null,
   patchHistory: [],
   troubleshootIssues: [],
   qualityAudit: {

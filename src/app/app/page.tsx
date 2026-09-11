@@ -852,7 +852,8 @@ export default function AppWorkspacePage() {
       gas_script: snapshot.gasConfig.scriptCode || '',
       gas_web_app_url: snapshot.gasConfig.webAppUrl || '',
       spreadsheet_id: snapshot.gasConfig.sheetId || '',
-      annotations: snapshot.annotations || { marks: [], notes: [], patches: [] }
+      annotations: snapshot.annotations || { marks: [], notes: [], patches: [] },
+      session_state: snapshot.sessionState || {}
     };
 
     (async () => {
@@ -914,6 +915,7 @@ export default function AppWorkspacePage() {
       title: project.title,
       description: project.description || '',
       annotations: { marks: [], notes: [], patches: project.annotations?.patches || [] },
+      sessionState: project.session_state && Object.keys(project.session_state).length ? project.session_state : null,
       updatedAt: project.updated_at || new Date().toISOString(),
       canvasCode: {
         html: cleanHtml,
@@ -1396,6 +1398,7 @@ export default function AppWorkspacePage() {
                 title: latest.title,
                 description: latest.description || '',
                 annotations: { marks: [], notes: [], patches: latest.annotations?.patches || [] },
+                sessionState: latest.session_state && Object.keys(latest.session_state).length ? latest.session_state : null,
                 updatedAt: latest.updated_at || new Date().toISOString(),
                 canvasCode: {
                   html: cleanHtml,

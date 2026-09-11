@@ -47,6 +47,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const canvasJs = body.canvas_js ? String(body.canvas_js) : null;
 
   const annotations = body.annotations && typeof body.annotations === 'object' ? body.annotations : {};
+  const sessionState = body.session_state && typeof body.session_state === 'object' ? body.session_state : {};
 
   const { data, error } = await supabaseAdmin
     .from('app_projects')
@@ -59,11 +60,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       gas_script: body.gas_script ? String(body.gas_script) : null,
       gas_web_app_url: body.gas_web_app_url ? String(body.gas_web_app_url) : null,
       spreadsheet_id: body.spreadsheet_id ? String(body.spreadsheet_id) : null,
-      annotations
+      annotations,
+      session_state: sessionState
     })
     .eq('id', id)
     .eq('user_id', user.id)
-    .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, annotations, created_at, updated_at')
+    .select('id, title, description, app_type, status, canvas_html, canvas_css, canvas_js, gas_script, gas_web_app_url, spreadsheet_id, annotations, session_state, created_at, updated_at')
     .single();
 
   if (error) {

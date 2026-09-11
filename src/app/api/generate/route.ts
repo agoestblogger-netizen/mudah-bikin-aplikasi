@@ -9,7 +9,10 @@ import {
   detectSelectivePageTemplates,
   formatSelectivePageTemplatesForCodeGen,
   findRelevantUXPatterns,
-  formatUXGuidanceForIdeation
+  formatUXGuidanceForIdeation,
+  detectIndustryOverlays,
+  getTemplateProcessMap,
+  formatBusinessProcessForIdeation
 } from '@/lib/templates';
 import { OPENROUTER_API_BASE, OPENAI_API_BASE } from '@/lib/modelConfig';
 import type { AIProvider } from '@/lib/modelConfig';
@@ -443,6 +446,23 @@ export async function POST(req: Request) {
     const matchedUXPatterns = findRelevantUXPatterns(prompt + '\n' + allHistoryText, matchedMT?.template.id);
     const uxGuidanceContext = formatUXGuidanceForIdeation(matchedUXPatterns);
 
+    // Konteks Business Process Repository (pola universal + overlay industri)
+    const matchedOverlays = detectIndustryOverlays(prompt + '\n' + allHistoryText);
+    const matchedProcessMap = matchedMT ? getTemplateProcessMap(matchedMT.template.id) : undefined;
+    const processPatternIds = Array.from(
+      new Set([
+        ...(matchedProcessMap?.patternIds || []),
+        ...matchedOverlays.flatMap((o) => o.patternIds)
+      ])
+    );
+    const processOverlayIds = Array.from(
+      new Set([
+        ...(matchedProcessMap?.overlayIds || []),
+        ...matchedOverlays.slice(0, 2).map((o) => o.id)
+      ])
+    );
+    const businessProcessContext = formatBusinessProcessForIdeation(processPatternIds, processOverlayIds);
+
     // Ekstraksi Entitas & Varian Role Khusus dari Prompt Pengguna (Poin 50B)
     const userSpecifiedVariants = extractUserSpecifiedRoleVariants(prompt, chatHistory);
     let variantsContext = '';
@@ -665,6 +685,11 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
       // Suntikkan Panduan Standar UX & Prioritas Informasi (Fase D-1)
       if (uxGuidanceContext) {
         systemPrompt += `\n\n${uxGuidanceContext}`;
+      }
+
+      // Suntikkan proses bisnis baku (pola universal + overlay industri)
+      if (businessProcessContext) {
+        systemPrompt += `\n\n${businessProcessContext}`;
       }
 
       // Suntikkan Ekstraksi Varian Role Spesifik Pengguna (Poin 50B)
@@ -1154,6 +1179,11 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       const selectivePTDirective = formatSelectivePageTemplatesForCodeGen(selectivePageMappings);
       if (selectivePTDirective) {
         systemPrompt += `\n\n${selectivePTDirective}`;
+      }
+
+      // Kontrak proses bisnis baku (pola universal + overlay industri)
+      if (businessProcessContext) {
+        systemPrompt += `\n\n${businessProcessContext}`;
       }
 
       if (approvedBrief || officialRoles.length > 0) {

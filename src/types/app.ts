@@ -6,6 +6,8 @@ export type PRDStage =
   | 'TAHAP_5_PATCH'
   | 'TAHAP_6_TROUBLESHOOTING';
 
+import type { MockupSessionState } from '@/lib/templates/processes/types';
+
 export interface ChatMessage {
   id: string;
   sender: 'AI' | 'USER';
@@ -105,6 +107,8 @@ export interface AppProjectState {
   };
   // OpenDesign-like annotations: marks/comments/patches for prototype canvas
   annotations: ODAnnotations;
+  // Sesi mockup terpandu (Multiple-Choice Flow) tersimpan bersama proyek
+  sessionState: MockupSessionState | null;
   patchHistory: FeaturePatchRequest[];
   troubleshootIssues: TroubleshootIssue[];
   qualityAudit: QualityAuditResult;
@@ -149,6 +153,7 @@ export interface SavedProject {
   gas_web_app_url: string | null;
   spreadsheet_id: string | null;
   annotations: ODAnnotations | null;
+  session_state: MockupSessionState | null;
   created_at: string;
   updated_at: string;
 }
