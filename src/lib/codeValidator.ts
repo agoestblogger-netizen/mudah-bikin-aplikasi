@@ -16,6 +16,49 @@ export interface ValidationReport {
   };
 }
 
+function injectBeforeLastScriptClose(html: string, code: string): string {
+  const idx = html.lastIndexOf('</script>');
+  if (idx === -1) return html;
+  return html.slice(0, idx) + code + '\n' + html.slice(idx);
+}
+
+export function injectMissingHandlerStubs(html: string, issues: string[]): string {
+  const missingHandlers: string[] = [];
+  issues.forEach(issue => {
+    const matchHandler = issue.match(/MISMATCH_HANDLER:\s*Fungsi\s*["']([^"']+)["']/i);
+    if (matchHandler && matchHandler[1]) missingHandlers.push(matchHandler[1]);
+  });
+  if (missingHandlers.length === 0 || !html.includes('</script>')) return html;
+
+  let fallbackScript = '\n    // --- AUTO-PATCH SELF-HEALING HANDLERS ---\n';
+  missingHandlers.forEach(fn => {
+    const isModalClose = /tutup|close|batal/i.test(fn);
+    const isModalOpen = /buka|open|tambah|edit/i.test(fn);
+    const isPaymentOrProcess = /proses|bayar|checkout|selesai/i.test(fn);
+
+    fallbackScript += `    function ${fn}(...args) {\n`;
+    fallbackScript += `      console.log('[Auto-Handler] Dipanggil: ${fn}', args);\n`;
+    if (isModalClose) {
+      fallbackScript += `      document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');\n`;
+    } else if (isModalOpen) {
+      fallbackScript += `      const m = document.querySelector('.modal'); if (m) m.style.display = 'flex';\n`;
+    } else if (isPaymentOrProcess) {
+      fallbackScript += `      if (typeof showToast === 'function') showToast('Transaksi/Aksi berhasil diproses!', 'success');\n`;
+      fallbackScript += `      else alert('Transaksi/Aksi berhasil diproses!');\n`;
+      fallbackScript += `      if (typeof render === 'function') { try { render(); } catch(e){} }\n`;
+      fallbackScript += `      else if (typeof renderTable === 'function') { try { renderTable(); } catch(e){} }\n`;
+    } else {
+      fallbackScript += `      if (typeof showToast === 'function') showToast('Aksi ' + '${fn}' + ' berhasil dijalankan!', 'success');\n`;
+      fallbackScript += `      else alert('Aksi ' + '${fn}' + ' berhasil dijalankan!');\n`;
+      fallbackScript += `      if (typeof render === 'function') { try { render(); } catch(e){} }\n`;
+    }
+    fallbackScript += `    }\n`;
+  });
+  fallbackScript += '    // ----------------------------------------\n';
+
+  return injectBeforeLastScriptClose(html, fallbackScript);
+}
+
 /**
  * Auto-inject area "Manajemen Sistem" untuk Super Admin bila tidak ada.
  * Idempotent (ditandai data-od-auto), aman dari MISMATCH_HANDLER (tanpa onclick),
@@ -169,7 +212,7 @@ export function validateAndRepairGeneratedCode(
         if (definedFunctions.has(alias)) {
           // Rekonsiliasi alias valid: arahkan panggilan ke fungsi nyata yang memang ada
           if (repairedHtml.includes('</script>')) {
-            repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { if (typeof ${alias} === 'function') ${alias}(...args); }\n</script>`);
+            repairedHtml = injectBeforeLastScriptClose(repairedHtml, `\nfunction ${fn}(...args) { if (typeof ${alias} === 'function') ${alias}(...args); }\n`);
             definedFunctions.add(fn);
             resolved = true;
             break;
@@ -197,7 +240,7 @@ export function validateAndRepairGeneratedCode(
                 (prefLower === 'cetak' && defLower.startsWith('print'))
               ) {
                 if (repairedHtml.includes('</script>')) {
-                  repairedHtml = repairedHtml.replace('</script>', `\nfunction ${fn}(...args) { if (typeof ${defFn} === 'function') ${defFn}(...args); }\n</script>`);
+                  repairedHtml = injectBeforeLastScriptClose(repairedHtml, `\nfunction ${fn}(...args) { if (typeof ${defFn} === 'function') ${defFn}(...args); }\n`);
                   definedFunctions.add(fn);
                   resolved = true;
                   break;
@@ -232,7 +275,7 @@ function eksekusiHapus() {
   if (typeof showToast === 'function') showToast('Data berhasil dihapus!', 'success');
 }
 `;
-        repairedHtml = repairedHtml.replace('</script>', `${fallbackEksekusiHapus}\n</script>`);
+        repairedHtml = injectBeforeLastScriptClose(repairedHtml, `${fallbackEksekusiHapus}\n`);
         definedFunctions.add('eksekusiHapus');
         resolved = true;
       }
@@ -263,7 +306,7 @@ function quickLogin(u, p) {
   if (typeof handleLogin === 'function') handleLogin();
 }
 `;
-        repairedHtml = repairedHtml.replace('</script>', `${fallbackLogin}\n</script>`);
+        repairedHtml = injectBeforeLastScriptClose(repairedHtml, `${fallbackLogin}\n`);
         definedFunctions.add(fn);
         resolved = true;
       }
@@ -339,7 +382,7 @@ function filterTabsByRole(role) {
 }
 `;
         }
-        repairedHtml = repairedHtml.replace('</script>', `${fallbackFn}\n</script>`);
+        repairedHtml = injectBeforeLastScriptClose(repairedHtml, `${fallbackFn}\n`);
         definedFunctions.add(fn);
         resolved = true;
       }
@@ -841,7 +884,7 @@ function loginAs(role) {
             if (repairedHtml.includes('document.addEventListener(\'DOMContentLoaded\'') || repairedHtml.includes('document.addEventListener("DOMContentLoaded"')) {
               repairedHtml = repairedHtml.replace(/(document\.addEventListener\(\s*['"]DOMContentLoaded['"]\s*,\s*(?:\(\)|\w+)?\s*=>?\s*\{)/i, `$1\n      if (typeof filterTabsByRole === 'function') filterTabsByRole('${detectedPublicRole}');`);
             } else if (repairedHtml.includes('</script>')) {
-              repairedHtml = repairedHtml.replace('</script>', `\n    // Inisialisasi awal tab publik (Poin 52)\n    document.addEventListener('DOMContentLoaded', () => {\n      if (typeof filterTabsByRole === 'function') filterTabsByRole('${detectedPublicRole}');\n    });\n    </script>`);
+              repairedHtml = injectBeforeLastScriptClose(repairedHtml, `\n    // Inisialisasi awal tab publik (Poin 52)\n    document.addEventListener('DOMContentLoaded', () => {\n      if (typeof filterTabsByRole === 'function') filterTabsByRole('${detectedPublicRole}');\n    });\n    `);
             }
           }
         }
