@@ -472,33 +472,20 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       const activeSettings = loadModelSettings();
 
-      // Validasi: Jika user memilih OpenRouter atau OpenAI tetapi API Key belum terpasang
-      if ((activeSettings.provider === 'openrouter' || activeSettings.provider === 'openai') && !activeSettings.token) {
-        const providerName = activeSettings.provider === 'openrouter' ? 'OpenRouter' : 'OpenAI';
-        const modelLabel = getModelLabel(activeSettings.model, activeSettings.provider);
-        const warningMsg: ChatMessage = {
-          id: 'msg-' + (Date.now() + 1),
-          sender: 'AI',
-          text: `⚠️ **API Key ${providerName} Belum Terpasang:**\n\nAnda memilih model **${modelLabel}**, namun API Key ${providerName} belum tersimpan di browser.\n\n👉 Silakan pasang API Key Anda di modal pengaturan atau menu bawah, atau beralih ke **Server Default (Gemini)** jika ingin generate gratis tanpa API key pribadi.`,
-          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-        };
-        const finalMessages = [...updatedMessages, warningMsg];
-        setMessages(finalMessages);
-        setShowSettingsModal(true);
-        setIsGenerating(false);
-        return;
-      }
+      // Tanpa API key pribadi, pakai Server Default (Gemini gratis di server)
+      // agar generation tetap berjalan.
+      const useServerDefault = !activeSettings.token;
 
       const payload: Record<string, unknown> = {
         prompt: query,
         chatHistory: updatedMessages,
         stage: currentStage,
         currentCode: projectState.canvasCode.html,
-        mode: activeMode,
-        userProvider: activeSettings.provider,
-        userModel: activeSettings.model
+        mode: activeMode
       };
-      if (activeSettings.token) {
+      if (!useServerDefault) {
+        payload.userProvider = activeSettings.provider;
+        payload.userModel = activeSettings.model;
         payload.userApiKey = activeSettings.token;
       }
 
