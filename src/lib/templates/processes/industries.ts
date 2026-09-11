@@ -235,5 +235,226 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
     ],
     version: '1.0',
     lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-06 — Manufaktur / Produksi
+  // ===========================================================================
+  {
+    id: 'IND-06',
+    nama: 'Manufaktur / Produksi',
+    keywords: ['manufaktur', 'produksi', 'pabrik', 'perakitan', 'konveksi', 'garmen', 'bill of materials', 'bom', 'work order', 'qc produksi'],
+    patternIds: ['UP-07', 'UP-03', 'UP-09'],
+    extraEntities: [
+      { name: 'Bill of Material (BOM)', fields: ['id', 'produk_id', 'material', 'qty', 'satuan'] },
+      { name: 'Work Center/Mesin', fields: ['id', 'nama', 'kapasitas', 'status'] },
+      { name: 'Batch Produksi', fields: ['id', 'work_order_id', 'batch', 'qty_hasil', 'status'] },
+      { name: 'QC Inspection', fields: ['id', 'batch_id', 'parameter', 'hasil', 'catatan'] }
+    ],
+    notes: [
+      'Perencanaan kapasitas mesin',
+      'Traceability batch bahan baku ke produk jadi',
+      'Pencatatan downtime mesin'
+    ],
+    painPoints: [
+      { id: 'IND-06-P1', label: 'Kapasitas mesin tidak terencana', severity: 'core' },
+      { id: 'IND-06-P2', label: 'Batch produksi tidak terlacak', severity: 'core' },
+      { id: 'IND-06-P3', label: 'Hasil QC tidak terdokumentasi', severity: 'core' },
+      { id: 'IND-06-P4', label: 'Downtime mesin tidak tercatat', severity: 'advisory' }
+    ],
+    roleLabels: ['Admin Produksi', 'PPIC', 'Operator', 'QC', 'Gudang', 'Manajer Pabrik'],
+    extraFeatures: [
+      { id: 'IND-06-F01', label: 'Work order produksi', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-06-F02', label: 'BOM & kebutuhan material', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-06-F03', label: 'Batch & traceability', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-06-F04', label: 'QC inspection', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-06-F05', label: 'Stok barang jadi', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-06-F06', label: 'Kapasitas & jadwal mesin', severity: 'advisory', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-06-F07', label: 'Pencatatan downtime mesin', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Work order', 'BOM & pengurangan material', 'Batch/traceability', 'QC inspection'],
+    advisoryItems: ['Kapasitas mesin', 'Downtime', 'Maintenance mesin'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.6 Manufaktur / Produksi' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-07 — Logistik & Ekspedisi
+  // ===========================================================================
+  {
+    id: 'IND-07',
+    nama: 'Logistik & Ekspedisi',
+    keywords: ['logistik', 'ekspedisi', 'kurir', 'pengiriman', 'resi', 'tracking paket', 'armada', 'driver', 'delivery order', 'cod'],
+    patternIds: ['UP-02', 'UP-09'],
+    extraEntities: [
+      { name: 'Shipment/Resi', fields: ['id', 'order_id', 'nomor_resi', 'asal', 'tujuan', 'status'] },
+      { name: 'Rute', fields: ['id', 'asal', 'tujuan', 'estimasi', 'jarak'] },
+      { name: 'Driver/Kurir', fields: ['id', 'nama', 'kendaraan', 'status'] },
+      { name: 'Proof of Delivery', fields: ['id', 'shipment_id', 'penerima', 'foto', 'waktu'] }
+    ],
+    notes: [
+      'Tracking posisi kiriman',
+      'Optimasi rute pengiriman',
+      'COD reconciliation',
+      'SLA pengiriman'
+    ],
+    painPoints: [
+      { id: 'IND-07-P1', label: 'Posisi kiriman tidak diketahui', severity: 'core' },
+      { id: 'IND-07-P2', label: 'COD tidak balance', severity: 'core' },
+      { id: 'IND-07-P3', label: 'Bukti terima sering hilang', severity: 'core' },
+      { id: 'IND-07-P4', label: 'Rute tidak optimal', severity: 'advisory' }
+    ],
+    roleLabels: ['Admin Logistik', 'Dispatcher', 'Kurir/Driver', 'Gudang', 'Pelanggan'],
+    extraFeatures: [
+      { id: 'IND-07-F01', label: 'Input order kirim & resi', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-07-F02', label: 'Assign kurir', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-07-F03', label: 'Tracking status/resi', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-07-F04', label: 'Proof of delivery', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-07-F05', label: 'COD reconciliation', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-07-F06', label: 'Optimasi rute', severity: 'advisory', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-07-F07', label: 'Monitoring SLA pengiriman', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Order kirim & resi', 'Assign kurir', 'Tracking status', 'Proof of delivery', 'COD reconciliation'],
+    advisoryItems: ['Optimasi rute', 'Monitoring SLA', 'Live tracking maps'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.7 Logistik & Ekspedisi' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-08 — Properti & Real Estate
+  // ===========================================================================
+  {
+    id: 'IND-08',
+    nama: 'Properti & Real Estate',
+    keywords: ['properti', 'real estate', 'sewa apartemen', 'sewa ruko', 'jual beli rumah', 'agent properti', 'kontrak sewa', 'estate management'],
+    patternIds: ['UP-01', 'UP-06', 'UP-10'],
+    extraEntities: [
+      { name: 'Unit/Properti', fields: ['id', 'nama', 'tipe', 'harga', 'status'] },
+      { name: 'Kontrak Sewa/Jual', fields: ['id', 'unit_id', 'penyewa_pembeli', 'mulai', 'selesai', 'nilai'] },
+      { name: 'Cicilan/Angsuran', fields: ['id', 'kontrak_id', 'periode', 'jumlah', 'status'] },
+      { name: 'Maintenance Request Unit', fields: ['id', 'unit_id', 'keluhan', 'status', 'teknisi'] }
+    ],
+    notes: [
+      'Tracking status unit (available/booked/sold)',
+      'Jadwal cicilan jangka panjang',
+      'Komplain penyewa'
+    ],
+    painPoints: [
+      { id: 'IND-08-P1', label: 'Status unit tidak up-to-date', severity: 'core' },
+      { id: 'IND-08-P2', label: 'Cicilan/angsuran terlewat', severity: 'core' },
+      { id: 'IND-08-P3', label: 'Komplain penyewa tidak tercatat', severity: 'core' },
+      { id: 'IND-08-P4', label: 'Lead survey tidak terkelola', severity: 'advisory' }
+    ],
+    roleLabels: ['Admin Properti', 'Agent', 'Finance', 'Teknisi Maintenance', 'Penyewa/Pembeli'],
+    extraFeatures: [
+      { id: 'IND-08-F01', label: 'Data unit & status', severity: 'core', complexity: 'LOW' },
+      { id: 'IND-08-F02', label: 'Lead & jadwal survey', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-08-F03', label: 'Kontrak sewa/jual', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-08-F04', label: 'Jadwal cicilan/sewa', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-08-F05', label: 'Maintenance request', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-08-F06', label: 'Reminder jatuh tempo', severity: 'advisory', complexity: 'LOW' },
+      { id: 'IND-08-F07', label: 'Laporan okupansi', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Data unit & status', 'Kontrak', 'Jadwal cicilan/sewa', 'Maintenance request'],
+    advisoryItems: ['Reminder jatuh tempo', 'Laporan okupansi', 'Virtual tour'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.8 Properti & Real Estate' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-09 — Perhotelan & Pariwisata
+  // ===========================================================================
+  {
+    id: 'IND-09',
+    nama: 'Perhotelan & Pariwisata',
+    keywords: ['hotel', 'penginapan', 'homestay', 'villa', 'resort', 'guest house', 'booking kamar', 'reservasi kamar', 'pariwisata', 'paket wisata'],
+    patternIds: ['UP-06', 'UP-02'],
+    extraEntities: [
+      { name: 'Room/Kamar', fields: ['id', 'nomor', 'tipe', 'harga', 'status'] },
+      { name: 'Rate Plan', fields: ['id', 'tipe_kamar', 'musim', 'harga', 'min_stay'] },
+      { name: 'Itinerary Paket Wisata', fields: ['id', 'paket', 'hari', 'kegiatan', 'harga'] },
+      { name: 'Guest Folio', fields: ['id', 'tamu_id', 'kamar', 'item_tagihan', 'total'] }
+    ],
+    notes: [
+      'Dynamic pricing per musim',
+      'Overbooking management',
+      'Folio tagihan gabungan (kamar + F&B + tambahan)'
+    ],
+    painPoints: [
+      { id: 'IND-09-P1', label: 'Double booking kamar', severity: 'core' },
+      { id: 'IND-09-P2', label: 'Tagihan tamu tercampur', severity: 'core' },
+      { id: 'IND-09-P3', label: 'Housekeeping tidak sinkron', severity: 'core' },
+      { id: 'IND-09-P4', label: 'Harga kamar tidak fleksibel per musim', severity: 'advisory' }
+    ],
+    roleLabels: ['Resepsionis', 'Housekeeping', 'F&B', 'Manajer Hotel', 'Tamu'],
+    extraFeatures: [
+      { id: 'IND-09-F01', label: 'Kalender ketersediaan kamar', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-09-F02', label: 'Booking & check-in/out', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-09-F03', label: 'Guest folio', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-09-F04', label: 'Rate plan / dynamic pricing', severity: 'advisory', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-09-F05', label: 'Housekeeping status', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-09-F06', label: 'Layanan tambahan (F&B, laundry)', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-09-F07', label: 'Paket wisata/itinerary', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['Ketersediaan kamar', 'Booking & check-in/out', 'Guest folio'],
+    advisoryItems: ['Dynamic pricing', 'Housekeeping', 'Paket wisata'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.9 Perhotelan & Pariwisata' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
+  },
+
+  // ===========================================================================
+  // IND-10 — Konstruksi
+  // ===========================================================================
+  {
+    id: 'IND-10',
+    nama: 'Konstruksi',
+    keywords: ['konstruksi', 'kontraktor', 'pembangunan', 'proyek bangunan', 'rab', 'subkontraktor', 'opname pekerjaan', 'site report', 'alat berat'],
+    patternIds: ['UP-07', 'UP-03', 'UP-09'],
+    extraEntities: [
+      { name: 'RAB (Rencana Anggaran Biaya)', fields: ['id', 'proyek_id', 'item_pekerjaan', 'volume', 'harga_satuan'] },
+      { name: 'Progress Termin', fields: ['id', 'proyek_id', 'persentase', 'nilai', 'status'] },
+      { name: 'Subkontraktor', fields: ['id', 'nama', 'lingkup', 'nilai_kontrak'] },
+      { name: 'Site Report', fields: ['id', 'proyek_id', 'tanggal', 'progres', 'foto', 'lokasi'] }
+    ],
+    notes: [
+      'Laporan progres harian di lapangan (foto + lokasi)',
+      'Termin pembayaran bertahap',
+      'Tracking material di site'
+    ],
+    painPoints: [
+      { id: 'IND-10-P1', label: 'Progres lapangan tidak terdokumentasi', severity: 'core' },
+      { id: 'IND-10-P2', label: 'Termin telat ditagih', severity: 'core' },
+      { id: 'IND-10-P3', label: 'Material site hilang/tidak tercatat', severity: 'core' },
+      { id: 'IND-10-P4', label: 'Subkontraktor tidak terpantau', severity: 'advisory' }
+    ],
+    roleLabels: ['Project Manager', 'Site Engineer', 'Pengawas Lapangan', 'Logistik Material', 'Finance', 'Subkontraktor'],
+    extraFeatures: [
+      { id: 'IND-10-F01', label: 'RAB & item pekerjaan', severity: 'core', complexity: 'MEDIUM', countsForTier: true },
+      { id: 'IND-10-F02', label: 'Laporan harian + foto/lokasi', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-10-F03', label: 'Opname progres & termin', severity: 'core', complexity: 'HIGH', countsForTier: true },
+      { id: 'IND-10-F04', label: 'Material site', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-10-F05', label: 'Subkontraktor & kontrak', severity: 'core', complexity: 'MEDIUM' },
+      { id: 'IND-10-F06', label: 'Alat berat', severity: 'advisory', complexity: 'MEDIUM' },
+      { id: 'IND-10-F07', label: 'Kurva-S progres', severity: 'advisory', complexity: 'MEDIUM' }
+    ],
+    coreItems: ['RAB', 'Laporan harian lapangan', 'Opname & termin', 'Material site'],
+    advisoryItems: ['Alat berat', 'Kurva-S', 'K3/safety report'],
+    provenance: [
+      { source: DOC_SOURCE, note: 'Bagian 2.10 Konstruksi' }
+    ],
+    version: '1.0',
+    lastReviewed: REVIEW_DATE
   }
 ];

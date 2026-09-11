@@ -51,7 +51,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-07',
     patternIds: ['UP-07', 'UP-03', 'UP-09'],
-    overlayIds: [],
+    overlayIds: ['IND-06'],
     coreTransitions: ['rencana produksi', 'pengadaan material', 'work order', 'QC', 'stok barang jadi'],
     advisoryNotes: ['BOM & traceability batch']
   },
@@ -65,7 +65,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-09',
     patternIds: ['UP-06', 'UP-02'],
-    overlayIds: [],
+    overlayIds: ['IND-09'],
     coreTransitions: ['cek kamar', 'booking', 'check-in', 'layanan tambahan', 'check-out & folio'],
     advisoryNotes: ['Dynamic pricing per musim']
   },
@@ -93,14 +93,14 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-13',
     patternIds: ['UP-01', 'UP-06', 'UP-10'],
-    overlayIds: [],
+    overlayIds: ['IND-08'],
     coreTransitions: ['lead & survey unit', 'booking unit', 'kontrak sewa', 'cicilan/sewa berkala', 'maintenance request'],
     advisoryNotes: ['Status unit available/booked/sold']
   },
   {
     templateId: 'MT-14',
     patternIds: ['UP-02', 'UP-09'],
-    overlayIds: [],
+    overlayIds: ['IND-07'],
     coreTransitions: ['terima order kirim', 'assign kurir', 'tracking resi', 'proof of delivery', 'COD reconciliation'],
     advisoryNotes: ['Optimasi rute opsional']
   },
@@ -156,7 +156,7 @@ export const TEMPLATE_PROCESS_MAP: TemplateProcessMap[] = [
   {
     templateId: 'MT-22',
     patternIds: ['UP-07', 'UP-03', 'UP-09'],
-    overlayIds: [],
+    overlayIds: ['IND-10'],
     coreTransitions: ['RAB & rencana', 'pengadaan material', 'laporan harian', 'opname progres', 'termin pembayaran'],
     advisoryNotes: ['Subkontraktor & site report foto/lokasi']
   },
