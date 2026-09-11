@@ -455,7 +455,8 @@ function filterTabsByRole(role) {
     // Poin 55: Pastikan setiap peran resmi memiliki setidaknya 1 tab navigasi khusus
     if (isMultiRoleApp && tabBtnMatches.length > 0) {
       const tabAccessRoles = [...repairedHtml.matchAll(/data-access-roles\s*=\s*['"]([^'"]+)['"]/gi)]
-        .flatMap(m => m[1].split(',').map(r => r.trim().toLowerCase()));
+        .flatMap(m => m[1].split(',').map(r => r.trim().toLowerCase()))
+        .filter((r) => r && !/\$\{|%\{|\{\{|<%|<%=|\bcurrentRole\b/i.test(r));
 
       const missingRoleTabs = expectedRoles!.filter(role => {
         const roleLower = role.trim().toLowerCase();
@@ -469,24 +470,45 @@ function filterTabsByRole(role) {
         );
       }
 
-      // Auto-repair cerdas: Ubah label tab peran mentah (misal: "⚙️ Super Admin" -> "⚙️ Kelola Sistem", "💳 Anggota" -> "🪪 Kartu Anggota Digital")
+      // Auto-repair cerdas: Ubah label tab peran mentah (misal: "⚙️ Super Admin" -> "⚙️ Kelola Sistem",
+      // "💳 Anggota" -> "🪪 Kartu Anggota Digital", "📈 Menu Manajer" -> "📈 Monitoring & Persetujuan")
+      const functionalTabLabel = (role: string): { emoji: string; label: string } => {
+        const r = role.trim().toLowerCase();
+        if (/super\s*admin|admin$|^admin|pengelola/.test(r)) return { emoji: '⚙️', label: 'Kelola Sistem' };
+        if (/anggota|member|user|pelanggan|penyewa|pasien|siswa|customer|buyer|nasabah|donatur|penerima|warga|tamu/.test(r)) {
+          return { emoji: '🪪', label: 'Pesanan & Kartu Saya' };
+        }
+        if (/kasir|cashier/.test(r)) return { emoji: '🛒', label: 'Transaksi Penjualan' };
+        if (/dokter|doctor/.test(r)) return { emoji: '🩺', label: 'Pemeriksaan Pasien' };
+        if (/perawat|nurse|bidan|apoteker|farmasi/.test(r)) return { emoji: '💊', label: 'Asuhan & Obat' };
+        if (/resepsionis|front\s*office|receptionist|loket/.test(r)) return { emoji: '📋', label: 'Pendaftaran & Antrian' };
+        if (/manajer|manager|supervisor|pengawas|kepala/.test(r)) return { emoji: '📈', label: 'Monitoring & Persetujuan' };
+        if (/pemilik|owner|direktur|director|pengurus/.test(r)) return { emoji: '📊', label: 'Laporan & Bisnis' };
+        if (/gudang|warehouse|spare\s*part|stok|inventory/.test(r)) return { emoji: '📦', label: 'Stok & Gudang' };
+        if (/dapur|kitchen|koki|barista/.test(r)) return { emoji: '🍳', label: 'Antrian Dapur' };
+        if (/pelayan|waiter|pramusaji/.test(r)) return { emoji: '🍽️', label: 'Pesanan Meja' };
+        if (/finance|keuangan|akuntan|accountant|bendahara/.test(r)) return { emoji: '💰', label: 'Keuangan' };
+        if (/purchasing|procurement|pengadaan/.test(r)) return { emoji: '🧾', label: 'Pengadaan' };
+        if (/petugas\s*sewa|rental/.test(r)) return { emoji: '🔑', label: 'Sewa & Pengembalian' };
+        if (/kurir|driver|sopir|logistik/.test(r)) return { emoji: '🚚', label: 'Pengiriman' };
+        if (/terapis|trainer|instruktur|guru|pengajar|tutor/.test(r)) return { emoji: '🎓', label: 'Jadwal & Sesi' };
+        if (/mekanik|montir|teknisi|operator|maintenance/.test(r)) return { emoji: '🔧', label: 'Pengerjaan & Servis' };
+        if (/agen|sales|marketing|fundraiser/.test(r)) return { emoji: '🤝', label: 'Prospek & Penjualan' };
+        return { emoji: '📌', label: `Kelola ${role.trim()}` };
+      };
+
       for (const role of expectedRoles!) {
-        const rLower = role.trim().toLowerCase();
-        // Regex cari button tab dengan inner text nama peran (bisa diawali emoji)
-        const roleBtnRegex = new RegExp(`(<button[^>]*class=['"][^'"]*tab-btn[^'"]*['"][^>]*>)\\s*([\\p{Emoji}\\p{Extended_Pictographic}\\s]*)${role.trim()}\\s*(<\\/button>)`, 'gui');
-        repairedHtml = repairedHtml.replace(roleBtnRegex, (match, openTag, emoji, closeTag) => {
-          const cleanEmoji = emoji ? emoji.trim() + ' ' : '';
-          if (rLower === 'admin' || rLower === 'superadmin' || rLower === 'pengelola') {
-            return `${openTag}${cleanEmoji || '⚙️ '}Kelola Sistem${closeTag}`;
-          } else if (rLower === 'anggota' || rLower === 'member' || rLower === 'user') {
-            return `${openTag}${cleanEmoji || '🪪 '}Kartu Anggota Digital${closeTag}`;
-          } else if (rLower === 'kasir') {
-            return `${openTag}${cleanEmoji || '🛒 '}Transaksi Penjualan${closeTag}`;
-          } else if (rLower === 'dokter') {
-            return `${openTag}${cleanEmoji || '🩺 '}Pemeriksaan Pasien${closeTag}`;
-          } else {
-            return `${openTag}${cleanEmoji}Menu ${role}${closeTag}`;
-          }
+        const { emoji: defaultEmoji, label: functionalLabel } = functionalTabLabel(role);
+        // Cari button tab yang isinya nama peran (dengan/tanpa emoji, dengan/tanpa kata "Menu/Tab/Halaman")
+        const escapedRole = role.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const roleBtnRegex = new RegExp(
+          `(<button[^>]*class=['"][^'"]*tab-btn[^'"]*['"][^>]*>)\\s*([\\p{Emoji}\\p{Extended_Pictographic}\\u200d\\ufe0f\\s]*)(?:(?:Menu|Tab|Halaman)\\s+)?${escapedRole}\\s*(<\\/button>)`,
+          'giu'
+        );
+        repairedHtml = repairedHtml.replace(roleBtnRegex, (match, openTag, prefix, closeTag) => {
+          const emojiMatch = String(prefix || '').match(/[\p{Emoji}\p{Extended_Pictographic}]/u);
+          const cleanEmoji = emojiMatch ? emojiMatch[0] + ' ' : `${defaultEmoji} `;
+          return `${openTag}${cleanEmoji}${functionalLabel}${closeTag}`;
         });
       }
 
@@ -619,12 +641,22 @@ function filterTabsByRole(role) {
       const normalizedExpected = expectedRoles.map(r => r.trim().toLowerCase());
       const hasRequiredSuperAdmin = expectedRoles.some(isSuperAdminRole);
       
-      // Ambil semua role yang didefinisikan di JS (DEMO_ACCOUNTS, loginAs, dll) & HTML
-      const loginAsCalls = [...repairedHtml.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1].trim());
-      const jsLoginAsCalls = [...combinedJs.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1].trim());
-      const demoAccountRoles = [...combinedJs.matchAll(/role\s*:\s*['"]([^'"]+)['"]/gi)].map(m => m[1].trim());
-      const tabAccessRoles = [...repairedHtml.matchAll(/data-access-roles\s*=\s*['"]([^'"]+)['"]/gi)]
-        .flatMap(m => m[1].split(',').map(r => r.trim()));
+      // Ambil semua role yang didefinisikan di JS (DEMO_ACCOUNTS, loginAs, dll) & HTML.
+      // Abaikan nilai dinamis/template literal (mis. `${currentRole}`) agar tidak
+      // dianggap peran asing.
+      const isPlaceholderRole = (role: string) =>
+        !role ||
+        /\$\{|%\{|\{\{|<%|<%=|\bcurrentRole\b|\broleName\b|\broleId\b/i.test(role);
+      const cleanRoles = (items: string[]) =>
+        items.map((r) => r.trim()).filter((r) => r && !isPlaceholderRole(r));
+
+      const loginAsCalls = cleanRoles([...repairedHtml.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1]));
+      const jsLoginAsCalls = cleanRoles([...combinedJs.matchAll(/loginAs\(\s*['"]([^'"]+)['"]\s*\)/g)].map(m => m[1]));
+      const demoAccountRoles = cleanRoles([...combinedJs.matchAll(/role\s*:\s*['"]([^'"]+)['"]/gi)].map(m => m[1]));
+      const tabAccessRoles = cleanRoles(
+        [...repairedHtml.matchAll(/data-access-roles\s*=\s*['"]([^'"]+)['"]/gi)]
+          .flatMap(m => m[1].split(',').map(r => r.trim()))
+      );
 
       const allFoundRoles = [...new Set([...loginAsCalls, ...jsLoginAsCalls, ...demoAccountRoles, ...tabAccessRoles])];
 
@@ -642,10 +674,13 @@ function filterTabsByRole(role) {
 
         for (const match of managementButtons) {
           const access = match[1].match(/data-access-roles\s*=\s*["']([^"']+)["']/i)?.[1] || '';
+          // Tombol tanpa data-access-roles diasumsikan berada di dalam tab yang
+          // sudah digate Super Admin; hanya periksa yang punya atribut eksplisit.
+          if (!access) continue;
           const accessRoles = access.split(',').map((role) => role.trim()).filter(Boolean);
           if (!accessRoles.some(isSuperAdminRole) || accessRoles.some((role) => !isSuperAdminRole(role))) {
             issues.push(
-              `STAFF_ACCOUNT_ACCESS_LEAK: Tombol manajemen akun staf/permission hanya boleh memiliki data-access-roles="Super Admin" (saat ini: "${access || 'tidak ada'}").`
+              `STAFF_ACCOUNT_ACCESS_LEAK: Tombol manajemen akun staf/permission hanya boleh memiliki data-access-roles="Super Admin" (saat ini: "${access}").`
             );
           }
         }

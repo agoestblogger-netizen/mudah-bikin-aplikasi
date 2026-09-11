@@ -266,14 +266,20 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
 
   if (lastBriefMsg) {
     rawBrief = standardizeBriefRoleNames(rawBrief);
-    // Cari section Job Description & Struktur Halaman
-    const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan|$))/i);
+    // Cari section Job Description & Struktur Halaman.
+    // Catatan: lookahead memakai [ \t]* (bukan \s*) agar tidak menelan baris baru
+    // dan mengosongkan isi section.
+    const jobDescMatch = lastBriefMsg.match(/(?:Job Description|Struktur Halaman)[^\n]*\n([\s\S]*?)(?=\n[ \t]*(?:Apakah|Fitur Utama|Roadmap|Fitur Unik|Catatan(?: Tambahan)?|Saran)|\n[ \t]*-[ \t]*\*\*Catatan|$)/i);
     const jobDescText = jobDescMatch ? jobDescMatch[1] : lastBriefMsg;
     
     // Cari baris-baris peran: * **RoleName**: atau - **RoleName**: atau 1. **RoleName**:
     const roleLineRegex = /(?:\*|-|\d+\.)\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
     let m: RegExpExecArray | null;
     const forbiddenKeywords = [
+      'nama app', 'nama aplikasi', 'orientasi ui', 'tema visual', 'tier aplikasi',
+      'pola proses bisnis', 'kekhasan industri', 'entitas data', 'state utama',
+      'transisi inti', 'aturan bisnis', 'edge case', 'komponen wajib', 'saran',
+      'fitur menyusul', 'catatan tambahan',
       'nama peran', 'nama role', 'role 1', 'role 2', 'role 3', 'peran 1', 'peran 2', 'peran 3',
       'alur proses', 'alur', 'job description', 'struktur halaman', 'fitur utama', 'roadmap', 'catatan', 'fitur unik', 'halaman utama'
     ];
@@ -289,7 +295,7 @@ function extractBriefAndRolesFromHistory(chatHistory: any[]): {
 
     // Fallback: Jika belum ada role yang ditemukan dari Job Description, cari di bagian Target Pengguna / Peran
     if (roles.length === 0) {
-      const targetRoleMatch = lastBriefMsg.match(/(?:Target Pengguna|Peran Pengguna|Daftar Peran)[^\n]*\n([\s\S]*?)(?=\n\s*(?:Apakah|Fitur Utama|Roadmap|Job Description|$))/i);
+      const targetRoleMatch = lastBriefMsg.match(/(?:Target Pengguna|Peran Pengguna|Daftar Peran)[^\n]*\n([\s\S]*?)(?=\n[ \t]*(?:Apakah|Fitur Utama|Roadmap|Job Description)|\n[ \t]*-[ \t]*\*\*Catatan|$)/i);
       const targetText = targetRoleMatch ? targetRoleMatch[1] : lastBriefMsg;
       const genericRoleRegex = /(?:\*|-|\d+\.)\s+\*\*\[?([^\]:\*\n]+)\]?\*\*\s*:/g;
       while ((m = genericRoleRegex.exec(targetText)) !== null) {
