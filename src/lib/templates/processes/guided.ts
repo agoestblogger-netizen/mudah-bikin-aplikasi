@@ -769,6 +769,403 @@ function deduplicateFlowSteps(steps: FlowStepItem[]): FlowStepItem[] {
 }
 
 /**
+ * Menghasilkan Alur Pendukung yang kontekstual dan relevan sesuai karakteristik nyata tiap domain bisnis (POIN REVISI 5).
+ */
+function generateDomainSupportingFlows(
+  session: MockupSessionState,
+  activeCore: string,
+  activeOwner: string,
+  findActor: (pattern: RegExp, defaultName: string) => string
+): SupportingFlowItem[] {
+  const category = (session.match?.businessCategory || '').toLowerCase();
+  const narrative = (session.storyline?.narasi || '').toLowerCase();
+  const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
+  const problem = (session.storyline?.asumsiMasalah || '').toLowerCase();
+  const fullContext = `${category} ${narrative} ${mainFlow} ${problem}`;
+
+  const customerActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|tamu|member/i, 'Pelanggan');
+
+  // 1. DOMAIN: RENTAL & SEWA KENDARAAN (MOBIL / MOTOR / ARMADA)
+  if (
+    /rental|sewa.*(mobil|motor|kendaraan|armada)|lepas\s*kunci|persewaan.*kendaraan/i.test(fullContext)
+  ) {
+    const sopirActor = findActor(/sopir|driver/i, activeCore);
+    return [
+      {
+        id: 'alur_denda_armada',
+        nama: 'Penanganan Keterlambatan, Denda & Klaim Kerusakan Armada',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Mengonfirmasi permohonan perpanjangan waktu sewa atau melaporkan kendala pada unit armada'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Memeriksa durasi overtime atau kondisi fisik bodi kendaraan dan menghitung biaya denda/klaim'
+          }
+        ]
+      },
+      {
+        id: 'alur_jadwal_armada',
+        nama: 'Koordinasi Penjadwalan Armada & Penugasan Sopir',
+        steps: [
+          {
+            pelaku: activeOwner,
+            aksi: 'Mengatur alokasi jadwal ketersediaan unit armada dan penugasan sopir yang siap bertugas'
+          },
+          {
+            pelaku: sopirActor,
+            aksi: 'Memeriksa kelayakan teknis unit dan mengonfirmasi kesiapan penjemputan penyewa'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 2. DOMAIN: CUCI KENDARAAN (MOBIL / MOTOR / CARWASH)
+  if (/cuci.*(mobil|motor|kendaraan)|carwash|cucian.*mobil|poles.*mobil/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_garansi_cuci',
+        nama: 'Garansi Cuci Ulang & Penanganan Komplain Kebersihan',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Menunjukkan bagian bodi, kaca, atau velg yang masih kotor sebelum kendaraan keluar gerbang'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Melakukan pembersihan ulang pada area yang belum kinclong tanpa biaya tambahan'
+          }
+        ]
+      },
+      {
+        id: 'alur_restock_cuci',
+        nama: 'Restock Sabun Salju, Shampo & Perlengkapan Cuci',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mendata persediaan sabun salju, semir ban, shampo, dan kain chamois yang stoknya menipis'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Memproses pembelian persediaan bahan pembersih dan perlengkapan cuci baru'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 3. DOMAIN: KLINIK DOKTER GIGI / MEDIS / KESEHATAN
+  if (/gigi|dental|klinik.*(dokter|medis|gigi)|praktek\s*dokter|rekam\s*medis/i.test(fullContext)) {
+    const resepsionisActor = findActor(/resepsionis|kasir|admin/i, activeCore);
+    return [
+      {
+        id: 'alur_kontrol_pasien',
+        nama: 'Penjadwalan Kunjungan Kontrol Ulang Pasien',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Menentukan anjuran tanggal kunjungan kontrol lanjutan pasca tindakan perawatan gigi'
+          },
+          {
+            pelaku: resepsionisActor,
+            aksi: 'Mencatat jadwal kontrol ke sistem dan mengirimkan konfirmasi janji temu ke pasien'
+          }
+        ]
+      },
+      {
+        id: 'alur_sterilisasi_bahan',
+        nama: 'Sterilisasi Alat Medis & Restock Bahan Gigi',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mendata obat-obatan, jarum suntik, dan bahan tambal gigi yang persediaannya menipis'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Memesan persediaan bahan habis pakai medis ke distributor farmasi resmi'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 4. DOMAIN: KAFE & KEDAI KOPI / RESTORAN / F&B
+  if (/kafe|cafe|kopi|coffee|barista|resto|restoran|kuliner|bakery|kedai/i.test(fullContext)) {
+    const kasirActor = findActor(/kasir|depan/i, activeCore);
+    return [
+      {
+        id: 'alur_restock_kopi',
+        nama: 'Restock Biji Kopi, Susu & Bahan Baku Barista',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Memeriksa stok biji kopi espresso, sirup perisa, dan susu segar yang mencapai batas minimum'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Melakukan pemesanan restock ke suplier biji kopi dan menyetujui anggaran belanja'
+          }
+        ]
+      },
+      {
+        id: 'alur_batal_menu',
+        nama: 'Perubahan Pesanan Menu & Penanganan Pembatalan',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Meminta penyesuaian pesanan atau varian rasa sebelum minuman selesai diracik'
+          },
+          {
+            pelaku: kasirActor,
+            aksi: 'Memperbarui tiket pesanan dapur/barista dan menyesuaikan nominal tagihan kasir'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 5. DOMAIN: LAUNDRY KILOAN & SATUAN
+  if (/laundry|kiloan|binatu|setrika\s*uap/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_komplain_laundry',
+        nama: 'Penanganan Pakaian Tertukar & Komplain Noda Membandel',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Melaporkan pakaian yang tertukar atau noda pakaian yang belum terangkat bersih'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Memeriksa nomor nota/tag label dan mencuci ulang pakaian dengan formula pembersih khusus'
+          }
+        ]
+      },
+      {
+        id: 'alur_restock_laundry',
+        nama: 'Restock Deterjen, Parfum Laundry & Plastik Packing',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mencatat persediaan deterjen konsentrat, pewangi pakaian, dan plastik kemasan yang menipis'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Melakukan pembelian persediaan bahan kimia laundry dan plastik packing'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 6. DOMAIN: BENGKEL / SERVIS KENDARAAN / REPARASI
+  if (/bengkel|servis|service|montir|mekanik|onderdil|sparepart/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_sparepart_bengkel',
+        nama: 'Pengadaan Sparepart & Estimasi Biaya Tambahan',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Memeriksa kerusakan komponen mesin dan mencatat kebutuhan sparepart pengganti'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Memeriksa ketersediaan suku cadang dan mengonfirmasi persetujuan biaya ke pemilik kendaraan'
+          }
+        ]
+      },
+      {
+        id: 'alur_garansi_servis',
+        nama: 'Garansi Servis & Penanganan Keluhan Pasca Perbaikan',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Membawa kembali kendaraan jika kendala mesin yang sama kambuh dalam masa garansi'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Melakukan pemeriksaan ulang pada komponen terkait tanpa memungut biaya jasa tambahan'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 7. DOMAIN: PROPERTI / KOS-KOSAN / KONTRAKAN
+  if (/kos|kost|kontrakan|sewa.*kamar|homestay|guest\s*house|properti/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_keluhan_kamar',
+        nama: 'Pelaporan Keluhan & Perbaikan Fasilitas Kamar',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Melaporkan kerusakan fasilitas kamar (AC, kran air, listrik) melalui sistem'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Melakukan pengecekan fisik unit kamar dan menyelesaikan perbaikan kendala'
+          }
+        ]
+      },
+      {
+        id: 'alur_checkout_kamar',
+        nama: 'Pemeriksaan Kondisi Kamar & Pengembalian Deposit (Check-out)',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Mengonfirmasi jadwal berakhirnya masa sewa dan rencana pengosongan unit'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Memeriksa kelayakan kondisi inventaris kamar dan memproses pengembalian deposit sewa'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 8. ADAPTIF UNIVERSAL (Domain Lainnya)
+  const domainLabel = session.match?.businessCategory || 'Layanan';
+  return [
+    {
+      id: 'alur_komplain_layanan',
+      nama: `Penanganan Komplain & Garansi Hasil ${domainLabel}`,
+      steps: [
+        {
+          pelaku: customerActor,
+          aksi: 'Menyampaikan catatan atau keluhan jika hasil layanan membutuhkan penyesuaian'
+        },
+        {
+          pelaku: activeCore,
+          aksi: 'Memeriksa kendala yang dilaporkan dan menindaklanjuti perbaikan hingga tuntas'
+        }
+      ]
+    },
+    {
+      id: 'alur_operasional_restock',
+      nama: `Koordinasi Operasional & Pengadaan Perlengkapan ${domainLabel}`,
+      steps: [
+        {
+          pelaku: activeCore,
+          aksi: 'Mencatat kebutuhan operasional atau perlengkapan kerja yang perlu pengadaan'
+        },
+        {
+          pelaku: activeOwner,
+          aksi: 'Memeriksa pengajuan operasional, menyetujui anggaran, dan memperbarui catatan inventaris'
+        }
+      ]
+    }
+  ];
+}
+
+/**
+ * Menghasilkan Fitur Pendukung yang relevan dan spesifik sesuai domain bisnis (POIN REVISI 5).
+ * Memuat minimal 2-3 fitur spesifik domain + fitur umum bernilai tinggi.
+ */
+function generateDomainSupportingFeatures(
+  session: MockupSessionState
+): SupportingFeatureItem[] {
+  const category = (session.match?.businessCategory || '').toLowerCase();
+  const narrative = (session.storyline?.narasi || '').toLowerCase();
+  const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
+  const problem = (session.storyline?.asumsiMasalah || '').toLowerCase();
+  const fullContext = `${category} ${narrative} ${mainFlow} ${problem}`;
+
+  // 1. DOMAIN: RENTAL & SEWA KENDARAAN (MOBIL / MOTOR / ARMADA)
+  if (
+    /rental|sewa.*(mobil|motor|kendaraan|armada)|lepas\s*kunci|persewaan.*kendaraan/i.test(fullContext)
+  ) {
+    return [
+      { id: 'feat_status_armada', label: 'Dasbor status armada real-time (Tersedia / Sedang Disewa / Servis)' },
+      { id: 'feat_km_kondisi', label: 'Pencatatan angka kilometer (KM) awal-akhir dan foto fisik bodi kendaraan' },
+      { id: 'feat_surat_sewa', label: 'Cetak kwitansi pembayaran & formulir tanda terima serah-terima kunci (PDF)' },
+      { id: 'feat_wa_jatuh_tempo', label: 'Notifikasi WhatsApp otomatis jadwal pengembalian unit armada' },
+      { id: 'feat_ekspor_sewa', label: 'Ekspor rekapitulasi omzet sewa dan utilisasi armada bulanan' }
+    ];
+  }
+
+  // 2. DOMAIN: CUCI KENDARAAN (MOBIL / MOTOR / CARWASH)
+  if (/cuci.*(mobil|motor|kendaraan)|carwash|cucian.*mobil|poles.*mobil/i.test(fullContext)) {
+    return [
+      { id: 'feat_antrean_cuci', label: 'Dasbor pemantauan antrean slot kendaraan yang sedang dicuci' },
+      { id: 'feat_plat_paket', label: 'Pencatatan nomor plat kendaraan dan riwayat paket cuci (Salju/Vakum/Poles)' },
+      { id: 'feat_struk_cuci', label: 'Cetak struk kasir pembayaran cuci dan nomor tiket antrean (PDF)' },
+      { id: 'feat_wa_cuci_selesai', label: 'Notifikasi WhatsApp otomatis saat kendaraan selesai dicuci dan siap diambil' },
+      { id: 'feat_ekspor_cuci', label: 'Ekspor rekapitulasi jumlah kendaraan dicuci dan laporan omzet per shift' }
+    ];
+  }
+
+  // 3. DOMAIN: KLINIK DOKTER GIGI / MEDIS / KESEHATAN
+  if (/gigi|dental|klinik.*(dokter|medis|gigi)|praktek\s*dokter|rekam\s*medis/i.test(fullContext)) {
+    return [
+      { id: 'feat_rekam_medis', label: 'Pencatatan rekam medis digital (riwayat keluhan, tindakan gigi, dan alergi obat)' },
+      { id: 'feat_kalender_janji', label: 'Kalender interaktif jadwal konsultasi dan antrean pasien per dokter' },
+      { id: 'feat_kwitansi_medis', label: 'Cetak kwitansi pembayaran resmi dan surat resep obat dokter (PDF)' },
+      { id: 'feat_wa_kontrol', label: 'Pengingat otomatis jadwal kontrol gigi via WhatsApp kepada pasien' },
+      { id: 'feat_ekspor_pasien', label: 'Ekspor laporan diagnosis terbanyak dan kunjungan pasien bulanan' }
+    ];
+  }
+
+  // 4. DOMAIN: KAFE & KEDAI KOPI / RESTORAN / F&B
+  if (/kafe|cafe|kopi|coffee|barista|resto|restoran|kuliner|bakery|kedai/i.test(fullContext)) {
+    return [
+      { id: 'feat_tiket_dapur', label: 'Cetak tiket pesanan otomatis untuk meja barista dan dapur (Kitchen Ticket)' },
+      { id: 'feat_status_meja', label: 'Manajemen nomor meja & status pesanan (Dine-in / Takeaway)' },
+      { id: 'feat_menu_terlaris', label: 'Dasbor laporan menu kopi dan hidangan terlaris (Best Seller) mingguan' },
+      { id: 'feat_shift_kasir', label: 'Rekapitulasi kas masuk harian per giliran shift kerja kasir' },
+      { id: 'feat_ekspor_fnb', label: 'Ekspor laporan penjualan harian dan biaya bahan baku ke Excel' }
+    ];
+  }
+
+  // 5. DOMAIN: LAUNDRY KILOAN & SATUAN
+  if (/laundry|kiloan|binatu|setrika\s*uap/i.test(fullContext)) {
+    return [
+      { id: 'feat_tag_label', label: 'Cetak nomor nota dan label tag barcode anti-air pada bungkusan pakaian' },
+      { id: 'feat_timbangan_kiloan', label: 'Pencatatan berat timbangan cucian (kg) dan kategori pemisahan pakaian' },
+      { id: 'feat_wa_cucian_siap', label: 'Notifikasi WhatsApp otomatis saat cucian bersih selesai disetrika dan siap diambil' },
+      { id: 'feat_status_cucian', label: 'Dasbor pemantauan status proses cucian (Antre / Cuci / Kering / Setrika / Siap Ambil)' },
+      { id: 'feat_ekspor_laundry', label: 'Ekspor rekapitulasi total kilogram dan omzet laundry bulanan' }
+    ];
+  }
+
+  // 6. DOMAIN: BENGKEL / SERVIS KENDARAAN / REPARASI
+  if (/bengkel|servis|service|montir|mekanik|onderdil|sparepart/i.test(fullContext)) {
+    return [
+      { id: 'feat_riwayat_servis', label: 'Riwayat servis berkala kendaraan berdasarkan nomor plat dan nomor mesin' },
+      { id: 'feat_stok_sparepart', label: 'Peringatan otomatis saat stok oli dan sparepart mencapai batas minimum' },
+      { id: 'feat_estimasi_invoice', label: 'Cetak lembar estimasi biaya perbaikan dan invoice resmi bengkel (PDF)' },
+      { id: 'feat_wa_servis_berkala', label: 'Pengingat otomatis via WhatsApp jadwal ganti oli dan servis berkala berikutnya' },
+      { id: 'feat_ekspor_servis', label: 'Ekspor laporan performa mekanik dan rekapitulasi omzet servis bulanan' }
+    ];
+  }
+
+  // 7. DOMAIN: PROPERTI / KOS-KOSAN / KONTRAKAN
+  if (/kos|kost|kontrakan|sewa.*kamar|homestay|guest\s*house|properti/i.test(fullContext)) {
+    return [
+      { id: 'feat_status_kamar', label: 'Dasbor status hunian kamar real-time (Terisi / Kosong / Pembersihan)' },
+      { id: 'feat_tagihan_sewa', label: 'Pencatatan jatuh tempo tagihan sewa bulanan dan riwayat deposit' },
+      { id: 'feat_kwitansi_sewa', label: 'Cetak kwitansi pembayaran sewa resmi dan surat perjanjian huni (PDF)' },
+      { id: 'feat_wa_tagihan', label: 'Notifikasi WhatsApp otomatis pengingat jatuh tempo pembayaran sewa' },
+      { id: 'feat_ekspor_sewa_unit', label: 'Ekspor laporan tingkat okupansi kamar dan pendapatan sewa tahunan' }
+    ];
+  }
+
+  // 8. ADAPTIF UNIVERSAL
+  const domainLabel = session.match?.businessCategory || 'Operasional';
+  return [
+    { id: 'feat_status_operasional', label: `Dasbor pemantauan status aktivitas operasional ${domainLabel} harian` },
+    { id: 'feat_filter_riwayat', label: 'Filter pencarian cepat data riwayat transaksi dan nomor identitas' },
+    { id: 'feat_cetak_bukti', label: 'Cetak bukti transaksi, invoice resmi, atau surat tanda terima (PDF)' },
+    { id: 'feat_notif_wa', label: 'Notifikasi pengingat otomatis ke WhatsApp terkait status layanan' },
+    { id: 'feat_ekspor_data', label: 'Ekspor rekapitulasi omzet dan laporan operasional ke format spreadsheet' }
+  ];
+}
+
+/**
  * Menghasilkan Alur Inti, Alur Pendukung, dan Fitur Pendukung yang MURNI DIGROUNDING
  * dari session storyline (narasi & alur utama) tanpa mengandalkan template statis per-kategori.
  */
@@ -893,6 +1290,14 @@ export function getDomainFlowDetails(session: MockupSessionState): DomainFlowDat
           }
         }
 
+        // 3c. Deteksi semantik aktivitas pembayaran/kasir jika peran kasir/resepsionis tersedia
+        if (!matchedRole && /\b(pembayaran|bayar|tagihan|kuitansi|kasir)\b/i.test(lowerPhase)) {
+          const cashierActor = knownActors.find((a) => /kasir|resepsionis|keuangan|loket/i.test(a));
+          if (cashierActor) {
+            matchedRole = cashierActor;
+          }
+        }
+
         if (matchedRole) {
           assignedActor = resolveActorForStep(matchedRole, session.roles);
         } else if (idx === 0) {
@@ -968,45 +1373,13 @@ export function getDomainFlowDetails(session: MockupSessionState): DomainFlowDat
     });
   }
 
-  // Alur Pendukung yang kontekstual dengan narasi domain
-  alurPendukung.push({
-    id: 'alur_komplain_layanan',
-    nama: 'Penanganan Komplain & Penyesuaian Layanan',
-    steps: [
-      {
-        pelaku: findActor(/pelanggan|penyewa|pasien|pembeli/i, 'Pelanggan'),
-        aksi: 'Menyampaikan catatan atau keluhan jika hasil layanan membutuhkan penyesuaian'
-      },
-      {
-        pelaku: activeCore,
-        aksi: 'Memeriksa kendala yang dilaporkan dan menindaklanjuti perbaikan hingga tuntas'
-      }
-    ]
-  });
+  // Alur Pendukung yang disusun secara kontekstual sesuai jenis bisnis nyata (POIN REVISI 5)
+  const dynamicAlurPendukung = generateDomainSupportingFlows(session, activeCore, activeOwner, findActor);
+  alurPendukung.push(...dynamicAlurPendukung);
 
-  alurPendukung.push({
-    id: 'alur_operasional_restock',
-    nama: 'Koordinasi Operasional & Pengadaan Kebutuhan',
-    steps: [
-      {
-        pelaku: activeCore,
-        aksi: 'Mencatat kebutuhan operasional atau perlengkapan kerja yang perlu pengadaan'
-      },
-      {
-        pelaku: activeOwner,
-        aksi: 'Memeriksa pengajuan, menyetujui anggaran, dan memperbarui catatan stok/inventaris'
-      }
-    ]
-  });
-
-  // Fitur Pendukung yang relevan secara umum ke seluruh domain bisnis
-  fiturPendukung.push(
-    { id: 'feat_rekap_harian', label: 'Dasbor ringkasan transaksi dan status aktivitas operasional harian' },
-    { id: 'feat_cetak_bukti', label: 'Cetak bukti transaksi, invoice resmi, atau surat tanda terima (PDF)' },
-    { id: 'feat_notif_wa', label: 'Notifikasi pengingat otomatis ke WhatsApp pelanggan terkait status layanan' },
-    { id: 'feat_filter_riwayat', label: 'Filter pencarian cepat data riwayat transaksi dan nomor identitas' },
-    { id: 'feat_ekspor_data', label: 'Ekspor rekapitulasi omzet dan laporan operasional ke format spreadsheet' }
-  );
+  // Fitur Pendukung yang disesuaikan spesifik dengan karakteristik domain (POIN REVISI 5)
+  const dynamicFiturPendukung = generateDomainSupportingFeatures(session);
+  fiturPendukung.push(...dynamicFiturPendukung);
 
   // Deduplikasi langkah jika ada aktivitas yang identik
   const deduplicatedSteps = deduplicateFlowSteps(
