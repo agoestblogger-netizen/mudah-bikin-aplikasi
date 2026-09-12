@@ -156,15 +156,13 @@ export interface GuidedStepPayload {
 }
 
 export type SessionStep =
-  | 'MATCH'
   | 'STORYTELLING'
   | 'ROLE'
   | 'ALUR'
   | 'RBAC'
   | 'SKEMA_DATA'
   | 'SIMULASI_DB'
-  | 'REVIEW_FINAL'
-  | 'DONE';
+  | 'REVIEW_FINAL';
 
 export interface MockupSessionState {
   step: SessionStep;
@@ -183,6 +181,7 @@ export interface MockupSessionState {
     asumsiAktor: string[];
     asumsiAlurUtama: string;
     statusKonfirmasi: 'disetujui' | 'dikoreksi';
+    revisiCount?: number;
   };
   roles: {
     selected: string[];

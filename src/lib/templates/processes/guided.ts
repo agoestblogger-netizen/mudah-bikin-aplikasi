@@ -194,6 +194,31 @@ function isExternalRole(label: string): boolean {
 }
 
 function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
+  const revisiCount = session.storyline?.revisiCount || 0;
+  const isClarifying = revisiCount > 0 && session.storyline?.statusKonfirmasi === 'dikoreksi';
+
+  if (isClarifying) {
+    return {
+      stepId: 'STORYTELLING',
+      title: revisiCount === 1 ? 'Klarifikasi: Apa masalah operasional utama yang ingin diselesaikan?' : 'Klarifikasi: Siapa saja pihak yang terlibat langsung?',
+      multi: false,
+      allowOther: true,
+      options: [
+        {
+          id: 'clarify_input',
+          label: '✏️ Berikan tanggapan / catatan penjelasan di bawah',
+          recommended: true,
+          description: revisiCount === 1 ? 'Jelaskan masalah operasional paling mendesak' : 'Sebutkan orang atau peran yang terlibat'
+        },
+        {
+          id: 'confirm_story',
+          label: '✅ Lanjut saja ke penetapan peran (Role)',
+          description: 'Gunakan pemahaman saat ini dan sesuaikan nanti'
+        }
+      ]
+    };
+  }
+
   return {
     stepId: 'STORYTELLING',
     title: 'Konfirmasi gambaran proses bisnis aplikasi Anda',
@@ -202,14 +227,19 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
     options: [
       {
         id: 'confirm_story',
-        label: 'Ya, gambaran proses bisnis sudah sesuai',
+        label: '✅ Sudah sesuai, lanjut ke Role',
         recommended: true,
-        description: 'Lanjutkan ke penetapan peran pengguna (ROLE)'
+        description: 'Alur proses bisnis sudah tepat menggambarkan operasional'
       },
       {
-        id: 'adjust_story',
-        label: 'Ada bagian yang perlu dikoreksi',
-        description: 'Koreksi asumsi alur atau aktivitas utama'
+        id: 'minor_adjust',
+        label: '✏️ Ada koreksi / catatan alur',
+        description: 'Ada sedikit penyesuaian alur atau aktor yang terlibat'
+      },
+      {
+        id: 'mismatch_story',
+        label: '❌ Meleset jauh dari proses bisnis saya',
+        description: 'Perlu penyesuaian mendasar pada masalah atau alur'
       }
     ]
   };
@@ -238,7 +268,14 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
     });
   };
 
-  // 1. Peran kontekstual dari hasil pemetaan AI cerdas (diposisikan paling atas)
+  // 1. Peran dari asumsi cerita bisnis (storyline) - Prioritas paling utama
+  if (session.storyline?.asumsiAktor && session.storyline.asumsiAktor.length > 0) {
+    session.storyline.asumsiAktor.forEach((role) =>
+      addRole(role, 'Dari Gambaran Cerita Bisnis', true)
+    );
+  }
+
+  // 2. Peran kontekstual dari hasil pemetaan AI cerdas (diposisikan setelah aktor cerita)
   if (session.match.contextualRoles && session.match.contextualRoles.length > 0) {
     session.match.contextualRoles.forEach((role) =>
       addRole(role, session.match.businessCategory || 'Spesifik Kebutuhan Anda', true)
@@ -390,13 +427,37 @@ export function applyGuidedAnswer(
   const next: MockupSessionState = JSON.parse(JSON.stringify(session));
 
   if (stepId === 'STORYTELLING') {
-    next.storyline = {
+    const isConfirm =
+      selected.includes('confirm_story') ||
+      (!other && selected.length === 0 && !selected.includes('mismatch_story') && !selected.includes('minor_adjust'));
+    const isMismatch = selected.includes('mismatch_story');
+    const existingStory = next.storyline || {
       narasi: other || selected.join(' '),
       asumsiMasalah: '',
-      asumsiAktor: [],
+      asumsiAktor: next.match.contextualRoles || ['Super Admin', 'Staf', 'Pelanggan'],
       asumsiAlurUtama: '',
-      statusKonfirmasi: selected.includes('adjust_story') ? 'dikoreksi' : 'disetujui'
+      statusKonfirmasi: 'disetujui',
+      revisiCount: 0
     };
+
+    if (isMismatch && (existingStory.revisiCount || 0) < 2) {
+      next.storyline = {
+        ...existingStory,
+        statusKonfirmasi: 'dikoreksi',
+        revisiCount: (existingStory.revisiCount || 0) + 1
+      };
+      next.step = 'STORYTELLING';
+      return next;
+    }
+
+    next.storyline = {
+      ...existingStory,
+      narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
+      statusKonfirmasi: isConfirm ? 'disetujui' : 'dikoreksi',
+      revisiCount: existingStory.revisiCount || 0
+    };
+    next.step = 'ROLE';
+    return next;
   } else if (stepId === 'ROLE') {
     const roles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE]);
     next.roles = {
@@ -490,6 +551,20 @@ export function compileBriefFromSession(
   const lines: string[] = [];
   lines.push('📋 **Brief Kebutuhan**');
   lines.push(`- **Nama App**: ${appName}`);
+  if (session.storyline?.narasi) {
+    const cleanNarasi = session.storyline.narasi
+      .replace(/Apakah ini sudah menggambarkan[\s\S]*$/i, '')
+      .trim();
+    if (cleanNarasi) {
+      lines.push(`- **Gambaran Proses Bisnis**: ${cleanNarasi}`);
+    }
+  }
+  if (session.storyline?.asumsiMasalah) {
+    lines.push(`- **Masalah Utama**: ${session.storyline.asumsiMasalah}`);
+  }
+  if (session.storyline?.asumsiAlurUtama) {
+    lines.push(`- **Alur Utama (Storyline)**: ${session.storyline.asumsiAlurUtama}`);
+  }
   lines.push('- **Orientasi UI**: Responsif, mobile-friendly');
   lines.push(`- **Tier Aplikasi**: ${tierLabel}`);
   if (patterns.length) {

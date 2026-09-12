@@ -433,6 +433,22 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       return;
     }
 
+    // Jika sesi terpandu sedang aktif di PLAN mode, teruskan input teks sebagai jawaban/koreksi langkah aktif
+    if (
+      activeMode === 'PLAN' &&
+      !projectState.canvasCode?.html &&
+      projectState.sessionState &&
+      projectState.sessionState.step &&
+      projectState.sessionState.step !== 'REVIEW_FINAL'
+    ) {
+      const currentStep = projectState.sessionState.step;
+      const lastGuidedMsg = [...messages].reverse().find((m) => m.guidedStep);
+      setInput('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      await handleGuidedAnswer(lastGuidedMsg?.id || 'msg-current', currentStep, [], query.trim());
+      return;
+    }
+
     const hasBrief = messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'));
     const contextualText = getContextualLoadingText(
       query, 
