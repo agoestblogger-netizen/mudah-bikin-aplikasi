@@ -208,35 +208,37 @@ async function generateStorylineWithAI(
   apiKey?: string,
   model?: string
 ): Promise<AIStorylineResult> {
-  const systemInstruction = `Anda adalah Principal Business Analyst & Konsultan Aplikasi dari platform "Aplikasi Generator".
-Tugas Anda: Menyusun cerita proses bisnis singkat (2-4 kalimat) dalam bahasa Indonesia yang santun, hangat, dan konkret berdasarkan permintaan awal pengguna.
+  const systemInstruction = `Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator".
+Tugas Anda: Menyambut ide pengguna dengan hangat, apresiatif, dan ramah, lalu merangkai cerita proses bisnis (2-4 kalimat) yang mengalir luwes, hidup, dan manusiawi.
 
-ATURAN WAJIB STORYTELLING (POIN 2):
-1. ISI CERITA: Rangkum siapa yang mengelola, aktivitas utama apa yang terjadi sehari-hari dari awal sampai akhir, dan pihak-pihak yang terlibat.
-2. SANGAT PENTING - TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (misal: "CRUD", "database", "backend", "frontend", "API", "skema", "tabel", "autentikasi", "sistem", "server"). Ceritakan alur kerja kehidupan manusia nyata sehari-hari!
-3. KALIMAT PENUTUP WAJIB: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
+PANDUAN NADA & GAYA BAHASA (WAJIB DIPATUHI):
+1. NADA SANGAT HANGAT & BERSAHABAT: Gunakan bahasa Indonesia percakapan yang santun, luwes, dan akrab layaknya rekan diskusi bisnis yang suportif. HINDARI bahasa kaku seperti laporan kantor/birokrasi atau robot!
+2. PEMBUKA YANG MENGALIR: Awali dengan menyapa atau mengapresiasi ide pengguna secara natural (misalnya: "Wah, ide yang menarik!", "Keren, senang sekali bisa bantu wujudkan ide usahamu!", atau "Menarik sekali! Mari kita bayangkan operasional sehari-harinya:").
+3. CERITA HIDUP & KONKRET: Rangkum dengan mengalir: siapa yang melayani di garis depan, bagaimana interaksi dengan pelanggan, dan bagaimana pemilik memantau usaha dengan tenang tanpa ribet.
+4. SANGAT PENTING - TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan kata-kata teknis komputer/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni keseharian manusia di lapangan!
+5. KALIMAT PENUTUP WAJIB: Tutup cerita dengan kalimat konfirmasi yang ramah:
 "${CONFIRMATION_CLOSING}"
-4. EKSTRAKSI FIELD:
-- appName: Nama aplikasi yang spesifik dan relevan (contoh: "Toko Kelontong Berkah", "CatBoarding Care")
+6. EKSTRAKSI FIELD:
+- appName: Nama aplikasi yang spesifik dan menarik (contoh: "Toko Kelontong Berkah", "CatBoarding Care")
 - businessCategory: Kategori bisnis spesifik (contoh: "Toko Retail Kelontong", "Penitipan Kucing")
 - asumsiMasalah: 1-2 kalimat masalah operasional nyata yang dihadapi
 - asumsiAktor: daftar 3-5 peran nyata (selalu sertakan "Super Admin", dan peran manusia nyata di bisnis tersebut)
-- asumsiAlurUtama: ringkasan alur utama dari awal sampai selesai (contoh: "Pelanggan memesan -> Kasir mencatat -> Pengelola cek rekap")
+- asumsiAlurUtama: ringkasan alur utama dari awal sampai selesai
 
 Kembalikan HANYA JSON valid:
 {
   "appName": "Toko Kelontong Berkah",
   "businessCategory": "Ritel & Toko Kelontong",
-  "narasi": "Di toko kelontong Anda, kasir melayani transaksi pembeli setiap hari dan mencatat keluar masuknya stok barang. Pemilik toko memantau rekap penjualan harian dan memastikan barang dagangan yang mulai menipis segera dipesan ke pemasok. Pelanggan dapat berbelanja langsung dengan nota belanja yang rapi. ${CONFIRMATION_CLOSING}",
-  "asumsiMasalah": "Pencatatan transaksi dan stok harian rawan selisih jika dikerjakan manual di buku.",
+  "narasi": "Wah, ide yang menarik! Bayangkan keseharian tokomu nanti: kasir dengan sigap menyapa pembeli dan mencatat belanjaan yang keluar, sehingga rak jualan selalu terpantau rapi. Kamu sebagai pemilik bisa santai mengecek pemasukan harian kapan pun dari mana saja tanpa khawatir ada hitungan yang selisih. ${CONFIRMATION_CLOSING}",
+  "asumsiMasalah": "Pencatatan penjualan dan stok barang rawan tercecer jika masih ditulis manual di buku.",
   "asumsiAktor": ["Super Admin", "Kasir", "Staf Gudang", "Pelanggan"],
-  "asumsiAlurUtama": "Pelanggan memilih barang -> Kasir melayani transaksi -> Stok berkurang otomatis -> Pemilik melihat rekap harian"
+  "asumsiAlurUtama": "Pelanggan memilih barang -> Kasir melayani belanja & cetak nota -> Stok terpotong rapi -> Pemilik memantau omzet harian"
 }`;
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis dan ekstrak field terstruktur:`,
-    temperature: 0.3,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat dan bersahabat, lalu ekstrak field terstruktur:`,
+    temperature: 0.5,
     maxTokens: 600,
     provider,
     userApiKey: apiKey,
@@ -283,7 +285,7 @@ Kembalikan HANYA JSON valid:
     }
   }
 
-  // Fallback deterministik jika AI tidak merespons
+  // Fallback hangat dan bersahabat jika AI tidak merespons
   const cleanPrompt = prompt.trim();
   return {
     appName: `Aplikasi ${cleanPrompt.slice(0, 30)}`,
@@ -291,7 +293,7 @@ Kembalikan HANYA JSON valid:
     templateId: 'MT-20',
     overlayIds: [],
     patternIds: ['UP-06', 'UP-09'],
-    narasi: `Untuk ${cleanPrompt}, operasional harian dijalankan oleh staf yang melayani transaksi langsung dengan pelanggan. Pemilik atau pengelola memantau rekap aktivitas dan laporan secara berkala agar bisnis berjalan lancar. ${CONFIRMATION_CLOSING}`,
+    narasi: `Wah, ide yang menarik untuk ${cleanPrompt}! Bayangkan operasionalnya nanti: tim di lapangan dengan sigap melayani pelanggan secara teratur, sementara kamu sebagai pemilik bisa memantau perkembangan aktivitas dan rekap penjualan harian dengan tenang. ${CONFIRMATION_CLOSING}`,
     asumsiMasalah: `Pengelolaan operasional dan pencatatan untuk ${cleanPrompt} memerlukan alur kerja yang rapi.`,
     asumsiAktor: ['Super Admin', 'Staf Operasional', 'Pelanggan'],
     asumsiAlurUtama: 'Pelanggan memesan -> Petugas memproses -> Pemilik memeriksa laporan harian'
@@ -314,16 +316,17 @@ async function refineStorylineWithAI(
   asumsiAktor: string[];
   asumsiAlurUtama: string;
 }> {
-  const systemInstruction = `Anda adalah Principal Business Analyst dari platform "Aplikasi Generator".
-Tugas Anda: Memperbarui cerita dan asumsi proses bisnis berdasarkan masukan atau koreksi dari pengguna.
+  const systemInstruction = `Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator".
+Tugas Anda: Memperbarui cerita dan asumsi proses bisnis berdasarkan masukan atau koreksi dari pengguna dengan gaya bahasa yang hangat, ramah, dan mengalir luwes.
 
 ATURAN WAJIB:
-1. SESUAIKAN DENGAN KOREKSI: Perbarui cerita agar mencerminkan koreksi dari pengguna.
-2. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema). Ceritakan alur aktivitas kerja nyata manusia!
-3. KALIMAT PENUTUP: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
+1. NADA HANGAT & BERSAHABAT: Tanggapi koreksi pengguna dengan positif, apresiatif, dan suportif.
+2. SESUAIKAN DENGAN KOREKSI: Rangkai kembali cerita sehingga memasukkan poin koreksi pengguna secara alami dan enak dibaca.
+3. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema, backend). Ceritakan alur aktivitas kerja nyata manusia!
+4. KALIMAT PENUTUP: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
 "${CONFIRMATION_CLOSING}"
-4. PERBARUI FIELD:
-- narasi: 2-4 kalimat cerita proses bisnis terbaru
+5. PERBARUI FIELD:
+- narasi: 2-4 kalimat cerita proses bisnis terbaru yang mengalir halus dan ramah
 - asumsiMasalah: masalah utama yang diselesaikan
 - asumsiAktor: daftar peran (selalu sertakan "Super Admin", ditambah peran hasil koreksi)
 - asumsiAlurUtama: ringkasan alur utama dari awal ke akhir
@@ -344,12 +347,12 @@ Alur Sebelumnya: ${previousStoryline.asumsiAlurUtama}
 Masukan / Koreksi Pengguna:
 "${userFeedback}"
 
-Perbarui cerita dan field asumsi dalam format JSON:`;
+Perbarui cerita dan field asumsi dalam format JSON dengan nada hangat dan ramah:`;
 
   const raw = await invokeAIChat({
     systemInstruction,
     userPrompt,
-    temperature: 0.3,
+    temperature: 0.5,
     maxTokens: 500,
     provider,
     userApiKey: apiKey,
@@ -399,7 +402,7 @@ async function generateNarration(
 ): Promise<string> {
   const narrationPrompt = buildNarrationPrompt(session, action, stepTitle);
   const systemInstruction =
-    'Anda adalah Konsultan Aplikasi AI dari platform "Aplikasi Generator". Berikan narasi singkat, hangat, dan konkret. Sebut kegiatan ini sebagai "Aplikasi Generator", jangan gunakan istilah "perancangan aplikasi". Jangan pernah mengubah daftar opsi pilihan pengguna.';
+    'Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator". Berikan narasi singkat, hangat, bersahabat, dan konkret. Sebut kegiatan ini sebagai "Aplikasi Generator", jangan gunakan istilah "perancangan aplikasi". Jangan pernah mengubah daftar opsi pilihan pengguna.';
 
   const aiText = await invokeAIChat({
     systemInstruction,
@@ -586,7 +589,7 @@ export async function POST(req: Request) {
             };
             const guidedStep = buildGuidedStep(updated);
             const narration =
-              'Baik, kita simpan pemahaman proses bisnis sejauh ini dan lanjut ke penentuan peran. Tenang, masih bisa dikoreksi lagi nanti pas lihat detail di bagian berikutnya.';
+              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!';
             return NextResponse.json({
               success: true,
               action,
@@ -608,7 +611,7 @@ export async function POST(req: Request) {
             };
             const questionNarration =
               nextRevisi === 1
-                ? 'Baik, agar lebih tepat sasaran: apa masalah operasional paling mendesak yang ingin Anda selesaikan lewat aplikasi ini?'
+                ? 'Siap, tidak apa-apa! Supaya ceritanya lebih tepat sasaran: boleh ceritakan apa masalah operasional paling mendesak yang ingin kamu bereskan lebih dulu?'
                 : 'Paham. Lalu siapa saja orang atau pihak yang terlibat langsung dalam aktivitas tersebut sehari-hari?';
 
             const guidedStep = buildGuidedStep(updated);
@@ -683,7 +686,7 @@ export async function POST(req: Request) {
           };
           const guidedStep = buildGuidedStep(updated);
           const narration =
-            'Catatan Anda sudah dimasukkan ke alur cerita proses bisnis. Sekarang mari kita tentukan siapa saja peran pengguna yang akan memakai aplikasi ini:';
+            'Sip, catatanmu sudah saya sesuaikan ke alur cerita! Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
           return NextResponse.json({
             success: true,
             action,
@@ -704,7 +707,7 @@ export async function POST(req: Request) {
         };
         const guidedStep = buildGuidedStep(updated);
         const narration =
-          'Bagus, proses bisnis sudah kita sepakati. Sekarang mari kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
+          'Mantap! Senang alurnya sudah pas dengan bayanganmu. Sekarang, yuk kita tentukan siapa saja peran atau orang-orang yang bakal pakai aplikasi ini:';
         return NextResponse.json({
           success: true,
           action,
