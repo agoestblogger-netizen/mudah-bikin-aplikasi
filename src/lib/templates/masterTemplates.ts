@@ -1652,9 +1652,17 @@ export function detectMatchingMasterTemplate(text: string): TemplateMatchResult 
     const t = getMasterTemplateById('MT-04');
     if (t) return { template: t, matchedVariant: 'Spa' };
   }
+  if (lower.includes('penitipan kucing') || lower.includes('penitipan anjing') || lower.includes('penitipan hewan') || lower.includes('pet hotel') || lower.includes('pet care') || lower.includes('penitipan peliharaan') || lower.includes('hotel hewan')) {
+    const t = getMasterTemplateById('MT-09');
+    if (t) return { template: t, matchedVariant: 'Pet Hotel & Penitipan Hewan' };
+  }
 
   // 2. Cek Berdasarkan Kata Kunci Pola Bisnis Industri
   const keywordMappings: { keywords: string[]; mtId: string }[] = [
+    {
+      keywords: ['penitipan kucing', 'penitipan anjing', 'penitipan hewan', 'pet hotel', 'pet care', 'penitipan peliharaan', 'hotel hewan', 'penitipan'],
+      mtId: 'MT-09'
+    },
     {
       keywords: ['laundry', 'cuci pakaian', 'cuci baju', 'cuci sepatu', 'cuci helm', 'cuci karpet', 'dry clean', 'penatu', 'cucian'],
       mtId: 'MT-29'

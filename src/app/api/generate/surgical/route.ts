@@ -149,18 +149,32 @@ KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
     // Fallback atau Jalur 2: OpenAI / OpenRouter
     if (!rawOutput && openaiApiKey) {
       try {
+        const isGemmaOrNoSystem = isOpenRouter && (activeOpenAIModel.toLowerCase().includes('gemma') || activeOpenAIModel.toLowerCase().includes('r1'));
+        const messages = isGemmaOrNoSystem
+          ? [
+              {
+                role: 'user',
+                content: `[PETUNJUK SISTEM]:\n${systemPrompt}\n\n[PERMINTAAN]:\n${userPrompt}`
+              }
+            ]
+          : [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ];
+
+        const reqBody: Record<string, any> = {
+          model: activeOpenAIModel,
+          messages,
+          max_tokens: 4096
+        };
+        if (!activeOpenAIModel.toLowerCase().includes('r1') && !activeOpenAIModel.toLowerCase().includes('o1')) {
+          reqBody.temperature = 0.2;
+        }
+
         const openaiRes = await fetch(`${openaiBaseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
           method: 'POST',
           headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-          body: JSON.stringify({
-            model: activeOpenAIModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            max_tokens: 4096,
-            temperature: 0.2
-          })
+          body: JSON.stringify(reqBody)
         });
 
         if (openaiRes.ok) {

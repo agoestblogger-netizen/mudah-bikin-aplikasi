@@ -132,6 +132,28 @@ async function invokeAIChat(options: {
         if (text.trim()) return text.trim();
       }
     } else if (openaiApiKey) {
+      const isGemmaOrNoSystem = openaiModel.toLowerCase().includes('gemma') || openaiModel.toLowerCase().includes('r1');
+      const messages = isGemmaOrNoSystem
+        ? [
+            {
+              role: 'user',
+              content: `[INSTRUKSI SISTEM & ATURAN]:\n${systemInstruction}\n\n[PERMINTAAN PENGGUNA]:\n${userPrompt}`
+            }
+          ]
+        : [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: userPrompt }
+          ];
+
+      const bodyPayload: Record<string, any> = {
+        model: openaiModel,
+        messages,
+        max_tokens: maxTokens
+      };
+      if (!openaiModel.toLowerCase().includes('r1') && !openaiModel.toLowerCase().includes('o1')) {
+        bodyPayload.temperature = temperature;
+      }
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${openaiApiKey}`
@@ -144,8 +166,32 @@ async function invokeAIChat(options: {
       const res = await fetch(`${openaiBaseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
         method: 'POST',
         headers,
+        body: JSON.stringify(bodyPayload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content || '';
+        if (text.trim()) return text.trim();
+      } else {
+        const errText = await res.text().catch(() => '');
+        console.warn(`OpenAI/OpenRouter call failed (${res.status}):`, errText);
+      }
+    }
+  } catch (err) {
+    console.warn('AI invocation failed:', err);
+  }
+
+  // Fallback cadangan otomatis ke server OpenAI jika provider primer gagal (misal 400, 429 kuota, 503 overloaded)
+  if (process.env.OPENAI_API_KEY && (!hasUserKey || requestedProvider !== 'openai' || isOpenRouter)) {
+    try {
+      const fallbackRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        },
         body: JSON.stringify({
-          model: openaiModel,
+          model: 'gpt-4o-mini',
           messages: [
             { role: 'system', content: systemInstruction },
             { role: 'user', content: userPrompt }
@@ -154,14 +200,14 @@ async function invokeAIChat(options: {
           temperature
         })
       });
-      if (res.ok) {
-        const data = await res.json();
+      if (fallbackRes.ok) {
+        const data = await fallbackRes.json();
         const text = data.choices?.[0]?.message?.content || '';
         if (text.trim()) return text.trim();
       }
+    } catch (fallbackErr) {
+      console.warn('Server OpenAI fallback invocation failed:', fallbackErr);
     }
-  } catch (err) {
-    console.warn('AI invocation failed:', err);
   }
 
   return null;
@@ -238,7 +284,8 @@ ATURAN KRITIS (SANGAT PENTING):
 4. PISAHKAN BENGKEL vs RENTAL: Jika ide berupa reparasi/servis/bengkel (servis motor, ganti oli, bengkel mobil, bengkel AC), WAJIB pilih MT-05 dan IND-13.
 5. Buat 3-5 pain points (masalah utama) yang SANGAT RELEVAN dan spesifik untuk bisnis tersebut dalam bahasa Indonesia santun.
 6. Buat 3-5 peran operasional yang MASUK AKAL secara nyata untuk bisnis tersebut.
-7. Gunakan MT-20 (Custom) HANYA jika benar-benar tidak ada template yang cocok. Utamakan template yang paling mendekati.
+7. PISAHKAN PENITIPAN HEWAN / PET CARE vs RENTAL: Jika ide bisnis berupa penitipan kucing, penitipan anjing, penitipan hewan, pet hotel, pet care, pet clinic, WAJIB pilih MT-09 (Booking & Hospitality) dengan overlay IND-09 atau MT-04 dengan overlay IND-03. DILARANG KERAS memilih MT-21 (Rental & Peminjaman) atau IND-21! Hewan peliharaan yang dititipkan BUKAN barang rental/sewa.
+8. Gunakan MT-20 (Custom) HANYA jika benar-benar tidak ada template yang cocok. Utamakan template yang paling mendekati.
 
 Kembalikan HANYA JSON valid:
 {

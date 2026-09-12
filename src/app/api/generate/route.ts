@@ -1492,11 +1492,23 @@ ${staffLandingGuide}
 
           // --- 1. OPENAI FAST STREAMING (TTFT < 1.5s untuk Giliran Diskusi) ---
           if (openaiApiKey) {
-            const oaiMessages = [
-              { role: 'system', content: systemPrompt },
-              ...recentHistory.map((m: any) => ({ role: m.sender === 'USER' ? 'user' : 'assistant', content: m.text })),
-              { role: 'user', content: prompt }
-            ];
+            const isGemmaOrNoSystem = isOpenRouter && (activeOpenAIModel.toLowerCase().includes('gemma') || activeOpenAIModel.toLowerCase().includes('r1'));
+            const oaiMessages = isGemmaOrNoSystem
+              ? [
+                  ...recentHistory.map((m: any, idx: number) => ({
+                    role: m.sender === 'USER' ? 'user' : 'assistant',
+                    content: idx === 0 && m.sender === 'USER' ? `[PETUNJUK SISTEM]:\n${systemPrompt}\n\n${m.text}` : m.text
+                  })),
+                  {
+                    role: 'user',
+                    content: recentHistory.length === 0 ? `[PETUNJUK SISTEM]:\n${systemPrompt}\n\n${prompt}` : prompt
+                  }
+                ]
+              : [
+                  { role: 'system', content: systemPrompt },
+                  ...recentHistory.map((m: any) => ({ role: m.sender === 'USER' ? 'user' : 'assistant', content: m.text })),
+                  { role: 'user', content: prompt }
+                ];
             try {
               const bodyPayload: Record<string, any> = {
                 model: activeOpenAIModel,
@@ -2012,14 +2024,26 @@ body: JSON.stringify({
     // JALUR 2: OPENAI API (DIPENGARUHI OLEH getOpenAIModel())
     // =========================================================================
     } else {
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        ...recentHistory.map((m: any) => ({
-          role: m.sender === 'USER' ? 'user' : 'assistant',
-          content: m.text
-        })),
-        { role: 'user', content: userPromptWithContext }
-      ];
+      const isGemmaOrNoSystem = isOpenRouter && (activeOpenAIModel.toLowerCase().includes('gemma') || activeOpenAIModel.toLowerCase().includes('r1'));
+      const messages = isGemmaOrNoSystem
+        ? [
+            ...recentHistory.map((m: any, idx: number) => ({
+              role: m.sender === 'USER' ? 'user' : 'assistant',
+              content: idx === 0 && m.sender === 'USER' ? `[PETUNJUK SISTEM]:\n${systemPrompt}\n\n${m.text}` : m.text
+            })),
+            {
+              role: 'user',
+              content: recentHistory.length === 0 ? `[PETUNJUK SISTEM]:\n${systemPrompt}\n\n${userPromptWithContext}` : userPromptWithContext
+            }
+          ]
+        : [
+            { role: 'system', content: systemPrompt },
+            ...recentHistory.map((m: any) => ({
+              role: m.sender === 'USER' ? 'user' : 'assistant',
+              content: m.text
+            })),
+            { role: 'user', content: userPromptWithContext }
+          ];
 
       const reqBody: Record<string, any> = {
         model: activeOpenAIModel,
@@ -2054,10 +2078,14 @@ body: JSON.stringify({
           userFacingError = `Model "${activeOpenAIModel}" tidak ditemukan atau belum tersedia di OpenRouter.`;
         } else if (response.status === 429) {
           userFacingError = `Batas kuota/rate limit untuk model "${activeOpenAIModel}" tercapai. Mohon tunggu beberapa detik atau pilih model lain.`;
+        } else if (response.status === 400) {
+          userFacingError = `Model "${activeOpenAIModel}" menolak format permintaan: ${rawErrMsg}`;
+        } else if (response.status === 503) {
+          userFacingError = `Model "${activeOpenAIModel}" sedang mengalami antrean penuh (overloaded). Silakan pilih model lain.`;
         }
 
-        // Fallback ke Server Default (Gemini) untuk error provider yang lazim.
-        const retryableStatus = [401, 402, 404, 429].includes(response.status);
+        // Fallback ke Server Default (Gemini/OpenAI) untuk error provider yang lazim.
+        const retryableStatus = [400, 401, 402, 404, 429, 503].includes(response.status);
         if (retryableStatus && (await tryServerDefaultFallback(`provider HTTP ${response.status}`))) {
           // Lanjut ke tahap finalisasi dengan hasil Gemini.
         } else {

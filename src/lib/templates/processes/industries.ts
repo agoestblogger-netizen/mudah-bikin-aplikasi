@@ -376,7 +376,7 @@ export const INDUSTRY_OVERLAYS: IndustryOverlay[] = [
   {
     id: 'IND-09',
     nama: 'Perhotelan & Pariwisata',
-    keywords: ['hotel', 'penginapan', 'homestay', 'villa', 'resort', 'guest house', 'booking kamar', 'reservasi kamar', 'pariwisata', 'paket wisata'],
+    keywords: ['hotel', 'penginapan', 'homestay', 'villa', 'resort', 'guest house', 'booking kamar', 'reservasi kamar', 'pariwisata', 'paket wisata', 'penitipan hewan', 'penitipan kucing', 'penitipan anjing', 'pet hotel', 'pet care'],
     patternIds: ['UP-06', 'UP-02'],
     extraEntities: [
       { name: 'Room/Kamar', fields: ['id', 'nomor', 'tipe', 'harga', 'status'] },
