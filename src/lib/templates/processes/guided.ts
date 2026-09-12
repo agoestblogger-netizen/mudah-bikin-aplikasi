@@ -746,346 +746,415 @@ export function resolveActorForStep(
   return targetRole;
 }
 
+function deduplicateFlowSteps(steps: FlowStepItem[]): FlowStepItem[] {
+  const result: FlowStepItem[] = [];
+  for (const st of steps) {
+    const isDuplicate = result.some((existing) => {
+      if (existing.pelaku.toLowerCase() !== st.pelaku.toLowerCase()) return false;
+      const sim = calculateConceptualSimilarity(
+        { id: '', label: '', description: '', responsibilities: [existing.aksi] },
+        { id: '', label: '', description: '', responsibilities: [st.aksi] }
+      );
+      return sim >= 0.70;
+    });
+    if (!isDuplicate) {
+      result.push({
+        step: result.length + 1,
+        pelaku: st.pelaku,
+        aksi: st.aksi
+      });
+    }
+  }
+  return result;
+}
+
 /**
- * Menghasilkan Alur Inti (5-7 langkah), Alur Pendukung (1-2 alur), dan Fitur Pendukung (3-5 fitur)
- * berdasarkan session storyline, industry overlay, dan status peran (termasuk tugas dilimpahkan).
+ * Menghasilkan Alur Inti, Alur Pendukung, dan Fitur Pendukung yang MURNI DIGROUNDING
+ * dari session storyline (narasi & alur utama) tanpa mengandalkan template statis per-kategori.
  */
 export function getDomainFlowDetails(session: MockupSessionState): DomainFlowData {
-  const category = (session.match.businessCategory || '').toLowerCase();
-  const templateId = (session.match.templateId || '').toLowerCase();
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
-  const overlayText = overlays.map((o) => `${o.nama} ${o.keywords.join(' ')}`).join(' ').toLowerCase();
-  const storylineText = `${session.storyline?.narasi || ''} ${session.storyline?.asumsiAlurUtama || ''}`.toLowerCase();
-  const allContext = `${category} ${templateId} ${overlayText} ${storylineText}`;
+  const narrative = (session.storyline?.narasi || '').toLowerCase();
+  const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
+  const fullStory = `${narrative} ${mainFlow}`;
 
-  // Prioritaskan role wajib kedua yang sudah ditetapkan di POIN 3 (session.roles.wajib)
-  let coreRole = session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE);
-  if (!coreRole) {
-    coreRole = detectCoreOperationalRole(session);
-  }
-  const activeCore = resolveActorForStep(coreRole, session.roles);
   const activeOwner = REQUIRED_ROLE; // 'Super Admin'
+  const coreRole = session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
+  const activeCore = resolveActorForStep(coreRole, session.roles);
 
-  // 1. Servis / Bengkel / Reparasi
-  if (/servis|bengkel|reparasi|montir|mekanik|otomotif|gadget|elektronik|teknisi/i.test(allContext)) {
-    const actorTeknisi = activeCore;
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Pelanggan', aksi: 'Datang membawa perangkat/kendaraan dan menjelaskan keluhan kerusakan' },
-        { step: 2, pelaku: actorTeknisi, aksi: 'Menerima unit, memeriksa kerusakan fisik/mesin, dan mengestimasi biaya' },
-        { step: 3, pelaku: 'Pelanggan', aksi: 'Menyetujui estimasi biaya dan menerima tanda terima pendaftaran servis' },
-        { step: 4, pelaku: actorTeknisi, aksi: 'Melakukan perbaikan dan penggantian suku cadang yang rusak' },
-        { step: 5, pelaku: actorTeknisi, aksi: 'Menguji fungsi hingga normal dan mengubah status servis menjadi siap diambil' },
-        { step: 6, pelaku: 'Pelanggan', aksi: 'Mengambil barang yang telah diperbaiki dan melakukan pelunasan biaya' },
-        { step: 7, pelaku: activeOwner, aksi: 'Memverifikasi pelunasan transaksi dan mencatat garansi servis di sistem' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_sparepart',
-          nama: 'Pengadaan Suku Cadang (Sparepart)',
-          steps: [
-            { pelaku: actorTeknisi, aksi: 'Mencatat suku cadang khusus yang perlu dipesan ke distributor' },
-            { pelaku: activeOwner, aksi: 'Melakukan persetujuan pembelian dan memesan ke suplier' },
-            { pelaku: actorTeknisi, aksi: 'Menerima suku cadang dan mencatat pemasangan pada unit servis' }
-          ]
-        },
-        {
-          id: 'alur_garansi',
-          nama: 'Klaim Garansi Servis',
-          steps: [
-            { pelaku: 'Pelanggan', aksi: 'Datang kembali membawa nota klaim karena kendala yang sama berulang' },
-            { pelaku: actorTeknisi, aksi: 'Mengecek keabsahan kartu garansi dan melakukan perbaikan ulang' }
-          ]
+  // Helper untuk mencari aktor yang ada di session roles atau storyline
+  const findActor = (pattern: RegExp, defaultName: string): string => {
+    const candidates = [
+      ...(session.roles?.selected || []),
+      ...(session.storyline?.asumsiAktor || [])
+    ];
+    for (const c of candidates) {
+      if (pattern.test(c)) {
+        return resolveActorForStep(c, session.roles);
+      }
+    }
+    return resolveActorForStep(defaultName, session.roles);
+  };
+
+  const rawSteps: { pelaku: string; aksi: string }[] = [];
+  const alurPendukung: SupportingFlowItem[] = [];
+  const fiturPendukung: SupportingFeatureItem[] = [];
+
+  // PURE STORYLINE-DRIVEN FLOW SYNTHESIS
+  // Blok template statik per-kategori (regex servis|bengkel, resto|kafe, laundry|cuci, kos|sewa, dst)
+  // telah DIHAPUS TOTAL sesuai POIN 4 & Ketentuan Tambahan 1.
+  const phases = (session.storyline?.asumsiAlurUtama || '')
+    .split(/\s*(?:->|→|\n|\d+\.\s*)\s*/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !/^\d+$/.test(p));
+
+  const knownActors = [
+    ...(session.roles?.selected || []),
+    ...(session.storyline?.asumsiAktor || []),
+    activeCore,
+    activeOwner
+  ];
+
+  if (phases.length >= 2) {
+    phases.forEach((phase, idx) => {
+      let assignedActor = activeCore;
+      const lowerPhase = phase.toLowerCase();
+
+      // 1. Cek apakah menyebut Pemilik / Owner / Super Admin
+      if (/\b(pemilik|owner|bos|admin|pimpinan|manajer|direktur)\b/i.test(lowerPhase)) {
+        assignedActor = activeOwner;
+      }
+      // 2. Cek apakah menyebut Pelanggan / Penyewa / Pasien / Tamu / Klien
+      else if (/\b(pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali)\b/i.test(lowerPhase)) {
+        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali/i, 'Pelanggan');
+      }
+      // 3. Cek pencocokan dengan daftar peran yang dikenal di sesi
+      else {
+        let matchedRole: string | undefined;
+
+        // 3a. Prioritaskan jika kalimat fase diawali oleh sebutan aktor / kata pertama aktor
+        for (const actor of knownActors) {
+          const cleanActor = actor.trim();
+          if (!cleanActor || cleanActor === REQUIRED_ROLE) continue;
+          const firstWord = cleanActor.toLowerCase().split(/\s+/)[0];
+          if (firstWord.length >= 3 && new RegExp(`^${firstWord}\\b`, 'i').test(lowerPhase)) {
+            matchedRole = cleanActor;
+            break;
+          }
         }
-      ],
-      fiturPendukung: [
-        { id: 'feat_wa_servis', label: 'Notifikasi WhatsApp otomatis saat perbaikan selesai' },
-        { id: 'feat_tanda_terima', label: 'Cetak tanda terima & nota servis dengan barcode/QR' },
-        { id: 'feat_filter_plat', label: 'Filter riwayat servis berdasarkan plat nomor / nama pelanggan' },
-        { id: 'feat_reminder_servis', label: 'Pengingat otomatis jadwal perawatan rutin berkala' },
-        { id: 'feat_ekspor_omzet', label: 'Ekspor laporan omzet jasa dan penggunaan suku cadang' }
-      ]
-    };
+
+        // 3b. Jika tidak diawali nama aktor, cari aktor dengan kecocokan kata utuh terbaik
+        if (!matchedRole) {
+          const OBJECT_NOUNS = new Set([
+            'armada',
+            'kendaraan',
+            'mobil',
+            'motor',
+            'barang',
+            'pesanan',
+            'meja',
+            'ruangan',
+            'kamar',
+            'toko',
+            'cucian',
+            'pakaian',
+            'makanan',
+            'kopi',
+            'alat',
+            'obat',
+            'unit',
+            'gigi',
+            'data',
+            'nota',
+            'kuitansi',
+            'struk'
+          ]);
+
+          let maxScore = 0;
+          for (const actor of knownActors) {
+            const cleanActor = actor.trim();
+            if (!cleanActor || cleanActor === REQUIRED_ROLE) continue;
+
+            const tokens = cleanActor
+              .toLowerCase()
+              .split(/[\s+&/]+/)
+              .filter((t) => t.length > 2 && !OBJECT_NOUNS.has(t));
+
+            let score = 0;
+            for (const tok of tokens) {
+              if (new RegExp(`\\b${tok}`, 'i').test(lowerPhase)) {
+                score += tok.length;
+              }
+            }
+
+            if (score > maxScore) {
+              maxScore = score;
+              matchedRole = cleanActor;
+            }
+          }
+        }
+
+        if (matchedRole) {
+          assignedActor = resolveActorForStep(matchedRole, session.roles);
+        } else if (idx === 0) {
+          assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien/i, 'Pelanggan');
+        } else if (idx === phases.length - 1) {
+          assignedActor = activeOwner;
+        } else {
+          assignedActor = activeCore;
+        }
+      }
+
+      // Bersihkan teks aksi: rapikan huruf kapital pertama
+      let actionText = phase;
+      // Jika fase diawali nama aktor, bersihkan prefiks agar lebih luwes dibaca
+      const rawPrefixes = [
+        assignedActor,
+        ...assignedActor.split(/&|\//).map((s) => s.trim()),
+        'Pelanggan',
+        'Penyewa',
+        'Pasien',
+        'Kasir Penerima',
+        'Kasir',
+        'Petugas Rental',
+        'Petugas',
+        'Staf Cuci',
+        'Staf',
+        'Tim Cuci',
+        'Tim',
+        'Dokter Gigi',
+        'Dokter',
+        'Sopir Armada',
+        'Sopir',
+        'Driver',
+        'Pemilik',
+        'Owner',
+        'Admin'
+      ].filter((p) => p && p.length >= 3);
+
+      const sortedPrefixes = Array.from(new Set(rawPrefixes)).sort((a, b) => b.length - a.length);
+
+      for (const pfx of sortedPrefixes) {
+        const pfxRegex = new RegExp(`^${pfx}\\s+(?:dan\\s+)?`, 'i');
+        if (pfxRegex.test(actionText) && actionText.replace(pfxRegex, '').trim().length > 5) {
+          actionText = actionText.replace(pfxRegex, '').trim();
+          break;
+        }
+      }
+
+      actionText = actionText.charAt(0).toUpperCase() + actionText.slice(1);
+
+      rawSteps.push({
+        pelaku: resolveActorForStep(assignedActor, session.roles),
+        aksi: actionText
+      });
+    });
+  } else {
+    // Fallback minimal jika asumsiAlurUtama tidak memiliki pemisah fase yang jelas
+    rawSteps.push({
+      pelaku: findActor(/pelanggan|penyewa|pasien|pembeli/i, 'Pelanggan'),
+      aksi: 'Mengajukan kebutuhan pesanan atau layanan di sistem'
+    });
+    rawSteps.push({
+      pelaku: activeCore,
+      aksi: 'Memverifikasi dan memproses permintaan layanan sesuai prosedur kerja'
+    });
+    rawSteps.push({
+      pelaku: activeCore,
+      aksi: 'Menyelesaikan pengerjaan dan menyerahkan hasil layanan kepada pelanggan'
+    });
+    rawSteps.push({
+      pelaku: activeOwner,
+      aksi: 'Memantau rekapitulasi transaksi harian dan performa operasional'
+    });
   }
 
-  // 2. Restoran / Kafe / F&B / Kuliner
-  if (/resto|kafe|cafe|kopi|coffee|kuliner|f&b|makanan|minuman|katering|catering|dapur/i.test(allContext)) {
-    const actorKasir = activeCore;
-    const actorDapur = resolveActorForStep('Staf Dapur', session.roles);
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Pelanggan', aksi: 'Datang dan memilih menu makanan/minuman yang diinginkan' },
-        { step: 2, pelaku: actorKasir, aksi: 'Mencatat pesanan meja dan meneruskan tiket order ke bagian dapur' },
-        { step: 3, pelaku: actorDapur, aksi: 'Menyiapkan hidangan sesuai antrean dan menyajikannya ke meja pelanggan' },
-        { step: 4, pelaku: 'Pelanggan', aksi: 'Menikmati hidangan dan meminta total tagihan pembayaran' },
-        { step: 5, pelaku: actorKasir, aksi: 'Menerima pembayaran tunai atau digital (QRIS) dan memberikan struk' },
-        { step: 6, pelaku: activeOwner, aksi: 'Melihat rekap omzet harian dan memantau menu makanan terlaris' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_belanja_dapur',
-          nama: 'Belanja Bahan Baku Dapur Harian',
-          steps: [
-            { pelaku: actorDapur, aksi: 'Mencatat bahan makanan yang menipis menjelang tutup gerai' },
-            { pelaku: activeOwner, aksi: 'Melakukan pembelian bahan baku segar ke suplier pasar' }
-          ]
-        },
-        {
-          id: 'alur_cancel_menu',
-          nama: 'Pembatalan / Perubahan Menu Pesanan',
-          steps: [
-            { pelaku: 'Pelanggan', aksi: 'Meminta pembatalan atau pergantian menu sebelum diproses dapur' },
-            { pelaku: actorKasir, aksi: 'Menyesuaikan tiket pesanan dapur dan memperbarui total tagihan' }
-          ]
-        }
-      ],
-      fiturPendukung: [
-        { id: 'feat_kitchen_ticket', label: 'Cetak tiket pesanan otomatis untuk dapur & kasir' },
-        { id: 'feat_table_mgmt', label: 'Manajemen nomor meja & status pesanan (Dine-in / Takeaway)' },
-        { id: 'feat_best_seller', label: 'Filter laporan menu terlaris (Best Seller) mingguan' },
-        { id: 'feat_shift_rekap', label: 'Rekap kas masuk harian per giliran shift kasir' },
-        { id: 'feat_stok_bahan', label: 'Peringatan otomatis stok bahan baku utama menipis' }
-      ]
-    };
-  }
-
-  // 3. Laundry / Cuci Kiloan
-  if (/laundry|cuci|dry\s*clean|kiloan|setrika|pakaian/i.test(allContext)) {
-    const actorLaundry = activeCore;
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Pelanggan', aksi: 'Menyerahkan pakaian kotor di meja penerimaan laundry' },
-        { step: 2, pelaku: actorLaundry, aksi: 'Menimbang berat pakaian, mencatat paket cuci, dan memberikan nota' },
-        { step: 3, pelaku: actorLaundry, aksi: 'Menjalankan proses pencucian, pengeringan, dan penyetrikaan pakaian' },
-        { step: 4, pelaku: actorLaundry, aksi: 'Melakukan pengepakan rapi dan mengubah status menjadi siap diambil' },
-        { step: 5, pelaku: 'Pelanggan', aksi: 'Mengambil cucian bersih dan melakukan pelunasan tagihan' },
-        { step: 6, pelaku: activeOwner, aksi: 'Memeriksa total timbangan harian dan rekap pemasukan kas toko' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_laundry_supplies',
-          nama: 'Restock Deterjen & Parfum Laundry',
-          steps: [
-            { pelaku: actorLaundry, aksi: 'Mencatat deterjen, pewangi, dan plastik kemasan yang menipis' },
-            { pelaku: activeOwner, aksi: 'Melakukan pembelian stok deterjen dan perlengkapan cuci' }
-          ]
-        },
-        {
-          id: 'alur_laundry_complaint',
-          nama: 'Penanganan Komplain Pakaian',
-          steps: [
-            { pelaku: 'Pelanggan', aksi: 'Melaporkan pakaian tertukar atau noda yang belum bersih' },
-            { pelaku: actorLaundry, aksi: 'Melacak nomor nota pengerjaan dan mencuci ulang tanpa biaya' }
-          ]
-        }
-      ],
-      fiturPendukung: [
-        { id: 'feat_wa_laundry', label: 'Kirim notifikasi WhatsApp otomatis saat cucian siap diambil' },
-        { id: 'feat_label_barcode', label: 'Cetak label barcode / nomor nota pada bungkusan pakaian' },
-        { id: 'feat_filter_nota', label: 'Filter riwayat transaksi berdasarkan nomor telepon atau nota' },
-        { id: 'feat_catatan_biaya', label: 'Pencatatan pengeluaran harian (sabun, parfum, listrik)' },
-        { id: 'feat_ekspor_laundry', label: 'Ekspor laporan kilogram cuci dan pendapatan bulanan' }
-      ]
-    };
-  }
-
-  // 4. Pendidikan / Bimbel / Kursus / Sekolah
-  if (/sekolah|kursus|bimbel|les|guru|siswa|murid|edukasi|pelatihan|akademi/i.test(allContext)) {
-    const actorGuru = activeCore;
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Siswa / Peserta', aksi: 'Mendaftar program belajar dan memilih jadwal sesi kelas' },
-        { step: 2, pelaku: actorGuru, aksi: 'Membuka sesi kelas dan mencatat absensi kehadiran siswa' },
-        { step: 3, pelaku: actorGuru, aksi: 'Menyampaikan materi pembelajaran dan memberikan latihan tugas' },
-        { step: 4, pelaku: 'Siswa / Peserta', aksi: 'Mengerjakan latihan dan mengumpulkan tugas belajar' },
-        { step: 5, pelaku: actorGuru, aksi: 'Memeriksa tugas, memberikan nilai, dan mencatat evaluasi belajar' },
-        { step: 6, pelaku: activeOwner, aksi: 'Memantau rekap kemajuan belajar dan absensi berkala siswa' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_spp',
-          nama: 'Pembayaran Iuran / SPP Belajar',
-          steps: [
-            { pelaku: 'Siswa / Peserta', aksi: 'Menyerahkan bukti pembayaran iuran bulanan kelas' },
-            { pelaku: activeOwner, aksi: 'Memverifikasi pembayaran dan menerbitkan kwitansi resmi' }
-          ]
-        },
-        {
-          id: 'alur_izin_siswa',
-          nama: 'Pengajuan Izin / Cuti Siswa',
-          steps: [
-            { pelaku: 'Siswa / Peserta', aksi: 'Mengajukan surat keterangan izin atau sakit ke sekolah' },
-            { pelaku: actorGuru, aksi: 'Menyetujui izin dan menandai dispensasi di buku absensi' }
-          ]
-        }
-      ],
-      fiturPendukung: [
-        { id: 'feat_rapor_pdf', label: 'Unduh rapor & sertifikat evaluasi belajar siswa (PDF)' },
-        { id: 'feat_wa_absen', label: 'Kirim rekap absensi otomatis ke kontak orang tua/peserta' },
-        { id: 'feat_jadwal_kelas', label: 'Kalender interaktif jadwal pertemuan kelas & evaluasi' },
-        { id: 'feat_filter_spp', label: 'Filter riwayat pembayaran dan tunggakan iuran kursus' },
-        { id: 'feat_ekspor_nilai', label: 'Ekspor rekap nilai per kelas ke format spreadsheet' }
-      ]
-    };
-  }
-
-  // 5. Klinik / Kesehatan / Dokter
-  if (/klinik|dokter|pasien|obat|apotek|perawat|kesehatan|medis/i.test(allContext)) {
-    const actorMedis = activeCore;
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Pasien', aksi: 'Mendaftar di loket penerimaan dan mengambil nomor antrean' },
-        { step: 2, pelaku: actorMedis, aksi: 'Memeriksa tanda vital awal (tensi, suhu) dan mencatat keluhan' },
-        { step: 3, pelaku: actorMedis, aksi: 'Melakukan pemeriksaan medis mendalam dan menentukan diagnosis' },
-        { step: 4, pelaku: actorMedis, aksi: 'Meresepkan obat dan memberikan tindakan medis yang diperlukan' },
-        { step: 5, pelaku: 'Pasien', aksi: 'Melakukan pembayaran dan menerima obat di bagian farmasi' },
-        { step: 6, pelaku: activeOwner, aksi: 'Memeriksa rekap kunjungan pasien dan inventaris obat harian' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_restock_obat',
-          nama: 'Pengadaan & Restock Obat Farmasi',
-          steps: [
-            { pelaku: actorMedis, aksi: 'Mencatat persediaan obat yang hampir habis atau mendekati kedaluwarsa' },
-            { pelaku: activeOwner, aksi: 'Melakukan pemesanan ke distributor farmasi resmi' }
-          ]
-        },
-        {
-          id: 'alur_rujukan',
-          nama: 'Penerbitan Surat Rujukan Pasien',
-          steps: [
-            { pelaku: actorMedis, aksi: 'Membuat surat rujukan medis dengan riwayat diagnosis lengkap' },
-            { pelaku: activeOwner, aksi: 'Mengonfirmasi surat rujukan resmi untuk diserahkan ke pasien' }
-          ]
-        }
-      ],
-      fiturPendukung: [
-        { id: 'feat_surat_dokter', label: 'Cetak surat keterangan dokter & kwitansi pembayaran (PDF)' },
-        { id: 'feat_exp_alert', label: 'Peringatan otomatis obat mendekati kedaluwarsa (expired alert)' },
-        { id: 'feat_rekam_medis', label: 'Pencarian cepat rekam medis pasien via nomor NIK / nama' },
-        { id: 'feat_alergi_obat', label: 'Catatan riwayat alergi obat dan keluhan pasien' },
-        { id: 'feat_ekspor_pasien', label: 'Ekspor laporan kunjungan dan diagnosis terbanyak bulanan' }
-      ]
-    };
-  }
-
-  // 6. Properti / Kos / Sewa
-  if (/kos|kost|kontrakan|sewa|properti|kamar|penyewa|apartemen|rental/i.test(allContext)) {
-    const actorStaf = activeCore;
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Penyewa', aksi: 'Memilih unit kamar/properti dan mengajukan durasi sewa' },
-        { step: 2, pelaku: actorStaf, aksi: 'Mengecek ketersediaan unit dan menyiapkan draft perjanjian sewa' },
-        { step: 3, pelaku: 'Penyewa', aksi: 'Membayar uang sewa periode pertama dan deposit jaminan' },
-        { step: 4, pelaku: actorStaf, aksi: 'Menyerahkan kunci unit dan mencatat meteran awal listrik/air' },
-        { step: 5, pelaku: 'Penyewa', aksi: 'Menempati unit kamar dan menikmati fasilitas hunian' },
-        { step: 6, pelaku: activeOwner, aksi: 'Mencatat pembayaran masuk dan mengatur jadwal jatuh tempo sewa' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_keluhan_unit',
-          nama: 'Pelaporan Keluhan & Perbaikan Fasilitas',
-          steps: [
-            { pelaku: 'Penyewa', aksi: 'Melaporkan kerusakan fasilitas (AC, kran, listrik) di sistem' },
-            { pelaku: actorStaf, aksi: 'Melakukan pengecekan fisik unit dan memperbaiki kendala' }
-          ]
-        },
-        {
-          id: 'alur_checkout',
-          nama: 'Pengembalian Kunci & Selesai Sewa (Check-out)',
-          steps: [
-            { pelaku: 'Penyewa', aksi: 'Mengonfirmasi rencana selesai masa sewa properti' },
-            { pelaku: actorStaf, aksi: 'Memeriksa kelayakan kondisi kamar dan mengembalikan deposit' }
-          ]
-        }
-      ],
-      fiturPendukung: [
-        { id: 'feat_wa_tagihan', label: 'Pengingat otomatis jatuh tempo tagihan sewa ke WhatsApp penyewa' },
-        { id: 'feat_kwitansi_sewa', label: 'Cetak kwitansi tanda terima pembayaran sewa resmi (PDF)' },
-        { id: 'feat_status_kamar', label: 'Dasbor status hunian unit kamar (Terisi / Kosong / Perbaikan)' },
-        { id: 'feat_meteran_air', label: 'Catatan riwayat pencatatan meteran listrik & air per unit' },
-        { id: 'feat_ekspor_sewa', label: 'Ekspor rekapitulasi pendapatan sewa tahunan' }
-      ]
-    };
-  }
-
-  // 7. Retail / Toko / Minimarket / POS (Default untuk retail & toko)
-  if (/retail|toko|kasir|pos|warung|minimarket|sembako|butik|petshop|jual|dagang/i.test(allContext)) {
-    const actorKasir = activeCore;
-    const actorGudang = resolveActorForStep('Staf Gudang', session.roles);
-    return {
-      alurInti: [
-        { step: 1, pelaku: 'Pelanggan', aksi: 'Datang ke toko dan membawa barang belanjaan ke meja kasir' },
-        { step: 2, pelaku: actorKasir, aksi: 'Memindai barcode atau mencari item barang di sistem kasir' },
-        { step: 3, pelaku: actorKasir, aksi: 'Mengonfirmasi rincian belanja, diskon, dan total tagihan' },
-        { step: 4, pelaku: 'Pelanggan', aksi: 'Melakukan pembayaran via uang tunai, transfer, atau QRIS' },
-        { step: 5, pelaku: actorKasir, aksi: 'Memproses pembayaran dan mencetak struk belanja untuk pembeli' },
-        { step: 6, pelaku: activeOwner, aksi: 'Memeriksa rekap total transaksi harian dan menutup buku kas' }
-      ],
-      alurPendukung: [
-        {
-          id: 'alur_restock',
-          nama: 'Pengadaan & Restock Barang',
-          steps: [
-            { pelaku: actorGudang, aksi: 'Memeriksa stok barang yang menipis dan mencatat kebutuhan restock' },
-            { pelaku: activeOwner, aksi: 'Menerima kiriman barang dari suplier dan memperbarui jumlah stok' }
-          ]
-        },
-        {
-          id: 'alur_retur',
-          nama: 'Retur & Penukaran Barang Cacat',
-          steps: [
-            { pelaku: 'Pelanggan', aksi: 'Membawa barang rusak beserta struk belanja untuk ditukar' },
-            { pelaku: actorKasir, aksi: 'Memeriksa kelayakan kondisi barang dan bukti pembelian' },
-            { pelaku: activeOwner, aksi: 'Menyetujui penggantian barang atau pengembalian dana' }
-          ]
-        }
-      ],
-      fiturPendukung: [
-        { id: 'feat_cetak_struk', label: 'Cetak struk belanja kasir & invoice digital (PDF)' },
-        { id: 'feat_stok_menipis', label: 'Peringatan otomatis saat stok barang mencapai batas minimum' },
-        { id: 'feat_cari_produk', label: 'Filter pencarian cepat nama produk & kategori barang' },
-        { id: 'feat_rekap_shift', label: 'Rekap laporan omzet dan kas masuk per shift' },
-        { id: 'feat_ekspor_excel', label: 'Ekspor laporan transaksi harian ke format Excel' }
-      ]
-    };
-  }
-
-  // 8. Universal Fallback (Manajemen Tugas / Operasional Umum)
-  return {
-    alurInti: [
-      { step: 1, pelaku: 'Pelanggan / Pemohon', aksi: 'Mengajukan kebutuhan pesanan atau permintaan layanan baru' },
-      { step: 2, pelaku: activeCore, aksi: 'Memeriksa rincian permohonan dan mencatat data tugas di sistem' },
-      { step: 3, pelaku: activeCore, aksi: 'Mengonfirmasi estimasi waktu pelaksanaan dan rincian biaya' },
-      { step: 4, pelaku: 'Pelanggan / Pemohon', aksi: 'Menyetujui rincian tugas dan mengonfirmasi kesepakatan' },
-      { step: 5, pelaku: activeCore, aksi: 'Melaksanakan aktivitas pekerjaan hingga selesai dengan baik' },
-      { step: 6, pelaku: activeOwner, aksi: 'Memeriksa rekapitulasi laporan aktivitas dan menutup tiket pekerjaan' }
-    ],
-    alurPendukung: [
+  // Alur Pendukung yang kontekstual dengan narasi domain
+  alurPendukung.push({
+    id: 'alur_komplain_layanan',
+    nama: 'Penanganan Komplain & Penyesuaian Layanan',
+    steps: [
       {
-        id: 'alur_approval',
-        nama: 'Pengajuan & Persetujuan Khusus (Approval)',
-        steps: [
-          { pelaku: activeCore, aksi: 'Mengajukan penyesuaian biaya atau kebutuhan anggaran khusus' },
-          { pelaku: activeOwner, aksi: 'Memeriksa permohonan dan memberikan persetujuan (approval)' }
-        ]
+        pelaku: findActor(/pelanggan|penyewa|pasien|pembeli/i, 'Pelanggan'),
+        aksi: 'Menyampaikan catatan atau keluhan jika hasil layanan membutuhkan penyesuaian'
       },
       {
-        id: 'alur_revisi',
-        nama: 'Penanganan Komplain & Revisi Pekerjaan',
-        steps: [
-          { pelaku: 'Pelanggan / Pemohon', aksi: 'Mengajukan catatan perbaikan jika hasil belum sesuai' },
-          { pelaku: activeCore, aksi: 'Menindaklanjuti perbaikan hingga permohonan tuntas' }
-        ]
+        pelaku: activeCore,
+        aksi: 'Memeriksa kendala yang dilaporkan dan menindaklanjuti perbaikan hingga tuntas'
       }
-    ],
-    fiturPendukung: [
-      { id: 'feat_deadline_alert', label: 'Notifikasi pengingat tenggat waktu (deadline) otomatis' },
-      { id: 'feat_filter_arsip', label: 'Filter pencarian cepat data transaksi & riwayat aktivitas' },
-      { id: 'feat_ekspor_rekap', label: 'Ekspor ringkasan laporan operasional ke format Excel' },
-      { id: 'feat_cetak_bukti', label: 'Cetak lembar bukti penyelesaian tugas & invoice (PDF)' },
-      { id: 'feat_audit_log', label: 'Riwayat log catatan perubahan aktivitas (audit log)' }
     ]
+  });
+
+  alurPendukung.push({
+    id: 'alur_operasional_restock',
+    nama: 'Koordinasi Operasional & Pengadaan Kebutuhan',
+    steps: [
+      {
+        pelaku: activeCore,
+        aksi: 'Mencatat kebutuhan operasional atau perlengkapan kerja yang perlu pengadaan'
+      },
+      {
+        pelaku: activeOwner,
+        aksi: 'Memeriksa pengajuan, menyetujui anggaran, dan memperbarui catatan stok/inventaris'
+      }
+    ]
+  });
+
+  // Fitur Pendukung yang relevan secara umum ke seluruh domain bisnis
+  fiturPendukung.push(
+    { id: 'feat_rekap_harian', label: 'Dasbor ringkasan transaksi dan status aktivitas operasional harian' },
+    { id: 'feat_cetak_bukti', label: 'Cetak bukti transaksi, invoice resmi, atau surat tanda terima (PDF)' },
+    { id: 'feat_notif_wa', label: 'Notifikasi pengingat otomatis ke WhatsApp pelanggan terkait status layanan' },
+    { id: 'feat_filter_riwayat', label: 'Filter pencarian cepat data riwayat transaksi dan nomor identitas' },
+    { id: 'feat_ekspor_data', label: 'Ekspor rekapitulasi omzet dan laporan operasional ke format spreadsheet' }
+  );
+
+  // Deduplikasi langkah jika ada aktivitas yang identik
+  const deduplicatedSteps = deduplicateFlowSteps(
+    rawSteps.map((s, idx) => ({
+      step: idx + 1,
+      pelaku: resolveActorForStep(s.pelaku, session.roles),
+      aksi: s.aksi
+    }))
+  );
+
+  return {
+    alurInti: deduplicatedSteps,
+    alurPendukung,
+    fiturPendukung
+  };
+}
+
+/**
+ * Melakukan rekonsiliasi peran wajib inti berdasarkan frekuensi kemunculan pelaku di Alur Inti.
+ * Dilengkapi tie-breaker eksplisit (Ketentuan Tambahan 3):
+ * Memilih aktor yang aksinya berada di langkah paling menentukan hasil akhir alur.
+ */
+export function reconcileCoreOperationalRole(
+  session: MockupSessionState,
+  flowData: DomainFlowData
+): {
+  updatedSession: MockupSessionState;
+  reconciled: boolean;
+  previousCoreRole: string;
+  newCoreRole: string;
+  message?: string;
+} {
+  const steps = flowData.alurInti;
+  const currentCoreRole =
+    session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
+
+  if (!steps || steps.length === 0) {
+    return {
+      updatedSession: session,
+      reconciled: false,
+      previousCoreRole: currentCoreRole,
+      newCoreRole: currentCoreRole
+    };
+  }
+
+  // Hitung frekuensi kemunculan setiap aktor operasional (non-Owner, non-Customer)
+  const counts: Record<
+    string,
+    { count: number; maxStepIndex: number; hasKeyAction: boolean; firstStepIndex: number }
+  > = {};
+
+  for (const st of steps) {
+    const actor = st.pelaku.trim();
+    const key = canonicalRoleKey(actor);
+    const isOwner = key === 'super-admin' || key === 'owner' || actor === REQUIRED_ROLE;
+    const isCust =
+      key === 'customer' ||
+      key === 'guest' ||
+      /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien)\b/i.test(actor);
+
+    if (isOwner || isCust) continue;
+
+    if (!counts[actor]) {
+      counts[actor] = { count: 0, maxStepIndex: st.step, hasKeyAction: false, firstStepIndex: st.step };
+    }
+    counts[actor].count++;
+    counts[actor].maxStepIndex = Math.max(counts[actor].maxStepIndex, st.step);
+
+    // Deteksi aksi penentu hasil akhir (Ketentuan Tambahan 3: Tie-Breaker)
+    const isKeyAction =
+      /serah\s*terima|selesai|tuntas|serahkan|kinclong|periksa\s*akhir|kunci|bersih|tindakan|racik|vakum|cuci\s*ulang/i.test(
+        st.aksi
+      );
+    if (isKeyAction) {
+      counts[actor].hasKeyAction = true;
+    }
+  }
+
+  const candidateEntries = Object.entries(counts);
+
+  if (candidateEntries.length === 0) {
+    return {
+      updatedSession: session,
+      reconciled: false,
+      previousCoreRole: currentCoreRole,
+      newCoreRole: currentCoreRole
+    };
+  }
+
+  // Urutkan kandidat berdasarkan:
+  // 1. Frekuensi kemunculan terbanyak di Alur Inti
+  // 2. Tie-breaker: hasKeyAction (langkah penentu hasil akhir)
+  // 3. Tie-breaker: maxStepIndex (langkah lebih hilir / akhir)
+  candidateEntries.sort((a, b) => {
+    if (b[1].count !== a[1].count) {
+      return b[1].count - a[1].count;
+    }
+    if (b[1].hasKeyAction !== a[1].hasKeyAction) {
+      return b[1].hasKeyAction ? 1 : -1;
+    }
+    return b[1].maxStepIndex - a[1].maxStepIndex;
+  });
+
+  const centralActor = candidateEntries[0][0];
+
+  // Cek apakah centralActor sama dengan coreRole saat ini
+  const isMatch =
+    canonicalRoleKey(centralActor) === canonicalRoleKey(currentCoreRole) ||
+    centralActor.toLowerCase() === currentCoreRole.toLowerCase();
+
+  if (isMatch) {
+    return {
+      updatedSession: session,
+      reconciled: false,
+      previousCoreRole: currentCoreRole,
+      newCoreRole: currentCoreRole
+    };
+  }
+
+  // Rekonsiliasi terpicu: pindahkan status WAJIB_INTI ke centralActor
+  const newWajib = [REQUIRED_ROLE, centralActor];
+  const oldSelected = session.roles?.selected || [];
+  const newSelected = oldSelected.includes(centralActor) ? oldSelected : [...oldSelected, centralActor];
+
+  // Role wajib lama turun status menjadi TAMBAHAN
+  const newTambahan = (session.roles?.tambahan || []).filter((r) => r !== centralActor);
+  if (currentCoreRole && !newTambahan.includes(currentCoreRole) && currentCoreRole !== REQUIRED_ROLE) {
+    newTambahan.push(currentCoreRole);
+  }
+
+  const updatedSession: MockupSessionState = {
+    ...session,
+    roles: {
+      ...session.roles,
+      wajib: newWajib,
+      selected: newSelected,
+      tambahan: newTambahan
+    }
+  };
+
+  const message = `Berdasarkan alur kerja yang baru disusun, **${centralActor}** ternyata yang paling sentral menjalankan aktivitas inti — statusnya disesuaikan jadi role wajib.`;
+
+  return {
+    updatedSession,
+    reconciled: true,
+    previousCoreRole: currentCoreRole,
+    newCoreRole: centralActor,
+    message
   };
 }
 

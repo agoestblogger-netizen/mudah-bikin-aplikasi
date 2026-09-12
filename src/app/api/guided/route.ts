@@ -16,6 +16,7 @@ import {
   renderRoleSummaryTable,
   getDomainFlowDetails,
   renderFlowMarkdown,
+  reconcileCoreOperationalRole,
   type DomainFlowData,
   type GuidedStepId,
   type MockupSessionState
@@ -902,8 +903,6 @@ export async function POST(req: Request) {
         });
         updated = { ...updated, match: { ...updated.match, tier: tier.tier } };
 
-        const guidedStep = buildGuidedStep(updated);
-
         // Kalimat konfirmasi eksplisit jika ada role tambahan yang dihapus (POIN 3)
         const removalMessages: string[] = [];
         if (updated.roles.tugasDilimpahkan && updated.roles.tugasDilimpahkan.length > 0) {
@@ -914,6 +913,25 @@ export async function POST(req: Request) {
           }
         }
 
+        // Tampilkan alur sistem langsung poin bernomor tanpa narasi pembuka tambahan (POIN 4)
+        const flowData = getDomainFlowDetails(updated);
+
+        // Rekonsiliasi peran wajib inti berdasarkan alur kerja aktual (POIN 4)
+        const { updatedSession, reconciled, message: reconMsg } = reconcileCoreOperationalRole(updated, flowData);
+        updated = updatedSession;
+
+        // Simpan flow data yang sudah terekonsiliasi ke session
+        updated.flow = {
+          alurInti: flowData.alurInti,
+          alurPendukung: flowData.alurPendukung.map((ap) => ({
+            nama: ap.nama,
+            steps: ap.steps
+          })),
+          fiturPendukung: flowData.fiturPendukung.map((fp) => fp.label)
+        };
+
+        const guidedStep = buildGuidedStep(updated);
+
         // Penutup wajib: tabel ringkasan final dengan tugas dilimpahkan miring (POIN 3)
         const summaryTable = renderRoleSummaryTable(updated.roles, updated.match.businessCategory, updated.storyline);
 
@@ -923,8 +941,10 @@ export async function POST(req: Request) {
         }
         narration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTable}\n\n`;
 
-        // Tampilkan alur sistem langsung poin bernomor tanpa narasi pembuka tambahan (POIN 4)
-        const flowData = getDomainFlowDetails(updated);
+        if (reconciled && reconMsg) {
+          narration += `> ℹ️ *${reconMsg}*\n\n`;
+        }
+
         const flowMarkdown = renderFlowMarkdown(flowData);
         narration += flowMarkdown;
 
