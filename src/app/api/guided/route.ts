@@ -208,12 +208,13 @@ interface AIStorylineResult {
   asumsiMasalah: string;
   asumsiAktor: string[];
   asumsiAlurUtama: string;
+  detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>;
 }
 
 const CONFIRMATION_CLOSING = 'Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.';
 
 /**
- * Menyusun cerita proses bisnis singkat (2-4 kalimat) murni berbasis AI tanpa istilah teknis (POIN 2).
+ * Menyusun cerita proses bisnis singkat (2-4 kalimat) murni berbasis AI tanpa istilah teknis (POIN 2 & 3).
  */
 export async function generateStorylineWithAI(
   prompt: string,
@@ -235,7 +236,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
      * Bengkel motor/mobil: estimasi sparepart/oli, montir mengecek mesin, nota servis berkala, riwayat kilometer kendaraan.
    - DILARANG KERAS menggunakan frasa generik lintas-industri seperti: "tim di lapangan", "aktivitas harian", "layanan pelanggan", "tim melayani secara teratur" tanpa detail konkret tambahan!
 
-2. PERAN SPESIFIK & MANUSIAWI (asumsiAktor):
+2. PERAN SPESIFIK & MANUSIAWI (asumsiAktor) BESERTA DETAIL PERAN (detailAktor):
    - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
    - DILARANG memakai sebutan generik abstrak seperti "Staf Operasional", "Operator", "Pegawai", atau "Tim Lapangan".
    - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
@@ -243,6 +244,9 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
      * Setiap peran dalam asumsiAktor HARUS memiliki dasar konseptual yang jelas dan terlibat langsung dalam alur narasi yang diceritakan. JANGAN memunculkan peran seperti "Operator", "Viewer", atau artefak teknis lain yang tidak ada di cerita!
      * JANGAN memunculkan "Pemilik" atau "Owner" sebagai peran terpisah jika sudah ada "Super Admin" (Super Admin sudah otomatis merepresentasikan Pemilik).
      * Jika dua peran memiliki konsep makna atau tanggung jawab yang sama (contoh: "Penyewa" dan "Member", atau "Kasir" dan "Petugas Pembayaran"), satukan menjadi satu peran saja.
+   - DETAIL AKTOR (detailAktor):
+     * Untuk SETIAP peran di asumsiAktor, buatkan deskripsi naratif singkat (1-2 kalimat) dan 2-3 butir tanggung jawab konkret yang MURNI DIGROUNDING DARI CERITA domain tersebut.
+     * Contoh: Jika ada "Sopir" di rental mobil, deskripsikan mengantar penumpang perjalanan dan kenyamanan berkendara (DILARANG menyebut paket/barang kurir!). Jika ada "Petugas Kunci", deskripsikan verifikasi SIM/BPKB/jaminan dan cek kilometer!
 
 3. URUTAN ALUR NYATA (asumsiAlurUtama):
    - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
@@ -267,12 +271,22 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
   "narasi": "2-4 kalimat cerita proses bisnis hangat yang menyebut aktivitas & objek fisik nyata domain ini. ${CONFIRMATION_CLOSING}",
   "asumsiMasalah": "Masalah operasional fisik/pencatatan nyata yang dihadapi",
   "asumsiAktor": ["Super Admin", "Peran Spesifik 1", "Peran Spesifik 2", "Pelanggan"],
-  "asumsiAlurUtama": "Aktivitas nyata 1 -> Aktivitas nyata 2 -> Aktivitas nyata 3 -> Pemilik memantau rekap"
+  "asumsiAlurUtama": "Aktivitas nyata 1 -> Aktivitas nyata 2 -> Aktivitas nyata 3 -> Pemilik memantau rekap",
+  "detailAktor": {
+    "Super Admin": {
+      "narasi": "Pemilik atau penanggung jawab utama operasional...",
+      "tanggungJawab": ["Tanggung jawab konkret 1", "Tanggung jawab konkret 2", "Tanggung jawab konkret 3"]
+    },
+    "Peran Spesifik 1": {
+      "narasi": "1-2 kalimat penjelasan peran yang digrounding langsung ke cerita nyata...",
+      "tanggungJawab": ["Aktivitas konkret 1 dari cerita", "Aktivitas konkret 2 dari cerita", "Aktivitas konkret 3"]
+    }
+  }
 }`;
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat, hidup, dan memuat detail objek/aktivitas fisik konkret spesifik domain ini, lalu ekstrak field terstruktur:`,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat, hidup, dan memuat detail objek/aktivitas fisik konkret spesifik domain ini, lalu ekstrak field terstruktur beserta detailAktor:`,
     temperature: 0.6,
     maxTokens: 4000,
     provider,
@@ -299,6 +313,20 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
             ? parsed.asumsiAktor.map(String)
             : ['Super Admin', 'Staf Layanan', 'Pelanggan'];
 
+        let detailAktor: Record<string, { narasi: string; tanggungJawab: string[] }> | undefined = undefined;
+        if (parsed.detailAktor && typeof parsed.detailAktor === 'object') {
+          detailAktor = {};
+          for (const [k, v] of Object.entries(parsed.detailAktor)) {
+            if (v && typeof v === 'object') {
+              const obj = v as any;
+              detailAktor[k] = {
+                narasi: String(obj.narasi || '').trim(),
+                tanggungJawab: Array.isArray(obj.tanggungJawab) ? obj.tanggungJawab.map(String) : []
+              };
+            }
+          }
+        }
+
         return {
           appName,
           businessCategory,
@@ -312,7 +340,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           asumsiAktor,
           asumsiAlurUtama:
             String(parsed.asumsiAlurUtama || '').trim() ||
-            'Pelanggan mendaftar -> Petugas mengerjakan layanan -> Pembayaran & struk -> Pemilik mengecek rekap'
+            'Pelanggan mendaftar -> Petugas mengerjakan layanan -> Pembayaran & struk -> Pemilik mengecek rekap',
+          detailAktor
         };
       }
     } catch (e) {
@@ -329,6 +358,12 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
   let fallbackNarasi = `Wah, ide yang menarik untuk ${cleanPrompt}! Mari kita rancang alur operasionalnya agar staf di tempat kerja dapat melayani setiap pesanan dengan rapi dan terdata dengan jelas, sementara kamu sebagai pemilik bisa memantau pemasukan harian kapan pun dengan tenang. ${CONFIRMATION_CLOSING}`;
   let fallbackAktor = ['Super Admin', 'Staf Kasir', 'Pelanggan'];
   let fallbackAlur = 'Pelanggan memesan -> Petugas memproses di lokasi -> Pembayaran tercatat -> Pemilik melihat rekap';
+  let fallbackDetailAktor: Record<string, { narasi: string; tanggungJawab: string[] }> = {
+    'Super Admin': {
+      narasi: `Pemilik usaha atau penanggung jawab utama operasional ${fallbackCategory}. Memastikan alur kerja berjalan tertib dan memantau omzet harian.`,
+      tanggungJawab: ['Memantau transaksi dan omzet harian', 'Mengelola staf dan hak akses akun', 'Mengatur pengaturan operasional aplikasi']
+    }
+  };
 
   if (lowerPrompt.includes('rental') || lowerPrompt.includes('sewa') || lowerPrompt.includes('rent car')) {
     fallbackAppName = 'RentCar Mandiri';
@@ -336,6 +371,24 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     fallbackNarasi = `Wah, ide usaha rental kendaraan yang sangat prospektif! Bayangkan alur transaksinya nanti: petugas rental memeriksa ketersediaan armada, memverifikasi data identitas serta jaminan penyewa, lalu melakukan serah-terima kunci dan mengecek kondisi fisik armada bersama penyewa. Saat mobil dikembalikan, pemeriksaan bodi dan bahan bakar tercatat otomatis, sementara kamu sebagai pemilik bisa memantau jadwal armada aktif dan rekap omzet harian dengan tenang. ${CONFIRMATION_CLOSING}`;
     fallbackAktor = ['Super Admin', 'Petugas Rental', 'Sopir Armada', 'Penyewa'];
     fallbackAlur = 'Penyewa booking & verifikasi jaminan -> Petugas serah terima kunci & cek unit -> Pengembalian armada -> Pemilik pantau unit aktif & omzet';
+    fallbackDetailAktor = {
+      'Super Admin': {
+        narasi: 'Pemilik usaha rental kendaraan yang memantau pergerakan armada, jadwal sewa aktif, dan pemasukan keuangan harian.',
+        tanggungJawab: ['Memantau jadwal armada dan sewa aktif', 'Meninjau laporan omzet dan denda keterlambatan', 'Mengatur ketersediaan dan tarif armada']
+      },
+      'Petugas Rental': {
+        narasi: 'Petugas garis depan yang memverifikasi dokumen persyaratan penyewa (SIM & KTP/jaminan), mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.',
+        tanggungJawab: ['Memverifikasi dokumen identitas dan jaminan penyewa', 'Mencatat kondisi fisik dan kilometer awal-akhir mobil', 'Melakukan serah-terima kunci dan formulir sewa']
+      },
+      'Sopir Armada': {
+        narasi: 'Pengemudi armada rental yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.',
+        tanggungJawab: ['Mempersiapkan kendaraan dan mendampingi penumpang selama perjalanan', 'Mengemudikan unit secara aman sesuai rute kesepakatan pelanggan', 'Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada']
+      },
+      'Penyewa': {
+        narasi: 'Penyewa armada kendaraan lepas kunci atau dengan sopir yang memilih unit, menyerahkan dokumen persyaratan dan jaminan sewa, serta menikmati perjalanan.',
+        tanggungJawab: ['Memilih armada kendaraan dan durasi waktu sewa', 'Menyerahkan dokumen identitas (SIM/KTP) dan jaminan', 'Melakukan pembayaran dan menerima serah-terima armada']
+      }
+    };
   } else if (lowerPrompt.includes('cuci') || (lowerPrompt.includes('mobil') && lowerPrompt.includes('cuci'))) {
     fallbackAppName = 'AutoShine Carwash';
     fallbackCategory = 'Jasa Cuci Kendaraan';
@@ -354,6 +407,30 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     fallbackNarasi = `Wah, ide laundry yang sangat praktis dan dicari banyak orang! Bayangkan operasional hariannya: staf kasir menimbang tumpukan pakaian kotor pelanggan, memilah pakaian khusus, lalu mencetak nota estimasi selesai. Tim cuci memasukkan pakaian ke mesin cuci dan menyetrika uap hingga rapi berbungkus plastik wangi, sementara kamu sebagai pemilik bisa memantau berat cucian yang diproses serta omzet harian langsung dari ponsel. ${CONFIRMATION_CLOSING}`;
     fallbackAktor = ['Super Admin', 'Kasir Penerima Cucian', 'Staf Cuci & Setrika Uap', 'Pelanggan'];
     fallbackAlur = 'Pakaian ditimbang kasir -> Dicuci & disetrika uap rapi -> Pelanggan ambil cucian bersih -> Pemilik pantau total kiloan & omzet';
+  } else if (lowerPrompt.includes('kafe') || lowerPrompt.includes('cafe') || lowerPrompt.includes('kopi') || lowerPrompt.includes('coffee')) {
+    fallbackAppName = 'KopiNusantara Cafe';
+    fallbackCategory = 'Kafe & Kedai Kopi';
+    fallbackNarasi = `Wah, ide kafe dan kedai kopi yang sangat menarik! Bayangkan suasana tempatnya: kasir menyambut pelanggan dan mencatat pesanan menu kopi serta camilan, lalu barista meracik espresso segar dan menyajikannya ke meja pelanggan. Pesanan selesai langsung tercatat di sistem kasir, sementara kamu sebagai pemilik kafe bisa memantau menu terlaris dan rekap omzet harian dengan santai. ${CONFIRMATION_CLOSING}`;
+    fallbackAktor = ['Super Admin', 'Barista & Dapur', 'Staf Kasir', 'Pelanggan'];
+    fallbackAlur = 'Pelanggan pesan kopi -> Barista meracik pesanan -> Pembayaran di kasir -> Pemilik pantau omzet & menu terlaris';
+    fallbackDetailAktor = {
+      'Super Admin': {
+        narasi: 'Pemilik usaha kafe yang memantau menu terlaris, stok bahan baku kopi, dan pemasukan keuangan harian.',
+        tanggungJawab: ['Memantau laporan penjualan dan omzet harian', 'Mengatur ketersediaan bahan baku dan menu kafe', 'Mengelola staf kasir dan barista']
+      },
+      'Barista & Dapur': {
+        narasi: 'Petugas peracik minuman dan makanan di kafe yang menyiapkan pesanan kopi espresso dan menu sesuai tiket pesanan pelanggan.',
+        tanggungJawab: ['Menerima tiket pesanan minuman/makanan dari kasir', 'Meracik biji kopi dan menyajikan menu dengan standar rasa terbaik', 'Memeriksa kebersihan area mesin kopi dan perlengkapan bar']
+      },
+      'Staf Kasir': {
+        narasi: 'Petugas meja depan kafe yang menyambut pelanggan, menginput pesanan kopi/makanan, dan memproses pembayaran transaksi.',
+        tanggungJawab: ['Mencatat pilihan menu dan preferensi pesanan pelanggan', 'Menerima pembayaran tunai maupun nontunai (QRIS)', 'Mencetak struk pesanan untuk diteruskan ke meja barista']
+      },
+      'Pelanggan': {
+        narasi: 'Pengunjung kafe yang memesan sajian kopi atau makanan, menikmati suasana kafe, serta menyelesaikan pembayaran.',
+        tanggungJawab: ['Memilih menu minuman kopi dan makanan favorit', 'Melakukan pembayaran di kasir', 'Menikmati sajian pesanan di tempat atau bawa pulang']
+      }
+    };
   }
 
   return {
@@ -365,7 +442,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     narasi: fallbackNarasi,
     asumsiMasalah: `Pencatatan antrean dan alur kerja di ${fallbackCategory} membutuhkan koordinasi yang rapi agar tidak ada yang terlewat.`,
     asumsiAktor: fallbackAktor,
-    asumsiAlurUtama: fallbackAlur
+    asumsiAlurUtama: fallbackAlur,
+    detailAktor: fallbackDetailAktor
   };
 }
 
@@ -574,6 +652,7 @@ export async function POST(req: Request) {
           asumsiMasalah: storylineResult.asumsiMasalah,
           asumsiAktor: storylineResult.asumsiAktor,
           asumsiAlurUtama: storylineResult.asumsiAlurUtama,
+          detailAktor: storylineResult.detailAktor,
           statusKonfirmasi: 'disetujui',
           revisiCount: 0
         },
@@ -800,7 +879,7 @@ export async function POST(req: Request) {
           );
           if (targetDelegation) {
             targetDelegation.keRole = toPart;
-            const table = renderRoleSummaryTable(session.roles, session.match.businessCategory);
+            const table = renderRoleSummaryTable(session.roles, session.match.businessCategory, session.storyline);
             const narration = `Siap, tugas dari role **${targetDelegation.dariRole}** sekarang resmi dilimpahkan ke **${toPart}**!\n\n${table}\n\nSekarang, yuk kita lanjut ke alur kerja utama aplikasi:`;
             const guidedStep = buildGuidedStep(session);
             return NextResponse.json({
@@ -836,7 +915,7 @@ export async function POST(req: Request) {
         }
 
         // Penutup wajib: tabel ringkasan final dengan tugas dilimpahkan miring (POIN 3)
-        const summaryTable = renderRoleSummaryTable(updated.roles, updated.match.businessCategory);
+        const summaryTable = renderRoleSummaryTable(updated.roles, updated.match.businessCategory, updated.storyline);
 
         let narration = '';
         if (removalMessages.length > 0) {

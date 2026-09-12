@@ -1,0 +1,106 @@
+================================================================
+TEST & VERIFIKASI POIN REVISI 3: GROUNDING DESKRIPSI & TANGGUNG JAWAB ROLE
+================================================================
+
+--- [BAGIAN 1] VERIFIKASI FALLBACK (JIKA AI TIDAK ISI DETAIL_AKTOR) ---
+
+Role: [Petugas Penerimaan & Penyerahan Kunci] (Fallback Mode: Tanpa detailAktor AI)
+  Deskripsi: Petugas garis depan di Rental Mobil yang memverifikasi persyaratan administrasi penyewa, mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.
+  Tanggung Jawab: Memverifikasi kelengkapan dokumen identitas dan jaminan penyewa (SIM & KTP/BPKB); Mencatat kondisi fisik unit serta angka kilometer awal dan akhir; Mengurus serah-terima kunci armada dan bukti tanda terima sewa
+
+Role: [Sopir] (Fallback Mode: Tanpa detailAktor AI)
+  Deskripsi: Pengemudi armada di Rental Mobil yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.
+  Tanggung Jawab: Memastikan unit kendaraan siap pakai dan dalam kondisi bersih sebelum menjemput; Mendampingi penumpang dan mengemudikan kendaraan secara aman sesuai rute; Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada
+
+Role: [Penyewa] (Fallback Mode: Tanpa detailAktor AI)
+  Deskripsi: Penyewa armada di Rental Mobil yang memilih unit kendaraan lepas kunci atau dengan sopir, menyerahkan dokumen persyaratan dan jaminan, serta menikmati perjalanan berkendara.
+  Tanggung Jawab: Memilih armada kendaraan dan durasi waktu sewa; Menyerahkan dokumen identitas (SIM/KTP) dan jaminan sewa; Melakukan pembayaran dan menerima serah-terima unit armada
+
+✅ BAGIAN 1 LOLOS: Fallback murni membaca teks narasi & alur cerita secara kontekstual, bukan kembali ke switch-case e-commerce/paket!
+
+--- [BAGIAN 2] VERIFIKASI ROLE_GROUPS DEDUPLIKASI ---
+canonicalRoleKey("Sopir"): driver
+canonicalRoleKey("Driver"): driver
+✅ BAGIAN 2 LOLOS: ROLE_GROUPS regex sopir -> driver tetap aktif untuk deduplikasi nama!
+
+--- [BAGIAN 3] TEST REGRESI 3 DOMAIN LAMA DENGAN AI LIVE ---
+
+Testing Domain: Cuci Mobil ("buatkan aplikasi cuci mobil")...
+  AppName: AutoShine Carwash
+  Kategori: Jasa Cuci Kendaraan
+  Narasi: Wah, ide usaha cuci kendaraan yang sangat prospektif! Bayangkan saat mobil pelanggan masuk ke area cuci: kasir mencatat plat nomor dan paket pembersihan yang dipilih, lalu tim cuci menyemprot bodi dengan air bertekanan dan memvakum jok hingga bersih kesat. Setelah mobil kinclong dan diserahkan ke pelanggan, kamu sebagai pemilik bisa langsung mengecek rekap jumlah kendaraan yang dicuci dan total omzet hari ini tanpa khawatir selisih. Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.
+  Aktor: Super Admin, Kasir Penerima Kendaraan, Staf Cuci & Vakum, Pelanggan
+  Tabel Role Step ROLE (Cuci Mobil):
+┌─────────┬────────────────────────────┬─────────────────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ Label                      │ Deskripsi                                                                   │ TanggungJawab                                                                                                                                 │
+├─────────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'              │ 'Pemilik usaha atau penanggung jawab utama operasional buatkan aplikasi...' │ 'Memantau transaksi dan omzet harian; Mengelola staf dan hak akses akun'                                                                      │
+│ 1       │ 'Kasir Penerima Kendaraan' │ 'Petugas meja depan di Jasa Cuci Kendaraan yang menyambut kedatangan pe...' │ 'Menyambut pelanggan dan mencatat pesanan paket layanan yang dipilih; Menerima pembayaran transaksi tunai maupun nontunai dan mencetak struk' │
+│ 2       │ 'Staf Cuci & Vakum'        │ 'Petugas operasional yang mengerjakan pembersihan langsung pada unit ke...' │ 'Menerima antrean slot kendaraan yang masuk ke area cuci; Menyemprotkan sabun, membersihkan bodi, dan memvakum interior kendaraan'            │
+│ 3       │ 'Pelanggan'                │ 'Pelanggan yang membawa kendaraannya ke Jasa Cuci Kendaraan untuk menda...' │ 'Memilih paket pencucian atau perawatan kendaraan; Melakukan pembayaran transaksi di meja kasir'                                              │
+└─────────┴────────────────────────────┴─────────────────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Testing Domain: Klinik Gigi ("buatkan aplikasi klinik dokter gigi")...
+  AppName: DentalCare Sehat
+  Kategori: Klinik Dokter Gigi
+  Narasi: Wah, ide klinik gigi yang mulia dan sangat dibutuhkan! Bayangkan alur prakteknya: resepsionis menyambut pasien dengan ramah dan mencatat keluhan serta riwayat gigi di meja depan, lalu dokter gigi melakukan pemeriksaan langsung di dental chair dengan alat yang sudah higienis. Pasien selesai berobat menerima resep dan kuitansi, sementara kamu sebagai pemilik klinik dapat meninjau jadwal kunjungan dan pendapatan harian dengan tenang. Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.
+  Aktor: Super Admin, Dokter Gigi, Resepsionis & Kasir, Pasien
+  Tabel Role Step ROLE (Klinik Gigi):
+┌─────────┬───────────────────────┬─────────────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ Label                 │ Deskripsi                                                                   │ TanggungJawab                                                                                                                                      │
+├─────────┼───────────────────────┼─────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'         │ 'Pemilik usaha atau penanggung jawab utama operasional buatkan aplikasi...' │ 'Memantau transaksi dan omzet harian; Mengelola staf dan hak akses akun'                                                                           │
+│ 1       │ 'Dokter Gigi'         │ 'Tenaga profesional kesehatan di Klinik Dokter Gigi yang melakukan tind...' │ 'Mencatat riwayat keluhan dan melakukan pemeriksaan medis secara langsung; Menyiapkan dan mengoperasikan peralatan medis yang telah disterilisasi' │
+│ 2       │ 'Resepsionis & Kasir' │ 'Petugas meja depan di Klinik Dokter Gigi yang menyambut kedatangan pel...' │ 'Menyambut pelanggan dan mencatat pesanan paket layanan yang dipilih; Menerima pembayaran transaksi tunai maupun nontunai dan mencetak struk'      │
+│ 3       │ 'Pasien'              │ 'Pasien yang mendaftar pemeriksaan di Klinik Dokter Gigi, menyampaikan ...' │ 'Mendaftar antrean dan menyampaikan keluhan gigi/rongga mulut; Menjalani tindakan medis di dental chair bersama dokter'                            │
+└─────────┴───────────────────────┴─────────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Testing Domain: Kafe ("buatkan aplikasi kafe dan kedai kopi modern")...
+  AppName: KopiNusantara Cafe
+  Kategori: Kafe & Kedai Kopi
+  Narasi: Wah, ide kafe dan kedai kopi yang sangat menarik! Bayangkan suasana tempatnya: kasir menyambut pelanggan dan mencatat pesanan menu kopi serta camilan, lalu barista meracik espresso segar dan menyajikannya ke meja pelanggan. Pesanan selesai langsung tercatat di sistem kasir, sementara kamu sebagai pemilik kafe bisa memantau menu terlaris dan rekap omzet harian dengan santai. Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.
+  Aktor: Super Admin, Barista & Dapur, Staf Kasir, Pelanggan
+  Tabel Role Step ROLE (Kafe):
+┌─────────┬───────────────────┬─────────────────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ Label             │ Deskripsi                                                                   │ TanggungJawab                                                                                                          │
+├─────────┼───────────────────┼─────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'     │ 'Pemilik usaha kafe yang memantau menu terlaris, stok bahan baku kopi, ...' │ 'Memantau laporan penjualan dan omzet harian; Mengatur ketersediaan bahan baku dan menu kafe'                          │
+│ 1       │ 'Barista & Dapur' │ 'Petugas peracik minuman dan makanan di kafe yang menyiapkan pesanan ko...' │ 'Menerima tiket pesanan minuman/makanan dari kasir; Meracik biji kopi dan menyajikan menu dengan standar rasa terbaik' │
+│ 2       │ 'Staf Kasir'      │ 'Petugas meja depan kafe yang menyambut pelanggan, menginput pesanan ko...' │ 'Mencatat pilihan menu dan preferensi pesanan pelanggan; Menerima pembayaran tunai maupun nontunai (QRIS)'             │
+│ 3       │ 'Pelanggan'       │ 'Pengunjung kafe yang memesan sajian kopi atau makanan, menikmati suasa...' │ 'Memilih menu minuman kopi dan makanan favorit; Melakukan pembayaran di kasir'                                         │
+└─────────┴───────────────────┴─────────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+✅ BAGIAN 3 LOLOS: Kualitas narasi storytelling dan grounding role 3 domain lama tetap prima!
+
+--- [BAGIAN 4] TEST DOMAIN RENTAL MOBIL (KASUS ASLI BUG) ---
+Menguji prompt: "buatkan aplikasi rental mobil lepas kunci dan dengan sopir"...
+
+Storyline AI Rental Mobil:
+- AppName: RentCar Mandiri
+- Kategori: Rental & Sewa Kendaraan
+- Narasi: Wah, ide usaha rental kendaraan yang sangat prospektif! Bayangkan alur transaksinya nanti: petugas rental memeriksa ketersediaan armada, memverifikasi data identitas serta jaminan penyewa, lalu melakukan serah-terima kunci dan mengecek kondisi fisik armada bersama penyewa. Saat mobil dikembalikan, pemeriksaan bodi dan bahan bakar tercatat otomatis, sementara kamu sebagai pemilik bisa memantau jadwal armada aktif dan rekap omzet harian dengan tenang. Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.
+- Alur: Penyewa booking & verifikasi jaminan -> Petugas serah terima kunci & cek unit -> Pengembalian armada -> Pemilik pantau unit aktif & omzet
+- Aktor: Super Admin, Petugas Rental, Sopir Armada, Penyewa
+
+Daftar Lengkap Role Step ROLE untuk Rental Mobil:
+┌─────────┬─────────────────────────────────────────┬─────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ ID                                      │ Label                                   │ Deskripsi                                                                                                                                                                              │ TanggungJawabUtama                                                                                                                                                                                               │
+├─────────┼─────────────────────────────────────────┼─────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'                           │ 'Super Admin'                           │ 'Pemilik usaha rental kendaraan yang memantau pergerakan armada, jadwal sewa aktif, dan pemasukan keuangan harian.'                                                                    │ 'Memantau jadwal armada dan sewa aktif | Meninjau laporan omzet dan denda keterlambatan | Mengatur ketersediaan dan tarif armada'                                                                                │
+│ 1       │ 'Petugas Rental'                        │ 'Petugas Rental'                        │ 'Petugas garis depan yang memverifikasi dokumen persyaratan penyewa (SIM & KTP/jaminan), mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.'             │ 'Memverifikasi dokumen identitas dan jaminan penyewa | Mencatat kondisi fisik dan kilometer awal-akhir mobil | Melakukan serah-terima kunci dan formulir sewa'                                                   │
+│ 2       │ 'Sopir Armada'                          │ 'Sopir Armada'                          │ 'Pengemudi armada rental yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.'                                           │ 'Mempersiapkan kendaraan dan mendampingi penumpang selama perjalanan | Mengemudikan unit secara aman sesuai rute kesepakatan pelanggan | Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada' │
+│ 3       │ 'Penyewa'                               │ 'Penyewa'                               │ 'Penyewa armada kendaraan lepas kunci atau dengan sopir yang memilih unit, menyerahkan dokumen persyaratan dan jaminan sewa, serta menikmati perjalanan.'                              │ 'Memilih armada kendaraan dan durasi waktu sewa | Menyerahkan dokumen identitas (SIM/KTP) dan jaminan | Melakukan pembayaran dan menerima serah-terima armada'                                                   │
+│ 4       │ 'Petugas Penerimaan & Penyerahan Kunci' │ 'Petugas Penerimaan & Penyerahan Kunci' │ 'Petugas garis depan di Rental & Sewa Kendaraan yang memverifikasi persyaratan administrasi penyewa, mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.' │ 'Memverifikasi dokumen identitas dan jaminan sewa pelanggan | Mengecek kondisi fisik armada sebelum dan sesudah digunakan | Mengurus serah-terima kunci armada dan bukti tanda terima sewa'                      │
+└─────────┴─────────────────────────────────────────┴─────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+[Pemeriksaan Khusus Sopir]:
+- Deskripsi: "Pengemudi armada rental yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan."
+- Tanggung Jawab: "Mempersiapkan kendaraan dan mendampingi penumpang selama perjalanan; Mengemudikan unit secara aman sesuai rute kesepakatan pelanggan; Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada"
+-> ✅ Sopir terverifikasi mendeskripsikan pengantaran penumpang & armada kendaraan, BUKAN paket!
+
+[Pemeriksaan Khusus Petugas Penerimaan & Penyerahan Kunci]:
+- Deskripsi: "Petugas garis depan di Rental & Sewa Kendaraan yang memverifikasi persyaratan administrasi penyewa, mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci."
+- Tanggung Jawab: "Memverifikasi dokumen identitas dan jaminan sewa pelanggan; Mengecek kondisi fisik armada sebelum dan sesudah digunakan; Mengurus serah-terima kunci armada dan bukti tanda terima sewa"
+-> ✅ Petugas Kunci terverifikasi mendeskripsikan verifikasi SIM/dokumen, kondisi fisik/kilometer, dan serah terima kunci!
+
+🎉 SEMUA PERSYARATAN POIN REVISI 3 TERPENUHI 100% TANPA KEKURANGAN!

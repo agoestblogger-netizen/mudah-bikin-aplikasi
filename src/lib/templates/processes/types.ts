@@ -184,6 +184,7 @@ export interface MockupSessionState {
     asumsiMasalah: string;
     asumsiAktor: string[];
     asumsiAlurUtama: string;
+    detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>;
     statusKonfirmasi: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
   };
