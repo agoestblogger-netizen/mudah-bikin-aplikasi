@@ -222,36 +222,54 @@ export async function generateStorylineWithAI(
   model?: string
 ): Promise<AIStorylineResult> {
   const systemInstruction = `Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator".
-Tugas Anda: Menyambut ide pengguna dengan hangat, apresiatif, dan ramah, lalu merangkai cerita proses bisnis (2-4 kalimat) yang mengalir luwes, hidup, dan manusiawi.
+Tugas Anda: Menyambut ide pengguna dengan hangat, apresiatif, dan ramah, lalu merangkai cerita proses bisnis (2-4 kalimat) yang mengalir luwes, hidup, dan SANGAT SPESIFIK ke domain bisnis tersebut.
 
-PANDUAN NADA & GAYA BAHASA (WAJIB DIPATUHI):
-1. NADA SANGAT HANGAT & BERSAHABAT: Gunakan bahasa Indonesia percakapan yang santun, luwes, dan akrab layaknya rekan diskusi bisnis yang suportif. HINDARI bahasa kaku seperti laporan kantor/birokrasi atau robot!
-2. PEMBUKA YANG MENGALIR: Awali dengan menyapa atau mengapresiasi ide pengguna secara natural (misalnya: "Wah, ide yang menarik!", "Keren, senang sekali bisa bantu wujudkan ide usahamu!", atau "Menarik sekali! Mari kita bayangkan operasional sehari-harinya:").
-3. CERITA HIDUP & KONKRET: Rangkum dengan mengalir: siapa yang melayani di garis depan, bagaimana interaksi dengan pelanggan, dan bagaimana pemilik memantau usaha dengan tenang tanpa ribet.
-4. SANGAT PENTING - TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan kata-kata teknis komputer/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni keseharian manusia di lapangan!
-5. KALIMAT PENUTUP WAJIB: Tutup cerita dengan kalimat konfirmasi yang ramah:
-"${CONFIRMATION_CLOSING}"
-6. EKSTRAKSI FIELD:
-- appName: Nama aplikasi yang spesifik dan menarik (contoh: "Toko Kelontong Berkah", "CatBoarding Care")
-- businessCategory: Kategori bisnis spesifik (contoh: "Toko Retail Kelontong", "Penitipan Kucing")
-- asumsiMasalah: 1-2 kalimat masalah operasional nyata yang dihadapi
-- asumsiAktor: daftar 3-5 peran nyata (selalu sertakan "Super Admin", dan peran manusia nyata di bisnis tersebut)
-- asumsiAlurUtama: ringkasan alur utama dari awal sampai selesai
+PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
+1. OBJEK FISIK & AKTIVITAS SPESIFIK DOMAIN (WAJIB):
+   - Cerita WAJIB menyebutkan minimal satu detail aktivitas atau objek fisik nyata yang spesifik ke domain bisnis yang diminta pengguna.
+   - Contoh objek/aktivitas konkret:
+     * Cuci mobil: selang air bertekanan, vakum interior, sabun salju, pengering chamois, plat nomor kendaraan, antrean slot cuci.
+     * Klinik dokter gigi: dental chair (kursi periksa), rekam medis keluhan gigi/rongga mulut, alat rontgen/sterilisasi gigi, resep obat, jadwal penambalan/pembersihan karang gigi.
+     * Laundry kiloan: timbangan digital cucian, pemilahan baju luntur/halus, mesin cuci/dryer, setrika uap, plastik packing wangi, nota kiloan.
+     * Kafe / Bakery: racikan biji kopi espresso, display etalase kue/roti, tiket pesanan dapur, cetak struk kasir, meja barista.
+     * Bengkel motor/mobil: estimasi sparepart/oli, montir mengecek mesin, nota servis berkala, riwayat kilometer kendaraan.
+   - DILARANG KERAS menggunakan frasa generik lintas-industri seperti: "tim di lapangan", "aktivitas harian", "layanan pelanggan", "tim melayani secara teratur" tanpa detail konkret tambahan!
 
-Kembalikan HANYA JSON valid:
+2. PERAN SPESIFIK & MANUSIAWI (asumsiAktor):
+   - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
+   - DILARANG memakai sebutan generik abstrak seperti "Staf Operasional", "Operator", "Pegawai", atau "Tim Lapangan".
+   - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
+
+3. URUTAN ALUR NYATA (asumsiAlurUtama):
+   - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
+   - Contoh: "Pelanggan datang bawa mobil -> Kasir catat paket cuci & plat nomor -> Staf cuci semprot busa & vakum jok -> Kasir terima pembayaran -> Pemilik cek total mobil & omzet".
+   - DILARANG memakai kalimat umum seperti "Pelanggan memesan -> Petugas memproses -> Pemilik memantau".
+
+4. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
+   "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
+
+5. NADA HANGAT, BERSAHABAT, & TANPA ISTILAH TEKNIS:
+   - Gunakan bahasa Indonesia percakapan yang santun, luwes, dan akrab layaknya rekan diskusi bisnis yang suportif.
+   - DILARANG KERAS menggunakan kata teknis IT/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni interaksi manusia dan barang nyata!
+
+6. KALIMAT PENUTUP WAJIB:
+   Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
+   "${CONFIRMATION_CLOSING}"
+
+7. FORMAT OUTPUT HANYA JSON VALID:
 {
-  "appName": "Toko Kelontong Berkah",
-  "businessCategory": "Ritel & Toko Kelontong",
-  "narasi": "Wah, ide yang menarik! Bayangkan keseharian tokomu nanti: kasir dengan sigap menyapa pembeli dan mencatat belanjaan yang keluar, sehingga rak jualan selalu terpantau rapi. Kamu sebagai pemilik bisa santai mengecek pemasukan harian kapan pun dari mana saja tanpa khawatir ada hitungan yang selisih. ${CONFIRMATION_CLOSING}",
-  "asumsiMasalah": "Pencatatan penjualan dan stok barang rawan tercecer jika masih ditulis manual di buku.",
-  "asumsiAktor": ["Super Admin", "Kasir", "Staf Gudang", "Pelanggan"],
-  "asumsiAlurUtama": "Pelanggan memilih barang -> Kasir melayani belanja & cetak nota -> Stok terpotong rapi -> Pemilik memantau omzet harian"
+  "appName": "Nama aplikasi kreatif & spesifik domain",
+  "businessCategory": "Kategori industri konkret",
+  "narasi": "2-4 kalimat cerita proses bisnis hangat yang menyebut aktivitas & objek fisik nyata domain ini. ${CONFIRMATION_CLOSING}",
+  "asumsiMasalah": "Masalah operasional fisik/pencatatan nyata yang dihadapi",
+  "asumsiAktor": ["Super Admin", "Peran Spesifik 1", "Peran Spesifik 2", "Pelanggan"],
+  "asumsiAlurUtama": "Aktivitas nyata 1 -> Aktivitas nyata 2 -> Aktivitas nyata 3 -> Pemilik memantau rekap"
 }`;
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat dan bersahabat, lalu ekstrak field terstruktur:`,
-    temperature: 0.5,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat, hidup, dan memuat detail objek/aktivitas fisik konkret spesifik domain ini, lalu ekstrak field terstruktur:`,
+    temperature: 0.6,
     maxTokens: 4000,
     provider,
     userApiKey: apiKey,
@@ -275,7 +293,7 @@ Kembalikan HANYA JSON valid:
         const asumsiAktor =
           Array.isArray(parsed.asumsiAktor) && parsed.asumsiAktor.length > 0
             ? parsed.asumsiAktor.map(String)
-            : ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+            : ['Super Admin', 'Staf Layanan', 'Pelanggan'];
 
         return {
           appName,
@@ -286,11 +304,11 @@ Kembalikan HANYA JSON valid:
           narasi,
           asumsiMasalah:
             String(parsed.asumsiMasalah || '').trim() ||
-            `Pengelolaan operasional harian ${businessCategory} butuh alur yang teratur.`,
+            `Pengelolaan antrean dan pencatatan riwayat layanan ${businessCategory} rawan tercecer jika tanpa alur yang rapi.`,
           asumsiAktor,
           asumsiAlurUtama:
             String(parsed.asumsiAlurUtama || '').trim() ||
-            'Pelanggan mengajukan pesanan -> Petugas memproses -> Pemilik memantau laporan'
+            'Pelanggan mendaftar -> Petugas mengerjakan layanan -> Pembayaran & struk -> Pemilik mengecek rekap'
         };
       }
     } catch (e) {
@@ -298,18 +316,46 @@ Kembalikan HANYA JSON valid:
     }
   }
 
-  // Fallback hangat dan bersahabat jika AI tidak merespons
+  // Fallback kontekstual berbasis kata kunci jika AI tidak merespons
   const cleanPrompt = prompt.trim();
+  const lowerPrompt = cleanPrompt.toLowerCase();
+
+  let fallbackAppName = `Aplikasi ${cleanPrompt.slice(0, 30)}`;
+  let fallbackCategory = cleanPrompt.slice(0, 40) || 'Bisnis Anda';
+  let fallbackNarasi = `Wah, ide yang menarik untuk ${cleanPrompt}! Mari kita rancang alur operasionalnya agar staf di tempat kerja dapat melayani setiap pesanan dengan rapi dan terdata dengan jelas, sementara kamu sebagai pemilik bisa memantau pemasukan harian kapan pun dengan tenang. ${CONFIRMATION_CLOSING}`;
+  let fallbackAktor = ['Super Admin', 'Staf Kasir', 'Pelanggan'];
+  let fallbackAlur = 'Pelanggan memesan -> Petugas memproses di lokasi -> Pembayaran tercatat -> Pemilik melihat rekap';
+
+  if (lowerPrompt.includes('cuci') || lowerPrompt.includes('mobil') || lowerPrompt.includes('motor')) {
+    fallbackAppName = 'AutoShine Carwash';
+    fallbackCategory = 'Jasa Cuci Kendaraan';
+    fallbackNarasi = `Wah, ide usaha cuci kendaraan yang sangat prospektif! Bayangkan saat mobil pelanggan masuk ke area cuci: kasir mencatat plat nomor dan paket pembersihan yang dipilih, lalu tim cuci menyemprot bodi dengan air bertekanan dan memvakum jok hingga bersih kesat. Setelah mobil kinclong dan diserahkan ke pelanggan, kamu sebagai pemilik bisa langsung mengecek rekap jumlah kendaraan yang dicuci dan total omzet hari ini tanpa khawatir selisih. ${CONFIRMATION_CLOSING}`;
+    fallbackAktor = ['Super Admin', 'Kasir Penerima Kendaraan', 'Staf Cuci & Vakum', 'Pelanggan'];
+    fallbackAlur = 'Mobil datang dicatat kasir -> Staf cuci mencuci & memvakum interior -> Kasir terima pembayaran -> Pemilik pantau rekap harian';
+  } else if (lowerPrompt.includes('gigi') || lowerPrompt.includes('dental') || lowerPrompt.includes('klinik')) {
+    fallbackAppName = 'DentalCare Sehat';
+    fallbackCategory = 'Klinik Dokter Gigi';
+    fallbackNarasi = `Wah, ide klinik gigi yang mulia dan sangat dibutuhkan! Bayangkan alur prakteknya: resepsionis menyambut pasien dengan ramah dan mencatat keluhan serta riwayat gigi di meja depan, lalu dokter gigi melakukan pemeriksaan langsung di dental chair dengan alat yang sudah higienis. Pasien selesai berobat menerima resep dan kuitansi, sementara kamu sebagai pemilik klinik dapat meninjau jadwal kunjungan dan pendapatan harian dengan tenang. ${CONFIRMATION_CLOSING}`;
+    fallbackAktor = ['Super Admin', 'Dokter Gigi', 'Resepsionis & Kasir', 'Pasien'];
+    fallbackAlur = 'Pasien mendaftar di meja resepsionis -> Dokter periksa di dental chair -> Pembayaran & penyerahan obat -> Pemilik tinjau rekap pasien';
+  } else if (lowerPrompt.includes('laundry') || lowerPrompt.includes('kiloan') || lowerPrompt.includes('cuci pakaian')) {
+    fallbackAppName = 'FreshClean Laundry';
+    fallbackCategory = 'Laundry Kiloan & Satuan';
+    fallbackNarasi = `Wah, ide laundry yang sangat praktis dan dicari banyak orang! Bayangkan operasional hariannya: staf kasir menimbang tumpukan pakaian kotor pelanggan, memilah pakaian khusus, lalu mencetak nota estimasi selesai. Tim cuci memasukkan pakaian ke mesin cuci dan menyetrika uap hingga rapi berbungkus plastik wangi, sementara kamu sebagai pemilik bisa memantau berat cucian yang diproses serta omzet harian langsung dari ponsel. ${CONFIRMATION_CLOSING}`;
+    fallbackAktor = ['Super Admin', 'Kasir Penerima Cucian', 'Staf Cuci & Setrika Uap', 'Pelanggan'];
+    fallbackAlur = 'Pakaian ditimbang kasir -> Dicuci & disetrika uap rapi -> Pelanggan ambil cucian bersih -> Pemilik pantau total kiloan & omzet';
+  }
+
   return {
-    appName: `Aplikasi ${cleanPrompt.slice(0, 30)}`,
-    businessCategory: cleanPrompt.slice(0, 40) || 'Bisnis Anda',
+    appName: fallbackAppName,
+    businessCategory: fallbackCategory,
     templateId: 'MT-20',
     overlayIds: [],
     patternIds: ['UP-06', 'UP-09'],
-    narasi: `Wah, ide yang menarik untuk ${cleanPrompt}! Bayangkan operasionalnya nanti: tim di lapangan dengan sigap melayani pelanggan secara teratur, sementara kamu sebagai pemilik bisa memantau perkembangan aktivitas dan rekap penjualan harian dengan tenang. ${CONFIRMATION_CLOSING}`,
-    asumsiMasalah: `Pengelolaan operasional dan pencatatan untuk ${cleanPrompt} memerlukan alur kerja yang rapi.`,
-    asumsiAktor: ['Super Admin', 'Staf Operasional', 'Pelanggan'],
-    asumsiAlurUtama: 'Pelanggan memesan -> Petugas memproses -> Pemilik memeriksa laporan harian'
+    narasi: fallbackNarasi,
+    asumsiMasalah: `Pencatatan antrean dan alur kerja di ${fallbackCategory} membutuhkan koordinasi yang rapi agar tidak ada yang terlewat.`,
+    asumsiAktor: fallbackAktor,
+    asumsiAlurUtama: fallbackAlur
   };
 }
 
@@ -330,24 +376,24 @@ async function refineStorylineWithAI(
   asumsiAlurUtama: string;
 }> {
   const systemInstruction = `Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator".
-Tugas Anda: Memperbarui cerita dan asumsi proses bisnis berdasarkan masukan atau koreksi dari pengguna dengan gaya bahasa yang hangat, ramah, dan mengalir luwes.
+Tugas Anda: Memperbarui cerita dan asumsi proses bisnis berdasarkan masukan atau koreksi dari pengguna dengan gaya bahasa yang hangat, ramah, dan SANGAT SPESIFIK ke domain bisnis terkait.
 
 ATURAN WAJIB:
 1. NADA HANGAT & BERSAHABAT: Tanggapi koreksi pengguna dengan positif, apresiatif, dan suportif.
-2. SESUAIKAN DENGAN KOREKSI: Rangkai kembali cerita sehingga memasukkan poin koreksi pengguna secara alami dan enak dibaca.
-3. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema, backend). Ceritakan alur aktivitas kerja nyata manusia!
-4. KALIMAT PENUTUP: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
+2. DETAIL OBJEK & AKTIVITAS FISIK KONKRET:
+   - Rangkai kembali cerita sehingga memasukkan poin koreksi pengguna secara alami dan memuat aktivitas/objek fisik nyata (bukan frasa generik seperti "tim lapangan" atau "layanan pelanggan").
+3. PERAN DAN ALUR SPESIFIK:
+   - asumsiAktor WAJIB mencantumkan nama pekerjaan nyata (contoh: "Staf Cuci & Lap", "Resepsionis", bukan "Staf Operasional"). Selalu sertakan "Super Admin".
+   - asumsiAlurUtama WAJIB urutan aksi fisik nyata di lokasi kerja.
+4. ATURAN SELF-CHECK EKSPLISIT:
+   "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
+5. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema, backend). Ceritakan alur aktivitas kerja nyata manusia!
+6. KALIMAT PENUTUP WAJIB: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
 "${CONFIRMATION_CLOSING}"
-5. PERBARUI FIELD:
-- narasi: 2-4 kalimat cerita proses bisnis terbaru yang mengalir halus dan ramah
-- asumsiMasalah: masalah utama yang diselesaikan
-- asumsiAktor: daftar peran (selalu sertakan "Super Admin", ditambah peran hasil koreksi)
-- asumsiAlurUtama: ringkasan alur utama dari awal ke akhir
-
-Kembalikan HANYA JSON valid:
+7. PERBARUI FIELD DALAM FORMAT JSON:
 {
-  "narasi": "...",
-  "asumsiMasalah": "...",
+  "narasi": "2-4 kalimat cerita terbaru yang hangat, memuat detail konkret, dan ditutup dengan kalimat konfirmasi wajib.",
+  "asumsiMasalah": "Masalah utama yang diselesaikan",
   "asumsiAktor": ["Super Admin", "..."],
   "asumsiAlurUtama": "..."
 }`;
@@ -365,7 +411,7 @@ Perbarui cerita dan field asumsi dalam format JSON dengan nada hangat dan ramah:
   const raw = await invokeAIChat({
     systemInstruction,
     userPrompt,
-    temperature: 0.5,
+    temperature: 0.6,
     maxTokens: 4000,
     provider,
     userApiKey: apiKey,
