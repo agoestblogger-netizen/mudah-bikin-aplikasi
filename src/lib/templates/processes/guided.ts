@@ -476,7 +476,11 @@ export function compileBriefFromSession(
 
   const appName =
     (meta.appName && meta.appName.trim()) ||
-    (overlays[0] ? `Aplikasi ${overlays[0].nama}` : meta.templateName ? `Aplikasi ${meta.templateName}` : 'Aplikasi Baru');
+    (session.match.businessCategory
+      ? (session.match.businessCategory.toLowerCase().startsWith('aplikasi')
+          ? session.match.businessCategory
+          : `Aplikasi ${session.match.businessCategory}`)
+      : (overlays[0] ? `Aplikasi ${overlays[0].nama}` : meta.templateName ? `Aplikasi ${meta.templateName}` : 'Aplikasi Baru'));
 
   const tierLabel = session.match.tier === 'ADVANCE' ? 'ADVANCE' : 'BASIC';
 

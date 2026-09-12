@@ -214,113 +214,58 @@ async function invokeAIChat(options: {
 }
 
 interface AIBusinessMappingResult {
-  businessCategory: string;
+  appName: string;
   templateId: string;
   overlayIds: string[];
   patternIds: string[];
+  businessCategory: string;
+  processKeywords?: string;
   contextualPainPoints: string[];
   contextualRoles: string[];
-  processKeywords?: string;
 }
 
 /**
- * Langkah 0 (AI Discovery):
- * Menganalisis ide pengguna untuk memetakan template, overlay, pain points,
- * dan peran yang 100% kontekstual dan masuk akal secara bisnis.
+ * Analisis intensi proses bisnis MURNI menggunakan AI (tanpa distorsi template statis).
  */
 async function mapBusinessIntentWithAI(
   prompt: string,
   provider?: string,
   apiKey?: string,
-  model?: string,
-  candidates?: SemanticMatch[]
+  model?: string
 ): Promise<AIBusinessMappingResult | null> {
   const systemInstruction = `Anda adalah Principal Enterprise Architect & Business Analyst dari platform "Aplikasi Generator".
-Tugas Anda: Menganalisis ide bisnis pengguna dan memetakannya secara SANGAT AKURAT ke Master Template (MT) dan Overlay Industri (IND).
+Tugas Anda: Menganalisis ide bisnis pengguna secara MURNI menggunakan kecerdasan AI tanpa memaksakan ke kategori umum yang keliru.
 
-KATALOG MASTER TEMPLATE:
-- MT-01: Retail & POS (Toko fisik/online, minimarket, kasir, penjualan barang)
-- MT-02: Wholesale & Distribution (Grosir, distributor B2B, gudang)
-- MT-03: F&B & Restaurant (Restoran, kafe, katering, warung makan, menu, dapur)
-- MT-04: Appointment & Service (Salon kecantikan, spa, pijat refleksi, pangkas rambut / barbershop, jasa janji temu)
-- MT-05: Workshop & Service Order (Bengkel servis motor/mobil, reparasi elektronik, mekanik, spare part)
-- MT-06: Healthcare (Klinik, dokter, rekam medis, antrean pasien, apotek obat)
-- MT-07: Manufacturing (Pabrik, produksi, konveksi, BOM, work order)
-- MT-08: Project & Professional Service (Konsultan, agensi, software house, timesheet)
-- MT-09: Booking & Hospitality (Hotel, villa, homestay, sewa kamar harian)
-- MT-10: Education (Sekolah, bimbel, kursus, siswa, kelas, rapor, SPP)
-- MT-11: CRM & Sales (Manajemen prospek/leads, pipeline deals)
-- MT-12: Finance & Accounting (Keuangan, pembukuan, pinjaman/kredit, angsuran)
-- MT-13: Property Management (Kost, sewa ruko/apartemen, kontrak penyewa properti)
-- MT-14: Logistics & Delivery (Ekspedisi, kurir pengiriman barang, resi, armada)
-- MT-15: Membership & Subscription (Gym, fitness, komunitas berbayar, iuran member)
-- MT-16: Human Resources (HR, absensi karyawan, cuti, payroll gaji)
-- MT-17: Procurement & Inventory (Pengadaan barang, purchase order, stok gudang)
-- MT-18: Asset & Maintenance (Manajemen aset tetap, jadwal pemeliharaan alat)
-- MT-19: Event Management (Tiket konser/seminar, check-in QR, rundown)
-- MT-20: Custom Application (Aplikasi kustom umum)
-- MT-21: Rental & Peminjaman (Sewa sepeda, rental motor, rental mobil, sewa kamera/alat, persewaan perlengkapan)
-- MT-22: Konstruksi & Proyek Lapangan (Kontraktor, RAB, progres termin, subkon)
-- MT-23: Pertanian & Agribisnis (Kebun, lahan, panen, komoditas tani)
-- MT-24: Layanan Publik & Pemerintahan (Dinas, kelurahan, izin, disposisi warga)
-- MT-25: Media & Konten Digital (Editorial, artikel, jadwal publikasi konten)
-- MT-26: Asuransi & Klaim (Polis, premi berkala, klaim & investigasi)
-- MT-27: E-commerce Marketplace (Multi-seller, keranjang, escrow, komisi)
-- MT-28: NGO & Nonprofit (Donasi, program sosial, relawan, transparansi)
-- MT-29: Laundry & Jasa Pencucian (Laundry kiloan, cuci satuan, laundry sepatu/tas/helm/karpet, dry cleaning, timbang kg, antrean cuci-kering-setrika, rak cucian siap ambil, nota resi nomor & lacak status cucian)
-
-KATALOG OVERLAY INDUSTRI:
-IND-01 (Retail), IND-02 (F&B), IND-03 (Jasa Profesional), IND-04 (Kesehatan), IND-05 (Pendidikan),
-IND-06 (Manufaktur), IND-07 (Logistik), IND-08 (Properti), IND-09 (Perhotelan), IND-10 (Konstruksi),
-IND-11 (Pertanian), IND-12 (Keuangan/Pegadaian), IND-13 (Bengkel & Servis Otomotif), IND-14 (Event),
-IND-15 (Layanan Publik), IND-16 (Media), IND-17 (Kecantikan & Wellness), IND-18 (Asuransi),
-IND-19 (Marketplace), IND-20 (NGO), IND-21 (Rental & Persewaan),
-IND-22 (Laundry & Jasa Pencucian (Kiloan, Satuan, Sepatu, Karpet)).
-
-ATURAN KRITIS (SANGAT PENTING):
-1. PISAHKAN LAUNDRY vs SALON/SPA/BEAUTY: Jika ide berupa laundry, jasa cuci pakaian, kiloan, satuan, dry cleaning, cuci sepatu/tas/helm/karpet, WAJIB pilih MT-29 dan IND-22. DILARANG KERAS memilih MT-04 atau IND-17! Dilarang memunculkan peran salon/spa seperti Terapis, Kapster, Beautician, Resepsionis Salon, atau perawatan tubuh/rambut pada bisnis laundry! Peran laundry yang benar adalah Kasir Laundry, Operator Cuci (Washer), Petugas Setrika & Packing, Kurir Antar-Jemput, Pelanggan.
-2. PISAHKAN SALON/SPA vs LAUNDRY: MT-04 dan IND-17 HANYA untuk salon kecantikan, barbershop/pangkas rambut, spa pijat refleksi, klinik estetika.
-3. PISAHKAN RENTAL vs BENGKEL: Jika ide berupa persewaan/rental (rental motor, rental mobil, sewa kamera, rental sepeda, dll), WAJIB pilih MT-21 dan IND-21. JANGAN PERNAH memilih MT-05 atau IND-13!
-4. PISAHKAN BENGKEL vs RENTAL: Jika ide berupa reparasi/servis/bengkel (servis motor, ganti oli, bengkel mobil, bengkel AC), WAJIB pilih MT-05 dan IND-13.
-5. Buat 3-5 pain points (masalah utama) yang SANGAT RELEVAN dan spesifik untuk bisnis tersebut dalam bahasa Indonesia santun.
-6. Buat 3-5 peran operasional yang MASUK AKAL secara nyata untuk bisnis tersebut.
-7. PISAHKAN PENITIPAN HEWAN / PET CARE vs RENTAL: Jika ide bisnis berupa penitipan kucing, penitipan anjing, penitipan hewan, pet hotel, pet care, pet clinic, WAJIB pilih MT-09 (Booking & Hospitality) dengan overlay IND-09 atau MT-04 dengan overlay IND-03. DILARANG KERAS memilih MT-21 (Rental & Peminjaman) atau IND-21! Hewan peliharaan yang dititipkan BUKAN barang rental/sewa.
-8. Gunakan MT-20 (Custom) HANYA jika benar-benar tidak ada template yang cocok. Utamakan template yang paling mendekati.
+ATURAN ANALISIS MURNI AI:
+1. NAMA APLIKASI: Tentukan nama aplikasi yang sangat spesifik, menarik, dan 100% relevan dengan ide pengguna (contoh: jika pengguna meminta "aplikasi penitipan kucing", nama aplikasi WAJIB "Aplikasi Penitipan Kucing" atau "CatBoarding Care", DILARANG memberi nama umum yang keliru seperti "Aplikasi Perhotelan & Pariwisata"!).
+2. KATEGORI BISNIS: Tuliskan nama kategori bisnis yang akurat dan spesifik (contoh: "Penitipan & Perawatan Kucing", BUKAN "Perhotelan & Pariwisata").
+3. PAIN POINTS: Buat 3-5 masalah operasional nyata yang dihadapi oleh bisnis tersebut dalam bahasa Indonesia santun.
+4. PERAN OPERASIONAL: Buat 3-5 peran operasional nyata yang masuk akal (selalu sertakan "Super Admin", ditambah peran bisnis nyata seperti Petugas Penitipan, Dokter Hewan, Pelanggan / Pemilik).
+5. KATA KUNCI PROSES: Ringkasan tahapan alur kerja bisnis tersebut.
 
 Kembalikan HANYA JSON valid:
 {
-  "templateId": "MT-29",
-  "overlayIds": ["IND-22"],
-  "businessCategory": "Laundry & Jasa Pencucian Kiloan & Satuan",
-  "processKeywords": "penerimaan pakaian kotor, penimbangan kg, proses cuci, pengeringan mesin, setrika, packing rapi, nota resi nomor urut, rak penyimpanan siap ambil, kasir laundry, pelanggan lacak status",
+  "appName": "Aplikasi Penitipan Kucing",
+  "businessCategory": "Penitipan & Perawatan Kucing",
+  "processKeywords": "pendaftaran kucing, booking kandang, pemeriksaan dokter hewan, jadwal makan & minum, log kesehatan, checkout & pembayaran",
   "contextualPainPoints": [
-    "Pelanggan sering menanyakan status cucian sudah selesai atau belum",
-    "Pakaian pelanggan rawan tertukar atau hilang saat proses cuci dan pengeringan",
-    "Pencatatan nota manual rawan salah timbang kiloan atau hitung tarif layanan",
-    "Penumpukan cucian bersih di rak yang belum diambil oleh pelanggan"
+    "Pemilik cemas tidak mengetahui kondisi dan jadwal makan kucing selama dititipkan",
+    "Pencatatan riwayat vaksin, alergi makanan, dan obat khusus masih manual",
+    "Penjadwalan slot kandang rawan overbooking saat musim liburan",
+    "Pemberian pakan dan obat harian rawan terlewat antar pergantian shift staf"
   ],
   "contextualRoles": [
     "Super Admin",
-    "Kasir Laundry",
-    "Washer / Petugas Cuci",
-    "Petugas Setrika & Packing",
-    "Pelanggan"
+    "Petugas Penitipan",
+    "Dokter Hewan",
+    "Pelanggan / Pemilik Kucing"
   ]
 }`;
 
-  const candidateHint =
-    candidates && candidates.length > 0
-      ? `\n\nKANDIDAT SEMANTIC (kemiripan embedding dari repository, jadikan pertimbangan utama; tetap validasi dengan aturan kritis):\n` +
-        candidates
-          .slice(0, 6)
-          .map((c) => `- [${c.kind}] ${c.id} ${c.label} (skor ${c.similarity.toFixed(3)})`)
-          .join('\n')
-      : '';
-
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Ide Bisnis Pengguna: "${prompt}"\nPetakan ke Master Template, Overlay, pain points, dan peran yang paling tepat dalam bentuk JSON:${candidateHint}`,
-    temperature: 0.1,
+    userPrompt: `Ide Bisnis Pengguna: "${prompt}"\nAnalisis ide bisnis ini murni menggunakan AI dan kembalikan JSON lengkap:`,
+    temperature: 0.2,
     maxTokens: 600,
     provider,
     userApiKey: apiKey,
@@ -334,23 +279,15 @@ Kembalikan HANYA JSON valid:
     if (!jsonMatch) return null;
     const parsed = JSON.parse(jsonMatch[0]);
 
-    if (!parsed.templateId || !getMasterTemplateById(parsed.templateId)) {
-      return null;
-    }
-
-    const map = getTemplateProcessMap(parsed.templateId);
-    const validOverlayIds = Array.isArray(parsed.overlayIds)
-      ? parsed.overlayIds.filter((id: string) => Boolean(getIndustryOverlayById(id)))
-      : [];
-
-    const finalOverlayIds = validOverlayIds.length > 0 ? validOverlayIds : (map?.overlayIds || []);
-    const patternIds = map?.patternIds && map.patternIds.length > 0 ? map.patternIds : ['UP-06', 'UP-09'];
+    const businessCategory = String(parsed.businessCategory || '').trim() || 'Bisnis Anda';
+    const appName = String(parsed.appName || '').trim() || (businessCategory.toLowerCase().startsWith('aplikasi') ? businessCategory : `Aplikasi ${businessCategory}`);
 
     return {
-      templateId: parsed.templateId,
-      overlayIds: finalOverlayIds,
-      patternIds,
-      businessCategory: String(parsed.businessCategory || '').trim() || 'Bisnis Anda',
+      appName,
+      templateId: 'MT-20',
+      overlayIds: [],
+      patternIds: ['UP-06', 'UP-09'],
+      businessCategory,
       processKeywords: typeof parsed.processKeywords === 'string' ? parsed.processKeywords : undefined,
       contextualPainPoints: Array.isArray(parsed.contextualPainPoints) ? parsed.contextualPainPoints.map(String) : [],
       contextualRoles: Array.isArray(parsed.contextualRoles) ? parsed.contextualRoles.map(String) : []
@@ -457,63 +394,22 @@ export async function POST(req: Request) {
         }
       }
 
-      let templateId: string;
-      let overlayIds: string[];
-      let patternIds: string[];
-      let businessCategory: string | undefined;
-      let contextualPainPoints: string[] | undefined;
-      let contextualRoles: string[] | undefined;
+      let templateId = 'MT-20';
+      let overlayIds: string[] = [];
+      let patternIds: string[] = ['UP-06', 'UP-09'];
+      let businessCategory: string = 'Bisnis Anda';
+      let contextualPainPoints: string[] = [];
+      let contextualRoles: string[] = [];
 
       if (aiMapping) {
-        // AI berhasil mengidentifikasi proses bisnis:
-        templateId = aiMapping.templateId;
-        overlayIds = aiMapping.overlayIds;
+        templateId = aiMapping.templateId || 'MT-20';
+        overlayIds = [];
+        patternIds = ['UP-06', 'UP-09'];
         businessCategory = aiMapping.businessCategory;
         contextualPainPoints = aiMapping.contextualPainPoints;
         contextualRoles = aiMapping.contextualRoles;
-
-        // Ambil pattern dari templateProcessMap untuk template yang dipilih AI
-        const map = getTemplateProcessMap(templateId);
-        const semanticPatterns = semantic?.patternIds || [];
-        patternIds = Array.from(
-          new Set([...(map?.patternIds || aiMapping.patternIds || []), ...semanticPatterns])
-        );
-        if (patternIds.length === 0) {
-          patternIds = ['UP-05', 'UP-06', 'UP-02'];
-        }
-      } else if (semantic?.confident && semantic.templateId) {
-        // Fallback jika AI tidak merespons, namun semantic search confident
-        templateId = semantic.templateId;
-        overlayIds = semantic.overlayIds && semantic.overlayIds.length > 0 ? semantic.overlayIds : [];
-        patternIds = semantic.patternIds && semantic.patternIds.length > 0 ? semantic.patternIds : ['UP-06', 'UP-09'];
-        const firstOverlay = getIndustryOverlayById(overlayIds[0]);
-        const matchedTemplate = getMasterTemplateById(templateId);
-        businessCategory = firstOverlay ? firstOverlay.nama : matchedTemplate?.nama;
       } else {
-        // Fallback statis deterministik dari repository yang sudah dibersihkan
-        const matched = detectMatchingMasterTemplate(prompt);
-        const semanticTemplateId = semantic?.templateId;
-        const fallbackTemplateId = matched?.template.id || semanticTemplateId || 'MT-20';
-        const map = getTemplateProcessMap(fallbackTemplateId);
-
-        templateId = fallbackTemplateId;
-        if (!matched && semanticTemplateId) {
-          overlayIds = map?.overlayIds || [];
-          patternIds = map?.patternIds || [];
-          const firstOverlay = getIndustryOverlayById(overlayIds[0]);
-          const tpl = getMasterTemplateById(semanticTemplateId);
-          businessCategory = firstOverlay ? firstOverlay.nama : tpl?.nama;
-        } else {
-          const detectedOverlays = detectIndustryOverlays(prompt);
-          overlayIds = Array.from(
-            new Set([...(map?.overlayIds || []), ...detectedOverlays.slice(0, 2).map((o) => o.id)])
-          );
-          patternIds = Array.from(
-            new Set([...(map?.patternIds || []), ...detectedOverlays.flatMap((o) => o.patternIds)])
-          );
-          const firstOverlay = getIndustryOverlayById(overlayIds[0]);
-          businessCategory = firstOverlay ? firstOverlay.nama : matched?.template.nama;
-        }
+        businessCategory = prompt.slice(0, 50).trim() || 'Bisnis Anda';
       }
 
       const tier = detectTier({ patternIds });

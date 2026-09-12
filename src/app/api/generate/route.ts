@@ -479,31 +479,23 @@ export async function POST(req: Request) {
     // mendapatkan ruang yang leluasa hingga 3584 tokens tanpa risiko terpotong di tengah jalan.
     const ideationMaxTokens = 3584;
 
-    // Pencocokan Blueprint Master Template (Fase B)
-    const matchedMT = detectMatchingMasterTemplate(prompt + '\n' + allHistoryText);
-    const catalogSummary = getConciseCatalogSummary();
-    const blueprintContext = matchedMT ? formatTemplateContextForIdeation(matchedMT) : '';
-
-    // Pencocokan UX Pattern Registry (Fase D-1)
-    const matchedUXPatterns = findRelevantUXPatterns(prompt + '\n' + allHistoryText, matchedMT?.template.id);
-    const uxGuidanceContext = formatUXGuidanceForIdeation(matchedUXPatterns);
-
-    // Konteks Business Process Repository (pola universal + overlay industri)
-    const matchedOverlays = detectIndustryOverlays(prompt + '\n' + allHistoryText);
-    const matchedProcessMap = matchedMT ? getTemplateProcessMap(matchedMT.template.id) : undefined;
-    const processPatternIds = Array.from(
-      new Set([
-        ...(matchedProcessMap?.patternIds || []),
-        ...matchedOverlays.flatMap((o) => o.patternIds)
-      ])
-    );
-    const processOverlayIds = Array.from(
-      new Set([
-        ...(matchedProcessMap?.overlayIds || []),
-        ...matchedOverlays.slice(0, 2).map((o) => o.id)
-      ])
-    );
-    const businessProcessContext = formatBusinessProcessForIdeation(processPatternIds, processOverlayIds);
+    // SEMUA TEMPLATE & REFERENSI STATIS DIMATIKAN SESUAI INSTRUKSI PENGGUNA
+    // Menggunakan 100% Pure AI Reasoning agar nama aplikasi, identitas, peran, dan modul
+    // sepenuhnya mencerminkan kebutuhan asli pengguna (misal: "Aplikasi Penitipan Kucing" dengan icon 🐱/🐾,
+    // BUKAN "Aplikasi Perhotelan & Pariwisata" dengan icon hotel 🏨).
+    const pureAIGuidance = `
+=== ATURAN MUTLAK SISTEM: 100% PURE AI REASONING (SEMUA TEMPLATE & REFERENSI STATIS DINONAKTIFKAN) ===
+1. ANALISIS KEBUTUHAN PENGGUNA SECARA MURNI & SPESIFIK:
+   - Analisis topik, model bisnis, dan kebutuhan pengguna murni menggunakan kecerdasan AI, BUKAN dari template kaku atau kategori umum yang melenceng (contoh: "penitipan kucing" BUKAN perhotelan manusia, "laundry" BUKAN salon kecantikan).
+2. NAMA APLIKASI & IDENTITAS VISUAL 100% RELEVAN:
+   - Nama aplikasi WAJIB BENAR-BENAR SPESIFIK dan SESUAI BISNIS PENGGUNA (contoh: jika pengguna meminta penitipan kucing, nama aplikasi WAJIB bertema penitipan kucing seperti "Aplikasi Penitipan Kucing", "PawsStay Cat Care", atau "MeowBoarding", dengan icon yang sangat relevan seperti 🐱 atau 🐾).
+   - DILARANG KERAS menamai aplikasi dengan kategori umum/template yang salah (seperti "Aplikasi Perhotelan & Pariwisata", "Aplikasi Rental", dsb.) atau memakai icon hotel 🏨!
+3. KOREKSI NAMA DI KODE/PROTOTIPE JIKA DI RIWAYAT ADA JUDUL TEMPLATE SALAH:
+   - Jika pada riwayat chat sebelumnya atau Brief sebelumnya sempat tercatat nama aplikasi dari template lama yang keliru (seperti "Aplikasi Perhotelan & Pariwisata" untuk penitipan kucing), Anda WAJIB MENGOREKSI dan MENGGANTI nama aplikasi tersebut dengan nama yang benar-benar sesuai dengan ide bisnis pengguna saat ini ("Aplikasi Penitipan Kucing") baik pada judul login (#loginScreen h1), header aplikasi, maupun judul tab!
+4. PERAN OPERASIONAL & WORKFLOW ALAMI DARI BISNIS:
+   - Rancang peran-peran operasional nyata yang sesuai dengan domain bisnis tersebut secara spesifik (selalu sediakan "Super Admin" sebagai pengelola akun staf & sistem, ditambah peran operasional bisnis nyata, contoh untuk penitipan kucing: Petugas Penitipan, Dokter Hewan, dan Pelanggan / Pemilik Kucing).
+   - Buat tab navigasi, formulir entri data, tabel interaktif (3-5 baris data contoh realistis), dan alur operasional yang 100% selaras dengan bisnis pengguna tersebut.
+`;
 
     // Ekstraksi Entitas & Varian Role Khusus dari Prompt Pengguna (Poin 50B)
     const userSpecifiedVariants = extractUserSpecifiedRoleVariants(prompt, chatHistory);
@@ -657,7 +649,7 @@ ATURAN MUTLAK PERCAKAPAN:
    - Action / Event pada setiap tab WAJIB menggunakan aksi nyata bertanda \`onclick: [Nama Tombol] ([deskripsi aksi])\`, DILARANG hanya menulis teks umum tanpa aksi tombol.
 5. Berikan apresiasi singkat dalam bahasa yang ramah (1-2 kalimat), lalu tampilkan lembar "Brief Kebutuhan" (JANGAN PERNAH gunakan kata "PRD") dengan format PERSIS:
    📋 **Brief Kebutuhan**
-   - **Nama App**: [nama aplikasi yang menarik & relevan]
+   - **Nama App**: [nama aplikasi yang SANGAT SPESIFIK & RELEVAN dengan bisnis pengguna, misal "Aplikasi Penitipan Kucing". DILARANG KERAS menggunakan nama kategori umum/template seperti "Aplikasi Perhotelan & Pariwisata"!]
    - **Orientasi UI**: [Mobile-first / Desktop-first / Responsif, dengan alasan singkat]
    - **Tema Visual**: [deskripsi warna, gaya modern, dan kesan visual]
    - **Fitur Utama (V1)**: [daftar bernomor ringkas per fitur inti yang disepakati]
@@ -717,27 +709,13 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
  6. JANGAN tampilkan form Brief Kebutuhan dan JANGAN buat kode di giliran ini.`;
       }
 
-      // Suntikkan blueprint terstruktur atau ringkasan katalog internal untuk memandu dialog
-      if (blueprintContext) {
-        systemPrompt += `\n\n${blueprintContext}`;
-      } else {
-        systemPrompt += `\n\n=== KATALOG RINGKAS BLUEPRINT INDUSTRI & ARKETIPE BISNIS (PANDUAN REFERENSI INTERNAL) ===\n${catalogSummary}\n\nJika ide pengguna mendekati salah satu pola bisnis di atas, gunakan struktur modul dan alur kerja standar yang relevan. Jika tidak ada kecocokan, diskusikan kebutuhan kustom pengguna secara luwes dan terstruktur tanpa memaksakan template.`;
-      }
-
-      // Suntikkan Panduan Standar UX & Prioritas Informasi (Fase D-1)
-      if (uxGuidanceContext) {
-        systemPrompt += `\n\n${uxGuidanceContext}`;
-      }
-
-      // Suntikkan proses bisnis baku (pola universal + overlay industri)
-      if (businessProcessContext) {
-        systemPrompt += `\n\n${businessProcessContext}`;
-      }
-
       // Suntikkan Ekstraksi Varian Role Spesifik Pengguna (Poin 50B)
       if (variantsContext) {
         systemPrompt += variantsContext;
       }
+
+      // Mode Pure AI: Matikan semua template/referensi statis
+      systemPrompt += `\n\n${pureAIGuidance}`;
     } else {
       // MODE GENERATE KODE (User sudah menyetujui Brief Kebutuhan / Tahap 2 Mockup / Tahap 5 Patch / Tahap 6)
       systemPrompt = `Anda adalah AI Generator Aplikasi dari platform "Mudah Bikin Aplikasi" (Basic Tier / MVP).
@@ -1216,17 +1194,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
     - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`handleLogin\`, \`bukaModalLogin\`, \`tutupModalLogin\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`prosesPenjualan\`, \`prosesTransaksi\`, \`checkout\`, \`bayar\`, \`cetakStruk\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
 
-      // Seleksi Page Template Baku Berdasarkan Brief Kebutuhan (Fase C)
-      const selectivePageMappings = detectSelectivePageTemplates(prompt + '\n' + allHistoryText);
-      const selectivePTDirective = formatSelectivePageTemplatesForCodeGen(selectivePageMappings);
-      if (selectivePTDirective) {
-        systemPrompt += `\n\n${selectivePTDirective}`;
-      }
-
-      // Kontrak proses bisnis baku (pola universal + overlay industri)
-      if (businessProcessContext) {
-        systemPrompt += `\n\n${businessProcessContext}`;
-      }
+      // Mode Pure AI: Matikan semua template/referensi statis
+      systemPrompt += `\n\n${pureAIGuidance}`;
 
       if (approvedBrief || officialRoles.length > 0) {
         // Build DEMO_ACCOUNTS dengan landingTab per role (Poin 53)
@@ -1307,8 +1276,8 @@ ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK (WAJIB DIPATUHI — POIN 52):
    - Container aplikasi (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
    - DILARANG KERAS langsung menampilkan dashboard aplikasi dengan tombol "Login Staf" di header!
    - Di kartu login #loginScreen:
-     * Icon aplikasi di dalam box rounded biru lembut
-     * Judul aplikasi + subjudul "Masuk ke Akun Anda untuk Memulai"
+     * Icon aplikasi di dalam box rounded biru lembut (Gunakan emoji yang 100% RELEVAN dengan bisnis pengguna, contoh 🐱 atau 🐾 untuk penitipan kucing, 🧺 untuk laundry; DILARANG memakai icon hotel 🏨 jika bisnisnya bukan perhotelan!)
+     * Judul aplikasi spesifik (contoh: "Aplikasi Penitipan Kucing", DILARANG memakai judul template umum seperti "Aplikasi Perhotelan & Pariwisata"!) + subjudul "Masuk ke Akun Anda untuk Memulai"
      * Input Username (id="loginUsername" placeholder="Masukkan username")
      * Input Kata Sandi (id="loginPassword" type="password" placeholder="Masukkan kata sandi")
      * Tombol "➔] Masuk" (onclick="handleLogin()")

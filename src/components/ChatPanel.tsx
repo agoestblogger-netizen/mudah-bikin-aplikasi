@@ -291,7 +291,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         sessionState: data.session as MockupSessionState
       };
       const extractedTitle = extractAppTitleFromChat(finalMessages);
-      if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru')) {
+      if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru' || projectState.title !== extractedTitle)) {
         stateUpdate.title = extractedTitle;
       }
       onUpdateState(stateUpdate);
@@ -581,7 +581,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
         const extractedTitle = extractAppTitleFromChat(finalMessages);
         const stateUpdate: Partial<AppProjectState> = { chatMessages: finalMessages };
-        if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru')) {
+        if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru' || projectState.title !== extractedTitle)) {
           stateUpdate.title = extractedTitle;
         }
 
@@ -611,7 +611,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       const extractedTitle = extractAppTitleFromChat(finalMessages);
       const stateUpdate: Partial<AppProjectState> = { chatMessages: finalMessages };
-      if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru')) {
+      if (extractedTitle && (!projectState.title || projectState.title === 'Proyek Baru' || projectState.title !== extractedTitle)) {
         stateUpdate.title = extractedTitle;
       }
 
