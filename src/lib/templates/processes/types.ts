@@ -203,6 +203,25 @@ export interface MockupSessionState {
     alurInti?: { step: number; pelaku: string; aksi: string }[];
     alurPendukung?: { nama: string; steps: { pelaku: string; aksi: string }[] }[];
     fiturPendukung?: string[];
+    /**
+     * Aktif hanya jika user memilih "dua alur terpisah" untuk proses inti yang setara.
+     * Mutual exclusive dengan alurInti untuk rendering — kalau kasusGanda.length > 0,
+     * alurInti dibiarkan kosong/tidak dipakai di renderFlowMarkdown.
+     */
+    kasusGanda?: {
+      nama: string;
+      alurInti: { step: number; pelaku: string; aksi: string }[];
+    }[];
+    /**
+     * true saat sistem mendeteksi dua proses setara dan menunggu jawaban user
+     * ("dua alur terpisah" vs "satu alur utama + fitur tambahan").
+     */
+    dualFlowPending?: boolean;
+    /**
+     * Nama proses A dan B yang terdeteksi — disimpan bersama dualFlowPending
+     * agar handler jawaban bisa membacanya tanpa perlu deteksi ulang.
+     */
+    dualProcessNames?: { processA: string; processB: string };
   };
   rbac?: {
     modul: { nama: string; izinPerRole: { role: string; level: string }[] }[];

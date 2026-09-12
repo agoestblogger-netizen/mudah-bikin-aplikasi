@@ -18,6 +18,9 @@ import {
   renderFlowMarkdown,
   reconcileCoreOperationalRole,
   resolveActorForStep,
+  detectDualProcess,
+  buildDualFlowQuestion,
+  buildKasusGandaFromSession,
   REQUIRED_ROLE,
   type DomainFlowData,
   type GuidedStepId,
@@ -1123,6 +1126,33 @@ export async function POST(req: Request) {
         const flowMarkdown = renderFlowMarkdown(flowData);
         narration += flowMarkdown;
 
+        // Deteksi kasus ganda SEBELUM kirim kartu ALUR biasa
+        const dualDetect = detectDualProcess(updated);
+        if (dualDetect) {
+          // Tandai session sedang menunggu jawaban clarification kasus ganda
+          // Simpan nama proses agar handler jawaban bisa membacanya
+          const sessionWithPending: MockupSessionState = {
+            ...updated,
+            step: 'ALUR',
+            flow: {
+              ...updated.flow,
+              dualFlowPending: true,
+              dualProcessNames: { processA: dualDetect.processA, processB: dualDetect.processB }
+            }
+          };
+          const clarificationCard = buildDualFlowQuestion(dualDetect.processA, dualDetect.processB);
+          const dualNarration =
+            narration +
+            `\n\n---\n\n> ⚠️ **Terdeteksi dua proses utama yang setara:** *${dualDetect.processA}* dan *${dualDetect.processB}* — keduanya sama-sama rutin di bisnis ini.\n>\n> Mau bagaimana ditangani di alur sistem?`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session: sessionWithPending,
+            guidedStep: clarificationCard,
+            narration: dualNarration
+          });
+        }
+
         return NextResponse.json({
           success: true,
           action,
@@ -1136,6 +1166,104 @@ export async function POST(req: Request) {
       if (stepId === 'ALUR') {
         const otherText = (body.other || '').trim();
         const selected = body.selected || [];
+
+        // Sub-handler: menunggu jawaban pilih_dua_alur atau pilih_satu_alur
+        if (session.flow?.dualFlowPending) {
+          const flowDataBase = getDomainFlowDetails(session);
+
+          if (selected.includes('pilih_dua_alur')) {
+            // Baca nama proses dari session (disimpan saat deteksi)
+            const processA = session.flow?.dualProcessNames?.processA || 'Proses A';
+            const processB = session.flow?.dualProcessNames?.processB || 'Proses B';
+            const kasusGanda = buildKasusGandaFromSession(session, processA, processB);
+
+            const updatedWithKasus: MockupSessionState = {
+              ...session,
+              step: 'ALUR',
+              flow: {
+                ...session.flow,
+                dualFlowPending: false,
+                kasusGanda,
+                // alurInti dikosongkan karena kasusGanda yang dipakai
+                alurInti: []
+              }
+            };
+
+            // Rekonsiliasi role: gabungkan steps dari kedua kasus
+            const flowDataForReconcile: DomainFlowData = {
+              ...flowDataBase,
+              kasusGanda
+            };
+            const { updatedSession: reconSession, reconciled: reconDual, message: reconMsgDual } =
+              reconcileCoreOperationalRole(updatedWithKasus, flowDataForReconcile);
+
+            // Simpan alurPendukung dan fiturPendukung ke session
+            const finalSession: MockupSessionState = {
+              ...reconSession,
+              flow: {
+                ...reconSession.flow,
+                alurPendukung: flowDataBase.alurPendukung.map((ap) => ({ nama: ap.nama, steps: ap.steps })),
+                fiturPendukung: flowDataBase.fiturPendukung.map((fp) => fp.label)
+              }
+            };
+
+            const dualFlowData: DomainFlowData = {
+              ...flowDataBase,
+              kasusGanda
+            };
+            const flowMarkdownDual = renderFlowMarkdown(dualFlowData);
+            const guidedStepDual = buildGuidedStep(finalSession);
+
+            let narrationDual = `Oke! Kedua proses sudah dipisahkan jadi alur mandiri masing-masing:\n\n${flowMarkdownDual}\n\nSilakan periksa kedua alur di atas. Jika sudah pas, pilih "Sudah pas" untuk ke bagian Hak Akses (RBAC).`;
+            if (reconDual && reconMsgDual) {
+              narrationDual += `\n\n> ℹ️ *${reconMsgDual}*`;
+            }
+
+            return NextResponse.json({
+              success: true,
+              action,
+              session: finalSession,
+              guidedStep: guidedStepDual,
+              narration: narrationDual
+            });
+          } else {
+            // pilih_satu_alur: lanjut normal tanpa kasusGanda
+            const updatedSingle: MockupSessionState = {
+              ...session,
+              step: 'ALUR',
+              flow: {
+                ...session.flow,
+                dualFlowPending: false,
+                kasusGanda: undefined
+              }
+            };
+
+            // Rekonsiliasi role & simpan flow biasa
+            const { updatedSession: reconSingle } = reconcileCoreOperationalRole(updatedSingle, flowDataBase);
+            const finalSingle: MockupSessionState = {
+              ...reconSingle,
+              flow: {
+                ...reconSingle.flow,
+                alurInti: flowDataBase.alurInti,
+                alurPendukung: flowDataBase.alurPendukung.map((ap) => ({ nama: ap.nama, steps: ap.steps })),
+                fiturPendukung: flowDataBase.fiturPendukung.map((fp) => fp.label)
+              }
+            };
+
+            const flowMarkdownSingle = renderFlowMarkdown(flowDataBase);
+            const guidedStepSingle = buildGuidedStep(finalSingle);
+            const narrationSingle = `Oke, kita pakai satu alur utama saja. Ini susunan alur yang sudah disesuaikan:\n\n${flowMarkdownSingle}\n\nJika sudah pas, pilih "Sudah pas" untuk lanjut ke Hak Akses (RBAC).`;
+
+            return NextResponse.json({
+              success: true,
+              action,
+              session: finalSingle,
+              guidedStep: guidedStepSingle,
+              narration: narrationSingle
+            });
+          }
+        }
+
         const isConfirm =
           selected.includes('confirm_alur') ||
           (!otherText && selected.length === 0) ||

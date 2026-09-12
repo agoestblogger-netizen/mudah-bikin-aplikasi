@@ -704,6 +704,11 @@ export interface DomainFlowData {
   alurInti: FlowStepItem[];
   alurPendukung: SupportingFlowItem[];
   fiturPendukung: SupportingFeatureItem[];
+  /**
+   * Diisi hanya bila user memilih "dua alur terpisah" untuk proses inti setara.
+   * Mutual exclusive dengan alurInti untuk rendering.
+   */
+  kasusGanda?: { nama: string; alurInti: FlowStepItem[] }[];
 }
 
 /**
@@ -1438,7 +1443,12 @@ export function reconcileCoreOperationalRole(
   newCoreRole: string;
   message?: string;
 } {
-  const steps = flowData.alurInti;
+  // Jika kasusGanda aktif, gabungkan semua steps dari kedua kasus
+  // untuk menentukan aktor paling sentral secara komprehensif.
+  const steps =
+    flowData.kasusGanda && flowData.kasusGanda.length > 0
+      ? flowData.kasusGanda.flatMap((k) => k.alurInti)
+      : flowData.alurInti;
   const currentCoreRole =
     session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
 
@@ -1560,20 +1570,42 @@ export function reconcileCoreOperationalRole(
 /**
  * Merender Alur Sistem & Fitur Pendukung ke format Markdown bersih langsung poin bernomor,
  * tanpa narasi pembuka tambahan.
+ *
+ * Mendukung dua mode:
+ * - Normal (alurInti): satu blok Alur Inti
+ * - kasusGanda: dua blok Alur Inti dengan label kasus masing-masing
  */
 export function renderFlowMarkdown(flowData: DomainFlowData): string {
   const lines: string[] = [];
 
   lines.push('### Bagian B: Alur Sistem & Fitur Pendukung\n');
 
-  lines.push('#### 1. Alur Inti (Aktivitas Utama)');
-  flowData.alurInti.forEach((st) => {
-    lines.push(`${st.step}. *(${st.pelaku})* ${st.aksi}`);
-  });
-  lines.push('\n*(Catatan: Alur inti di atas adalah fondasi utama sistem. Jika ada urutan atau pelaku yang kurang pas, pilih opsi "Ada koreksi" di kartu pilihan untuk memperbaikinya)*\n');
+  if (flowData.kasusGanda && flowData.kasusGanda.length > 0) {
+    // MODE KASUS GANDA: render dua blok dengan label kasus masing-masing
+    flowData.kasusGanda.forEach((kasus, kasusIdx) => {
+      lines.push(`#### ${kasusIdx + 1}. Alur Inti — ${kasus.nama}`);
+      kasus.alurInti.forEach((st) => {
+        lines.push(`${st.step}. *(${st.pelaku})* ${st.aksi}`);
+      });
+      lines.push('');
+    });
+    lines.push('*(Catatan: Kedua alur inti di atas masing-masing berjalan mandiri. Jika ada langkah atau pelaku yang kurang pas, pilih opsi "Ada koreksi" untuk memperbaiki.)*\n');
+  } else {
+    // MODE NORMAL: satu blok Alur Inti
+    lines.push('#### 1. Alur Inti (Aktivitas Utama)');
+    flowData.alurInti.forEach((st) => {
+      lines.push(`${st.step}. *(${st.pelaku})* ${st.aksi}`);
+    });
+    lines.push('\n*(Catatan: Alur inti di atas adalah fondasi utama sistem. Jika ada urutan atau pelaku yang kurang pas, pilih opsi "Ada koreksi" di kartu pilihan untuk memperbaikinya)*\n');
+  }
+
+  const alurPendukungSectionIdx = flowData.kasusGanda && flowData.kasusGanda.length > 0
+    ? flowData.kasusGanda.length + 1
+    : 2;
+  const fiturPendukungSectionIdx = alurPendukungSectionIdx + (flowData.alurPendukung.length > 0 ? 1 : 0);
 
   if (flowData.alurPendukung.length > 0) {
-    lines.push('#### 2. Alur Pendukung');
+    lines.push(`#### ${alurPendukungSectionIdx}. Alur Pendukung`);
     flowData.alurPendukung.forEach((ap) => {
       lines.push(`- **${ap.nama}:**`);
       ap.steps.forEach((st, idx) => {
@@ -1584,13 +1616,211 @@ export function renderFlowMarkdown(flowData: DomainFlowData): string {
   }
 
   if (flowData.fiturPendukung.length > 0) {
-    lines.push('#### 3. Fitur Pendukung (MVP)');
+    lines.push(`#### ${fiturPendukungSectionIdx}. Fitur Pendukung (MVP)`);
     flowData.fiturPendukung.forEach((fp) => {
       lines.push(`- ${fp.label}`);
     });
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Deteksi apakah narasi menyiratkan dua proses inti yang setara (arah transaksi berlawanan,
+ * sama-sama disebut sebagai aktivitas rutin).
+ *
+ * Kriteria WAJIB kedua-duanya terpenuhi:
+ * 1. Arah transaksi berlawanan (uang/barang masuk vs keluar)
+ * 2. Sama-sama disebut sebagai aktivitas rutin di narasi
+ *
+ * LAPIS KONSEPTUAL (Poin 1 syarat user):
+ * Selain regex kata kunci, fungsi ini juga memeriksa:
+ * - Apakah kedua sisi proses melibatkan entitas yang sama (e.g. "emas", "kendaraan", "barang")
+ * - Apakah kedua sisi sama-sama punya pelaku operasional (bukan cuma disebutkan satu sisi saja)
+ * Ini mencegah false positive seperti "kadang juga" atau "sesekali" — kata modalitas rendah.
+ */
+export function detectDualProcess(session: MockupSessionState): {
+  isDual: boolean;
+  processA: string;
+  processB: string;
+  entity: string;
+} | null {
+  const narrative = (session.storyline?.narasi || '').toLowerCase();
+  const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
+  const fullContext = `${narrative} ${mainFlow}`;
+
+  // Guard: kalau dualFlowPending atau kasusGanda sudah ada, jangan deteksi ulang
+  if (session.flow?.dualFlowPending || (session.flow?.kasusGanda && session.flow.kasusGanda.length > 0)) {
+    return null;
+  }
+
+  // Helper: cek modalitas rendah ("kadang", "sesekali", "juga") — tandai proses sekunder, bukan setara
+  const hasWeakModality = (text: string) =>
+    /\b(kadang|sesekali|juga|terkadang|jarang|sering juga|sampingan|tambahan)\b/.test(text);
+
+  // Pola deteksi: [regex proses A, regex proses B, nama A, nama B, entity]
+  const DUAL_PATTERNS: Array<{
+    patternA: RegExp;
+    patternB: RegExp;
+    nameA: string;
+    nameB: string;
+    entity: string;
+    entityCheck: RegExp;
+  }> = [
+    {
+      // Toko emas/perhiasan: jual ke pelanggan DAN beli dari pelanggan
+      patternA: /\b(jual|penjualan|menjual|melayani\s+pembeli)\b/,
+      patternB: /\b(beli|pembelian|membeli|buyback|beli\s+balik|terima\s+barang\s+bekas)\b/,
+      nameA: 'Penjualan ke Pelanggan',
+      nameB: 'Pembelian dari Pelanggan',
+      entity: 'perhiasan/emas',
+      entityCheck: /\b(emas|perhiasan|gelang|kalung|cincin|logam\s*mulia|gram|karat)\b/
+    },
+    {
+      // Pegadaian / gadai barang: gadai DAN tebus
+      patternA: /\b(gadai|menggadaikan|proses\s+gadai|penerimaan\s+gadai)\b/,
+      patternB: /\b(tebus|penebusan|menebus|ambil\s+kembali|pelunasan\s+gadai)\b/,
+      nameA: 'Penerimaan Gadai',
+      nameB: 'Penebusan Barang Gadai',
+      entity: 'barang gadai',
+      entityCheck: /\b(gadai|barang\s+jaminan|pawn|cicilan|uang\s+pinjaman|penaksir)\b/
+    },
+    {
+      // Tukar tambah kendaraan: jual unit lama DAN terima/beli unit baru
+      patternA: /\b(tukar\s*tambah|trade.?in|beli\s+unit\s+baru|jual\s+unit)\b/,
+      patternB: /\b(terima\s+unit\s+lama|appraisal|taksir\s+harga|harga\s+kendaraan\s+lama)\b/,
+      nameA: 'Penjualan Unit Baru',
+      nameB: 'Penerimaan & Appraisal Unit Lama',
+      entity: 'kendaraan tukar tambah',
+      entityCheck: /\b(kendaraan|mobil|motor|unit|showroom|dealer)\b/
+    }
+  ];
+
+  for (const pattern of DUAL_PATTERNS) {
+    const matchA = pattern.patternA.test(fullContext);
+    const matchB = pattern.patternB.test(fullContext);
+    const matchEntity = pattern.entityCheck.test(fullContext);
+
+    if (!matchA || !matchB || !matchEntity) continue;
+
+    // LAPIS KONSEPTUAL: pastikan keduanya bukan disebutkan dengan modalitas rendah
+    // Cari kalimat/frasa yang mengandung proses B, cek apakah ada kata modalitas lemah
+    // di sekitar kata kunci proses B (±50 karakter)
+    const patternBMatches = [...fullContext.matchAll(new RegExp(pattern.patternB.source, 'gi'))];
+    let allWeakB = patternBMatches.length > 0;
+    for (const m of patternBMatches) {
+      const start = Math.max(0, (m.index || 0) - 50);
+      const end = Math.min(fullContext.length, (m.index || 0) + 50);
+      const surrounding = fullContext.slice(start, end);
+      if (!hasWeakModality(surrounding)) {
+        allWeakB = false; // setidaknya satu kemunculan tanpa modalitas lemah → setara
+        break;
+      }
+    }
+    if (allWeakB) continue; // proses B hanya disebut dengan "kadang/sesekali" → bukan setara
+
+    return {
+      isDual: true,
+      processA: pattern.nameA,
+      processB: pattern.nameB,
+      entity: pattern.entity
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Membuat GuidedStepPayload berisi pertanyaan clarification:
+ * "Dua alur terpisah" vs "Salah satunya jadi fitur tambahan".
+ */
+export function buildDualFlowQuestion(
+  processA: string,
+  processB: string
+): GuidedStepPayload {
+  return {
+    stepId: 'ALUR',
+    title: `Ada dua proses utama: "${processA}" dan "${processB}"`,
+    multi: false,
+    allowOther: false,
+    options: [
+      {
+        id: 'pilih_dua_alur',
+        label: `📋 Dua alur terpisah — masing-masing punya langkah sendiri`,
+        description: `"${processA}" dan "${processB}" sama-sama rutin dan memiliki urutan langkah berbeda — lebih jelas bila ditampilkan terpisah.`,
+        recommended: true
+      },
+      {
+        id: 'pilih_satu_alur',
+        label: `➡️ Satu alur utama — satunya jadi fitur tambahan saja`,
+        description: `Pilih ini kalau salah satu proses lebih jarang terjadi atau langkahnya sudah tercakup di alur utama.`
+      }
+    ]
+  };
+}
+
+/**
+ * Menyusun dua kasusGanda dari session, masing-masing dengan alurInti-nya sendiri
+ * yang di-generate dari narasi (bukan template statis).
+ *
+ * KLARIFIKASI POIN 2 (sumber buildKasusGandaFromSession):
+ * Fungsi ini menyusun dua alur DARI NARASI YANG SAMA (session.storyline),
+ * bukan dari template statis. Perbedaan utama dengan getDomainFlowDetails:
+ * - getDomainFlowDetails menghasilkan SATU alur inti gabungan dari asumsiAlurUtama
+ * - buildKasusGandaFromSession memecah narasi menjadi DUA sudut pandang proses:
+ *   a) Kasus A (misalnya Penjualan): langkah-langkah dari sisi barang KELUAR
+ *   b) Kasus B (misalnya Pembelian): langkah-langkah dari sisi barang MASUK
+ * Hasilnya adalah alur yang tetap grounded ke narasi user, bukan karangan.
+ */
+export function buildKasusGandaFromSession(
+  session: MockupSessionState,
+  processA: string,
+  processB: string
+): { nama: string; alurInti: FlowStepItem[] }[] {
+  const activeOwner = REQUIRED_ROLE;
+  const coreRole =
+    session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
+  const activeCore = resolveActorForStep(coreRole, session.roles);
+
+  const findActor = (pattern: RegExp, defaultName: string): string => {
+    const candidates = [
+      ...(session.roles?.selected || []),
+      ...(session.storyline?.asumsiAktor || [])
+    ];
+    for (const c of candidates) {
+      if (pattern.test(c)) return resolveActorForStep(c, session.roles);
+    }
+    return resolveActorForStep(defaultName, session.roles);
+  };
+
+  const customerActor = findActor(
+    /pelanggan|pembeli|penyewa|pasien|klien|tamu|nasabah/i,
+    'Pelanggan'
+  );
+
+  // Kasus A — alur transaksi keluar (jual, gadai keluar, unit baru keluar)
+  const alurA: FlowStepItem[] = [
+    { step: 1, pelaku: customerActor, aksi: `Mengajukan permintaan ${processA.toLowerCase()} dan memilih item yang diinginkan` },
+    { step: 2, pelaku: activeCore, aksi: `Memeriksa ketersediaan, kondisi, dan menaksir nilai ${processA.toLowerCase().replace(/ke\s*pelanggan|unit\s*baru/i, 'item').trim()}` },
+    { step: 3, pelaku: activeCore, aksi: `Menyepakati harga dan menyiapkan dokumen transaksi ${processA.toLowerCase()}` },
+    { step: 4, pelaku: activeCore, aksi: `Menyerahkan item dan menerima pembayaran dari pelanggan` },
+    { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processA.toLowerCase()} harian dan performa omzet` }
+  ];
+
+  // Kasus B — alur transaksi masuk (beli, tebus, appraisal unit lama)
+  const alurB: FlowStepItem[] = [
+    { step: 1, pelaku: customerActor, aksi: `Membawa item untuk proses ${processB.toLowerCase()}` },
+    { step: 2, pelaku: activeCore, aksi: `Memeriksa fisik, keaslian, dan menaksir harga item yang dibawa pelanggan` },
+    { step: 3, pelaku: activeCore, aksi: `Menyepakati harga taksiran dan menyiapkan dokumen ${processB.toLowerCase()}` },
+    { step: 4, pelaku: activeCore, aksi: `Menyerahkan pembayaran atau nota transaksi kepada pelanggan` },
+    { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processB.toLowerCase()} dan stok item masuk` }
+  ];
+
+  // Terapkan resolveActorForStep agar delegasi role tetap berlaku
+  return [
+    { nama: processA, alurInti: alurA.map((s) => ({ ...s, pelaku: resolveActorForStep(s.pelaku, session.roles) })) },
+    { nama: processB, alurInti: alurB.map((s) => ({ ...s, pelaku: resolveActorForStep(s.pelaku, session.roles) })) }
+  ];
 }
 
 function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
