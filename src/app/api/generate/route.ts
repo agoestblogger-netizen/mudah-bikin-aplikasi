@@ -29,7 +29,7 @@ import {
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
 // =============================================================================
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-4o-mini';
 export const OPENROUTER_SITE_URL = 'https://mudahbikinapps.store';
@@ -1761,10 +1761,9 @@ ${staffLandingGuide}
 
       const candidateModels = [
         activeGeminiModel,
-        'gemini-3.5-flash',
+        'gemini-3.6-flash',
         'gemini-flash-latest',
-        'gemini-3.7-flash',
-        'gemini-3.8-flash'
+        'gemini-2.5-flash'
       ].filter((m, idx, self) => self.indexOf(m) === idx);
 
       const candidateEndpoints = candidateModels.map(

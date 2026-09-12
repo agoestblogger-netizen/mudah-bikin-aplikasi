@@ -85,7 +85,7 @@ async function invokeAIChat(options: {
     systemInstruction,
     userPrompt,
     temperature = 0.4,
-    maxTokens = 350,
+    maxTokens = 4000,
     provider,
     userApiKey,
     userModel
@@ -111,7 +111,10 @@ async function invokeAIChat(options: {
         : OPENAI_API_BASE
       : 'https://api.openai.com/v1';
 
-  const geminiModel = isUserGemini ? userModel || DEFAULT_GEMINI_MODEL : process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  let activeGemini = isUserGemini ? userModel || DEFAULT_GEMINI_MODEL : process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  if (activeGemini === 'gemini-3.5-flash' || activeGemini === 'gemini-2.5-flash') {
+    activeGemini = 'gemini-3.6-flash';
+  }
   const openaiModel = hasUserKey
     ? userModel || (isOpenRouter ? OPENROUTER_DEFAULT_MODEL : DEFAULT_OPENAI_MODEL)
     : process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
@@ -119,10 +122,13 @@ async function invokeAIChat(options: {
   try {
     if (requestedProvider === 'gemini' && geminiApiKey) {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${activeGemini}:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiApiKey
+          },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemInstruction }] },
             contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
@@ -134,6 +140,9 @@ async function invokeAIChat(options: {
         const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '';
         if (text.trim()) return text.trim();
+      } else {
+        const errText = await res.text().catch(() => '');
+        console.warn(`Gemini call failed (${res.status}):`, errText);
       }
     } else if (openaiApiKey) {
       const isGemmaOrNoSystem = openaiModel.toLowerCase().includes('gemma') || openaiModel.toLowerCase().includes('r1');
@@ -206,7 +215,7 @@ const CONFIRMATION_CLOSING = 'Apakah ini sudah menggambarkan proses bisnismu? Ka
 /**
  * Menyusun cerita proses bisnis singkat (2-4 kalimat) murni berbasis AI tanpa istilah teknis (POIN 2).
  */
-async function generateStorylineWithAI(
+export async function generateStorylineWithAI(
   prompt: string,
   provider?: string,
   apiKey?: string,
@@ -243,7 +252,7 @@ Kembalikan HANYA JSON valid:
     systemInstruction,
     userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat dan bersahabat, lalu ekstrak field terstruktur:`,
     temperature: 0.5,
-    maxTokens: 600,
+    maxTokens: 4000,
     provider,
     userApiKey: apiKey,
     userModel: model
@@ -357,7 +366,7 @@ Perbarui cerita dan field asumsi dalam format JSON dengan nada hangat dan ramah:
     systemInstruction,
     userPrompt,
     temperature: 0.5,
-    maxTokens: 500,
+    maxTokens: 4000,
     provider,
     userApiKey: apiKey,
     userModel: model

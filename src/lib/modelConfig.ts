@@ -37,7 +37,7 @@ export const DEFAULT_PROVIDER: AIProvider = 'gemini';
 
 export const OPENROUTER_DEFAULT_MODEL = 'openai/gpt-4o-mini';
 export const OPENAI_DEFAULT_MODEL = 'gpt-4o-mini';
-export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
+export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 
 export const OPENROUTER_SIGNUP_URL = 'https://openrouter.ai/settings/keys';
 export const OPENAI_SIGNUP_URL = 'https://platform.openai.com/api-keys';
@@ -113,7 +113,7 @@ const OPENAI_MODELS: AIModelOption[] = [
 ];
 
 const GEMINI_MODELS: AIModelOption[] = [
-  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (Rekomendasi)', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash (Rekomendasi)', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
   { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
   { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },
   { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', category: 'GRATIS', pricePerMInput: 'Kuota gratis', context: '1M' },

@@ -120,7 +120,10 @@ export async function embedText(
   try {
     const res = await fetch(`${GEMINI_EMBED_URL}?key=${apiKey}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey
+      },
       signal: controller.signal,
       body: JSON.stringify({
         model: `models/${EMBEDDING_MODEL}`,
