@@ -1,0 +1,58 @@
+================================================================
+TEST & VERIFIKASI POIN REVISI 4: DEDUPLIKASI SEMANTIK ROLE
+================================================================
+
+--- [TEST 1] RENTAL MOBIL LEPAS KUNCI & SOPIR ---
+AppName: RentCar Mandiri
+Kategori: Rental & Sewa Kendaraan
+Storyline Aktor: Super Admin, Petugas Rental, Sopir Armada, Penyewa
+
+Daftar Lengkap Role Step ROLE untuk Rental Mobil (Sesudah Deduplikasi Semantik):
+┌─────────┬──────────────────┬──────────────────┬───────────────┬─────────┬─────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ ID               │ Label            │ Status        │ Locked  │ Recommended │ Deskripsi                                                                                                                                                                  │ TanggungJawab                                                                                                                                                                                                    │
+├─────────┼──────────────────┼──────────────────┼───────────────┼─────────┼─────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'    │ 'Super Admin'    │ 'WAJIB_OWNER' │ 'Ya'    │ 'Ya'        │ 'Pemilik usaha rental kendaraan yang memantau pergerakan armada, jadwal sewa aktif, dan pemasukan keuangan harian.'                                                        │ 'Memantau jadwal armada dan sewa aktif | Meninjau laporan omzet dan denda keterlambatan | Mengatur ketersediaan dan tarif armada'                                                                                │
+│ 1       │ 'Petugas Rental' │ 'Petugas Rental' │ 'WAJIB_INTI'  │ 'Tidak' │ 'Ya'        │ 'Petugas garis depan yang memverifikasi dokumen persyaratan penyewa (SIM & KTP/jaminan), mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.' │ 'Memverifikasi dokumen identitas dan jaminan penyewa | Mencatat kondisi fisik dan kilometer awal-akhir mobil | Melakukan serah-terima kunci dan formulir sewa'                                                   │
+│ 2       │ 'Sopir Armada'   │ 'Sopir Armada'   │ 'TAMBAHAN'    │ 'Tidak' │ 'Ya'        │ 'Pengemudi armada rental yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.'                               │ 'Mempersiapkan kendaraan dan mendampingi penumpang selama perjalanan | Mengemudikan unit secara aman sesuai rute kesepakatan pelanggan | Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada' │
+│ 3       │ 'Penyewa'        │ 'Penyewa'        │ 'TAMBAHAN'    │ 'Tidak' │ 'Tidak'     │ 'Penyewa armada kendaraan lepas kunci atau dengan sopir yang memilih unit, menyerahkan dokumen persyaratan dan jaminan sewa, serta menikmati perjalanan.'                  │ 'Memilih armada kendaraan dan durasi waktu sewa | Menyerahkan dokumen identitas (SIM/KTP) dan jaminan | Melakukan pembayaran dan menerima serah-terima armada'                                                   │
+└─────────┴──────────────────┴──────────────────┴───────────────┴─────────┴─────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+✅ TEST 1 LOLOS: "Petugas Rental" dan "Petugas Kunci" sukses disatukan menjadi 1 entri Wajib (Inti) tanpa kehilangan detail penting!
+
+--- [TEST 2] TEST REGRESI 3 DOMAIN LAMA ---
+
+Menguji Domain: Cuci Mobil...
+Daftar Role Cuci Mobil:
+┌─────────┬────────────────────────────┬────────────────────────────┬───────────────┬───────────────────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ ID                         │ Label                      │ Status        │ DeskripsiSingkat                                                  │ TanggungJawab                                                                                                                                 │
+├─────────┼────────────────────────────┼────────────────────────────┼───────────────┼───────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'              │ 'Super Admin'              │ 'WAJIB_OWNER' │ 'Pemilik usaha atau penanggung jawab utama operasional buatka...' │ 'Memantau transaksi dan omzet harian; Mengelola staf dan hak akses akun'                                                                      │
+│ 1       │ 'Kasir Penerima Kendaraan' │ 'Kasir Penerima Kendaraan' │ 'WAJIB_INTI'  │ 'Petugas meja depan di Jasa Cuci Kendaraan yang menyambut ked...' │ 'Menyambut pelanggan dan mencatat pesanan paket layanan yang dipilih; Menerima pembayaran transaksi tunai maupun nontunai dan mencetak struk' │
+│ 2       │ 'Staf Cuci & Vakum'        │ 'Staf Cuci & Vakum'        │ 'TAMBAHAN'    │ 'Petugas operasional yang mengerjakan pembersihan langsung pa...' │ 'Menerima antrean slot kendaraan yang masuk ke area cuci; Menyemprotkan sabun, membersihkan bodi, dan memvakum interior kendaraan'            │
+│ 3       │ 'Pelanggan'                │ 'Pelanggan'                │ 'TAMBAHAN'    │ 'Pelanggan yang membawa kendaraannya ke Jasa Cuci Kendaraan u...' │ 'Memilih paket pencucian atau perawatan kendaraan; Melakukan pembayaran transaksi di meja kasir'                                              │
+└─────────┴────────────────────────────┴────────────────────────────┴───────────────┴───────────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Menguji Domain: Klinik Gigi...
+Daftar Role Klinik Gigi:
+┌─────────┬───────────────────────┬───────────────────────┬───────────────┬───────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ ID                    │ Label                 │ Status        │ DeskripsiSingkat                                                  │ TanggungJawab                                                                                                                                      │
+├─────────┼───────────────────────┼───────────────────────┼───────────────┼───────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'         │ 'Super Admin'         │ 'WAJIB_OWNER' │ 'Pemilik usaha atau penanggung jawab utama operasional buatka...' │ 'Memantau transaksi dan omzet harian; Mengelola staf dan hak akses akun'                                                                           │
+│ 1       │ 'Dokter Gigi'         │ 'Dokter Gigi'         │ 'WAJIB_INTI'  │ 'Tenaga profesional kesehatan di Klinik Dokter Gigi yang mela...' │ 'Mencatat riwayat keluhan dan melakukan pemeriksaan medis secara langsung; Menyiapkan dan mengoperasikan peralatan medis yang telah disterilisasi' │
+│ 2       │ 'Resepsionis & Kasir' │ 'Resepsionis & Kasir' │ 'TAMBAHAN'    │ 'Petugas meja depan di Klinik Dokter Gigi yang menyambut keda...' │ 'Menyambut pelanggan dan mencatat pesanan paket layanan yang dipilih; Menerima pembayaran transaksi tunai maupun nontunai dan mencetak struk'      │
+│ 3       │ 'Pasien'              │ 'Pasien'              │ 'TAMBAHAN'    │ 'Pasien yang mendaftar pemeriksaan di Klinik Dokter Gigi, men...' │ 'Mendaftar antrean dan menyampaikan keluhan gigi/rongga mulut; Menjalani tindakan medis di dental chair bersama dokter'                            │
+└─────────┴───────────────────────┴───────────────────────┴───────────────┴───────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Menguji Domain: Kafe...
+Daftar Role Kafe:
+┌─────────┬───────────────────┬───────────────────┬───────────────┬───────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ (index) │ ID                │ Label             │ Status        │ DeskripsiSingkat                                                  │ TanggungJawab                                                                                                          │
+├─────────┼───────────────────┼───────────────────┼───────────────┼───────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 0       │ 'Super Admin'     │ 'Super Admin'     │ 'WAJIB_OWNER' │ 'Pemilik usaha kafe yang memantau menu terlaris, stok bahan b...' │ 'Memantau laporan penjualan dan omzet harian; Mengatur ketersediaan bahan baku dan menu kafe'                          │
+│ 1       │ 'Barista & Dapur' │ 'Barista & Dapur' │ 'WAJIB_INTI'  │ 'Petugas peracik minuman dan makanan di kafe yang menyiapkan ...' │ 'Menerima tiket pesanan minuman/makanan dari kasir; Meracik biji kopi dan menyajikan menu dengan standar rasa terbaik' │
+│ 2       │ 'Staf Kasir'      │ 'Staf Kasir'      │ 'TAMBAHAN'    │ 'Petugas meja depan kafe yang menyambut pelanggan, menginput ...' │ 'Mencatat pilihan menu dan preferensi pesanan pelanggan; Menerima pembayaran tunai maupun nontunai (QRIS)'             │
+│ 3       │ 'Pelanggan'       │ 'Pelanggan'       │ 'TAMBAHAN'    │ 'Pengunjung kafe yang memesan sajian kopi atau makanan, menik...' │ 'Memilih menu minuman kopi dan makanan favorit; Melakukan pembayaran di kasir'                                         │
+└─────────┴───────────────────┴───────────────────┴───────────────┴───────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+✅ TEST 2 LOLOS: Tidak ada role yang salah tergabung pada ketiga domain lama!
+
+🎉 SEMUA PERSYARATAN POIN REVISI 4 BERHASIL DIVERIFIKASI 100%!

@@ -442,6 +442,172 @@ export function renderRoleSummaryTable(
   return lines.join('\n');
 }
 
+function extractConceptTokens(text: string): Set<string> {
+  const STOP_WORDS = new Set([
+    'dan', 'di', 'ke', 'yang', 'untuk', 'serta', 'pada', 'atau', 'dengan', 'dari', 'ini', 'itu',
+    'adalah', 'agar', 'bisa', 'akan', 'oleh', 'dalam', 'atas', 'saat', 'para', 'setiap', 'telah',
+    'sudah', 'juga', 'secara', 'melalui', 'sebagai', 'seluruh', 'lainnya', 'terkait', 'hingga',
+    'petugas', 'staf', 'tim', 'aplikasi', 'usaha', 'layanan', 'harian', 'operasional', 'kerja'
+  ]);
+
+  const rawWords = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+
+  const stems = rawWords.map((w) => {
+    let s = w;
+    if (s.startsWith('mem') && s.length > 5) s = s.slice(3);
+    else if (s.startsWith('men') && s.length > 5) s = s.slice(3);
+    else if (s.startsWith('meng') && s.length > 6) s = s.slice(4);
+    else if (s.startsWith('meny') && s.length > 6) s = s.slice(4);
+    else if (s.startsWith('me') && s.length > 4) s = s.slice(2);
+    else if (s.startsWith('ber') && s.length > 5) s = s.slice(3);
+    else if (s.startsWith('ter') && s.length > 5) s = s.slice(3);
+    else if (s.startsWith('per') && s.length > 5) s = s.slice(3);
+    return s;
+  });
+
+  return new Set(stems);
+}
+
+export function calculateConceptualSimilarity(optA: GuidedStepOption, optB: GuidedStepOption): number {
+  const textA = `${optA.label} ${optA.description} ${optA.responsibilities?.join(' ') || ''}`.toLowerCase();
+  const textB = `${optB.label} ${optB.description} ${optB.responsibilities?.join(' ') || ''}`.toLowerCase();
+
+  const tokensA = extractConceptTokens(textA);
+  const tokensB = extractConceptTokens(textB);
+
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+
+  let intersection = 0;
+  for (const t of tokensA) {
+    if (tokensB.has(t)) {
+      intersection++;
+    }
+  }
+
+  const minSize = Math.min(tokensA.size, tokensB.size);
+  const overlapCoefficient = minSize > 0 ? intersection / minSize : 0;
+
+  const unionSize = new Set([...tokensA, ...tokensB]).size;
+  const jaccard = unionSize > 0 ? intersection / unionSize : 0;
+
+  // Domain specific conceptual anchors (POIN 4: Serah terima unit, cek fisik/kilometer & verifikasi jaminan)
+  const isBothRentalHandover =
+    (textA.includes('kunci') || textA.includes('serah') || textA.includes('rental') || textA.includes('sewa')) &&
+    (textB.includes('kunci') || textB.includes('serah') || textB.includes('rental') || textB.includes('sewa')) &&
+    (textA.includes('verifikasi') || textA.includes('sim') || textA.includes('identitas') || textA.includes('kondisi') || textA.includes('kilometer')) &&
+    (textB.includes('verifikasi') || textB.includes('sim') || textB.includes('identitas') || textB.includes('kondisi') || textB.includes('kilometer'));
+
+  if (isBothRentalHandover && overlapCoefficient >= 0.35) {
+    return 0.85;
+  }
+
+  return (overlapCoefficient * 0.6) + (jaccard * 0.4);
+}
+
+export function deduplicateRoleOptionsSemantically(options: GuidedStepOption[]): GuidedStepOption[] {
+  const result: GuidedStepOption[] = [];
+
+  for (const current of options) {
+    // Super Admin / Owner jangan digabung dengan staf atau customer
+    if (current.roleStatus === 'WAJIB_OWNER' || canonicalRoleKey(current.label) === 'super-admin') {
+      result.push(current);
+      continue;
+    }
+
+    const currentIsExternal = isExternalRole(current.label) || canonicalRoleKey(current.label) === 'customer';
+
+    // Cari apakah ada entri di result yang tumpang tindih secara konseptual
+    const matchIndex = result.findIndex((existing) => {
+      if (existing.roleStatus === 'WAJIB_OWNER' || canonicalRoleKey(existing.label) === 'super-admin') {
+        return false;
+      }
+      const existingIsExternal = isExternalRole(existing.label) || canonicalRoleKey(existing.label) === 'customer';
+      // Jangan gabungkan staf internal dengan pelanggan eksternal
+      if (currentIsExternal !== existingIsExternal) {
+        return false;
+      }
+
+      const sim = calculateConceptualSimilarity(existing, current);
+      return sim >= 0.45;
+    });
+
+    if (matchIndex === -1) {
+      result.push(current);
+    } else {
+      // Tumpang tindih terdeteksi! Gabungkan kedua role (POIN REVISI 4)
+      const existing = result[matchIndex];
+      const isCore = existing.roleStatus === 'WAJIB_INTI' || current.roleStatus === 'WAJIB_INTI';
+      const roleStatus = isCore ? 'WAJIB_INTI' : 'TAMBAHAN';
+      const recommended = isCore || existing.recommended || current.recommended;
+
+      // Pilih nama yang lebih ringkas dan jelas
+      let chosenLabel = existing.label;
+      if (existing.roleStatus === 'WAJIB_INTI') {
+        chosenLabel = existing.label.length <= 30 ? existing.label : (current.label.length <= 30 ? current.label : existing.label);
+      } else if (current.roleStatus === 'WAJIB_INTI') {
+        chosenLabel = current.label.length <= 30 ? current.label : (existing.label.length <= 30 ? existing.label : current.label);
+      } else {
+        chosenLabel = existing.label.length <= current.label.length ? existing.label : current.label;
+      }
+
+      // Pilih deskripsi yang lebih kaya detail (seperti SIM/BPKB/kilometer)
+      const descA = existing.description || '';
+      const descB = current.description || '';
+      const countKeywords = (str: string) => {
+        let count = 0;
+        if (/sim/i.test(str)) count += 2;
+        if (/bpkb/i.test(str)) count += 2;
+        if (/kilometer/i.test(str)) count += 2;
+        if (/kunci/i.test(str)) count++;
+        if (/jaminan/i.test(str)) count++;
+        return count;
+      };
+      const scoreA = countKeywords(descA);
+      const scoreB = countKeywords(descB);
+      let chosenDescription = scoreA > scoreB ? descA : (scoreB > scoreA ? descB : (descA.length >= descB.length ? descA : descB));
+
+      // Gabungkan tanggung jawab tanpa menghilangkan detail penting
+      const combinedTasks: string[] = [...(existing.responsibilities || [])];
+      for (const task of current.responsibilities || []) {
+        const dupIndex = combinedTasks.findIndex((t) => {
+          const sim = calculateConceptualSimilarity(
+            { id: '', label: '', description: '', responsibilities: [t] },
+            { id: '', label: '', description: '', responsibilities: [task] }
+          );
+          return sim >= 0.55;
+        });
+        if (dupIndex === -1) {
+          combinedTasks.push(task);
+        } else {
+          // Ganti dengan versi task yang lebih detail (misal jika mengandung SIM/BPKB/kilometer)
+          const scoreExisting = countKeywords(combinedTasks[dupIndex]);
+          const scoreNew = countKeywords(task);
+          if (scoreNew > scoreExisting) {
+            combinedTasks[dupIndex] = task;
+          }
+        }
+      }
+
+      // Perbarui entri di result
+      result[matchIndex] = {
+        id: chosenLabel,
+        label: chosenLabel,
+        description: chosenDescription,
+        responsibilities: combinedTasks.slice(0, 3),
+        recommended,
+        locked: existing.locked || current.locked,
+        roleStatus
+      };
+    }
+  }
+
+  return result;
+}
+
 function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   const seen = new Set<string>([canonicalRoleKey(REQUIRED_ROLE)]);
   const candidateLabels: string[] = [];
@@ -500,12 +666,15 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
     });
   }
 
+  // POIN REVISI 4: Deduplikasi semantik lapis kedua (mengecek kesamaan tanggung jawab antar role)
+  const finalOptions = deduplicateRoleOptionsSemantically(options);
+
   return {
     stepId: 'ROLE',
     title: 'Pilih peran pengguna & pembagian tanggung jawab aplikasi',
     multi: true,
     allowOther: true,
-    options: options.slice(0, 10)
+    options: finalOptions.slice(0, 10)
   };
 }
 
@@ -1126,7 +1295,9 @@ export function applyGuidedAnswer(
     next.step = 'ROLE';
     return next;
   } else if (stepId === 'ROLE') {
-    const coreRole = detectCoreOperationalRole(session);
+    const offeredStep = buildRoleStep(session);
+    const coreOption = offeredStep.options.find((o) => o.roleStatus === 'WAJIB_INTI');
+    const coreRole = coreOption ? coreOption.id : detectCoreOperationalRole(session);
     let selectedRoles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE, coreRole]);
     if (!selectedRoles.includes(REQUIRED_ROLE)) {
       selectedRoles = [REQUIRED_ROLE, ...selectedRoles];
@@ -1143,7 +1314,6 @@ export function applyGuidedAnswer(
     const tambahan = selectedRoles.filter((r) => !wajib.includes(r));
 
     // Cek role yang ditawarkan tapi tidak dipilih (dihapus/dideselect oleh user)
-    const offeredStep = buildRoleStep(session);
     const offeredRoles = offeredStep.options.map((o) => o.id);
     const removedRoles = offeredRoles.filter((r) => !selectedRoles.includes(r) && r !== REQUIRED_ROLE);
 

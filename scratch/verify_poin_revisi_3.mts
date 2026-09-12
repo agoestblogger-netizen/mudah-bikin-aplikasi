@@ -219,10 +219,10 @@ async function main() {
   }
   console.log('-> ✅ Sopir terverifikasi mendeskripsikan pengantaran penumpang & armada kendaraan, BUKAN paket!');
 
-  // Verifikasi Spesifik Role Petugas Kunci
-  const kunciOpt = roleStepRental.options.find(o => o.label.toLowerCase().includes('kunci') || o.label.toLowerCase().includes('serah terima'));
+  // Verifikasi Spesifik Role Petugas Kunci / Petugas Rental (Hasil Merge POIN REVISI 4)
+  const kunciOpt = roleStepRental.options.find(o => o.label.toLowerCase().includes('kunci') || o.label.toLowerCase().includes('serah terima') || o.label.toLowerCase().includes('rental'));
   if (!kunciOpt) {
-    throw new Error('GAGAL: Role Petugas Penerimaan & Penyerahan Kunci tidak ditemukan di opsi Step ROLE rental mobil!');
+    throw new Error('GAGAL: Role Petugas Rental / Petugas Kunci tidak ditemukan di opsi Step ROLE rental mobil!');
   }
   const kunciCombined = (kunciOpt.description + ' ' + (kunciOpt.responsibilities?.join(' ') || '')).toLowerCase();
   console.log('\n[Pemeriksaan Khusus Petugas Penerimaan & Penyerahan Kunci]:');
