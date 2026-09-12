@@ -138,6 +138,8 @@ export interface GuidedStepOption {
   complexity?: OptionComplexity;
   responsibilities?: string[];
   roleStatus?: 'WAJIB_OWNER' | 'WAJIB_INTI' | 'TAMBAHAN';
+  steps?: { step?: number; pelaku: string; aksi: string }[];
+  category?: 'ALUR_INTI' | 'ALUR_PENDUKUNG' | 'FITUR_PENDUKUNG' | string;
 }
 
 export type GuidedStepId =

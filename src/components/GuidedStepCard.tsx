@@ -111,9 +111,19 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
                       Wajib (Owner)
                     </span>
                   )}
-                  {opt.roleStatus === 'WAJIB_INTI' && (
+                  {(opt.roleStatus === 'WAJIB_INTI' || opt.category === 'ALUR_INTI') && (
                     <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1.5 py-0.5 shrink-0">
                       Wajib (Alur Inti)
+                    </span>
+                  )}
+                  {opt.category === 'ALUR_PENDUKUNG' && (
+                    <span className="text-[9px] font-medium tracking-wide text-sky-400 border border-sky-400/30 rounded px-1.5 py-0.5 shrink-0">
+                      Alur Pendukung
+                    </span>
+                  )}
+                  {opt.category === 'FITUR_PENDUKUNG' && (
+                    <span className="text-[9px] font-medium tracking-wide text-purple-400 border border-purple-400/30 rounded px-1.5 py-0.5 shrink-0">
+                      Fitur Pendukung (MVP)
                     </span>
                   )}
                   {opt.roleStatus === 'TAMBAHAN' && (
@@ -121,7 +131,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
                       Tambahan
                     </span>
                   )}
-                  {!opt.roleStatus && opt.recommended && (
+                  {!opt.roleStatus && !opt.category && opt.recommended && (
                     <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1 py-0.5 shrink-0">
                       Disarankan
                     </span>
@@ -141,6 +151,23 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+                {opt.steps && opt.steps.length > 0 && (
+                  <div className="mt-2 pt-1.5 border-t border-white/5 space-y-1">
+                    <span className="text-[9.5px] font-semibold text-zinc-400 block mb-1">
+                      Tahapan Alur ({opt.steps.length} langkah):
+                    </span>
+                    <ol className="space-y-1 text-[10px] text-zinc-300">
+                      {opt.steps.map((st, sIdx) => (
+                        <li key={sIdx} className="flex items-start gap-1.5 leading-snug">
+                          <span className="text-zinc-500 font-mono text-[9px] shrink-0 mt-0.5">{sIdx + 1}.</span>
+                          <span>
+                            <strong className="text-[#10f48e] font-semibold">({st.pelaku})</strong> {st.aksi}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
                   </div>
                 )}
               </span>

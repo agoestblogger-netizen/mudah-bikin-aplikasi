@@ -14,6 +14,9 @@ import {
   compileBriefFromSession,
   isBriefBusinessComplete,
   renderRoleSummaryTable,
+  getDomainFlowDetails,
+  renderFlowMarkdown,
+  type DomainFlowData,
   type GuidedStepId,
   type MockupSessionState
 } from '@/lib/templates';
@@ -774,8 +777,74 @@ export async function POST(req: Request) {
         if (removalMessages.length > 0) {
           narration += removalMessages.join('\n\n') + '\n\n';
         }
-        narration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTable}\n\nSekarang, yuk kita lanjut ke alur kerja utama & fitur pendukung aplikasi:`;
+        narration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTable}\n\n`;
 
+        // Tampilkan alur sistem langsung poin bernomor tanpa narasi pembuka tambahan (POIN 4)
+        const flowData = getDomainFlowDetails(updated);
+        const flowMarkdown = renderFlowMarkdown(flowData);
+        narration += flowMarkdown;
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Khusus step ALUR: tangani koreksi alur inti via chat atau persetujuan lanjut ke RBAC (POIN 4)
+      if (stepId === 'ALUR') {
+        const otherText = (body.other || '').trim();
+        const isCorrection =
+          /^(koreksi|ubah|ganti|revisi|edit)\b/i.test(otherText) ||
+          /langkah\s+\d+/i.test(otherText);
+
+        if (isCorrection) {
+          // Tangani koreksi langkah alur inti
+          const flowData = getDomainFlowDetails(session);
+          let alurInti = [...(session.flow?.alurInti || flowData.alurInti)];
+
+          // Cek nomor langkah yang dikoreksi (misal "koreksi langkah 3: kasir tawarkan diskon")
+          const stepMatch = otherText.match(/langkah\s+(\d+)\s*[:=-]?\s*(.+)/i);
+          if (stepMatch) {
+            const stepNum = parseInt(stepMatch[1], 10);
+            const newAction = stepMatch[2].trim();
+            const targetStep = alurInti.find((s) => s.step === stepNum);
+            if (targetStep) {
+              targetStep.aksi = newAction;
+            }
+          }
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'ALUR',
+            flow: {
+              ...session.flow,
+              alurInti
+            }
+          };
+          const updatedFlowData: DomainFlowData = {
+            ...flowData,
+            alurInti
+          };
+          const flowMarkdown = renderFlowMarkdown(updatedFlowData);
+          const guidedStep = buildGuidedStep(updatedSession);
+          const narration = `Siap, alur inti sudah saya perbarui sesuai koreksimu:\n\n${flowMarkdown}\n\nSilakan periksa kembali atau klik Lanjut untuk ke bagian Hak Akses (RBAC).`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
+
+        // Normal: persetujuan alur -> lanjut ke RBAC (POIN 5)
+        let updated = applyGuidedAnswer(session, 'ALUR', body.selected || [], body.other);
+        const guidedStep = buildGuidedStep(updated);
+        const narration =
+          'Mantap! Alur kerja dan fitur pendukung sudah tersimpan.\n\nSekarang, yuk kita atur pembagian hak akses (RBAC) untuk masing-masing peran di aplikasi:';
         return NextResponse.json({
           success: true,
           action,
