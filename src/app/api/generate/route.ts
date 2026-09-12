@@ -1750,47 +1750,7 @@ ${staffLandingGuide}
         }
       }
 
-      // 2) Coba Server Default OpenAI (jika key server tersedia).
-      const serverOpenAIKey = process.env.OPENAI_API_KEY;
-      if (serverOpenAIKey) {
-        try {
-          const oaMessages = [
-            { role: 'system', content: systemPrompt },
-            ...recentHistory.map((m: any) => ({
-              role: m.sender === 'USER' ? 'user' : 'assistant',
-              content: m.text
-            })),
-            { role: 'user', content: userPromptWithContext }
-          ];
-          const oaRes = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${serverOpenAIKey}`
-            },
-            body: JSON.stringify({
-              model: getOpenAIModel(),
-              messages: oaMessages,
-              max_completion_tokens: 16384,
-              temperature: 0.3
-            })
-          });
-          if (oaRes.ok) {
-            const oaData = await oaRes.json();
-            const oaMsg = oaData.choices?.[0]?.message?.content || '';
-            if (oaMsg && acceptFallback(oaMsg, 'openai')) {
-              console.log(`Server Default (OpenAI) fallback berhasil setelah: ${reason}`);
-              return true;
-            }
-            console.warn(`OpenAI fallback tidak valid (${reason})`);
-          } else {
-            console.warn(`OpenAI fallback HTTP ${oaRes.status} (${reason})`);
-          }
-        } catch (err) {
-          console.warn('OpenAI server fallback error:', err);
-        }
-      }
-
+      // 2) Model cadangan OpenAI dinonaktifkan sesuai permintaan pengguna.
       return false;
     };
 
@@ -1859,34 +1819,7 @@ ${staffLandingGuide}
       }
 
       if (!geminiData || !geminiData.candidates?.[0]) {
-        if (openaiApiKey) {
-          console.warn(`Gemini (${activeGeminiModel}) unavailable. Falling back instantly to OpenAI (${activeOpenAIModel})...`);
-          actualProviderUsed = 'openai';
-          const messages = [
-            { role: 'system', content: systemPrompt },
-            ...recentHistory.map((m: any) => ({
-              role: m.sender === 'USER' ? 'user' : 'assistant',
-              content: m.text
-            })),
-            { role: 'user', content: userPromptWithContext }
-          ];
-
-          let fallbackRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
-            method: 'POST',
-            headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-body: JSON.stringify({
-              model: activeOpenAIModel,
-              messages,
-              max_completion_tokens: isIdeationMode ? 1024 : 16384,
-              temperature: isIdeationMode ? 0.7 : 0.4
-            })
-          });
-
-          let fbData = await fallbackRes.json();
-          assistantMessage = fbData.choices?.[0]?.message?.content || '';
-        } else {
-          throw new Error('Gemini API failed: ' + attemptErrors.join(' || '));
-        }
+        throw new Error('Gemini API failed: ' + attemptErrors.join(' || '));
       } else {
 
         let candidate = geminiData.candidates?.[0];
@@ -1938,41 +1871,6 @@ body: JSON.stringify({
             console.warn('Gemini continuation fetch error:', contErr);
           }
 
-          // Jika Gemini continuation gagal atau kosong, fallback ke OpenAI continuation
-          if (!contText && openaiApiKey) {
-            console.log('Falling back to OpenAI for continuation...');
-            try {
-              const contMessages = [
-                { role: 'system', content: systemPrompt },
-            ...recentHistory.map((m: { sender?: string; text?: string }) => ({
-              role: m.sender === 'USER' ? 'user' : 'assistant',
-              content: m.text
-            })),
-                { role: 'user', content: userPromptWithContext },
-                { role: 'assistant', content: assistantMessage },
-                { role: 'user', content: 'Lanjutkan persis dari titik karakter terakhir. Jangan mengulangi kode dari awal, dan pastikan seluruh script JavaScript dan penutup tag HTML lengkap.' }
-              ];
-
-              const contResponse = await fetch(`${openaiBaseUrl}/chat/completions`, {
-                method: 'POST',
-                headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
-body: JSON.stringify({
-                  model: activeOpenAIModel,
-                  messages: contMessages,
-                  max_completion_tokens: 8192,
-                  temperature: 0.2
-                })
-              });
-
-              if (contResponse.ok) {
-                const contData = await contResponse.json();
-                contText = contData.choices?.[0]?.message?.content || '';
-                finishReason = contData.choices?.[0]?.finish_reason;
-              }
-            } catch (openAiContErr) {
-              console.warn('OpenAI continuation fallback error:', openAiContErr);
-            }
-          }
 
           if (!contText || contText.toLowerCase().includes('tidak dapat melanjutkan')) {
             break;
@@ -2215,11 +2113,11 @@ INSTRUKSI PERBAIKAN WAJIB:
             repairSuccess = true;
           }
         } catch (e) {
-          console.warn('Gemini auto-repair failed, will attempt OpenAI repair fallback...', e);
+          console.warn('Gemini auto-repair failed:', e);
         }
       }
       
-      if (!repairSuccess && openaiApiKey) {
+      if (!repairSuccess && aiProvider !== 'gemini' && openaiApiKey) {
         const repairPrompt = [
           { role: 'system', content: systemPrompt },
           ...recentHistory.map((m: any) => ({

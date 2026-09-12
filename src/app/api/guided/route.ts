@@ -181,35 +181,7 @@ async function invokeAIChat(options: {
     console.warn('AI invocation failed:', err);
   }
 
-  // Fallback cadangan otomatis ke server OpenAI jika provider primer gagal (misal 400, 429 kuota, 503 overloaded)
-  if (process.env.OPENAI_API_KEY && (!hasUserKey || requestedProvider !== 'openai' || isOpenRouter)) {
-    try {
-      const fallbackRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: userPrompt }
-          ],
-          max_tokens: maxTokens,
-          temperature
-        })
-      });
-      if (fallbackRes.ok) {
-        const data = await fallbackRes.json();
-        const text = data.choices?.[0]?.message?.content || '';
-        if (text.trim()) return text.trim();
-      }
-    } catch (fallbackErr) {
-      console.warn('Server OpenAI fallback invocation failed:', fallbackErr);
-    }
-  }
-
+  // Fallback cadangan OpenAI dinonaktifkan sesuai permintaan pengguna.
   return null;
 }
 

@@ -146,8 +146,8 @@ KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
       }
     }
 
-    // Fallback atau Jalur 2: OpenAI / OpenRouter
-    if (!rawOutput && openaiApiKey) {
+    // Jalur 2: OpenAI / OpenRouter (hanya jika provider yang diminta bukan gemini)
+    if (!rawOutput && aiProvider !== 'gemini' && openaiApiKey) {
       try {
         const isGemmaOrNoSystem = isOpenRouter && (activeOpenAIModel.toLowerCase().includes('gemma') || activeOpenAIModel.toLowerCase().includes('r1'));
         const messages = isGemmaOrNoSystem
