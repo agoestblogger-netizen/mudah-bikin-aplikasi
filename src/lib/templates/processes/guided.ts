@@ -245,73 +245,281 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
   };
 }
 
+export interface RoleDetailDefinition {
+  narasi: string;
+  tanggungJawab: string[];
+}
+
+export function detectCoreOperationalRole(session: MockupSessionState): string {
+  // 1. Dari aktor cerita bisnis (asumsiAktor)
+  const actors = session.storyline?.asumsiAktor || session.match.contextualRoles || [];
+  for (const a of actors) {
+    const clean = a.trim();
+    const key = canonicalRoleKey(clean);
+    if (key !== 'super-admin' && key !== 'owner' && key !== 'customer' && !GENERIC_ROLE_RE.test(clean)) {
+      return EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean;
+    }
+  }
+
+  // 2. Dari overlay industri
+  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
+  for (const o of overlays) {
+    for (const r of o.roleLabels) {
+      const key = canonicalRoleKey(r);
+      if (key !== 'super-admin' && key !== 'owner' && key !== 'customer') {
+        return EN_ROLE_LABEL_MAP[r.toLowerCase()] || r;
+      }
+    }
+  }
+
+  // 3. Fallback
+  return 'Kasir';
+}
+
+export function getRoleNarrativeAndResponsibilities(
+  roleLabel: string,
+  businessCategory?: string
+): RoleDetailDefinition {
+  const clean = roleLabel.trim();
+  const key = canonicalRoleKey(clean);
+  const cat = businessCategory || 'bisnis ini';
+
+  switch (key) {
+    case 'super-admin':
+    case 'owner':
+      return {
+        narasi: `Pemilik usaha atau penanggung jawab utama operasional ${cat}. Memastikan seluruh aktivitas berjalan tertib, memantau omzet dan laporan harian, serta mengatur akun staf yang bertugas.`,
+        tanggungJawab: [
+          'Memantau ringkasan omzet, transaksi, dan laporan operasional harian',
+          'Mendaftarkan dan mengelola akun staf yang bertugas',
+          'Mengubah pengaturan umum aplikasi dan alur kerja utama'
+        ]
+      };
+
+    case 'cashier':
+      return {
+        narasi: 'Petugas garda depan yang melayani pembeli langsung di meja transaksi harian. Memasukkan pesanan dengan teliti, menerima pembayaran, dan mencetak bukti belanja.',
+        tanggungJawab: [
+          'Mencatat transaksi belanja pesanan pelanggan',
+          'Menerima pembayaran tunai maupun digital dan mencetak nota',
+          'Membuat laporan rekap kas masuk di akhir giliran kerja'
+        ]
+      };
+
+    case 'warehouse':
+      return {
+        narasi: 'Petugas yang bertanggung jawab atas ketersediaan dan penyimpanan barang di lokasi. Memastikan stok yang datang dari pemasok dicatat rapi dan rak jualan selalu terisi.',
+        tanggungJawab: [
+          'Mencatat penerimaan barang baru dari pemasok',
+          'Memperbarui jumlah stok barang masuk dan keluar',
+          'Mendata barang rusak atau kedaluwarsa untuk pengembalian (retur)'
+        ]
+      };
+
+    case 'customer':
+      return {
+        narasi: 'Pembeli atau pelanggan yang menikmati produk dan layanan yang Anda tawarkan. Dapat melihat pilihan produk, memesan secara mandiri, dan menyimpan bukti transaksi.',
+        tanggungJawab: [
+          'Melihat katalog produk atau daftar layanan yang tersedia',
+          'Membuat pesanan mandiri secara cepat',
+          'Melihat riwayat belanja dan bukti nota pembayaran'
+        ]
+      };
+
+    case 'medical':
+      return {
+        narasi: 'Tenaga ahli yang menangani pemeriksaan, perawatan, dan tindakan klinis. Memastikan riwayat kesehatan dan instruksi perawatan tercatat akurat dan aman.',
+        tanggungJawab: [
+          'Mencatat hasil pemeriksaan awal dan diagnosis kondisi',
+          'Menentukan resep obat dan jadwal perawatan rutin',
+          'Memantau catatan perkembangan kondisi pasien secara berkala'
+        ]
+      };
+
+    case 'kitchen':
+      return {
+        narasi: 'Staf pengolah pesanan di area produksi atau dapur. Menerima tiket pesanan yang masuk dan menyiapkan pesanan pelanggan sesuai standar mutu terbaik.',
+        tanggungJawab: [
+          'Melihat antrean tiket pesanan yang harus segera diproses',
+          'Mengubah status pesanan menjadi sedang dimasak hingga siap saji',
+          'Memantau ketersediaan bahan baku di area kerja'
+        ]
+      };
+
+    case 'waiter':
+      return {
+        narasi: 'Staf pelayanan yang menyapa pengunjung dan mengantar pesanan langsung ke meja. Memastikan kebutuhan pengunjung terpenuhi dengan ramah dan cepat.',
+        tanggungJawab: [
+          'Mencatat pesanan dari meja pengunjung secara langsung',
+          'Mengantarkan pesanan yang sudah siap ke meja pelanggan',
+          'Membantu permintaan tambahan dari pelanggan'
+        ]
+      };
+
+    case 'technician':
+      return {
+        narasi: 'Tenaga lapangan yang menangani perbaikan, pemasangan, dan pemeliharaan unit kerja. Melakukan inspeksi kendala dan mencatat suku cadang yang digunakan.',
+        tanggungJawab: [
+          'Melakukan diagnosis kendala dan pekerjaan perbaikan unit',
+          'Mencatat pemakaian suku cadang dan bahan perbaikan',
+          'Menandai status pekerjaan selesai untuk penyerahan ke pelanggan'
+        ]
+      };
+
+    case 'driver':
+      return {
+        narasi: 'Petugas pengantaran yang membawa paket pesanan ke alamat pelanggan. Memastikan barang sampai tepat waktu dalam kondisi aman dan rapi.',
+        tanggungJawab: [
+          'Melihat daftar rute dan alamat pengiriman hari ini',
+          'Mengubah status pengiriman saat barang sedang di jalan',
+          'Mengambil foto bukti serah-terima saat paket sampai di tujuan'
+        ]
+      };
+
+    case 'teacher':
+      return {
+        narasi: 'Pendidik yang membimbing siswa dan mengelola kelas. Mencatat kehadiran siswa, membagikan materi pelajaran, dan menilai tugas evaluasi.',
+        tanggungJawab: [
+          'Mencatat absensi kehadiran siswa di setiap sesi kelas',
+          'Membagikan materi pelajaran dan tugas belajar harian',
+          'Menginput nilai tugas dan catatan evaluasi belajar siswa'
+        ]
+      };
+
+    case 'front-office':
+      return {
+        narasi: 'Penyambut pertama tamu di lobi atau loket pendaftaran. Membantu registrasi awal, membagikan nomor antrean, dan memberikan informasi yang dibutuhkan.',
+        tanggungJawab: [
+          'Mencatat pendaftaran tamu atau pengunjung baru',
+          'Mengatur nomor antrean dan ruang janji temu',
+          'Menjawab pertanyaan umum pelanggan dengan ramah'
+        ]
+      };
+
+    default:
+      return {
+        narasi: `Staf operasional yang membantu menjalankan aktivitas harian untuk ${clean} di ${cat}. Berfokus pada pencatatan tugas dan koordinasi di lapangan agar layanan selesai tepat waktu.`,
+        tanggungJawab: [
+          `Mencatat dan memperbarui aktivitas harian terkait ${clean}`,
+          `Menangani kebutuhan data operasional di lapangan`,
+          `Melaporkan penyelesaian tugas kepada penanggung jawab`
+        ]
+      };
+  }
+}
+
+export function renderRoleSummaryTable(
+  rolesState: MockupSessionState['roles'],
+  businessCategory?: string
+): string {
+  const lines: string[] = [];
+  lines.push('| Role | Status | Tanggung Jawab Utama |');
+  lines.push('|---|---|---|');
+
+  const wajibSet = new Set(rolesState.wajib || [REQUIRED_ROLE]);
+  const activeRoles = rolesState.selected || [REQUIRED_ROLE];
+
+  for (const role of activeRoles) {
+    const isOwner = role === REQUIRED_ROLE;
+    const isWajib = wajibSet.has(role);
+    const status = isOwner ? 'Wajib (Owner)' : isWajib ? 'Wajib (Alur Inti)' : 'Tambahan';
+
+    const details = getRoleNarrativeAndResponsibilities(role, businessCategory);
+    const nativeTasks = details.tanggungJawab.slice(0, 2).join('; ');
+
+    // Cek tugas yang dilimpahkan ke role ini
+    const delegatedTasks = (rolesState.tugasDilimpahkan || [])
+      .filter((d) => d.keRole === role)
+      .flatMap((d) => d.daftarTugas.map((t) => `_${t} (dilimpahkan dari ${d.dariRole})_`));
+
+    let responsibilitiesCol = nativeTasks;
+    if (delegatedTasks.length > 0) {
+      responsibilitiesCol += '<br>' + delegatedTasks.join('<br>');
+    }
+
+    lines.push(`| ${role} | ${status} | ${responsibilitiesCol} |`);
+  }
+
+  return lines.join('\n');
+}
+
 function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   const patterns = getProcessPatternsByIds(session.match.patternIds);
   const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
   const template = session.match.templateId ? getMasterTemplateById(session.match.templateId) : undefined;
 
   const seen = new Set<string>([canonicalRoleKey(REQUIRED_ROLE)]);
-  const options: GuidedStepOption[] = [];
+  const candidateLabels: string[] = [];
 
-  const addRole = (label: string, source: string, recommended?: boolean) => {
+  const addCandidate = (label: string) => {
     const clean = label.trim();
     if (!clean || GENERIC_ROLE_RE.test(clean)) return;
     const key = canonicalRoleKey(clean);
     if (seen.has(key)) return;
     seen.add(key);
-    const display = EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean;
-    options.push({
-      id: display,
-      label: display,
-      recommended: recommended ?? !isExternalRole(display),
-      description: source
-    });
+    candidateLabels.push(EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean);
   };
 
   // 1. Peran dari asumsi cerita bisnis (storyline) - Prioritas paling utama
   if (session.storyline?.asumsiAktor && session.storyline.asumsiAktor.length > 0) {
-    session.storyline.asumsiAktor.forEach((role) =>
-      addRole(role, 'Dari Gambaran Cerita Bisnis', true)
-    );
+    session.storyline.asumsiAktor.forEach(addCandidate);
   }
 
   // 2. Peran kontekstual dari hasil pemetaan AI cerdas (diposisikan setelah aktor cerita)
   if (session.match.contextualRoles && session.match.contextualRoles.length > 0) {
-    session.match.contextualRoles.forEach((role) =>
-      addRole(role, session.match.businessCategory || 'Spesifik Kebutuhan Anda', true)
-    );
+    session.match.contextualRoles.forEach(addCandidate);
   }
 
-  // 2. Peran khas industri dari overlay
-  overlays.forEach((o) => o.roleLabels.forEach((role) => addRole(role, o.nama, true)));
+  // 3. Peran khas industri dari overlay
+  overlays.forEach((o) => o.roleLabels.forEach(addCandidate));
 
-  // 3. Pelengkap dari Master Template
+  // 4. Pelengkap dari Master Template
   if (template) {
-    template.roleDefault.forEach((role) => addRole(role, template.nama));
+    template.roleDefault.forEach(addCandidate);
   }
 
-  // 4. Fallback pola universal
-  if (options.length < 2) {
-    patterns.forEach((p) =>
-      p.actors.forEach((a) => addRole(a.role, p.nama, a.category !== 'external'))
-    );
+  // 5. Fallback pola universal
+  if (candidateLabels.length < 2) {
+    patterns.forEach((p) => p.actors.forEach((a) => addCandidate(a.role)));
+  }
+
+  // Tentukan Role Wajib Kedua (Alur Inti)
+  const coreRole = detectCoreOperationalRole(session);
+
+  const options: GuidedStepOption[] = [];
+
+  // Super Admin (Owner) selalu wajib & locked
+  const ownerDetails = getRoleNarrativeAndResponsibilities(REQUIRED_ROLE, session.match.businessCategory);
+  options.push({
+    id: REQUIRED_ROLE,
+    label: REQUIRED_ROLE,
+    description: ownerDetails.narasi,
+    responsibilities: ownerDetails.tanggungJawab,
+    recommended: true,
+    locked: true,
+    roleStatus: 'WAJIB_OWNER'
+  });
+
+  // Tambahkan role lainnya
+  for (const label of candidateLabels) {
+    const isCore = label === coreRole;
+    const details = getRoleNarrativeAndResponsibilities(label, session.match.businessCategory);
+    options.push({
+      id: label,
+      label: label,
+      description: details.narasi,
+      responsibilities: details.tanggungJawab,
+      recommended: isCore || !isExternalRole(label),
+      roleStatus: isCore ? 'WAJIB_INTI' : 'TAMBAHAN'
+    });
   }
 
   return {
     stepId: 'ROLE',
-    title: 'Siapa saja yang akan memakai aplikasi ini? (boleh pilih lebih dari satu)',
+    title: 'Pilih peran pengguna & pembagian tanggung jawab aplikasi',
     multi: true,
     allowOther: true,
-    options: [
-      {
-        id: REQUIRED_ROLE,
-        label: REQUIRED_ROLE,
-        description: 'Owner/Super Admin: pemegang akses tertinggi & kelola akun staf',
-        recommended: true,
-        locked: true
-      },
-      ...options.slice(0, 13)
-    ]
+    options: options.slice(0, 10)
   };
 }
 
@@ -459,10 +667,44 @@ export function applyGuidedAnswer(
     next.step = 'ROLE';
     return next;
   } else if (stepId === 'ROLE') {
-    const roles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE]);
+    const coreRole = detectCoreOperationalRole(session);
+    let selectedRoles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE, coreRole]);
+    if (!selectedRoles.includes(REQUIRED_ROLE)) {
+      selectedRoles = [REQUIRED_ROLE, ...selectedRoles];
+    }
+    if (other && other.trim() && !selectedRoles.includes(other.trim())) {
+      selectedRoles.push(other.trim());
+    }
+
+    const wajib = [REQUIRED_ROLE];
+    if (coreRole && coreRole !== REQUIRED_ROLE && !wajib.includes(coreRole)) {
+      wajib.push(coreRole);
+    }
+
+    const tambahan = selectedRoles.filter((r) => !wajib.includes(r));
+
+    // Cek role yang ditawarkan tapi tidak dipilih (dihapus/dideselect oleh user)
+    const offeredStep = buildRoleStep(session);
+    const offeredRoles = offeredStep.options.map((o) => o.id);
+    const removedRoles = offeredRoles.filter((r) => !selectedRoles.includes(r) && r !== REQUIRED_ROLE);
+
+    const tugasDilimpahkan: { dariRole: string; keRole: string; daftarTugas: string[] }[] = [];
+    for (const r of removedRoles) {
+      const details = getRoleNarrativeAndResponsibilities(r, session.match.businessCategory);
+      if (details.tanggungJawab.length > 0) {
+        tugasDilimpahkan.push({
+          dariRole: r,
+          keRole: REQUIRED_ROLE,
+          daftarTugas: details.tanggungJawab
+        });
+      }
+    }
+
     next.roles = {
-      ...next.roles,
-      selected: roles,
+      selected: selectedRoles,
+      wajib,
+      tambahan,
+      tugasDilimpahkan,
       ...(other ? { other } : {})
     };
   } else if (stepId === 'ALUR') {
@@ -622,6 +864,17 @@ export function compileBriefFromSession(
 
   const roles = session.roles.selected;
   if (roles.length) {
+    lines.push('- **Ringkasan Role & Status Wewenang**:');
+    lines.push(`  - **Role Wajib**: ${(session.roles.wajib || [REQUIRED_ROLE]).join(', ')}`);
+    if (session.roles.tambahan && session.roles.tambahan.length > 0) {
+      lines.push(`  - **Role Tambahan**: ${session.roles.tambahan.join(', ')}`);
+    }
+    if (session.roles.tugasDilimpahkan && session.roles.tugasDilimpahkan.length > 0) {
+      lines.push('  - **Pelimpahan Tugas Role**:');
+      session.roles.tugasDilimpahkan.forEach((d) => {
+        lines.push(`    * Dari ${d.dariRole} ke ${d.keRole}: ${d.daftarTugas.join('; ')}`);
+      });
+    }
     lines.push('- **Job Description & Struktur Halaman per Role**:');
     for (const role of roles) {
       lines.push(`  * **${role}**:`);

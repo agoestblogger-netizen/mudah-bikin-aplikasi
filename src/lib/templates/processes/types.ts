@@ -136,6 +136,8 @@ export interface GuidedStepOption {
   recommended?: boolean;
   locked?: boolean;
   complexity?: OptionComplexity;
+  responsibilities?: string[];
+  roleStatus?: 'WAJIB_OWNER' | 'WAJIB_INTI' | 'TAMBAHAN';
 }
 
 export type GuidedStepId =

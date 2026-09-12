@@ -22,7 +22,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
   onSubmit
 }) => {
   const initialSelected = payload.options
-    .filter((o) => preselectRecommended && o.recommended)
+    .filter((o) => o.locked || (preselectRecommended && o.recommended))
     .map((o) => o.id);
   const [selected, setSelected] = useState<string[]>(initialSelected);
   const [otherOpen, setOtherOpen] = useState(false);
@@ -31,6 +31,8 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
 
   const toggle = (id: string) => {
     if (disabled || submitted) return;
+    const option = payload.options.find((o) => o.id === id);
+    if (option?.locked) return;
     if (payload.multi) {
       setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     } else {
@@ -73,7 +75,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
         <p className="text-[11.5px] font-semibold text-zinc-200 leading-relaxed">{payload.title}</p>
       </div>
 
-      <div className="space-y-1.5 max-h-72 overflow-y-auto no-scrollbar pr-0.5">
+      <div className="space-y-2 max-h-80 overflow-y-auto no-scrollbar pr-0.5">
         {payload.options.map((opt) => {
           const isSelected = selected.includes(opt.id);
           return (
@@ -81,12 +83,12 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
               key={opt.id}
               type="button"
               onClick={() => toggle(opt.id)}
-              disabled={disabled}
-              className={`w-full flex items-start gap-2 px-2.5 py-2 rounded-xl border text-left transition-all ${
+              disabled={disabled || opt.locked}
+              className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all ${
                 isSelected
                   ? 'bg-[#10f48e]/10 border-[#10f48e]/40 text-zinc-100'
                   : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:border-white/20'
-              } cursor-pointer active:scale-[0.99]`}
+              } ${opt.locked ? 'cursor-default opacity-95' : 'cursor-pointer active:scale-[0.99]'}`}
             >
               <span className="mt-0.5 shrink-0">
                 {payload.multi ? (
@@ -102,16 +104,44 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
                 )}
               </span>
               <span className="flex-1 min-w-0">
-                <span className="flex items-center gap-1.5">
-                  <span className="text-[11.5px] font-medium truncate">{opt.label}</span>
-                  {opt.recommended && (
+                <span className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[12px] font-semibold">{opt.label}</span>
+                  {opt.roleStatus === 'WAJIB_OWNER' && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-amber-400 border border-amber-400/30 rounded px-1.5 py-0.5 shrink-0">
+                      Wajib (Owner)
+                    </span>
+                  )}
+                  {opt.roleStatus === 'WAJIB_INTI' && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1.5 py-0.5 shrink-0">
+                      Wajib (Alur Inti)
+                    </span>
+                  )}
+                  {opt.roleStatus === 'TAMBAHAN' && (
+                    <span className="text-[9px] font-medium tracking-wide text-zinc-400 border border-white/10 rounded px-1.5 py-0.5 shrink-0">
+                      Tambahan
+                    </span>
+                  )}
+                  {!opt.roleStatus && opt.recommended && (
                     <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1 py-0.5 shrink-0">
                       Disarankan
                     </span>
                   )}
                 </span>
                 {opt.description && (
-                  <span className="block text-[10px] text-zinc-500 mt-0.5 leading-snug">{opt.description}</span>
+                  <span className="block text-[10.5px] text-zinc-400 mt-1 leading-relaxed">{opt.description}</span>
+                )}
+                {opt.responsibilities && opt.responsibilities.length > 0 && (
+                  <div className="mt-2 pt-1.5 border-t border-white/5">
+                    <span className="text-[9.5px] font-medium text-zinc-400 block mb-0.5">Tanggung Jawab Utama:</span>
+                    <ul className="space-y-0.5 text-[9.5px] text-zinc-300">
+                      {opt.responsibilities.map((t, idx) => (
+                        <li key={idx} className="flex items-start gap-1 leading-snug">
+                          <span className="text-[#10f48e] select-none shrink-0">•</span>
+                          <span>{t}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </span>
             </button>

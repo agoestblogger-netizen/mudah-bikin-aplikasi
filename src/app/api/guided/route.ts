@@ -13,6 +13,7 @@ import {
   applyGuidedAnswer,
   compileBriefFromSession,
   isBriefBusinessComplete,
+  renderRoleSummaryTable,
   type GuidedStepId,
   type MockupSessionState
 } from '@/lib/templates';
@@ -686,7 +687,7 @@ export async function POST(req: Request) {
           };
           const guidedStep = buildGuidedStep(updated);
           const narration =
-            'Sip, catatanmu sudah saya sesuaikan ke alur cerita! Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
+            'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nSip, catatanmu sudah saya sesuaikan ke alur cerita! Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
           return NextResponse.json({
             success: true,
             action,
@@ -696,7 +697,7 @@ export async function POST(req: Request) {
           });
         }
 
-        // Konfirmasi langsung -> lanjut ke ROLE (POIN 2 aturan 3)
+        // Konfirmasi langsung -> lanjut ke ROLE (POIN 2 aturan 3 & POIN 3 pembuka)
         const updated: MockupSessionState = {
           ...session,
           step: 'ROLE',
@@ -707,7 +708,7 @@ export async function POST(req: Request) {
         };
         const guidedStep = buildGuidedStep(updated);
         const narration =
-          'Mantap! Senang alurnya sudah pas dengan bayanganmu. Sekarang, yuk kita tentukan siapa saja peran atau orang-orang yang bakal pakai aplikasi ini:';
+          'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nMantap! Senang alurnya sudah pas dengan bayanganmu. Sekarang, yuk kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
         return NextResponse.json({
           success: true,
           action,
@@ -717,18 +718,75 @@ export async function POST(req: Request) {
         });
       }
 
-      // Default applyGuidedAnswer untuk langkah berikutnya (ROLE, ALUR, dst)
-      let updated = applyGuidedAnswer(session, stepId, body.selected || [], body.other);
-
-      // Recompute tier setelah peran dipilih
+      // Khusus step ROLE: tangani penghapusan role tambahan, pelimpahan tugas, dan tabel ringkasan final (POIN 3)
       if (stepId === 'ROLE') {
+        const otherText = (body.other || '').trim();
+
+        // Cek jika pengguna meminta pengalihan tugas spesifik: "limpahkan tugas X ke Y"
+        const delegationMatch = otherText.match(/limpahkan\s+(?:tugas\s+)?(.+?)\s+ke\s+(.+)/i);
+        if (delegationMatch && session.roles?.tugasDilimpahkan && session.roles.tugasDilimpahkan.length > 0) {
+          const fromPart = delegationMatch[1].trim().toLowerCase();
+          const toPart = delegationMatch[2].trim();
+          const targetDelegation = session.roles.tugasDilimpahkan.find(
+            (d) => d.dariRole.toLowerCase().includes(fromPart) || fromPart.includes(d.dariRole.toLowerCase())
+          );
+          if (targetDelegation) {
+            targetDelegation.keRole = toPart;
+            const table = renderRoleSummaryTable(session.roles, session.match.businessCategory);
+            const narration = `Siap, tugas dari role **${targetDelegation.dariRole}** sekarang resmi dilimpahkan ke **${toPart}**!\n\n${table}\n\nSekarang, yuk kita lanjut ke alur kerja utama aplikasi:`;
+            const guidedStep = buildGuidedStep(session);
+            return NextResponse.json({
+              success: true,
+              action,
+              session,
+              guidedStep,
+              narration
+            });
+          }
+        }
+
+        let updated = applyGuidedAnswer(session, 'ROLE', body.selected || [], body.other);
+
+        // Recompute tier setelah peran dipilih
         const tier = detectTier({
           patternIds: updated.match.patternIds,
           roleCount: updated.roles.selected.length,
           selectedFeatureIds: updated.features?.selected?.map((f) => f.id) || []
         });
         updated = { ...updated, match: { ...updated.match, tier: tier.tier } };
+
+        const guidedStep = buildGuidedStep(updated);
+
+        // Kalimat konfirmasi eksplisit jika ada role tambahan yang dihapus (POIN 3)
+        const removalMessages: string[] = [];
+        if (updated.roles.tugasDilimpahkan && updated.roles.tugasDilimpahkan.length > 0) {
+          for (const d of updated.roles.tugasDilimpahkan) {
+            removalMessages.push(
+              `Oke, role ${d.dariRole} dihapus. Berarti tugas (${d.daftarTugas.join(', ')}) otomatis jadi tanggung jawab Owner ya — kalau mau dilimpahkan ke role lain, tinggal bilang saja.`
+            );
+          }
+        }
+
+        // Penutup wajib: tabel ringkasan final dengan tugas dilimpahkan miring (POIN 3)
+        const summaryTable = renderRoleSummaryTable(updated.roles, updated.match.businessCategory);
+
+        let narration = '';
+        if (removalMessages.length > 0) {
+          narration += removalMessages.join('\n\n') + '\n\n';
+        }
+        narration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTable}\n\nSekarang, yuk kita lanjut ke alur kerja utama & fitur pendukung aplikasi:`;
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
       }
+
+      // Default applyGuidedAnswer untuk langkah berikutnya (ALUR, RBAC, dst)
+      let updated = applyGuidedAnswer(session, stepId, body.selected || [], body.other);
 
       const guidedStep = buildGuidedStep(updated);
       const narration = await generateNarration(
