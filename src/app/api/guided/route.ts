@@ -239,6 +239,10 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
    - DILARANG memakai sebutan generik abstrak seperti "Staf Operasional", "Operator", "Pegawai", atau "Tim Lapangan".
    - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
+   - ATURAN GROUNDING & DEDUPLIKASI KONSEPTUAL (WAJIB):
+     * Setiap peran dalam asumsiAktor HARUS memiliki dasar konseptual yang jelas dan terlibat langsung dalam alur narasi yang diceritakan. JANGAN memunculkan peran seperti "Operator", "Viewer", atau artefak teknis lain yang tidak ada di cerita!
+     * JANGAN memunculkan "Pemilik" atau "Owner" sebagai peran terpisah jika sudah ada "Super Admin" (Super Admin sudah otomatis merepresentasikan Pemilik).
+     * Jika dua peran memiliki konsep makna atau tanggung jawab yang sama (contoh: "Penyewa" dan "Member", atau "Kasir" dan "Petugas Pembayaran"), satukan menjadi satu peran saja.
 
 3. URUTAN ALUR NYATA (asumsiAlurUtama):
    - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
@@ -326,7 +330,13 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
   let fallbackAktor = ['Super Admin', 'Staf Kasir', 'Pelanggan'];
   let fallbackAlur = 'Pelanggan memesan -> Petugas memproses di lokasi -> Pembayaran tercatat -> Pemilik melihat rekap';
 
-  if (lowerPrompt.includes('cuci') || lowerPrompt.includes('mobil') || lowerPrompt.includes('motor')) {
+  if (lowerPrompt.includes('rental') || lowerPrompt.includes('sewa') || lowerPrompt.includes('rent car')) {
+    fallbackAppName = 'RentCar Mandiri';
+    fallbackCategory = 'Rental & Sewa Kendaraan';
+    fallbackNarasi = `Wah, ide usaha rental kendaraan yang sangat prospektif! Bayangkan alur transaksinya nanti: petugas rental memeriksa ketersediaan armada, memverifikasi data identitas serta jaminan penyewa, lalu melakukan serah-terima kunci dan mengecek kondisi fisik armada bersama penyewa. Saat mobil dikembalikan, pemeriksaan bodi dan bahan bakar tercatat otomatis, sementara kamu sebagai pemilik bisa memantau jadwal armada aktif dan rekap omzet harian dengan tenang. ${CONFIRMATION_CLOSING}`;
+    fallbackAktor = ['Super Admin', 'Petugas Rental', 'Sopir Armada', 'Penyewa'];
+    fallbackAlur = 'Penyewa booking & verifikasi jaminan -> Petugas serah terima kunci & cek unit -> Pengembalian armada -> Pemilik pantau unit aktif & omzet';
+  } else if (lowerPrompt.includes('cuci') || (lowerPrompt.includes('mobil') && lowerPrompt.includes('cuci'))) {
     fallbackAppName = 'AutoShine Carwash';
     fallbackCategory = 'Jasa Cuci Kendaraan';
     fallbackNarasi = `Wah, ide usaha cuci kendaraan yang sangat prospektif! Bayangkan saat mobil pelanggan masuk ke area cuci: kasir mencatat plat nomor dan paket pembersihan yang dipilih, lalu tim cuci menyemprot bodi dengan air bertekanan dan memvakum jok hingga bersih kesat. Setelah mobil kinclong dan diserahkan ke pelanggan, kamu sebagai pemilik bisa langsung mengecek rekap jumlah kendaraan yang dicuci dan total omzet hari ini tanpa khawatir selisih. ${CONFIRMATION_CLOSING}`;

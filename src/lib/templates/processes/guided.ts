@@ -67,11 +67,13 @@ function collectFeatures(session: MockupSessionState): FeatureInfo[] {
 }
 
 /**
- * Kelompok makna peran agar tidak ada duplikat seperti "Pelanggan" vs "Customer".
- * Urutan penting: kelompok yang lebih spesifik dicek lebih dulu.
+ * Kelompok makna peran agar tidak ada duplikat seperti "Pelanggan" vs "Customer",
+ * atau "Super Admin" vs "Pemilik".
+ * CATATAN PENTING: ROLE_GROUPS cakupannya terbatas murni untuk deduplikasi sinonim peran wajib saja,
+ * BUKAN sebagai sumber saran role baru!
  */
 const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
-  { key: 'super-admin', re: /^super\s*admin$/i },
+  { key: 'super-admin', re: /^(super\s*admin|owner|pemilik|pengurus|direktur|director|founder|yayasan)$/i },
   { key: 'customer-service', re: /customer\s*(service|success)|cs\b/i },
   { key: 'front-office', re: /resepsionis|front\s*office|front\s*desk|loket|receptionist|petugas\s*loket/i },
   { key: 'cashier', re: /kasir|cashier/i },
@@ -88,10 +90,23 @@ const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
   { key: 'rental-staff', re: /petugas\s*rental|petugas\s*sewa|staf\s*rental|staf\s*sewa/i },
   { key: 'service-staff', re: /service\s*staff|staff\s*layanan|petugas\s*layanan|staf\s*layanan/i },
   { key: 'customer', re: /pelanggan|customer|pembeli|buyer|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b/i },
-  { key: 'owner', re: /owner|pemilik|pengurus|direktur|director|partner|founder|foundation|yayasan/i },
   { key: 'manager', re: /manager|manajer|supervisor|pengawas|kepala|principal/i },
   { key: 'admin-staff', re: /\badmin\b|administrator/i },
 ];
+
+/**
+ * Validasi grounding konseptual peran: memastikan peran calon memiliki kaitan semantik
+ * dengan narasi dan domain, serta menolak peran artefak template generik yang tidak berdasar.
+ */
+export function isRoleSemanticallyGrounded(role: string, storylineText: string, businessCategory: string): boolean {
+  const clean = role.trim();
+  if (!clean) return false;
+  // Peran artefak generik template yang tidak berdasar ditolak kecuali secara eksplisit dibahas di cerita
+  if (/^(viewer|operator|peninjau|pengamat|user|pengguna|staf operasional)$/i.test(clean)) {
+    return new RegExp(`\\b${clean}\\b`, 'i').test(storylineText);
+  }
+  return true;
+}
 
 const GENERIC_ROLE_RE = /^(staff|staf|user|pengguna)$/i;
 
@@ -251,29 +266,18 @@ export interface RoleDetailDefinition {
 }
 
 export function detectCoreOperationalRole(session: MockupSessionState): string {
-  // 1. Dari aktor cerita bisnis (asumsiAktor)
+  // 1. Dari aktor cerita bisnis (asumsiAktor) - Prioritas tunggal dari hasil AI cerita
   const actors = session.storyline?.asumsiAktor || session.match.contextualRoles || [];
   for (const a of actors) {
     const clean = a.trim();
     const key = canonicalRoleKey(clean);
-    if (key !== 'super-admin' && key !== 'owner' && key !== 'customer' && !GENERIC_ROLE_RE.test(clean)) {
+    if (key !== 'super-admin' && key !== 'customer' && !GENERIC_ROLE_RE.test(clean)) {
       return EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean;
     }
   }
 
-  // 2. Dari overlay industri
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
-  for (const o of overlays) {
-    for (const r of o.roleLabels) {
-      const key = canonicalRoleKey(r);
-      if (key !== 'super-admin' && key !== 'owner' && key !== 'customer') {
-        return EN_ROLE_LABEL_MAP[r.toLowerCase()] || r;
-      }
-    }
-  }
-
-  // 3. Fallback
-  return 'Kasir';
+  // Fallback netral jika tidak ada aktor alur inti khusus
+  return 'Staf Layanan';
 }
 
 export function getRoleNarrativeAndResponsibilities(
@@ -283,6 +287,28 @@ export function getRoleNarrativeAndResponsibilities(
   const clean = roleLabel.trim();
   const key = canonicalRoleKey(clean);
   const cat = businessCategory || 'bisnis ini';
+
+  if (/cuci|vakum|lap\b|washer/i.test(clean)) {
+    return {
+      narasi: `Petugas operasional yang bertanggung jawab langsung atas pengerjaan pencucian, pembersihan detail, dan penyelesaian unit di ${cat}.`,
+      tanggungJawab: [
+        'Menerima antrean pengerjaan unit kerja',
+        'Melakukan proses pencucian, pembersihan, dan pemeriksaan kualitas hasil',
+        'Mengonfirmasi status unit siap diserahkan kepada pelanggan'
+      ]
+    };
+  }
+
+  if (/rental|sewa|peminjaman/i.test(clean)) {
+    return {
+      narasi: `Petugas yang mengelola jadwal peminjaman armada/unit, pengecekan kondisi fisik sebelum dan sesudah disewa, serta serah terima dengan pelanggan di ${cat}.`,
+      tanggungJawab: [
+        'Memeriksa ketersediaan armada/unit yang siap disewa',
+        'Mencatat data peminjaman, durasi sewa, dan syarat jaminan',
+        'Memeriksa kondisi unit saat pengembalian dan mencatat denda/biaya tambahan jika ada'
+      ]
+    };
+  }
 
   switch (key) {
     case 'super-admin':
@@ -408,35 +434,29 @@ export function getRoleNarrativeAndResponsibilities(
   }
 }
 
+function isSuperAdminRole(role: string): boolean {
+  const key = canonicalRoleKey(role);
+  return key === 'super-admin' || key === 'owner' || role === REQUIRED_ROLE;
+}
+
 export function renderRoleSummaryTable(
   rolesState: MockupSessionState['roles'],
   businessCategory?: string
 ): string {
   const lines: string[] = [];
-  lines.push('| Role | Status | Tanggung Jawab Utama |');
+  lines.push('| Peran | Status | Tanggung Jawab Utama |');
   lines.push('|---|---|---|');
 
-  const wajibSet = new Set(rolesState.wajib || [REQUIRED_ROLE]);
-  const activeRoles = rolesState.selected || [REQUIRED_ROLE];
+  const selected = rolesState?.selected || [];
+  const delegations = rolesState?.tugasDilimpahkan || [];
 
-  for (const role of activeRoles) {
-    const isOwner = role === REQUIRED_ROLE;
-    const isWajib = wajibSet.has(role);
-    const status = isOwner ? 'Wajib (Owner)' : isWajib ? 'Wajib (Alur Inti)' : 'Tambahan';
-
+  for (const role of selected) {
+    const isOwner = isSuperAdminRole(role);
+    const status = isOwner ? 'Wajib (Owner)' : 'Aktif';
+    const delegation = delegations.find((d) => d.keRole.toLowerCase() === role.toLowerCase());
+    const extra = delegation ? ` *(+ melimpahkan tugas ${delegation.dariRole})*` : '';
     const details = getRoleNarrativeAndResponsibilities(role, businessCategory);
-    const nativeTasks = details.tanggungJawab.slice(0, 2).join('; ');
-
-    // Cek tugas yang dilimpahkan ke role ini
-    const delegatedTasks = (rolesState.tugasDilimpahkan || [])
-      .filter((d) => d.keRole === role)
-      .flatMap((d) => d.daftarTugas.map((t) => `_${t} (dilimpahkan dari ${d.dariRole})_`));
-
-    let responsibilitiesCol = nativeTasks;
-    if (delegatedTasks.length > 0) {
-      responsibilitiesCol += '<br>' + delegatedTasks.join('<br>');
-    }
-
+    const responsibilitiesCol = details.tanggungJawab.slice(0, 2).join('; ') + extra;
     lines.push(`| ${role} | ${status} | ${responsibilitiesCol} |`);
   }
 
@@ -444,43 +464,30 @@ export function renderRoleSummaryTable(
 }
 
 function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
-  const patterns = getProcessPatternsByIds(session.match.patternIds);
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
-  const template = session.match.templateId ? getMasterTemplateById(session.match.templateId) : undefined;
-
   const seen = new Set<string>([canonicalRoleKey(REQUIRED_ROLE)]);
   const candidateLabels: string[] = [];
+
+  const fullStory = `${session.storyline?.narasi || ''} ${session.storyline?.asumsiAlurUtama || ''}`;
 
   const addCandidate = (label: string) => {
     const clean = label.trim();
     if (!clean || GENERIC_ROLE_RE.test(clean)) return;
     const key = canonicalRoleKey(clean);
     if (seen.has(key)) return;
+
+    // Grounding check: pastikan peran relevan secara konseptual dengan narasi/domain
+    if (!isRoleSemanticallyGrounded(clean, fullStory, session.match.businessCategory || '')) {
+      return;
+    }
+
     seen.add(key);
     candidateLabels.push(EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean);
   };
 
-  // 1. Peran dari asumsi cerita bisnis (storyline) - Prioritas paling utama
+  // 1. Peran HANYA dari asumsi cerita bisnis (storyline)
+  // CATATAN REVISI 2: Injeksi katalog Master Template, Overlay Industri, dan fallback Universal DIHAPUS TOTAL.
   if (session.storyline?.asumsiAktor && session.storyline.asumsiAktor.length > 0) {
     session.storyline.asumsiAktor.forEach(addCandidate);
-  }
-
-  // 2. Peran kontekstual dari hasil pemetaan AI cerdas (diposisikan setelah aktor cerita)
-  if (session.match.contextualRoles && session.match.contextualRoles.length > 0) {
-    session.match.contextualRoles.forEach(addCandidate);
-  }
-
-  // 3. Peran khas industri dari overlay
-  overlays.forEach((o) => o.roleLabels.forEach(addCandidate));
-
-  // 4. Pelengkap dari Master Template
-  if (template) {
-    template.roleDefault.forEach(addCandidate);
-  }
-
-  // 5. Fallback pola universal
-  if (candidateLabels.length < 2) {
-    patterns.forEach((p) => p.actors.forEach((a) => addCandidate(a.role)));
   }
 
   // Tentukan Role Wajib Kedua (Alur Inti)
@@ -500,7 +507,7 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
     roleStatus: 'WAJIB_OWNER'
   });
 
-  // Tambahkan role lainnya
+  // Tambahkan role lainnya murni dari kandidat cerita yang lolos grounding
   for (const label of candidateLabels) {
     const isCore = label === coreRole;
     const details = getRoleNarrativeAndResponsibilities(label, session.match.businessCategory);
