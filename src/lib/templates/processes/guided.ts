@@ -21,17 +21,18 @@ import type {
 export const REQUIRED_ROLE = 'Super Admin';
 
 export const SESSION_STEP_ORDER: SessionStep[] = [
-  'PAIN',
-  'ROLES',
-  'FLOW',
-  'FEATURES',
-  'PRIORITY',
-  'BRIEF_REVIEW'
+  'STORYTELLING',
+  'ROLE',
+  'ALUR',
+  'RBAC',
+  'SKEMA_DATA',
+  'SIMULASI_DB',
+  'REVIEW_FINAL'
 ];
 
 export function nextSessionStep(step: GuidedStepId | SessionStep): SessionStep {
   const idx = SESSION_STEP_ORDER.indexOf(step as SessionStep);
-  if (idx < 0) return 'PAIN';
+  if (idx < 0) return 'STORYTELLING';
   return SESSION_STEP_ORDER[Math.min(idx + 1, SESSION_STEP_ORDER.length - 1)];
 }
 
@@ -188,63 +189,33 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
   return result;
 }
 
-function buildPainStep(session: MockupSessionState): GuidedStepPayload {
-  const patterns = getProcessPatternsByIds(session.match.patternIds);
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
-  const options: GuidedStepOption[] = [];
-
-  // 1. Masalah kontekstual hasil pemetaan AI cerdas (diposisikan paling atas)
-  if (session.match.contextualPainPoints && session.match.contextualPainPoints.length > 0) {
-    session.match.contextualPainPoints.forEach((p, idx) => {
-      options.push({
-        id: `ctx-p-${idx}`,
-        label: p,
-        recommended: true,
-        description: session.match.businessCategory || 'Spesifik Kebutuhan Anda'
-      });
-    });
-  }
-
-  // 2. Masalah dari overlay industri
-  overlays.forEach((o) =>
-    o.painPoints.forEach((p) =>
-      options.push({
-        id: p.id,
-        label: p.label,
-        recommended: p.severity === 'core',
-        description: o.nama
-      })
-    )
-  );
-
-  // 3. Masalah dari pola universal (hanya jika opsi masih sedikit)
-  if (options.length < 4) {
-    patterns.forEach((p) =>
-      p.painPoints.forEach((pp) =>
-        options.push({
-          id: pp.id,
-          label: pp.label,
-          recommended: pp.severity === 'core',
-          description: p.nama
-        })
-      )
-    );
-  }
-
-  return {
-    stepId: 'PAIN',
-    title: 'Masalah utama apa yang mau diselesaikan? (boleh pilih lebih dari satu)',
-    multi: true,
-    allowOther: true,
-    options: dedupeOptions(options).slice(0, 14)
-  };
-}
-
 function isExternalRole(label: string): boolean {
   return canonicalRoleKey(label) === 'customer';
 }
 
-function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
+function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
+  return {
+    stepId: 'STORYTELLING',
+    title: 'Konfirmasi gambaran proses bisnis aplikasi Anda',
+    multi: false,
+    allowOther: true,
+    options: [
+      {
+        id: 'confirm_story',
+        label: 'Ya, gambaran proses bisnis sudah sesuai',
+        recommended: true,
+        description: 'Lanjutkan ke penetapan peran pengguna (ROLE)'
+      },
+      {
+        id: 'adjust_story',
+        label: 'Ada bagian yang perlu dikoreksi',
+        description: 'Koreksi asumsi alur atau aktivitas utama'
+      }
+    ]
+  };
+}
+
+function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   const patterns = getProcessPatternsByIds(session.match.patternIds);
   const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
   const template = session.match.templateId ? getMasterTemplateById(session.match.templateId) : undefined;
@@ -274,17 +245,15 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
     );
   }
 
-  // 2. Prioritas utama: peran khas industri dari overlay yang terdeteksi.
-  //    Semua roleLabels overlay dianggap disarankan (termasuk peran pelanggan/penyewa)
-  //    karena sudah dikurasi khusus untuk industri tersebut.
+  // 2. Peran khas industri dari overlay
   overlays.forEach((o) => o.roleLabels.forEach((role) => addRole(role, o.nama, true)));
 
-  // 3. Pelengkap: peran dari Master Template (mis. Petugas Sewa / Penyewa untuk MT-21).
+  // 3. Pelengkap dari Master Template
   if (template) {
     template.roleDefault.forEach((role) => addRole(role, template.nama));
   }
 
-  // 4. Fallback: aktor pola universal HANYA jika total peran masih kurang dari 2.
+  // 4. Fallback pola universal
   if (options.length < 2) {
     patterns.forEach((p) =>
       p.actors.forEach((a) => addRole(a.role, p.nama, a.category !== 'external'))
@@ -292,7 +261,7 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
   }
 
   return {
-    stepId: 'ROLES',
+    stepId: 'ROLE',
     title: 'Siapa saja yang akan memakai aplikasi ini? (boleh pilih lebih dari satu)',
     multi: true,
     allowOther: true,
@@ -300,15 +269,16 @@ function buildRolesStep(session: MockupSessionState): GuidedStepPayload {
       {
         id: REQUIRED_ROLE,
         label: REQUIRED_ROLE,
-        description: 'Kelola akun staf, role & permission, konfigurasi sistem',
-        recommended: true
+        description: 'Owner/Super Admin: pemegang akses tertinggi & kelola akun staf',
+        recommended: true,
+        locked: true
       },
       ...options.slice(0, 13)
     ]
   };
 }
 
-function buildFlowStep(session: MockupSessionState): GuidedStepPayload {
+function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
   const patterns = getProcessPatternsByIds(session.match.patternIds);
   const options: GuidedStepOption[] = [];
 
@@ -324,60 +294,85 @@ function buildFlowStep(session: MockupSessionState): GuidedStepPayload {
   );
 
   return {
-    stepId: 'FLOW',
-    title: 'Alur kerja sekarang paling mendekati yang mana?',
+    stepId: 'ALUR',
+    title: 'Alur kerja utama & fitur pendukung aplikasi',
     multi: false,
     allowOther: true,
     options: dedupeOptions(options).slice(0, 10)
   };
 }
 
-function buildFeaturesStep(session: MockupSessionState): GuidedStepPayload {
-  const features = collectFeatures(session);
+function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
   return {
-    stepId: 'FEATURES',
-    title: 'Fitur apa saja yang dibutuhkan? (centang semua yang perlu)',
+    stepId: 'RBAC',
+    title: 'Matriks Hak Akses & Pembagian Wewenang Role',
     multi: true,
-    allowOther: true,
-    options: features.map((f) => ({
-      id: f.id,
-      label: f.label,
-      recommended: f.severity === 'core',
-      description: f.severity === 'core' ? 'Fitur inti (disarankan)' : `Kompleksitas: ${f.complexity}`
-    }))
+    allowOther: false,
+    options: [
+      {
+        id: 'rbac_confirm',
+        label: 'Setujui matriks hak akses per role',
+        recommended: true,
+        description: 'Tampilan Depan, Penjaga Akses, dan Database'
+      }
+    ]
   };
 }
 
-function buildPriorityStep(session: MockupSessionState): GuidedStepPayload {
-  const features = collectFeatures(session);
-  const selectedIds = session.features.selected.map((f) => f.id);
-  const selected = features.filter((f) => selectedIds.includes(f.id));
+function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
   return {
-    stepId: 'PRIORITY',
-    title: 'Dari fitur yang dipilih, mana yang wajib ada sekarang? (yang tidak dicentang masuk V2)',
+    stepId: 'SKEMA_DATA',
+    title: 'Skema Tabel & Relasi Data Aplikasi',
     multi: true,
     allowOther: false,
-    options: selected.map((f) => ({
-      id: f.id,
-      label: f.label,
-      recommended: f.severity === 'core',
-      description: f.severity === 'core' ? 'Fitur inti (disarankan)' : 'Boleh menyusul'
-    }))
+    options: [
+      {
+        id: 'schema_confirm',
+        label: 'Setujui struktur tabel & relasi data',
+        recommended: true,
+        description: 'Field, tipe data, dan relasi entitas utama'
+      }
+    ]
   };
+}
+
+function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
+  return {
+    stepId: 'SIMULASI_DB',
+    title: 'Simulasi Data Awal & Akun Demo Login',
+    multi: false,
+    allowOther: false,
+    options: [
+      {
+        id: 'simulasi_confirm',
+        label: 'Setujui data contoh & akun demo',
+        recommended: true,
+        description: '3 baris contoh data & kredensial login per role'
+      }
+    ]
+  };
+}
+
+function buildReviewFinalStep(session: MockupSessionState): GuidedStepPayload | null {
+  return null; // REVIEW_FINAL dirangkum dalam kartu final di chat sebelum eksekusi build
 }
 
 export function buildGuidedStep(session: MockupSessionState): GuidedStepPayload | null {
   switch (session.step) {
-    case 'PAIN':
-      return buildPainStep(session);
-    case 'ROLES':
-      return buildRolesStep(session);
-    case 'FLOW':
-      return buildFlowStep(session);
-    case 'FEATURES':
-      return buildFeaturesStep(session);
-    case 'PRIORITY':
-      return buildPriorityStep(session);
+    case 'STORYTELLING':
+      return buildStorytellingStep(session);
+    case 'ROLE':
+      return buildRoleStep(session);
+    case 'ALUR':
+      return buildAlurStep(session);
+    case 'RBAC':
+      return buildRbacStep(session);
+    case 'SKEMA_DATA':
+      return buildSkemaDataStep(session);
+    case 'SIMULASI_DB':
+      return buildSimulasiDbStep(session);
+    case 'REVIEW_FINAL':
+      return buildReviewFinalStep(session);
     default:
       return null;
   }
@@ -394,28 +389,35 @@ export function applyGuidedAnswer(
 ): MockupSessionState {
   const next: MockupSessionState = JSON.parse(JSON.stringify(session));
 
-  if (stepId === 'PAIN') {
-    next.painPoints = { selected: [...selected], ...(other ? { other } : {}) };
-  } else if (stepId === 'ROLES') {
+  if (stepId === 'STORYTELLING') {
+    next.storyline = {
+      narasi: other || selected.join(' '),
+      asumsiMasalah: '',
+      asumsiAktor: [],
+      asumsiAlurUtama: '',
+      statusKonfirmasi: selected.includes('adjust_story') ? 'dikoreksi' : 'disetujui'
+    };
+  } else if (stepId === 'ROLE') {
     const roles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE]);
-    next.roles = { selected: roles, ...(other ? { other } : {}) };
-  } else if (stepId === 'FLOW') {
-    next.flow = { ...(selected[0] ? { selectedId: selected[0] } : {}), ...(other ? { other } : {}) };
-  } else if (stepId === 'FEATURES') {
-    const featureIds = selected.length > 0 ? selected : collectFeatures(next).filter((f) => f.severity === 'core').map((f) => f.id);
-    next.features = {
-      selected: featureIds.map((id) => ({ id, priority: 'WAJIB' as const })),
+    next.roles = {
+      ...next.roles,
+      selected: roles,
       ...(other ? { other } : {})
     };
-  } else if (stepId === 'PRIORITY') {
-    const wajib = new Set(selected);
-    next.features = {
-      ...next.features,
-      selected: next.features.selected.map((f) => ({
-        id: f.id,
-        priority: wajib.has(f.id) ? 'WAJIB' : 'NYUSUL'
-      }))
+  } else if (stepId === 'ALUR') {
+    next.flow = {
+      ...next.flow,
+      ...(selected[0] ? { selectedId: selected[0] } : {}),
+      ...(other ? { other } : {})
     };
+  } else if (stepId === 'RBAC') {
+    // Diproses di Poin 5
+  } else if (stepId === 'SKEMA_DATA') {
+    // Diproses di Poin 6
+  } else if (stepId === 'SIMULASI_DB') {
+    // Diproses di Poin 7
+  } else if (stepId === 'REVIEW_FINAL') {
+    // Diproses di Poin 8
   }
 
   next.step = nextSessionStep(stepId);
@@ -432,14 +434,11 @@ export interface BriefCompleteness {
  */
 export function isBriefBusinessComplete(session: MockupSessionState): BriefCompleteness {
   const missing: string[] = [];
-  if (!session.roles.selected || session.roles.selected.length === 0) {
+  if (!session.roles?.selected || session.roles.selected.length === 0) {
     missing.push('Minimal 1 peran aplikasi dipilih');
   }
-  if (!session.flow.selectedId) {
+  if (!session.flow?.selectedId && (!session.flow?.alurInti || session.flow.alurInti.length === 0)) {
     missing.push('Alur kerja utama belum dipilih');
-  }
-  if (!session.features.selected || session.features.selected.length === 0) {
-    missing.push('Minimal 1 fitur aplikasi dipilih');
   }
 
   return {
@@ -471,8 +470,8 @@ export function compileBriefFromSession(
     session.match.templateId
   );
   const features = collectFeatures(session);
-  const wajib = session.features.selected.filter((f) => f.priority === 'WAJIB');
-  const nyusul = session.features.selected.filter((f) => f.priority === 'NYUSUL');
+  const wajib = session.features?.selected?.filter((f) => f.priority === 'WAJIB') || [];
+  const nyusul = session.features?.selected?.filter((f) => f.priority === 'NYUSUL') || [];
 
   const appName =
     (meta.appName && meta.appName.trim()) ||

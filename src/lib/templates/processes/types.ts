@@ -138,7 +138,14 @@ export interface GuidedStepOption {
   complexity?: OptionComplexity;
 }
 
-export type GuidedStepId = 'PAIN' | 'ROLES' | 'FLOW' | 'FEATURES' | 'PRIORITY';
+export type GuidedStepId =
+  | 'STORYTELLING'
+  | 'ROLE'
+  | 'ALUR'
+  | 'RBAC'
+  | 'SKEMA_DATA'
+  | 'SIMULASI_DB'
+  | 'REVIEW_FINAL';
 
 export interface GuidedStepPayload {
   stepId: GuidedStepId;
@@ -150,12 +157,13 @@ export interface GuidedStepPayload {
 
 export type SessionStep =
   | 'MATCH'
-  | 'PAIN'
-  | 'ROLES'
-  | 'FLOW'
-  | 'FEATURES'
-  | 'PRIORITY'
-  | 'BRIEF_REVIEW'
+  | 'STORYTELLING'
+  | 'ROLE'
+  | 'ALUR'
+  | 'RBAC'
+  | 'SKEMA_DATA'
+  | 'SIMULASI_DB'
+  | 'REVIEW_FINAL'
   | 'DONE';
 
 export interface MockupSessionState {
@@ -169,9 +177,34 @@ export interface MockupSessionState {
     contextualPainPoints?: string[];
     contextualRoles?: string[];
   };
+  storyline?: {
+    narasi: string;
+    asumsiMasalah: string;
+    asumsiAktor: string[];
+    asumsiAlurUtama: string;
+    statusKonfirmasi: 'disetujui' | 'dikoreksi';
+  };
+  roles: {
+    selected: string[];
+    other?: string;
+    wajib?: string[];
+    tambahan?: string[];
+    tugasDilimpahkan?: { dariRole: string; keRole: string; daftarTugas: string[] }[];
+  };
+  flow: {
+    selectedId?: string;
+    other?: string;
+    alurInti?: { step: number; pelaku: string; aksi: string }[];
+    alurPendukung?: { nama: string; steps: { pelaku: string; aksi: string }[] }[];
+    fiturPendukung?: string[];
+  };
+  rbac?: {
+    modul: { nama: string; izinPerRole: { role: string; level: string }[] }[];
+  };
+  dataSchema?: {
+    tabel: { nama: string; field: { nama: string; tipe: string; keterangan: string }[] }[];
+  };
   painPoints: { selected: string[]; other?: string };
-  roles: { selected: string[]; other?: string };
-  flow: { selectedId?: string; other?: string };
   features: {
     selected: { id: string; priority: 'WAJIB' | 'NYUSUL' }[];
     other?: string;

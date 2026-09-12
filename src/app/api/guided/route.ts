@@ -387,7 +387,7 @@ export async function POST(req: Request) {
       const tier = detectTier({ patternIds });
 
       const session: MockupSessionState = {
-        step: 'PAIN',
+        step: 'STORYTELLING',
         match: {
           templateId,
           overlayIds,
@@ -397,9 +397,9 @@ export async function POST(req: Request) {
           contextualPainPoints,
           contextualRoles
         },
-        painPoints: { selected: [] },
         roles: { selected: [] },
         flow: {},
+        painPoints: { selected: [] },
         features: { selected: [] }
       };
 
@@ -449,11 +449,11 @@ export async function POST(req: Request) {
       let updated = applyGuidedAnswer(session, stepId, body.selected || [], body.other);
 
       // Recompute tier setelah peran dipilih
-      if (stepId === 'ROLES') {
+      if (stepId === 'ROLE') {
         const tier = detectTier({
           patternIds: updated.match.patternIds,
           roleCount: updated.roles.selected.length,
-          selectedFeatureIds: updated.features.selected.map((f) => f.id)
+          selectedFeatureIds: updated.features?.selected?.map((f) => f.id) || []
         });
         updated = { ...updated, match: { ...updated.match, tier: tier.tier } };
       }
@@ -492,7 +492,7 @@ export async function POST(req: Request) {
         templateName
       });
 
-      const finalSession: MockupSessionState = { ...session, step: 'BRIEF_REVIEW' };
+      const finalSession: MockupSessionState = { ...session, step: 'REVIEW_FINAL' };
       const narration = await generateNarration(finalSession, 'COMPILE', undefined, provider, userApiKey, userModel);
 
       return NextResponse.json({

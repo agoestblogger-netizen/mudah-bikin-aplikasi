@@ -1701,7 +1701,7 @@ export default function AppWorkspacePage() {
             <div className="col-start-1 row-start-2 flex-1 overflow-hidden p-4 relative">
               {rightPanelTab === 'PREVIEW' ? (
                 <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner relative">
-                  {projectState.sessionState?.step === 'BRIEF_REVIEW' &&
+                  {projectState.sessionState?.step === 'REVIEW_FINAL' &&
                   projectState.sessionState?.compiledBrief &&
                   !projectState.canvasCode.html &&
                   !isGenerating ? (
