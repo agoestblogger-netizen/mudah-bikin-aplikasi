@@ -223,7 +223,9 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
           id: 'clarify_input',
           label: '✏️ Berikan tanggapan / catatan penjelasan di bawah',
           recommended: true,
-          description: revisiCount === 1 ? 'Jelaskan masalah operasional paling mendesak' : 'Sebutkan orang atau peran yang terlibat'
+          description: revisiCount === 1 ? 'Jelaskan masalah operasional paling mendesak' : 'Sebutkan orang atau peran yang terlibat',
+          requiresInput: true,
+          inputPlaceholder: revisiCount === 1 ? 'Jelaskan masalah operasional utama di sini...' : 'Sebutkan peran atau pihak yang terlibat di sini...'
         },
         {
           id: 'confirm_story',
@@ -249,7 +251,9 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
       {
         id: 'minor_adjust',
         label: '✏️ Ada koreksi / catatan alur',
-        description: 'Ada sedikit penyesuaian alur atau aktor yang terlibat'
+        description: 'Ada sedikit penyesuaian alur atau aktor yang terlibat',
+        requiresInput: true,
+        inputPlaceholder: 'Tuliskan catatan alur atau aktor yang ingin disesuaikan...'
       },
       {
         id: 'mismatch_story',
@@ -1390,10 +1394,32 @@ export function getDomainFlowDetails(session: MockupSessionState): DomainFlowDat
     }))
   );
 
+  const alurIntiResult =
+    session.flow?.alurInti && session.flow.alurInti.length > 0
+      ? session.flow.alurInti
+      : deduplicatedSteps;
+
+  const alurPendukungResult =
+    session.flow?.alurPendukung && session.flow.alurPendukung.length > 0
+      ? session.flow.alurPendukung.map((ap, idx) => ({
+          id: `alur_pendukung_${idx + 1}`,
+          nama: ap.nama,
+          steps: ap.steps
+        }))
+      : alurPendukung;
+
+  const fiturPendukungResult =
+    session.flow?.fiturPendukung && session.flow.fiturPendukung.length > 0
+      ? session.flow.fiturPendukung.map((fp, idx) => ({
+          id: `feat_custom_${idx + 1}`,
+          label: fp
+        }))
+      : fiturPendukung;
+
   return {
-    alurInti: deduplicatedSteps,
-    alurPendukung,
-    fiturPendukung
+    alurInti: alurIntiResult,
+    alurPendukung: alurPendukungResult,
+    fiturPendukung: fiturPendukungResult
   };
 }
 
@@ -1544,7 +1570,7 @@ export function renderFlowMarkdown(flowData: DomainFlowData): string {
   flowData.alurInti.forEach((st) => {
     lines.push(`${st.step}. *(${st.pelaku})* ${st.aksi}`);
   });
-  lines.push('\n*(Catatan: Alur inti di atas adalah aktivitas utama sistem yang tidak bisa dihapus, tetapi dapat disesuaikan lewat chat)*\n');
+  lines.push('\n*(Catatan: Alur inti di atas adalah fondasi utama sistem. Jika ada urutan atau pelaku yang kurang pas, pilih opsi "Ada koreksi" di kartu pilihan untuk memperbaikinya)*\n');
 
   if (flowData.alurPendukung.length > 0) {
     lines.push('#### 2. Alur Pendukung');
@@ -1569,51 +1595,28 @@ export function renderFlowMarkdown(flowData: DomainFlowData): string {
 
 function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
   const flowData = getDomainFlowDetails(session);
-  const options: GuidedStepOption[] = [];
-
-  // 1. Alur Inti (Wajib, locked)
-  options.push({
-    id: 'alur_inti',
-    label: 'Alur Inti (Aktivitas Utama)',
-    description: `Alur proses utama dari awal hingga selesai (${flowData.alurInti.length} tahapan). Tidak dapat dihapus karena menjadi fondasi operasional.`,
-    recommended: true,
-    locked: true,
-    roleStatus: 'WAJIB_INTI',
-    category: 'ALUR_INTI',
-    steps: flowData.alurInti
-  });
-
-  // 2. Alur Pendukung (1-2 opsi, selectable)
-  flowData.alurPendukung.forEach((ap) => {
-    options.push({
-      id: ap.id,
-      label: `Alur: ${ap.nama}`,
-      description: ap.steps.map((s) => `(${s.pelaku}) ${s.aksi}`).join(' → '),
-      recommended: true,
-      locked: false,
-      category: 'ALUR_PENDUKUNG',
-      steps: ap.steps
-    });
-  });
-
-  // 3. Fitur Pendukung (3-5 opsi, selectable)
-  flowData.fiturPendukung.forEach((fp) => {
-    options.push({
-      id: fp.id,
-      label: `Fitur: ${fp.label}`,
-      description: 'Fitur pelengkap langsung masuk ke rilis MVP tanpa pemilahan V1/V2.',
-      recommended: true,
-      locked: false,
-      category: 'FITUR_PENDUKUNG'
-    });
-  });
+  const isRevising = Boolean(session.flow?.other || session.flow?.alurInti);
 
   return {
     stepId: 'ALUR',
-    title: 'Alur Sistem & Fitur Pendukung',
-    multi: true,
-    allowOther: true,
-    options
+    title: 'Konfirmasi Alur Kerja & Fitur Pendukung',
+    multi: false,
+    allowOther: false,
+    options: [
+      {
+        id: 'confirm_alur',
+        label: '✅ Sudah pas, lanjut ke Hak Akses (RBAC)',
+        description: `Alur inti (${flowData.alurInti.length} tahapan), alur pendukung (${flowData.alurPendukung.length} alur), dan fitur pendukung (${flowData.fiturPendukung.length} fitur) sudah sesuai operasional.`,
+        recommended: true
+      },
+      {
+        id: 'koreksi_alur',
+        label: isRevising ? '✏️ Masih ada koreksi alur atau fitur' : '✏️ Ada koreksi alur atau fitur',
+        description: 'Tuliskan perbaikan langkah alur inti, alur pendukung, atau fitur pendukung di bawah.',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Di langkah 2 alur inti ganti kasir jadi resepsionis, atau tambahkan alur komplain...'
+      }
+    ]
   };
 }
 
@@ -1621,14 +1624,21 @@ function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
   return {
     stepId: 'RBAC',
     title: 'Matriks Hak Akses & Pembagian Wewenang Role',
-    multi: true,
+    multi: false,
     allowOther: false,
     options: [
       {
-        id: 'rbac_confirm',
-        label: 'Setujui matriks hak akses per role',
+        id: 'confirm_rbac',
+        label: '✅ Setujui matriks hak akses per role',
         recommended: true,
         description: 'Tampilan Depan, Penjaga Akses, dan Database'
+      },
+      {
+        id: 'koreksi_rbac',
+        label: '✏️ Ada koreksi pada hak akses role',
+        description: 'Tulis role atau modul apa yang wewenangnya perlu diubah',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Kasir jangan diberi akses menghapus data transaksi...'
       }
     ]
   };
@@ -1638,14 +1648,21 @@ function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
   return {
     stepId: 'SKEMA_DATA',
     title: 'Skema Tabel & Relasi Data Aplikasi',
-    multi: true,
+    multi: false,
     allowOther: false,
     options: [
       {
-        id: 'schema_confirm',
-        label: 'Setujui struktur tabel & relasi data',
+        id: 'confirm_schema',
+        label: '✅ Setujui struktur tabel & relasi data',
         recommended: true,
         description: 'Field, tipe data, dan relasi entitas utama'
+      },
+      {
+        id: 'koreksi_schema',
+        label: '✏️ Ada koreksi skema tabel data',
+        description: 'Tulis tabel atau kolom yang perlu ditambah atau disesuaikan',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Tambahkan kolom nomor WhatsApp pada tabel pelanggan...'
       }
     ]
   };
@@ -1659,10 +1676,17 @@ function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
     allowOther: false,
     options: [
       {
-        id: 'simulasi_confirm',
-        label: 'Setujui data contoh & akun demo',
+        id: 'confirm_simulasi',
+        label: '✅ Setujui data contoh & akun demo',
         recommended: true,
         description: '3 baris contoh data & kredensial login per role'
+      },
+      {
+        id: 'koreksi_simulasi',
+        label: '✏️ Ada koreksi data contoh / akun demo',
+        description: 'Tulis data awal atau akun login yang ingin disesuaikan',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Ubah data armada contoh jadi Avanza dan Innova...'
       }
     ]
   };
@@ -1787,17 +1811,29 @@ export function applyGuidedAnswer(
         ? session.flow.alurInti
         : flowData.alurInti;
 
-    // Alur pendukung yang dipilih
-    const selectedPendukung = flowData.alurPendukung.filter(
-      (ap) =>
-        selected.includes(ap.id) ||
-        selected.some((s) => s.includes(ap.id) || s.includes(ap.nama))
-    );
+    // Alur pendukung yang dipilih (jika confirm_alur, sertakan semua alur pendukung yang ada)
+    let selectedPendukung = flowData.alurPendukung;
+    if (selected.length > 0 && !selected.includes('confirm_alur')) {
+      const filtered = flowData.alurPendukung.filter(
+        (ap) =>
+          selected.includes(ap.id) ||
+          selected.some((s) => s.includes(ap.id) || s.includes(ap.nama))
+      );
+      if (filtered.length > 0) {
+        selectedPendukung = filtered;
+      }
+    }
 
-    // Fitur pendukung yang dipilih
-    const selectedFitur = flowData.fiturPendukung
-      .filter((fp) => selected.includes(fp.id) || selected.some((s) => s.includes(fp.label)))
-      .map((fp) => fp.label);
+    // Fitur pendukung yang dipilih (jika confirm_alur, sertakan semua fitur pendukung yang ada)
+    let selectedFitur = flowData.fiturPendukung.map((fp) => fp.label);
+    if (selected.length > 0 && !selected.includes('confirm_alur')) {
+      const filtered = flowData.fiturPendukung
+        .filter((fp) => selected.includes(fp.id) || selected.some((s) => s.includes(fp.label)))
+        .map((fp) => fp.label);
+      if (filtered.length > 0) {
+        selectedFitur = filtered;
+      }
+    }
 
     // Jika user menambahkan item kustom melalui "other"
     if (other && other.trim()) {

@@ -40,8 +40,14 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
     }
   };
 
-  const canSubmit =
-    selected.length > 0 || (otherOpen && other.trim().length > 0);
+  const isInputRequired = selected.some((id) => {
+    const opt = payload.options.find((o) => o.id === id);
+    return opt?.requiresInput || /koreksi|adjust|clarify/i.test(id);
+  });
+
+  const canSubmit = isInputRequired
+    ? other.trim().length > 0
+    : selected.length > 0 || (otherOpen && other.trim().length > 0);
 
   const handleSubmit = () => {
     if (!canSubmit || disabled || submitted) return;
@@ -78,100 +84,139 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
       <div className="space-y-2 max-h-80 overflow-y-auto no-scrollbar pr-0.5">
         {payload.options.map((opt) => {
           const isSelected = selected.includes(opt.id);
+          const needsInput = opt.requiresInput || /koreksi|adjust|clarify/i.test(opt.id);
           return (
-            <button
+            <div
               key={opt.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => toggle(opt.id)}
-              disabled={disabled || opt.locked}
-              className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all ${
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.target === e.currentTarget) {
+                    e.preventDefault();
+                    toggle(opt.id);
+                  }
+                }
+              }}
+              className={`w-full flex flex-col gap-2 px-3 py-2.5 rounded-xl border text-left transition-all ${
                 isSelected
                   ? 'bg-[#10f48e]/10 border-[#10f48e]/40 text-zinc-100'
                   : 'bg-white/[0.03] border-white/10 text-zinc-300 hover:border-white/20'
               } ${opt.locked ? 'cursor-default opacity-95' : 'cursor-pointer active:scale-[0.99]'}`}
             >
-              <span className="mt-0.5 shrink-0">
-                {payload.multi ? (
-                  isSelected ? (
-                    <CheckSquare className="w-3.5 h-3.5 text-[#10f48e]" />
+              <div className="flex items-start gap-2.5 w-full">
+                <span className="mt-0.5 shrink-0">
+                  {payload.multi ? (
+                    isSelected ? (
+                      <CheckSquare className="w-3.5 h-3.5 text-[#10f48e]" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5 text-zinc-600" />
+                    )
+                  ) : isSelected ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#10f48e]" />
                   ) : (
-                    <Square className="w-3.5 h-3.5 text-zinc-600" />
-                  )
-                ) : isSelected ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#10f48e]" />
-                ) : (
-                  <Circle className="w-3.5 h-3.5 text-zinc-600" />
-                )}
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[12px] font-semibold">{opt.label}</span>
-                  {opt.roleStatus === 'WAJIB_OWNER' && (
-                    <span className="text-[9px] font-bold uppercase tracking-wide text-amber-400 border border-amber-400/30 rounded px-1.5 py-0.5 shrink-0">
-                      Wajib (Owner)
-                    </span>
-                  )}
-                  {(opt.roleStatus === 'WAJIB_INTI' || opt.category === 'ALUR_INTI') && (
-                    <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1.5 py-0.5 shrink-0">
-                      Wajib (Alur Inti)
-                    </span>
-                  )}
-                  {opt.category === 'ALUR_PENDUKUNG' && (
-                    <span className="text-[9px] font-medium tracking-wide text-sky-400 border border-sky-400/30 rounded px-1.5 py-0.5 shrink-0">
-                      Alur Pendukung
-                    </span>
-                  )}
-                  {opt.category === 'FITUR_PENDUKUNG' && (
-                    <span className="text-[9px] font-medium tracking-wide text-purple-400 border border-purple-400/30 rounded px-1.5 py-0.5 shrink-0">
-                      Fitur Pendukung (MVP)
-                    </span>
-                  )}
-                  {opt.roleStatus === 'TAMBAHAN' && (
-                    <span className="text-[9px] font-medium tracking-wide text-zinc-400 border border-white/10 rounded px-1.5 py-0.5 shrink-0">
-                      Tambahan
-                    </span>
-                  )}
-                  {!opt.roleStatus && !opt.category && opt.recommended && (
-                    <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1 py-0.5 shrink-0">
-                      Disarankan
-                    </span>
+                    <Circle className="w-3.5 h-3.5 text-zinc-600" />
                   )}
                 </span>
-                {opt.description && (
-                  <span className="block text-[10.5px] text-zinc-400 mt-1 leading-relaxed">{opt.description}</span>
-                )}
-                {opt.responsibilities && opt.responsibilities.length > 0 && (
-                  <div className="mt-2 pt-1.5 border-t border-white/5">
-                    <span className="text-[9.5px] font-medium text-zinc-400 block mb-0.5">Tanggung Jawab Utama:</span>
-                    <ul className="space-y-0.5 text-[9.5px] text-zinc-300">
-                      {opt.responsibilities.map((t, idx) => (
-                        <li key={idx} className="flex items-start gap-1 leading-snug">
-                          <span className="text-[#10f48e] select-none shrink-0">•</span>
-                          <span>{t}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {opt.steps && opt.steps.length > 0 && (
-                  <div className="mt-2 pt-1.5 border-t border-white/5 space-y-1">
-                    <span className="text-[9.5px] font-semibold text-zinc-400 block mb-1">
-                      Tahapan Alur ({opt.steps.length} langkah):
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[12px] font-semibold">{opt.label}</span>
+                    {opt.roleStatus === 'WAJIB_OWNER' && (
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-amber-400 border border-amber-400/30 rounded px-1.5 py-0.5 shrink-0">
+                        Wajib (Owner)
+                      </span>
+                    )}
+                    {(opt.roleStatus === 'WAJIB_INTI' || opt.category === 'ALUR_INTI') && (
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1.5 py-0.5 shrink-0">
+                        Wajib (Alur Inti)
+                      </span>
+                    )}
+                    {opt.category === 'ALUR_PENDUKUNG' && (
+                      <span className="text-[9px] font-medium tracking-wide text-sky-400 border border-sky-400/30 rounded px-1.5 py-0.5 shrink-0">
+                        Alur Pendukung
+                      </span>
+                    )}
+                    {opt.category === 'FITUR_PENDUKUNG' && (
+                      <span className="text-[9px] font-medium tracking-wide text-purple-400 border border-purple-400/30 rounded px-1.5 py-0.5 shrink-0">
+                        Fitur Pendukung (MVP)
+                      </span>
+                    )}
+                    {opt.roleStatus === 'TAMBAHAN' && (
+                      <span className="text-[9px] font-medium tracking-wide text-zinc-400 border border-white/10 rounded px-1.5 py-0.5 shrink-0">
+                        Tambahan
+                      </span>
+                    )}
+                    {!opt.roleStatus && !opt.category && opt.recommended && (
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-[#10f48e] border border-[#10f48e]/30 rounded px-1 py-0.5 shrink-0">
+                        Disarankan
+                      </span>
+                    )}
+                  </span>
+                  {opt.description && (
+                    <span className="block text-[10.5px] text-zinc-400 mt-1 leading-relaxed">{opt.description}</span>
+                  )}
+                  {opt.responsibilities && opt.responsibilities.length > 0 && (
+                    <div className="mt-2 pt-1.5 border-t border-white/5">
+                      <span className="text-[9.5px] font-medium text-zinc-400 block mb-0.5">Tanggung Jawab Utama:</span>
+                      <ul className="space-y-0.5 text-[9.5px] text-zinc-300">
+                        {opt.responsibilities.map((t, idx) => (
+                          <li key={idx} className="flex items-start gap-1 leading-snug">
+                            <span className="text-[#10f48e] select-none shrink-0">•</span>
+                            <span>{t}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {opt.steps && opt.steps.length > 0 && (
+                    <div className="mt-2 pt-1.5 border-t border-white/5 space-y-1">
+                      <span className="text-[9.5px] font-semibold text-zinc-400 block mb-1">
+                        Tahapan Alur ({opt.steps.length} langkah):
+                      </span>
+                      <ol className="space-y-1 text-[10px] text-zinc-300">
+                        {opt.steps.map((st, sIdx) => (
+                          <li key={sIdx} className="flex items-start gap-1.5 leading-snug">
+                            <span className="text-zinc-500 font-mono text-[9px] shrink-0 mt-0.5">{sIdx + 1}.</span>
+                            <span>
+                              <strong className="text-[#10f48e] font-semibold">({st.pelaku})</strong> {st.aksi}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </span>
+              </div>
+
+              {/* Inline input area bila opsi memerlukan masukan/koreksi teks */}
+              {isSelected && needsInput && (
+                <div
+                  className="mt-1 pt-2 border-t border-white/10 w-full"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <label className="block text-[10px] font-semibold text-[#10f48e] mb-1.5 flex items-center gap-1">
+                    <span>✏️ Tulis detail perbaikan / koreksi:</span>
+                  </label>
+                  <textarea
+                    value={other}
+                    onChange={(e) => setOther(e.target.value)}
+                    placeholder={
+                      opt.inputPlaceholder ||
+                      'Tuliskan perbaikan alur, langkah, atau fitur di sini...'
+                    }
+                    rows={3}
+                    className="w-full bg-[#101016] border border-white/15 focus:border-[#10f48e]/60 rounded-lg p-2 text-[11px] text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none transition-colors"
+                    autoFocus
+                  />
+                  {other.trim().length === 0 && (
+                    <span className="text-[9.5px] text-amber-400/90 block mt-1">
+                      * Kolom ini wajib diisi sebelum mengirim koreksi
                     </span>
-                    <ol className="space-y-1 text-[10px] text-zinc-300">
-                      {opt.steps.map((st, sIdx) => (
-                        <li key={sIdx} className="flex items-start gap-1.5 leading-snug">
-                          <span className="text-zinc-500 font-mono text-[9px] shrink-0 mt-0.5">{sIdx + 1}.</span>
-                          <span>
-                            <strong className="text-[#10f48e] font-semibold">({st.pelaku})</strong> {st.aksi}
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-              </span>
-            </button>
+                  )}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -226,10 +271,12 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
         className={`w-full py-2 rounded-xl text-[11.5px] font-bold transition-all ${
           !canSubmit || disabled
             ? 'bg-white/5 text-zinc-600 cursor-not-allowed'
+            : isInputRequired
+            ? 'bg-gradient-to-r from-amber-400 to-[#10f48e] hover:from-amber-500 hover:to-[#0df28a] text-black active:scale-[0.99]'
             : 'bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black active:scale-[0.99]'
         }`}
       >
-        Lanjut
+        {isInputRequired ? 'Kirim Koreksi' : 'Lanjut'}
       </button>
     </div>
   );

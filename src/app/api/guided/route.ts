@@ -17,6 +17,8 @@ import {
   getDomainFlowDetails,
   renderFlowMarkdown,
   reconcileCoreOperationalRole,
+  resolveActorForStep,
+  REQUIRED_ROLE,
   type DomainFlowData,
   type GuidedStepId,
   type MockupSessionState
@@ -540,6 +542,179 @@ Perbarui cerita dan field asumsi dalam format JSON dengan nada hangat dan ramah:
   };
 }
 
+function applyDeterministicFlowCorrection(
+  currentFlow: DomainFlowData,
+  userCorrection: string,
+  session: MockupSessionState
+): DomainFlowData {
+  const alurInti = [...currentFlow.alurInti.map((s) => ({ ...s }))];
+  const alurPendukung = [...currentFlow.alurPendukung.map((ap) => ({ ...ap, steps: [...ap.steps] }))];
+  const fiturPendukung = [...currentFlow.fiturPendukung.map((fp) => ({ ...fp }))];
+
+  // 1. Koreksi langkah tertentu: "langkah 2: kasir terima uang...", "koreksi langkah 3: ..."
+  const stepMatch = userCorrection.match(/langkah\s+(\d+)\s*[:=-]?\s*(.+)/i);
+  if (stepMatch) {
+    const stepNum = parseInt(stepMatch[1], 10);
+    const newActionText = stepMatch[2].trim();
+    const target = alurInti.find((s) => s.step === stepNum);
+    if (target) {
+      const actorMatch = newActionText.match(/^\(([^)]+)\)\s*(.+)/);
+      if (actorMatch) {
+        target.pelaku = resolveActorForStep(actorMatch[1].trim(), session.roles);
+        target.aksi = actorMatch[2].trim();
+      } else {
+        target.aksi = newActionText;
+      }
+    }
+  }
+
+  // 2. Tambah langkah baru: "tambah langkah: serah terima kunci"
+  const addStepMatch = userCorrection.match(/tambah(kan)?\s+langkah\s*[:=-]?\s*(.+)/i);
+  if (addStepMatch) {
+    const actionText = addStepMatch[2].trim();
+    const defaultActor = alurInti[alurInti.length - 2]?.pelaku || REQUIRED_ROLE;
+    alurInti.push({
+      step: alurInti.length + 1,
+      pelaku: defaultActor,
+      aksi: actionText
+    });
+  }
+
+  // 3. Tambah fitur pendukung: "tambah fitur cetak struk", "fitur: barcode scanner"
+  const addFeatMatch = userCorrection.match(/tambah(kan)?\s+fitur\s*[:=-]?\s*(.+)/i);
+  if (addFeatMatch) {
+    const featLabel = addFeatMatch[2].trim();
+    fiturPendukung.push({
+      id: `feat_user_${Date.now()}`,
+      label: featLabel
+    });
+  }
+
+  // 4. Koreksi umum naratif jika tidak menyebut kata 'langkah' atau 'fitur'
+  if (!stepMatch && !addStepMatch && !addFeatMatch && userCorrection.length > 5) {
+    if (alurInti.length > 1) {
+      const midIdx = Math.max(1, alurInti.length - 2);
+      alurInti[midIdx].aksi = `${alurInti[midIdx].aksi} (Disesuaikan: ${userCorrection})`;
+    }
+  }
+
+  return {
+    alurInti,
+    alurPendukung,
+    fiturPendukung
+  };
+}
+
+async function refineFlowWithAI(
+  currentFlow: DomainFlowData,
+  userCorrection: string,
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<DomainFlowData> {
+  const knownActors = [
+    REQUIRED_ROLE,
+    ...(session.roles?.selected || []),
+    ...(session.storyline?.asumsiAktor || [])
+  ];
+
+  const systemInstruction = `Anda adalah Partner Diskusi & Arsitek Solusi AI dari platform "Aplikasi Generator".
+Tugas Anda: Memperbarui Alur Inti, Alur Pendukung, atau Fitur Pendukung aplikasi bisnis berdasarkan masukan atau koreksi dari pengguna.
+
+ATURAN WAJIB:
+1. PERTAHANKAN FORMAT:
+   - Alur Inti: array of { "step": nomor urut, "pelaku": "Nama Peran", "aksi": "Deskripsi aktivitas fisik nyata" }.
+   - Pelaku Alur Inti WAJIB menggunakan peran yang dikenal: ${knownActors.join(', ')}.
+   - Alur Pendukung: array of { "id": string, "nama": string, "steps": [{ "pelaku": string, "aksi": string }] }.
+   - Fitur Pendukung: array of { "id": string, "label": string }.
+2. RELEVANSI DOMAIN & TANPA ISTILAH TEKNIS IT:
+   - Dilarang menambahkan istilah teknis seperti CRUD, API, endpoint, skema database. Gunakan urutan aktivitas operasional nyata.
+3. KELUARAN WAJIB JSON:
+{
+  "alurInti": [
+    { "step": 1, "pelaku": "...", "aksi": "..." }
+  ],
+  "alurPendukung": [
+    { "id": "...", "nama": "...", "steps": [{ "pelaku": "...", "aksi": "..." }] }
+  ],
+  "fiturPendukung": [
+    { "id": "...", "label": "..." }
+  ]
+}`;
+
+  const userPrompt = `Alur Saat Ini:
+[Alur Inti]
+${currentFlow.alurInti.map((s) => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
+
+[Alur Pendukung]
+${currentFlow.alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
+
+[Fitur Pendukung]
+${currentFlow.fiturPendukung.map((fp) => `- ${fp.label}`).join('\n')}
+
+Masukan / Koreksi Pengguna:
+"${userCorrection}"
+
+Perbarui dan kembalikan JSON lengkap:`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.5,
+    maxTokens: 4000,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  if (raw) {
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed.alurInti) && parsed.alurInti.length > 0) {
+          const refinedAlurInti = parsed.alurInti.map((s: any, idx: number) => ({
+            step: idx + 1,
+            pelaku: resolveActorForStep(String(s.pelaku || 'Petugas').trim(), session.roles),
+            aksi: String(s.aksi || '').trim()
+          }));
+
+          const refinedAlurPendukung = Array.isArray(parsed.alurPendukung)
+            ? parsed.alurPendukung.map((ap: any, idx: number) => ({
+                id: String(ap.id || `alur_pendukung_${idx + 1}`),
+                nama: String(ap.nama || `Alur ${idx + 1}`),
+                steps: Array.isArray(ap.steps)
+                  ? ap.steps.map((st: any) => ({
+                      pelaku: resolveActorForStep(String(st.pelaku || 'Petugas').trim(), session.roles),
+                      aksi: String(st.aksi || '').trim()
+                    }))
+                  : []
+              }))
+            : currentFlow.alurPendukung;
+
+          const refinedFiturPendukung = Array.isArray(parsed.fiturPendukung)
+            ? parsed.fiturPendukung.map((fp: any, idx: number) => ({
+                id: String(fp.id || `feat_custom_${idx + 1}`),
+                label: String(fp.label || fp).trim()
+              }))
+            : currentFlow.fiturPendukung;
+
+          return {
+            alurInti: refinedAlurInti,
+            alurPendukung: refinedAlurPendukung,
+            fiturPendukung: refinedFiturPendukung
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal mem-parse JSON dari refineFlowWithAI:', e);
+    }
+  }
+
+  return applyDeterministicFlowCorrection(currentFlow, userCorrection, session);
+}
+
 async function generateNarration(
   session: MockupSessionState,
   action: GuidedAction,
@@ -957,44 +1132,73 @@ export async function POST(req: Request) {
         });
       }
 
-      // Khusus step ALUR: tangani koreksi alur inti via chat atau persetujuan lanjut ke RBAC (POIN 4)
+      // Khusus step ALUR: tangani koreksi alur kerja atau persetujuan lanjut ke RBAC
       if (stepId === 'ALUR') {
         const otherText = (body.other || '').trim();
+        const selected = body.selected || [];
+        const isConfirm =
+          selected.includes('confirm_alur') ||
+          (!otherText && selected.length === 0) ||
+          (Boolean(otherText) && /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(otherText));
+
         const isCorrection =
+          selected.includes('koreksi_alur') ||
+          (Boolean(otherText) && !isConfirm) ||
           /^(koreksi|ubah|ganti|revisi|edit)\b/i.test(otherText) ||
           /langkah\s+\d+/i.test(otherText);
 
-        if (isCorrection) {
-          // Tangani koreksi langkah alur inti
+        if (isCorrection && !isConfirm) {
           const flowData = getDomainFlowDetails(session);
-          let alurInti = [...(session.flow?.alurInti || flowData.alurInti)];
+          const currentFlow: DomainFlowData = {
+            alurInti:
+              session.flow?.alurInti && session.flow.alurInti.length > 0
+                ? session.flow.alurInti
+                : flowData.alurInti,
+            alurPendukung:
+              session.flow?.alurPendukung && session.flow.alurPendukung.length > 0
+                ? session.flow.alurPendukung.map((ap, i) => ({
+                    id: `alur_pendukung_${i + 1}`,
+                    nama: ap.nama,
+                    steps: ap.steps
+                  }))
+                : flowData.alurPendukung,
+            fiturPendukung:
+              session.flow?.fiturPendukung && session.flow.fiturPendukung.length > 0
+                ? session.flow.fiturPendukung.map((fp, i) => ({
+                    id: `feat_custom_${i + 1}`,
+                    label: fp
+                  }))
+                : flowData.fiturPendukung
+          };
 
-          // Cek nomor langkah yang dikoreksi (misal "koreksi langkah 3: kasir tawarkan diskon")
-          const stepMatch = otherText.match(/langkah\s+(\d+)\s*[:=-]?\s*(.+)/i);
-          if (stepMatch) {
-            const stepNum = parseInt(stepMatch[1], 10);
-            const newAction = stepMatch[2].trim();
-            const targetStep = alurInti.find((s) => s.step === stepNum);
-            if (targetStep) {
-              targetStep.aksi = newAction;
-            }
-          }
+          const refinedFlow = await refineFlowWithAI(
+            currentFlow,
+            otherText,
+            session,
+            provider,
+            userApiKey,
+            userModel
+          );
 
           const updatedSession: MockupSessionState = {
             ...session,
             step: 'ALUR',
             flow: {
               ...session.flow,
-              alurInti
+              alurInti: refinedFlow.alurInti,
+              alurPendukung: refinedFlow.alurPendukung.map((ap) => ({
+                nama: ap.nama,
+                steps: ap.steps
+              })),
+              fiturPendukung: refinedFlow.fiturPendukung.map((fp) => fp.label),
+              other: otherText
             }
           };
-          const updatedFlowData: DomainFlowData = {
-            ...flowData,
-            alurInti
-          };
-          const flowMarkdown = renderFlowMarkdown(updatedFlowData);
+
+          const flowMarkdown = renderFlowMarkdown(refinedFlow);
           const guidedStep = buildGuidedStep(updatedSession);
-          const narration = `Siap, alur inti sudah saya perbarui sesuai koreksimu:\n\n${flowMarkdown}\n\nSilakan periksa kembali atau klik Lanjut untuk ke bagian Hak Akses (RBAC).`;
+          const narration = `Siap, alur kerja dan fitur pendukung sudah saya perbarui sesuai koreksimu:\n\n${flowMarkdown}\n\nSilakan periksa kembali rincian di atas. Jika sudah pas, pilih "Sudah pas" lalu klik Lanjut untuk ke bagian Hak Akses (RBAC).`;
+
           return NextResponse.json({
             success: true,
             action,
