@@ -340,13 +340,7 @@ export function getRoleNarrativeAndResponsibilities(
     }
   }
 
-  // 2. FALLBACK KONTEKSTUAL CERITA:
-  // Membaca teks narasi dan alur utama secara langsung, BUKAN kembali ke switch-case kata kunci statis.
-  const fullStory = `${storylineContext?.narasi || ''} ${storylineContext?.asumsiAlurUtama || ''}`.trim();
-  const lowerStory = fullStory.toLowerCase();
-  const lowerRole = clean.toLowerCase();
-
-  // A. Super Admin / Owner
+  // 2. Super Admin / Pemilik Usaha
   if (canonicalRoleKey(clean) === 'super-admin' || /^(super\s*admin|pemilik|owner)$/i.test(clean)) {
     return {
       narasi: `Pemilik usaha atau penanggung jawab utama operasional ${cat}. Memastikan seluruh aktivitas harian berjalan tertib, memantau pergerakan omzet dan laporan transaksi, serta mengelola akun staf yang bertugas.`,
@@ -358,113 +352,26 @@ export function getRoleNarrativeAndResponsibilities(
     };
   }
 
-  // B. Pelanggan / Konsumen / Penyewa / Pasien (Grounded sesuai domain cerita)
-  if (canonicalRoleKey(clean) === 'customer' || /^(pelanggan|penyewa|pasien|pembeli|tamu)$/i.test(clean)) {
-    let customerNarasi = `Pihak yang menggunakan dan menikmati layanan di ${cat}, memilih paket atau kebutuhan layanan, serta menerima bukti transaksi resmi.`;
-    const customerTasks = [
-      `Memilih dan mengajukan kebutuhan layanan di ${cat}`,
-      'Melakukan pembayaran dan memverifikasi data transaksi',
-      'Menerima bukti layanan atau kuitansi resmi'
-    ];
-
-    if (lowerStory.includes('sewa') || lowerStory.includes('rental') || lowerRole.includes('penyewa')) {
-      customerNarasi = `Penyewa armada di ${cat} yang memilih unit kendaraan lepas kunci atau dengan sopir, menyerahkan dokumen persyaratan dan jaminan, serta menikmati perjalanan berkendara.`;
-      customerTasks[0] = 'Memilih armada kendaraan dan durasi waktu sewa';
-      customerTasks[1] = 'Menyerahkan dokumen identitas (SIM/KTP) dan jaminan sewa';
-      customerTasks[2] = 'Melakukan pembayaran dan menerima serah-terima unit armada';
-    } else if (lowerStory.includes('gigi') || lowerStory.includes('dental') || lowerRole.includes('pasien')) {
-      customerNarasi = `Pasien yang mendaftar pemeriksaan di ${cat}, menyampaikan keluhan kesehatan rongga mulut, dan menjalani tindakan medis di kursi periksa dokter.`;
-      customerTasks[0] = 'Mendaftar antrean dan menyampaikan keluhan gigi/rongga mulut';
-      customerTasks[1] = 'Menjalani tindakan medis di dental chair bersama dokter';
-      customerTasks[2] = 'Menerima resep obat dan menyelesaikan administrasi pembayaran';
-    } else if (/\b(cuci|pencucian|car\s*wash|steam)\b/i.test(lowerStory) || /\b(cuci|pencucian)\b/i.test(cat)) {
-      customerNarasi = `Pelanggan yang membawa kendaraannya ke ${cat} untuk mendapatkan layanan pencucian serta pembersihan interior/eksterior hingga bersih dan rapi.`;
-      customerTasks[0] = 'Memilih paket pencucian atau perawatan kendaraan';
-      customerTasks[1] = 'Melakukan pembayaran transaksi di meja kasir';
-      customerTasks[2] = 'Memeriksa hasil pembersihan dan menerima kembali kendaraan';
-    }
-
+  // 3. Pihak Eksternal / Pelanggan / Warga / Penyewa / Pasien (Pihak yang dilayani)
+  if (isExternalRole(clean)) {
     return {
-      narasi: customerNarasi,
-      tanggungJawab: customerTasks
+      narasi: `Pihak pengguna atau pelanggan yang menerima dan memanfaatkan layanan di ${cat}, mengajukan kebutuhan transaksi, serta menerima bukti atau hasil layanan resmi.`,
+      tanggungJawab: [
+        `Memilih atau mengajukan kebutuhan transaksi layanan di ${cat}`,
+        'Menyelesaikan transaksi pembayaran dan memverifikasi data layanan',
+        'Menerima bukti transaksi atau konfirmasi penyelesaian layanan'
+      ]
     };
   }
 
-  // C. Peran Staf Lapangan & Spesifik (Membaca aktivitas konkret di narasi)
-  const tasks: string[] = [];
-  let roleNarrative = '';
-
-  if (
-    lowerRole.includes('pengepul') ||
-    lowerRole.includes('penampung') ||
-    (lowerRole.includes('gudang') && (lowerStory.includes('rosok') || lowerStory.includes('barang bekas')))
-  ) {
-    // Pengepul / Pos Penampungan Barang Bekas (Standby di gudang penerimaan)
-    roleNarrative = `Pihak penampung di ${cat} yang standby di pos atau gudang penerimaan untuk menerima, menimbang ulang, dan merekap setoran barang rosok dari para kolektor atau armada keliling.`;
-    tasks.push('Menerima dan memeriksa setoran barang rosok dari para kolektor atau armada keliling');
-    tasks.push('Menimbang total tonase/bobot barang masuk dan mencatat rekonsiliasi setoran');
-    tasks.push('Mengatur pengelompokan dan penyimpanan stok barang rosok di area penampungan');
-  } else if (
-    lowerRole.includes('pembeli') ||
-    lowerRole.includes('kolektor') ||
-    lowerRole.includes('penjemput') ||
-    (lowerRole.includes('petugas') && (lowerStory.includes('rosok') || lowerStory.includes('barang bekas') || lowerStory.includes('timbang')))
-  ) {
-    // Petugas lapangan / pembeli barang bekas / penjemput rosok
-    roleNarrative = `Petugas lapangan di ${cat} yang mendatangi pelanggan atau warga, memeriksa dan menimbang barang bekas, serta memproses pembayaran pembelian di tempat.`;
-    tasks.push('Mendatangi lokasi penjemputan barang dan bertemu langsung dengan warga/pelanggan');
-    tasks.push('Memeriksa kondisi, memilah kategori barang, dan menimbang berat barang yang dibeli');
-    tasks.push('Menyerahkan uang pembayaran pembelian dan mencatat rekap transaksi timbangan');
-  } else if (lowerRole.includes('sopir') || lowerRole.includes('driver')) {
-    // Grounding khusus sopir perjalanan kendaraan (BUKAN kurir pengantar barang/paket)
-    roleNarrative = `Pengemudi armada di ${cat} yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.`;
-    tasks.push('Memastikan unit kendaraan siap pakai dan dalam kondisi bersih sebelum menjemput');
-    tasks.push('Mendampingi penumpang dan mengemudikan kendaraan secara aman sesuai rute');
-    tasks.push('Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada');
-  } else if (lowerRole.includes('kunci') || lowerRole.includes('serah terima') || (lowerRole.includes('petugas') && (lowerStory.includes('sewa') || lowerStory.includes('rental')))) {
-    // Petugas serah-terima unit rental
-    roleNarrative = `Petugas garis depan di ${cat} yang memverifikasi persyaratan administrasi penyewa, mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.`;
-    if (lowerStory.includes('sim') || lowerStory.includes('bpkb') || lowerStory.includes('ktp')) {
-      tasks.push('Memverifikasi kelengkapan dokumen identitas dan jaminan penyewa (SIM & KTP/BPKB)');
-    } else {
-      tasks.push('Memverifikasi dokumen identitas dan jaminan sewa pelanggan');
-    }
-    if (lowerStory.includes('kilometer')) {
-      tasks.push('Mencatat kondisi fisik unit serta angka kilometer awal dan akhir');
-    } else {
-      tasks.push('Mengecek kondisi fisik armada sebelum dan sesudah digunakan');
-    }
-    tasks.push('Mengurus serah-terima kunci armada dan bukti tanda terima sewa');
-  } else if (
-    (lowerRole.includes('cuci') || lowerRole.includes('vakum') || lowerRole.includes('lap')) &&
-    (/\b(cuci|pencucian|car\s*wash|steam)\b/i.test(lowerStory) || /\b(cuci|pencucian)\b/i.test(cat))
-  ) {
-    // Petugas cuci mobil/motor
-    roleNarrative = `Petugas operasional yang mengerjakan pembersihan langsung pada unit kendaraan di ${cat}, mulai dari penyemprotan air bertekanan, sabun salju, hingga pemvakuman interior.`;
-    tasks.push('Menerima antrean slot kendaraan yang masuk ke area cuci');
-    tasks.push('Menyemprotkan sabun, membersihkan bodi, dan memvakum interior kendaraan');
-    tasks.push('Mengeringkan bodi dengan lap chamois dan memastikan unit bersih mengilap');
-  } else if (lowerRole.includes('kasir') || lowerRole.includes('resepsionis') || lowerRole.includes('loket')) {
-    roleNarrative = `Petugas meja depan di ${cat} yang menyambut kedatangan pelanggan, mencatat pesanan atau registrasi layanan, serta memproses transaksi pembayaran.`;
-    tasks.push('Menyambut pelanggan dan mencatat pesanan paket layanan yang dipilih');
-    tasks.push('Menerima pembayaran transaksi tunai maupun nontunai dan mencetak struk');
-    tasks.push('Membuat rekapitulasi data transaksi harian di akhir giliran kerja');
-  } else if (lowerRole.includes('dokter') || lowerRole.includes('perawat') || lowerRole.includes('medis')) {
-    roleNarrative = `Tenaga profesional kesehatan di ${cat} yang melakukan tindakan pemeriksaan klinis, mengoperasikan peralatan medis higienis, dan merawat pasien di kursi periksa.`;
-    tasks.push('Mencatat riwayat keluhan dan melakukan pemeriksaan medis secara langsung');
-    tasks.push('Menyiapkan dan mengoperasikan peralatan medis yang telah disterilisasi');
-    tasks.push('Menentukan catatan tindakan perawatan medis dan resep obat yang diperlukan');
-  } else {
-    // Grounding umum berbasis narasi cerita pengguna
-    roleNarrative = `Petugas operasional di ${cat} yang bertanggung jawab menjalankan aktivitas kerja untuk ${clean} sesuai alur operasional harian yang teratur.`;
-    tasks.push(`Mencatat dan mengelola aktivitas operasional terkait ${clean}`);
-    tasks.push(`Memastikan pelaksanaan tugas operasional ${clean} di lapangan berjalan tertib`);
-    tasks.push('Melaporkan penyelesaian tugas dan kendala kerja kepada penanggung jawab');
-  }
-
+  // 4. Fallback Netral Konseptual (HANYA jika detailAktor hasil AI belum tersedia)
   return {
-    narasi: roleNarrative,
-    tanggungJawab: tasks
+    narasi: `Petugas operasional di ${cat} yang bertanggung jawab menjalankan aktivitas kerja harian untuk ${clean} sesuai alur yang disepakati.`,
+    tanggungJawab: [
+      `Melaksanakan dan mencatat aktivitas operasional terkait ${clean} di ${cat}`,
+      'Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk',
+      'Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha'
+    ]
   };
 }
 
