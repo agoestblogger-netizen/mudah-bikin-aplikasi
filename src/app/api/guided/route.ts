@@ -299,30 +299,32 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
            * Sisi BELI VALAS: Nasabah membawa mata uang asing, teller memeriksa keaslian uang dengan detektor UV, menghitung kurs beli, dan menyerahkan uang Rupiah.
            * Sisi JUAL VALAS: Nasabah membutuhkan valas untuk bepergian, teller menghitung kurs jual, menerima pembayaran Rupiah, dan menyerahkan pecahan mata uang asing.
 
-      3. ANALISIS PEMISAHAN ROLE FRONTLINER (pemisahanRole - WAJIB DIISI):
+      3. ANALISIS PEMISAHAN ROLE FRONTLINER (pemisahanRole - WAJIB DIISI DENGAN UJI DIAGNOSTIK):
          Analisis peran frontliner yang bertugas di kedua sisi transaksi (Kasus A dan Kasus B):
          Apakah tugas/keahlian yang dibutuhkan di sisi A cukup berbeda dari sisi B sehingga sebaiknya jadi DUA ROLE TERPISAH, atau wajar DIGABUNG jadi SATU ROLE?
 
-         PRINSIP KONSEPTUAL WAJIB DIPATUHI (HINDARI BIAS SISTEMIK KE "PISAH"):
-         a) "GABUNG" ADALAH HASIL YANG VALID, ALAMI, DAN SANGAT UMUM di dunia bisnis nyata, terutama untuk UMKM dan bisnis skala kecil-menengah di mana satu staf lazim menangani kedua arah transaksi di loket/meja yang sama. PISAH BUKAN default atau pilihan "lebih aman"!
-         b) BEDA ARAH KALKULASI / TRANSAKSI BUKAN ALASAN UNTUK PISAH:
-            - Money changer: Melayani beli valas (nasabah jual valas ke konter) dan jual valas (nasabah beli valas dari konter) dilakukan oleh TELLER YANG SAMA di loket yang sama, menggunakan kalkulasi kurs yang simetris dan alat deteksi uang palsu yang sama. DILARANG KERAS memisahkan menjadi 'Kasir Jual' dan 'Kasir Beli'! Money changer WAJIB "GABUNG" (peran frontliner: "Teller Valas" atau "Kasir Transaksi Valas").
-            - Agen bank / PPOB: Menyetor uang tunai vs menarik uang tunai dilayani oleh staf/operator loket yang sama di konter yang sama menggunakan mesin EDC yang sama. WAJIB "GABUNG" (peran frontliner: "Operator Loket").
-            - Warung / Toko kelontong: Melayani pembelian sembako vs tukar galon/tabung gas kosong dilayani oleh kasir/penjaga warung yang sama. WAJIB "GABUNG" (peran frontliner: "Kasir Toko").
-            - Jika kedua sisi sama-sama berupa kegiatan kasir/administratif ("menghitung angka, menerima/menyerahkan uang kas, dan mencatat nota"), maka itu tanda mutlak harus "GABUNG".
-         c) "PISAH" HANYA VALID JIKA ADA PERBEDAAN KEAHLIAN YANG BENAR-BENAR SIGNIFIKAN DAN BERBEDA JENIS:
-            - Contoh valid PISAH: Satu sisi membutuhkan keahlian teknis/fisik mendalam untuk membongkar mesin, mengecek rangka, dan menaksir kondisi fisik kendaraan bekas (technical appraisal / inspeksi teknis), sedangkan sisi lain murni penjualan/sales kasir showroom motor/mobil. Atau penaksiran uji kimia/karat emas oleh penaksir khusus vs kasir display perhiasan baru.
-            - Pertimbangkan skala usaha: Bisnis UMKM minim staf, sehingga kecenderungan wajar adalah GABUNG kecuali jika ada kebutuhan keahlian teknis fisik yang tidak mungkin dirangkap oleh kasir biasa.
+          PERTANYAAN UJI PENENTU (THE DIAGNOSTIC LITMUS TEST):
+          "Apakah salah satu sisi transaksi membutuhkan keahlian/alat diagnostik teknis untuk memeriksa kondisi fisik atau kerusakan tersembunyi pada barang bekas (seperti HP, laptop, kamera, motor, emas)?"
 
-         ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) JIKA GABUNG:
-         - DILARANG KERAS memunculkan dua peran kasir/petugas terpisah per sisi transaksi (seperti 'Kasir Jual Valas' dan 'Kasir Beli Valas', atau 'Kasir Setor' dan 'Kasir Tarik') jika keputusannya GABUNG!
-         - "asumsiAktor" WAJIB HANYA memunculkan SATU peran frontliner gabungan (contoh: "Teller Valas", "Operator Loket", "Kasir Toko", "Kasir Operasional").
-         - Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan!
-           DILARANG KERAS menulis kata "atau" (misal: "menghitung transaksi jual beli atau tukar tambah", "mencatat penjualan atau pembelian").
-           WAJIB diganti menjadi rincian konkret: "menghitung kurs transaksi penjualan valas maupun pembelian valas nasabah", "mencatat transaksi penyetoran tunai serta penarikan tunai nasabah".
+          A. KONDISI WAJIB "PISAH" (HANYA JIKA MELIBATKAN APPRAISAL TEKNIS BARANG BEKAS):
+             Salah satu sisi membutuhkan pemeriksaan teknis/diagnostik fisik terhadap barang bekas yang dibawa konsumen menggunakan alat bantu atau keahlian teknis khusus sebelum harga taksiran dapat ditetapkan:
+             - Toko Jual Beli HP / Gadget / Tablet: Menaksir HP bekas butuh pengecekan nomor IMEI & status blacklist Kemenperin, kesehatan baterai (battery health), true tone & kondisi fisik layar/touchscreen, fungsi kamera & sensor (WAJIB PISAH: "Sales Counter HP Baru" vs "Petugas Appraisal HP Bekas").
+             - Toko Jual Beli Laptop / Komputer: Menaksir laptop bekas butuh uji spesifikasi hardware, kesehatan SSD/HDD, tes stress CPU/GPU & suhu thermal, tes baterai & keyboard (WAJIB PISAH: "Sales Laptop Baru" vs "Teknisi Appraisal Laptop Bekas").
+             - Toko Jual Beli Kamera / Lensa: Menaksir kamera bekas butuh cek shutter count, jamur/fogging pada elemen optik lensa, fungsi motor autofocus, dan kebersihan sensor (WAJIB PISAH: "Sales Kamera Baru" vs "Petugas Appraisal Kamera & Lensa").
+             - Showroom Jual Beli Sepeda Motor / Mobil: Menaksir kendaraan bekas butuh inspeksi teknis nomor mesin & rangka, cek keaslian BPKB/STNK, cek riwayat kilometer, uji transmisi & kebocoran oli mesin (WAJIB PISAH: "Sales Showroom Motor Baru" vs "Petugas Appraisal Motor Bekas").
+             - Toko Emas Jual-Beli: Menaksir emas bekas butuh uji karat dengan batu uji & asam nitrat, timbangan digital presisi karat, atau alat uji XRF (WAJIB PISAH: "Sales Display Perhiasan" vs "Penaksir Emas / Buyback").
 
-         ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) JIKA PISAH:
-         - "asumsiAktor" WAJIB memunculkan kedua role terpisah dengan nama yang jelas menunjukkan sisi mana (misal: "Sales Motor Baru" dan "Petugas Appraisal Motor Bekas"), dan buatkan detail masing-masing di "detailAktor".
+          B. KONDISI WAJIB "GABUNG" (UNTUK SELURUH TRANSAKSI KEUANGAN, VALAS, SEMBAKO, ATAU ADMINISTRASI LOKET):
+             Jika transaksi TIDAK membutuhkan alat uji diagnostik kerusakan fisik barang bekas, melainkan murni aliran uang, valas, simpan pinjam, atau kasir sembako, maka WAJIB GABUNG (dilarang memecah loket/kasir):
+             - Money Changer: Teller melayani nasabah yang membeli maupun menjual mata uang asing di satu loket yang sama dengan detektor UV standar (WAJIB GABUNG: "Teller Valas"). Dilarang membuat Teller Jual dan Teller Beli terpisah!
+             - Koperasi Simpan Pinjam: Staf operasional/kasir melayani anggota untuk setoran tabungan maupun pengajuan permohonan pinjaman di meja layanan yang sama (WAJIB GABUNG: "Kasir Operasional"). Dilarang memisahkan kasir setor dan kasir pinjam!
+             - Agen Bank / Loket PPOB: Operator loket melayani transaksi setor tunai maupun tarik tunai (WAJIB GABUNG: "Operator Loket").
+             - Warung Sembako / Toko Kelontong: Kasir melayani belanja sembako dan penukaran fisik galon/tabung gas kosong (WAJIB GABUNG: "Kasir Toko").
+
+          ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) SESUAI HASIL UJI:
+          - Jika GABUNG: "asumsiAktor" WAJIB HANYA memuat SATU peran frontliner gabungan (misal: "Teller Valas", "Operator Loket", "Kasir Toko", "Kasir Operasional"). Dilarang memecah menjadi dua kasir per arah!
+            Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan (misal: "menghitung kurs transaksi penjualan valas maupun pembelian valas nasabah", "mencatat transaksi penyetoran tunai serta penarikan tunai nasabah", "melayani penerimaan setoran tabungan simpanan serta pemrosesan berkas permohonan pinjaman anggota").
+          - Jika PISAH: "asumsiAktor" WAJIB memunculkan kedua peran spesifik per sisi (misal: "Sales Counter HP Baru" dan "Petugas Appraisal HP Bekas"), dan buatkan detail tanggung jawab masing-masing di "detailAktor".
 
       Sebutkan nama kedua arah dan analisis pemisahan role di objek "duaArah":
       {
@@ -365,15 +367,13 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
    - ATURAN GROUNDING & DEDUPLIKASI KONSEPTUAL (WAJIB):
      * Setiap peran dalam asumsiAktor HARUS memiliki dasar konseptual yang jelas dan terlibat langsung dalam alur narasi yang diceritakan. JANGAN memunculkan peran seperti "Operator", "Viewer", atau artefak teknis lain yang tidak ada di cerita!
-     * JANGAN memunculkan "Pemilik" atau "Owner" sebagai peran terpisah jika sudah ada "Super Admin" (Super Admin sudah otomatis merepresentasikan Pemilik).
-     * Jika dua peran memiliki konsep makna atau tanggung jawab yang sama (contoh: "Penyewa" dan "Member", atau "Kasir" dan "Petugas Pembayaran"), satukan menjadi satu peran saja (kecuali di domain DUA_ARAH di mana AI menyimpulkan PISAH peran frontliner).
-   - DETAIL AKTOR (detailAktor):
-     * Untuk SETIAP peran di asumsiAktor, buatkan deskripsi naratif singkat (1-2 kalimat) dan 2-3 butir tanggung jawab konkret yang MURNI DIGROUNDING DARI CERITA domain tersebut.
-     * LARANGAN KATA "ATAU" PADA TANGGUNG JAWAB (WAJIB):
-       DILARANG KERAS menggunakan kata "atau" yang mengaburkan tanggung jawab peran (seperti "melayani penjualan atau pembelian", "menghitung harga jual beli atau tukar tambah"). Tuliskan secara eksplisit rincian kedua konteks menggunakan kata sambung "serta", "dan", atau "maupun".
+     * Jika narasi hanya menceritakan satu peran staf frontliner yang sama yang melayani kedua arah (misal teller atau kasir), MAKA asumsiAktor HANYA BOLEH berisi 1 peran frontliner tersebut, DILARANG memunculkan peran duplikat/buatan yang fungsinya sama persis!
+     * DILARANG memunculkan dua peran kasir semu seperti "Kasir Penjualan" dan "Kasir Pembelian" jika jenis keahlian keduanya sama persis (misal di money changer atau warung sembako). Gunakan SATU peran representatif (misal "Teller Valas" atau "Kasir Toko").
+     * Format asumsiAktor WAJIB berupa array of string sederhana: ["Super Admin", "Peran Frontliner", "Pelanggan"]. DILARANG membuat format gabungan seperti ["Kasir (Sales & Pembelian)"]!
 
-3. URUTAN ALUR NYATA (asumsiAlurUtama):
-   - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
+3. TAHAPAN ALUR UTAMA (asumsiAlurUtama):
+   - Format: "Langkah 1 -> Langkah 2 -> Langkah 3 -> Langkah 4".
+   - Tuliskan 3-5 tahapan konkret dari awal interaksi pelanggan sampai akhir proses.
    - DILARANG memakai kalimat umum seperti "Pelanggan memesan -> Petugas memproses -> Pemilik memantau".
    - Jika kondisi DUA_ARAH, alur utama WAJIB merangkum kedua siklus transaksi secara nyata dan berimbang.
      Contoh nyata Koperasi Simpan Pinjam: "Anggota menyetor tabungan & kasir mencatat saldo buku -> Anggota mengajukan pinjaman dana -> Petugas memverifikasi kelayakan & mencairkan dana pinjaman -> Anggota membayar cicilan berkala -> Pengurus memantau rekap simpan pinjam".
@@ -493,11 +493,35 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           let pemisahanRole: PemisahanRoleResult | undefined = undefined;
           if (rawArah.duaArah?.pemisahanRole && typeof rawArah.duaArah.pemisahanRole === 'object') {
             const rawPr = rawArah.duaArah.pemisahanRole;
+            let finalKeputusan: 'PISAH' | 'GABUNG' = rawPr.keputusan === 'PISAH' ? 'PISAH' : 'GABUNG';
+            let finalAlasan = String(rawPr.alasan || '').trim();
+            let roleKasusA = rawPr.roleKasusA ? String(rawPr.roleKasusA).trim() : undefined;
+            let roleKasusB = rawPr.roleKasusB ? String(rawPr.roleKasusB).trim() : undefined;
+
+            // KONSEPTUAL GROUNDING SAFEGUARD (The Diagnostic Litmus Test):
+            // Pastikan tidak ada over-split (PISAH keliru) pada ranah administrasi kasir simetris / non-diagnostik
+            // dan tidak ada overshoot (GABUNG keliru) pada ranah appraisal teknis barang bekas.
+            const domainScopeText = `${prompt} ${appName} ${businessCategory} ${rawArah.duaArah?.prosesA || ''} ${rawArah.duaArah?.prosesB || ''}`.toLowerCase();
+            const isTechnicalAppraisalDomain = /\b(hp|handphone|smartphone|gadget|laptop|komputer|pc|kamera|lensa|motor|mobil|kendaraan|emas|perhiasan|buyback)\b/i.test(domainScopeText);
+            const isPureAdministrativeFinancialDomain = /\b(money\s*changer|valas|valuta|kurs|koperasi|simpan\s*pinjam|tabungan|ppob|agen\s*bank|sembako|kelontong|galon|gas)\b/i.test(domainScopeText);
+
+            if (isTechnicalAppraisalDomain && !isPureAdministrativeFinancialDomain) {
+              finalKeputusan = 'PISAH';
+              if (!finalAlasan.toLowerCase().includes('teknis') && !finalAlasan.toLowerCase().includes('diagnostik') && !finalAlasan.toLowerCase().includes('appraisal') && !finalAlasan.toLowerCase().includes('keahlian')) {
+                finalAlasan = 'Penilaian fisik/fungsional barang bekas membutuhkan kompetensi dan alat diagnostik teknis khusus yang berbeda dari penjualan unit baru.';
+              }
+            } else if (isPureAdministrativeFinancialDomain && !isTechnicalAppraisalDomain) {
+              finalKeputusan = 'GABUNG';
+              finalAlasan = 'Transaksi kedua sisi merupakan alur administrasi/keuangan kasir simetris tanpa kebutuhan uji teknis/diagnostik fisik barang bekas, sehingga dapat dilayani oleh satu peran frontliner.';
+              roleKasusA = undefined;
+              roleKasusB = undefined;
+            }
+
             pemisahanRole = {
-              keputusan: rawPr.keputusan === 'PISAH' ? 'PISAH' : 'GABUNG',
-              alasan: String(rawPr.alasan || '').trim(),
-              roleKasusA: rawPr.roleKasusA ? String(rawPr.roleKasusA).trim() : undefined,
-              roleKasusB: rawPr.roleKasusB ? String(rawPr.roleKasusB).trim() : undefined
+              keputusan: finalKeputusan,
+              alasan: finalAlasan,
+              roleKasusA,
+              roleKasusB
             };
           }
 
