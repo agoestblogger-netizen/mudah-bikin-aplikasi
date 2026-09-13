@@ -306,24 +306,27 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           PERTANYAAN UJI PENENTU (THE DIAGNOSTIC LITMUS TEST):
           "Apakah salah satu sisi transaksi membutuhkan keahlian/alat diagnostik teknis untuk memeriksa kondisi fisik atau kerusakan tersembunyi pada barang bekas (seperti HP, laptop, kamera, motor, emas)?"
 
-          A. KONDISI WAJIB "PISAH" (HANYA JIKA MELIBATKAN APPRAISAL TEKNIS BARANG BEKAS):
-             Salah satu sisi membutuhkan pemeriksaan teknis/diagnostik fisik terhadap barang bekas yang dibawa konsumen menggunakan alat bantu atau keahlian teknis khusus sebelum harga taksiran dapat ditetapkan:
+          A. KONDISI WAJIB "PISAH" (HANYA UNTUK BISNIS SPESIALIS SATU KATEGORI BARANG BERISIKO TINGGI):
+             Bisnis berfokus pada SATU KATEGORI barang teknis/bernilai tinggi di mana appraisal teknis merupakan kompetensi inti bervolume tinggi yang membutuhkan alat diagnostik khusus (laboratorium/checker) untuk mendeteksi kerusakan tersembunyi yang fatal:
              - Toko Jual Beli HP / Gadget / Tablet: Menaksir HP bekas butuh pengecekan nomor IMEI & status blacklist Kemenperin, kesehatan baterai (battery health), true tone & kondisi fisik layar/touchscreen, fungsi kamera & sensor (WAJIB PISAH: "Sales Counter HP Baru" vs "Petugas Appraisal HP Bekas").
              - Toko Jual Beli Laptop / Komputer: Menaksir laptop bekas butuh uji spesifikasi hardware, kesehatan SSD/HDD, tes stress CPU/GPU & suhu thermal, tes baterai & keyboard (WAJIB PISAH: "Sales Laptop Baru" vs "Teknisi Appraisal Laptop Bekas").
              - Toko Jual Beli Kamera / Lensa: Menaksir kamera bekas butuh cek shutter count, jamur/fogging pada elemen optik lensa, fungsi motor autofocus, dan kebersihan sensor (WAJIB PISAH: "Sales Kamera Baru" vs "Petugas Appraisal Kamera & Lensa").
              - Showroom Jual Beli Sepeda Motor / Mobil: Menaksir kendaraan bekas butuh inspeksi teknis nomor mesin & rangka, cek keaslian BPKB/STNK, cek riwayat kilometer, uji transmisi & kebocoran oli mesin (WAJIB PISAH: "Sales Showroom Motor Baru" vs "Petugas Appraisal Motor Bekas").
              - Toko Emas Jual-Beli: Menaksir emas bekas butuh uji karat dengan batu uji & asam nitrat, timbangan digital presisi karat, atau alat uji XRF (WAJIB PISAH: "Sales Display Perhiasan" vs "Penaksir Emas / Buyback").
 
-          B. KONDISI WAJIB "GABUNG" (UNTUK SELURUH TRANSAKSI KEUANGAN, VALAS, SEMBAKO, ATAU ADMINISTRASI LOKET):
-             Jika transaksi TIDAK membutuhkan alat uji diagnostik kerusakan fisik barang bekas, melainkan murni aliran uang, valas, simpan pinjam, atau kasir sembako, maka WAJIB GABUNG (dilarang memecah loket/kasir):
-             - Money Changer: Teller melayani nasabah yang membeli maupun menjual mata uang asing di satu loket yang sama dengan detektor UV standar (WAJIB GABUNG: "Teller Valas"). Dilarang membuat Teller Jual dan Teller Beli terpisah!
-             - Koperasi Simpan Pinjam: Staf operasional/kasir melayani anggota untuk setoran tabungan maupun pengajuan permohonan pinjaman di meja layanan yang sama (WAJIB GABUNG: "Kasir Operasional"). Dilarang memisahkan kasir setor dan kasir pinjam!
-             - Agen Bank / Loket PPOB: Operator loket melayani transaksi setor tunai maupun tarik tunai (WAJIB GABUNG: "Operator Loket").
-             - Warung Sembako / Toko Kelontong: Kasir melayani belanja sembako dan penukaran fisik galon/tabung gas kosong (WAJIB GABUNG: "Kasir Toko").
+          B. KONDISI WAJIB "GABUNG" (UNTUK TOKO CAMPURAN/GENERALIS & TRANSAKSI KEUANGAN/LOKET):
+             1. Toko Barang Bekas Campuran / Generalis / Loak / Antik:
+                Menerima dan menjual barang bekas CAMPURAN/beragam kategori (perabotan, loakan, buku, pakaian, pajangan, barang antik campuran). Penaksiran di sini bersifat penilaian fisik umum/kasar secara kasat mata, BUKAN kompetensi diagnostik laboratorium mendalam pada satu bidang tertentu, sehingga wajar ditangani oleh satu peran frontliner multi-fungsi (WAJIB GABUNG: "Staf Toko Barang Bekas" atau "Kasir & Penerima Barang").
+             2. Transaksi Finansial, Valas, Simpan Pinjam, atau Kasir Sembako:
+                Murni aliran uang kasir simetris tanpa pengujian fisik barang bekas:
+                - Money Changer: Teller melayani nasabah yang membeli maupun menjual mata uang asing di satu loket yang sama dengan detektor UV standar (WAJIB GABUNG: "Teller Valas"). Dilarang membuat Teller Jual dan Teller Beli terpisah!
+                - Koperasi Simpan Pinjam: Staf operasional/kasir melayani anggota untuk setoran tabungan maupun pengajuan permohonan pinjaman di meja layanan yang sama (WAJIB GABUNG: "Kasir Operasional"). Dilarang memisahkan kasir setor dan kasir pinjam!
+                - Agen Bank / Loket PPOB: Operator loket melayani transaksi setor tunai maupun tarik tunai (WAJIB GABUNG: "Operator Loket").
+                - Warung Sembako / Toko Kelontong: Kasir melayani belanja sembako dan penukaran fisik galon/tabung gas kosong (WAJIB GABUNG: "Kasir Toko").
 
           ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) SESUAI HASIL UJI:
-          - Jika GABUNG: "asumsiAktor" WAJIB HANYA memuat SATU peran frontliner gabungan (misal: "Teller Valas", "Operator Loket", "Kasir Toko", "Kasir Operasional"). Dilarang memecah menjadi dua kasir per arah!
-            Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan (misal: "menghitung kurs transaksi penjualan valas maupun pembelian valas nasabah", "mencatat transaksi penyetoran tunai serta penarikan tunai nasabah", "melayani penerimaan setoran tabungan simpanan serta pemrosesan berkas permohonan pinjaman anggota").
+          - Jika GABUNG: "asumsiAktor" WAJIB HANYA memuat SATU peran frontliner gabungan (misal: "Staf Toko Barang Bekas", "Teller Valas", "Operator Loket", "Kasir Toko", "Kasir Operasional"). Dilarang memecah menjadi dua kasir per arah!
+            Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan (misal: "melayani penjualan barang bekas serta penerimaan barang bekas yang dibawa pelanggan", "menghitung kurs transaksi penjualan valas maupun pembelian valas nasabah", "mencatat transaksi penyetoran tunai serta penarikan tunai nasabah", "melayani penerimaan setoran tabungan simpanan serta pemrosesan berkas permohonan pinjaman anggota").
           - Jika PISAH: "asumsiAktor" WAJIB memunculkan kedua peran spesifik per sisi (misal: "Sales Counter HP Baru" dan "Petugas Appraisal HP Bekas"), dan buatkan detail tanggung jawab masing-masing di "detailAktor".
 
       Sebutkan nama kedua arah dan analisis pemisahan role di objek "duaArah":
@@ -499,18 +502,26 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
             let roleKasusB = rawPr.roleKasusB ? String(rawPr.roleKasusB).trim() : undefined;
 
             // KONSEPTUAL GROUNDING SAFEGUARD (The Diagnostic Litmus Test):
-            // Pastikan tidak ada over-split (PISAH keliru) pada ranah administrasi kasir simetris / non-diagnostik
-            // dan tidak ada overshoot (GABUNG keliru) pada ranah appraisal teknis barang bekas.
+            // 1. Spesialis Kategori Berisiko Tinggi (HP, motor, emas, laptop, kamera) -> WAJIB PISAH
+            // 2. Toko Barang Bekas Campuran / Generalis (loak, perabotan campuran, barang antik) -> WAJIB GABUNG
+            // 3. Administrasi Kasir Simetris (money changer, koperasi, agen bank, sembako) -> WAJIB GABUNG
             const domainScopeText = `${prompt} ${appName} ${businessCategory} ${rawArah.duaArah?.prosesA || ''} ${rawArah.duaArah?.prosesB || ''}`.toLowerCase();
-            const isTechnicalAppraisalDomain = /\b(hp|handphone|smartphone|gadget|laptop|komputer|pc|kamera|lensa|motor|mobil|kendaraan|emas|perhiasan|buyback)\b/i.test(domainScopeText);
+            
+            const isMixedOrGeneralistSecondhand = /\b(barang\s*bekas(\s*(campuran|umum|serba\s*ada))?|loak|loakan|barang\s*antik|pasar\s*barang\s*bekas|thrift\s*shop|rongsok)\b/i.test(domainScopeText);
+            const isSpecificHighRiskSpecialist = !isMixedOrGeneralistSecondhand && /\b(hp|handphone|smartphone|gadget|laptop|komputer|pc|kamera|lensa|motor|mobil|kendaraan|emas|perhiasan|buyback)\b/i.test(domainScopeText);
             const isPureAdministrativeFinancialDomain = /\b(money\s*changer|valas|valuta|kurs|koperasi|simpan\s*pinjam|tabungan|ppob|agen\s*bank|sembako|kelontong|galon|gas)\b/i.test(domainScopeText);
 
-            if (isTechnicalAppraisalDomain && !isPureAdministrativeFinancialDomain) {
+            if (isSpecificHighRiskSpecialist && !isPureAdministrativeFinancialDomain) {
               finalKeputusan = 'PISAH';
               if (!finalAlasan.toLowerCase().includes('teknis') && !finalAlasan.toLowerCase().includes('diagnostik') && !finalAlasan.toLowerCase().includes('appraisal') && !finalAlasan.toLowerCase().includes('keahlian')) {
-                finalAlasan = 'Penilaian fisik/fungsional barang bekas membutuhkan kompetensi dan alat diagnostik teknis khusus yang berbeda dari penjualan unit baru.';
+                finalAlasan = 'Penilaian fisik/fungsional barang bekas pada domain spesialis ini membutuhkan kompetensi dan alat diagnostik teknis khusus yang berbeda dari penjualan unit baru.';
               }
-            } else if (isPureAdministrativeFinancialDomain && !isTechnicalAppraisalDomain) {
+            } else if (isMixedOrGeneralistSecondhand) {
+              finalKeputusan = 'GABUNG';
+              finalAlasan = 'Toko menerima barang bekas campuran/umum dan tidak berfokus pada satu kategori barang teknis berisiko tinggi, sehingga penilaian kondisi barang bersifat kasat mata/umum dan dapat ditangani oleh staf toko multi-fungsi tanpa alat diagnostik khusus.';
+              roleKasusA = undefined;
+              roleKasusB = undefined;
+            } else if (isPureAdministrativeFinancialDomain && !isSpecificHighRiskSpecialist) {
               finalKeputusan = 'GABUNG';
               finalAlasan = 'Transaksi kedua sisi merupakan alur administrasi/keuangan kasir simetris tanpa kebutuhan uji teknis/diagnostik fisik barang bekas, sehingga dapat dilayani oleh satu peran frontliner.';
               roleKasusA = undefined;
@@ -551,15 +562,17 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           );
           if (staffRoles.length >= 2) {
             const hasOppositeStaff =
-              staffRoles.some((r: string) => /jual|penjualan|setor|setoran|simpan/i.test(r)) &&
+              staffRoles.some((r: string) => /sales|kasir|jual|penjualan|setor|setoran|simpan/i.test(r)) &&
               staffRoles.some((r: string) => /beli|pembelian|tarik|penarikan|pinjam/i.test(r));
             if (hasOppositeStaff) {
-              const lowerCat = businessCategory.toLowerCase();
+              const lowerCat = `${businessCategory} ${appName} ${prompt}`.toLowerCase();
               const combinedStaffName =
                 lowerCat.includes('valas') || lowerCat.includes('money')
                   ? 'Teller Valas'
                   : lowerCat.includes('bank') || lowerCat.includes('ppob')
                   ? 'Operator Loket'
+                  : lowerCat.includes('bekas') || lowerCat.includes('loak') || lowerCat.includes('antik')
+                  ? 'Staf Toko Barang Bekas'
                   : 'Kasir Operasional';
 
               const newAktor = asumsiAktor.filter((r: string) => !staffRoles.includes(r));
