@@ -25,9 +25,8 @@ import {
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
-import { GuidedStepCard } from './GuidedStepCard';
-import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider, ROUTER_STATIC_MODELS } from '@/lib/modelConfig';
-import type { ModelSettings, AIModelOption } from '@/lib/modelConfig';
+import { GuidedStepCard, type CustomRoleItem, type EditedRoleItem } from './GuidedStepCard';
+import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider, ROUTER_STATIC_MODELS, type ModelSettings, type AIModelOption } from '@/lib/modelConfig';
 import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 import type { GuidedStepPayload, GuidedStepId, MockupSessionState } from '@/lib/templates/processes/types';
@@ -313,10 +312,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const summarizeGuidedAnswer = (
     payload: GuidedStepPayload | undefined,
     selected: string[],
-    other?: string
+    other?: string,
+    customRoles?: CustomRoleItem[]
   ): string => {
     if (!payload) return [selected.join(', '), other].filter(Boolean).join(' + ') || 'Lanjut';
     const labels = payload.options.filter((o) => selected.includes(o.id)).map((o) => o.label);
+    if (customRoles && customRoles.length > 0) {
+      for (const cr of customRoles) {
+        if (selected.includes(cr.id) && !labels.includes(cr.label)) {
+          labels.push(cr.label);
+        }
+      }
+    }
     return [labels.join(', '), other].filter(Boolean).join(' + ') || 'Lanjut';
   };
 
@@ -324,7 +331,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     messageId: string,
     stepId: GuidedStepId,
     selected: string[],
-    other?: string
+    other?: string,
+    customRoles?: CustomRoleItem[],
+    editedRoles?: Record<string, EditedRoleItem>
   ) => {
     const session = projectState.sessionState;
     if (!session || isGenerating) return;
@@ -333,7 +342,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     const userMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
       sender: 'USER',
-      text: summarizeGuidedAnswer(stepPayload, selected, other),
+      text: summarizeGuidedAnswer(stepPayload, selected, other, customRoles),
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     };
     const updatedMessages = [...messages, userMsg];
@@ -352,6 +361,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           stepId,
           selected,
           other,
+          customRoles,
+          editedRoles,
           ...guidedApiPayload()
         })
       });
@@ -1125,8 +1136,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     payload={m.guidedStep}
                     disabled={isGenerating}
                     preselectRecommended
-                    onSubmit={(selected, other) =>
-                      handleGuidedAnswer(m.id, m.guidedStep!.stepId, selected, other)
+                    session={projectState.sessionState}
+                    apiExtraPayload={guidedApiPayload()}
+                    onSubmit={(selected, other, customRoles, editedRoles) =>
+                      handleGuidedAnswer(m.id, m.guidedStep!.stepId, selected, other, customRoles, editedRoles)
                     }
                   />
                 )}

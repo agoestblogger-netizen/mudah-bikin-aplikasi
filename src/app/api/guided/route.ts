@@ -25,6 +25,8 @@ import {
   buildDirectionClarificationCard,
   DUAL_PROCESS_PATTERNS,
   REQUIRED_ROLE,
+  getRoleNarrativeAndResponsibilities,
+  calculateConceptualSimilarity,
   type DomainFlowData,
   type GuidedStepId,
   type MockupSessionState,
@@ -49,7 +51,19 @@ import {
 
 export const maxDuration = 60;
 
-type GuidedAction = 'START' | 'NEXT' | 'COMPILE';
+type GuidedAction = 'START' | 'NEXT' | 'COMPILE' | 'ANALYZE_CUSTOM_ROLE';
+
+interface CustomRolePayloadItem {
+  id: string;
+  label: string;
+  description: string;
+  responsibilities: string[];
+}
+
+interface EditedRolePayloadItem {
+  description: string;
+  responsibilities: string[];
+}
 
 interface GuidedBody {
   action?: GuidedAction;
@@ -62,6 +76,12 @@ interface GuidedBody {
   provider?: string;
   apiKey?: string;
   model?: string;
+  // Payload untuk analisis & manajemen peran kustom / sunting deskripsi peran
+  roleName?: string;
+  roleNote?: string;
+  existingRoles?: Array<{ id: string; label: string; description?: string; responsibilities?: string[] }>;
+  customRoles?: CustomRolePayloadItem[];
+  editedRoles?: Record<string, EditedRolePayloadItem>;
 }
 
 function buildNarrationPrompt(session: MockupSessionState, action: GuidedAction, stepTitle?: string): string {
@@ -1018,6 +1038,133 @@ async function generateNarration(
   return stepTitle ? `Oke, lanjut ke bagian berikutnya: ${stepTitle.replace(/\s*\(.*\)\s*$/, '')}.` : 'Oke, lanjut.';
 }
 
+export interface AnalyzeCustomRoleInput {
+  roleName: string;
+  roleNote?: string;
+  existingRoles: Array<{ id: string; label: string; description?: string; responsibilities?: string[] }>;
+  session?: MockupSessionState;
+  provider?: string;
+  userApiKey?: string;
+  userModel?: string;
+}
+
+export interface AnalyzeCustomRoleResult {
+  isSimilar: boolean;
+  similarRoleName: string | null;
+  similarityExplanation: string | null;
+  narasi: string;
+  tanggungJawab: string[];
+}
+
+export async function analyzeCustomRoleWithAI(input: AnalyzeCustomRoleInput): Promise<AnalyzeCustomRoleResult> {
+  const { roleName, roleNote, existingRoles, session, provider, userApiKey, userModel } = input;
+  const cleanRole = roleName.trim();
+  const category = session?.match?.businessCategory || 'bisnis ini';
+  const story = `${session?.storyline?.narasi || ''} ${session?.storyline?.asumsiAlurUtama || ''}`.trim();
+  const existingListStr = existingRoles
+    .map((r) => `- ${r.label}${r.description ? `: ${r.description}` : ''}`)
+    .join('\n');
+
+  const systemInstruction = `Anda adalah Analis Proses Bisnis & Perancangan Struktur Kerja Aplikasi.
+Tugas Anda menganalisis peran kustom baru yang diajukan pengguna: "${cleanRole}".
+
+Prinsip evaluasi:
+1. Pengecekan Kemiripan Semantik Peran (Deduplikasi Cerdas):
+   Bandingkan peran baru "${cleanRole}" dengan daftar peran yang sudah ada di sistem:
+${existingListStr || '- (belum ada peran)'}
+   Apakah peran baru ini sebenarnya SAMA atau SANGAT SERUPA secara fungsi operasional sehari-hari dengan salah satu peran yang sudah ada?
+   - Contoh mirip: "Pengepul" sangat mirip dengan "Kolektor Keliling" (keduanya mengambil/membeli barang bekas di lapangan). "Kasir Pembayaran" sangat mirip dengan "Kasir". "Juru Masak" mirip dengan "Koki".
+   - Contoh TIDAK mirip: "Admin Gudang" beda dengan "Kasir" atau "Sales". "Mekanik" beda dengan "Admin Servis".
+   Jika mirip: set isSimilar = true, sebutkan similarRoleName dari daftar yang ada, dan similarityExplanation (1 kalimat ringkas ramah pengguna mengapa mirip).
+   Jika tidak mirip: set isSimilar = false, similarRoleName = null, similarityExplanation = null.
+
+2. Pembuatan Deskripsi Naratif & Tanggung Jawab Peran:
+   Susun deskripsi peran (narasi) dan 2-3 butir tanggung jawab operasional peran baru tersebut:
+   - Bahasa Indonesia yang santun, hangat, konkret, profesional, dan ZERO TECH JARGON (dilarang keras menggunakan istilah database/IT/coding seperti database, query, CRUD, tabel, frontend, backend).
+   - Selaras dengan alur cerita bisnis: "${story}".
+   ${roleNote ? `- PERHATIKAN CATATAN PENGGUNA INI: "${roleNote}". Narasi dan butir tanggung jawab WAJIB mencerminkan konteks catatan ini.` : '- Analisis secara cerdas dari nama peran dan konteks alur cerita bisnis yang ada.'}
+
+Keluarkan HANYA format JSON valid tanpa markdown tambahan di luar JSON:
+{
+  "isSimilar": boolean,
+  "similarRoleName": string | null,
+  "similarityExplanation": string | null,
+  "narasi": string,
+  "tanggungJawab": string[]
+}`;
+
+  const userPrompt = `Analisis peran baru: "${cleanRole}"
+Catatan tambahan pengguna: ${roleNote || '(tidak ada catatan)'}
+Kategori bisnis: ${category}`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.3,
+    maxTokens: 1000,
+    provider,
+    userApiKey,
+    userModel
+  });
+
+  if (raw) {
+    try {
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed && typeof parsed.narasi === 'string' && Array.isArray(parsed.tanggungJawab)) {
+        return {
+          isSimilar: Boolean(parsed.isSimilar && parsed.similarRoleName),
+          similarRoleName: parsed.isSimilar && parsed.similarRoleName ? String(parsed.similarRoleName).trim() : null,
+          similarityExplanation: parsed.similarityExplanation ? String(parsed.similarityExplanation).trim() : null,
+          narasi: parsed.narasi.trim(),
+          tanggungJawab: parsed.tanggungJawab.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3)
+        };
+      }
+    } catch (e) {
+      console.warn('[analyzeCustomRoleWithAI] Failed to parse JSON, falling back:', e);
+    }
+  }
+
+  // Fallback deterministik jika AI tidak merespon atau gagal parse
+  const fallback = getRoleNarrativeAndResponsibilities(cleanRole, category, session?.storyline);
+  let fallbackNarasi = fallback.narasi;
+  const fallbackTasks = [...fallback.tanggungJawab];
+
+  if (roleNote) {
+    fallbackNarasi += ` (Fokus tugas: ${roleNote})`;
+    if (!fallbackTasks.some((t) => t.toLowerCase().includes(roleNote.toLowerCase()))) {
+      fallbackTasks.unshift(`Menjalankan tugas: ${roleNote}`);
+    }
+  }
+
+  // Cek kemiripan berbasis conceptual similarity
+  let matchedSimilar: string | null = null;
+  for (const er of existingRoles) {
+    if (er.label.toLowerCase() === cleanRole.toLowerCase()) {
+      matchedSimilar = er.label;
+      break;
+    }
+    const sim = calculateConceptualSimilarity(
+      { id: '', label: cleanRole, description: fallbackNarasi, responsibilities: fallbackTasks },
+      { id: er.id, label: er.label, description: er.description || '', responsibilities: er.responsibilities || [] }
+    );
+    if (sim >= 0.5) {
+      matchedSimilar = er.label;
+      break;
+    }
+  }
+
+  return {
+    isSimilar: Boolean(matchedSimilar),
+    similarRoleName: matchedSimilar,
+    similarityExplanation: matchedSimilar
+      ? `Peran "${cleanRole}" memiliki kesamaan fungsi operasional dengan peran "${matchedSimilar}".`
+      : null,
+    narasi: fallbackNarasi,
+    tanggungJawab: fallbackTasks.slice(0, 3)
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getUserFromRequest(req);
@@ -1043,6 +1190,41 @@ export async function POST(req: Request) {
     const provider = body.provider;
     const userApiKey = body.apiKey;
     const userModel = body.model;
+
+    if (action === 'ANALYZE_CUSTOM_ROLE') {
+      const roleName = (body.roleName || '').trim();
+      if (!roleName) {
+        return NextResponse.json({ success: false, error: 'Nama peran wajib diisi.' }, { status: 400 });
+      }
+
+      const existingRoles = body.existingRoles || [];
+      const roleNote = (body.roleNote || '').trim() || undefined;
+
+      const analysis = await analyzeCustomRoleWithAI({
+        roleName,
+        roleNote,
+        existingRoles,
+        session: body.session,
+        provider,
+        userApiKey,
+        userModel
+      });
+
+      return NextResponse.json({
+        success: true,
+        action,
+        role: {
+          name: roleName,
+          description: analysis.narasi,
+          responsibilities: analysis.tanggungJawab
+        },
+        similarity: {
+          isSimilar: analysis.isSimilar,
+          similarRoleName: analysis.similarRoleName,
+          similarityExplanation: analysis.similarityExplanation
+        }
+      });
+    }
 
     if (action === 'START') {
       const prompt = (body.prompt || '').trim();
@@ -1581,6 +1763,60 @@ export async function POST(req: Request) {
 
       // Khusus step ROLE: tangani penghapusan role tambahan, pelimpahan tugas, dan tabel ringkasan final (POIN 3)
       if (stepId === 'ROLE') {
+        // 1. Integrasikan peran custom yang ditambahkan pengguna
+        if (body.customRoles && Array.isArray(body.customRoles) && body.customRoles.length > 0) {
+          if (!session.storyline) {
+            session.storyline = {
+              narasi: '',
+              asumsiMasalah: '',
+              asumsiAktor: [],
+              asumsiAlurUtama: '',
+              statusKonfirmasi: 'disetujui',
+              revisiCount: 0
+            };
+          }
+          if (!session.storyline.detailAktor) {
+            session.storyline.detailAktor = {};
+          }
+          for (const cr of body.customRoles) {
+            const cleanName = cr.label?.trim() || cr.id?.trim();
+            if (!cleanName) continue;
+            session.storyline.detailAktor[cleanName] = {
+              narasi: cr.description || '',
+              tanggungJawab: cr.responsibilities || []
+            };
+            if (!session.storyline.asumsiAktor.includes(cleanName)) {
+              session.storyline.asumsiAktor.push(cleanName);
+            }
+            if (!session.match.contextualRoles?.includes(cleanName)) {
+              session.match.contextualRoles = [...(session.match.contextualRoles || []), cleanName];
+            }
+          }
+        }
+
+        // 2. Integrasikan perubahan deskripsi / tanggung jawab peran yang disunting pengguna
+        if (body.editedRoles && typeof body.editedRoles === 'object') {
+          if (!session.storyline) {
+            session.storyline = {
+              narasi: '',
+              asumsiMasalah: '',
+              asumsiAktor: [],
+              asumsiAlurUtama: '',
+              statusKonfirmasi: 'disetujui',
+              revisiCount: 0
+            };
+          }
+          if (!session.storyline.detailAktor) {
+            session.storyline.detailAktor = {};
+          }
+          for (const [rName, edited] of Object.entries(body.editedRoles)) {
+            session.storyline.detailAktor[rName] = {
+              narasi: edited.description,
+              tanggungJawab: edited.responsibilities
+            };
+          }
+        }
+
         const otherText = (body.other || '').trim();
 
         // Cek jika pengguna meminta pengalihan tugas spesifik: "limpahkan tugas X ke Y"
