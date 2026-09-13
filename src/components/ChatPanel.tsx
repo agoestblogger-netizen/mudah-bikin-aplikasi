@@ -26,6 +26,7 @@ import {
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
 import { GuidedStepCard, type CustomRoleItem, type EditedRoleItem } from './GuidedStepCard';
+import { MarkdownMessage } from './MarkdownMessage';
 import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider, ROUTER_STATIC_MODELS, type ModelSettings, type AIModelOption } from '@/lib/modelConfig';
 import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
@@ -1087,7 +1088,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                         : 'bg-[#101015] border border-white/10 text-zinc-200 shadow-inner rounded-tl-none'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{textToDisplay}</p>
+                    <MarkdownMessage content={textToDisplay} isUser={m.sender === 'USER'} />
                   
                   {/* Tombol Pintas: Beralih ke Mode Build jika AI meminta beralih ke Build */}
                   {m.sender === 'AI' && selectedMode === 'PLAN' && (

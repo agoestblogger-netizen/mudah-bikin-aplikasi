@@ -6,6 +6,7 @@ import { Bot, Send, User, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
 import { getAuthHeaders } from '@/lib/supabase/client';
+import { MarkdownMessage } from './MarkdownMessage';
 
 
 interface Stage1InterviewAIProps {
@@ -186,7 +187,7 @@ export const Stage1InterviewAI: React.FC<Stage1InterviewAIProps> = ({
                         : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                     }`}
                   >
-                    <p className="whitespace-pre-line">{m.text}</p>
+                    <MarkdownMessage content={m.text} isUser={m.sender === 'USER'} />
                     <span className="text-[10px] opacity-60 block text-right">{m.timestamp}</span>
 
                     {/* Suggested Quick Options */}
