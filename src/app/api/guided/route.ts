@@ -2060,11 +2060,17 @@ export async function POST(req: Request) {
           const flowMarkdownDual = renderFlowMarkdown(dualFlowData);
           const guidedStepDual = buildGuidedStep(finalSession);
 
+          const summaryTableDual = renderRoleSummaryTable(
+            finalSession.roles,
+            finalSession.match.businessCategory,
+            finalSession.storyline
+          );
+
           let dualNarration = '';
           if (removalMessages.length > 0) {
             dualNarration += removalMessages.join('\n\n') + '\n\n';
           }
-          dualNarration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTable}\n\n`;
+          dualNarration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTableDual}\n\n`;
           if (reconPre && reconMsgPre) {
             dualNarration += `> ℹ️ *${reconMsgPre}*\n\n`;
           }

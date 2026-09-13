@@ -390,11 +390,18 @@ export function renderRoleSummaryTable(
   lines.push('|---|---|---|');
 
   const selected = rolesState?.selected || [];
+  const wajibList = (rolesState?.wajib || []).map((w) => w.toLowerCase());
   const delegations = rolesState?.tugasDilimpahkan || [];
 
   for (const role of selected) {
     const isOwner = isSuperAdminRole(role);
-    const status = isOwner ? 'Wajib (Owner)' : 'Aktif';
+    let status = 'Aktif';
+    if (isOwner) {
+      status = 'Wajib (Owner)';
+    } else if (wajibList.includes(role.toLowerCase())) {
+      status = 'Wajib (Alur Inti)';
+    }
+
     const matchedDelegations = delegations.filter((d) => d.keRole.toLowerCase() === role.toLowerCase());
     const extra = matchedDelegations.length > 0
       ? ` *(+ melimpahkan tugas ${matchedDelegations.map((d) => d.dariRole).join(', ')})*`
