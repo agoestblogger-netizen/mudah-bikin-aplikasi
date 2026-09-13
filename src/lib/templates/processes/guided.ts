@@ -209,6 +209,16 @@ function isExternalRole(label: string): boolean {
 }
 
 function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
+  // Jika sedang menunggu klarifikasi arah bisnis sebelum narasi dibuat
+  if (session.storyline?.pendingDirectionClarification) {
+    const pattern = DUAL_PROCESS_PATTERNS.find(
+      (p) => p.id === session.storyline?.pendingDirectionClarification?.patternId
+    );
+    if (pattern) {
+      return buildDirectionClarificationCard(pattern);
+    }
+  }
+
   const revisiCount = session.storyline?.revisiCount || 0;
   const isClarifying = revisiCount > 0 && session.storyline?.statusKonfirmasi === 'dikoreksi';
 
@@ -1639,6 +1649,137 @@ export function renderFlowMarkdown(flowData: DomainFlowData): string {
  * - Apakah kedua sisi sama-sama punya pelaku operasional (bukan cuma disebutkan satu sisi saja)
  * Ini mencegah false positive seperti "kadang juga" atau "sesekali" — kata modalitas rendah.
  */
+export interface DualProcessPattern {
+  id: string;
+  patternA: RegExp;
+  patternB: RegExp;
+  nameA: string;
+  nameB: string;
+  entity: string;
+  entityCheck: RegExp;
+  clarificationQuestion: string;
+  optionALabel: string;
+  optionBLabel: string;
+  optionBothLabel: string;
+  directionKeywords: RegExp;
+}
+
+/**
+ * Single source of truth untuk domain dengan dua proses setara / arah bisnis ganda.
+ * Digunakan bersama oleh:
+ * 1. detectAmbiguousStorylineDomain (step STORYTELLING sebelum narasi di-generate)
+ * 2. detectDualProcess (step ALUR saat meninjau narasi yang sudah lengkap)
+ */
+export const DUAL_PROCESS_PATTERNS: DualProcessPattern[] = [
+  {
+    id: 'toko_emas',
+    // Toko emas/perhiasan: jual ke pelanggan DAN beli dari pelanggan
+    patternA: /\b(jual|penjualan|menjual|melayani\s+pembeli)\b/i,
+    patternB: /\b(beli|pembelian|membeli|buyback|beli\s+balik|terima\s+barang\s+bekas)\b/i,
+    nameA: 'Penjualan ke Pelanggan',
+    nameB: 'Pembelian dari Pelanggan',
+    entity: 'perhiasan/emas',
+    entityCheck: /\b(emas|perhiasan|gelang|kalung|cincin|logam\s*mulia|gram|karat)\b/i,
+    clarificationQuestion: 'Toko emas ini fokusnya menjual perhiasan ke pelanggan, menerima pembelian emas bekas dari pelanggan, atau dua-duanya?',
+    optionALabel: 'Jual ke pelanggan (fokus penjualan perhiasan)',
+    optionBLabel: 'Beli dari pelanggan (fokus pembelian emas bekas / buyback)',
+    optionBothLabel: 'Dua-duanya (melayani jual dan beli emas)',
+    directionKeywords: /\b(jual|beli|buyback|beli\s+balik|menjual|membeli|penjualan|pembelian)\b/i
+  },
+  {
+    id: 'pegadaian',
+    // Pegadaian / gadai barang: gadai DAN tebus
+    patternA: /\b(gadai|menggadaikan|proses\s+gadai|penerimaan\s+gadai)\b/i,
+    patternB: /\b(tebus|penebusan|menebus|ambil\s+kembali|pelunasan\s+gadai)\b/i,
+    nameA: 'Penerimaan Gadai',
+    nameB: 'Penebusan Barang Gadai',
+    entity: 'barang gadai',
+    entityCheck: /\b(pegadaian|gadai|barang\s+jaminan|pawn|cicilan|uang\s+pinjaman|penaksir)\b/i,
+    clarificationQuestion: 'Layanan pegadaian ini fokus ke penerimaan barang gadai, penebusan barang gadai oleh nasabah, atau dua-duanya?',
+    optionALabel: 'Penerimaan barang gadai (fokus taksiran & pinjaman)',
+    optionBLabel: 'Penebusan barang gadai (fokus pelunasan & tebus barang)',
+    optionBothLabel: 'Dua-duanya (terima gadai dan penebusan barang)',
+    directionKeywords: /\b(tebus|penebusan|menebus|ambil\s+kembali|pelunasan|hanya\s+terima|hanya\s+gadai|hanya\s+tebus|gadai\s+dan\s+tebus|tebus\s+dan\s+gadai)\b/i
+  },
+  {
+    id: 'tukar_tambah',
+    // Tukar tambah kendaraan: jual unit lama DAN terima/beli unit baru
+    patternA: /\b(tukar\s*tambah|trade.?in|beli\s+unit\s+baru|jual\s+unit|penjualan)\b/i,
+    patternB: /\b(terima\s+unit\s+lama|appraisal|taksir\s+harga|harga\s+kendaraan\s+lama|unit\s+lama|bekas|pembelian)\b/i,
+    nameA: 'Penjualan Unit Baru',
+    nameB: 'Penerimaan & Appraisal Unit Lama',
+    entity: 'kendaraan tukar tambah',
+    entityCheck: /\b(tukar\s*tambah|trade.?in)\b/i,
+    clarificationQuestion: 'Layanan tukar tambah ini fokus ke penjualan unit baru, penerimaan & appraisal unit lama, atau dua-duanya?',
+    optionALabel: 'Penjualan unit baru (fokus transaksi unit baru)',
+    optionBLabel: 'Penerimaan unit lama (fokus inspeksi & appraisal unit bekas)',
+    optionBothLabel: 'Dua-duanya (penjualan unit baru dan penerimaan unit lama)',
+    directionKeywords: /\b(hanya\s+jual|hanya\s+terima|unit\s+baru\s+saja|unit\s+lama\s+saja|jual\s+dan\s+terima|terima\s+dan\s+jual|appraisal\s+saja)\b/i
+  }
+];
+
+/**
+ * Mengecek apakah prompt awal user masuk ke domain yang ambigu arah bisnisnya
+ * (toko emas, pegadaian, tukar tambah) tanpa menyebut kata kunci arah spesifik.
+ *
+ * Single source of truth: menggunakan DUAL_PROCESS_PATTERNS.
+ */
+export function detectAmbiguousStorylineDomain(prompt: string): {
+  pattern: DualProcessPattern;
+} | null {
+  const clean = prompt.trim().toLowerCase();
+  if (!clean) return null;
+
+  for (const pattern of DUAL_PROCESS_PATTERNS) {
+    // 1. Cek apakah prompt menyebut entitas / nama domain ini
+    if (!pattern.entityCheck.test(clean)) continue;
+
+    // 2. Cek apakah prompt SUDAH menyebut kata kunci arah spesifik
+    if (pattern.directionKeywords.test(clean)) continue;
+
+    // Entitas cocok tapi tidak ada arah eksplisit -> domain ambigu!
+    return { pattern };
+  }
+
+  return null;
+}
+
+/**
+ * Menyusun GuidedStepPayload kartu klarifikasi arah bisnis sebelum narasi dibuat.
+ */
+export function buildDirectionClarificationCard(
+  pattern: DualProcessPattern
+): GuidedStepPayload {
+  return {
+    stepId: 'STORYTELLING',
+    title: pattern.clarificationQuestion,
+    multi: false,
+    allowOther: false,
+    options: [
+      {
+        id: 'dir_A_only',
+        label: `🛒 ${pattern.optionALabel}`,
+        description: `Fokus utama pada alur ${pattern.nameA.toLowerCase()}.`
+      },
+      {
+        id: 'dir_B_only',
+        label: `📥 ${pattern.optionBLabel}`,
+        description: `Fokus utama pada alur ${pattern.nameB.toLowerCase()}.`
+      },
+      {
+        id: 'dir_both',
+        label: `⚖️ ${pattern.optionBothLabel}`,
+        description: `Melayani kedua proses secara setara dan sama-sama rutin.`,
+        recommended: true
+      }
+    ]
+  };
+}
+
+/**
+ * Mendeteksi apakah narasi/alur yang sudah lengkap memiliki dua proses inti yang setara.
+ * Jika iya, mengembalikan metadata kedua proses tersebut.
+ */
 export function detectDualProcess(session: MockupSessionState): {
   isDual: boolean;
   processA: string;
@@ -1658,45 +1799,7 @@ export function detectDualProcess(session: MockupSessionState): {
   const hasWeakModality = (text: string) =>
     /\b(kadang|sesekali|juga|terkadang|jarang|sering juga|sampingan|tambahan)\b/.test(text);
 
-  // Pola deteksi: [regex proses A, regex proses B, nama A, nama B, entity]
-  const DUAL_PATTERNS: Array<{
-    patternA: RegExp;
-    patternB: RegExp;
-    nameA: string;
-    nameB: string;
-    entity: string;
-    entityCheck: RegExp;
-  }> = [
-    {
-      // Toko emas/perhiasan: jual ke pelanggan DAN beli dari pelanggan
-      patternA: /\b(jual|penjualan|menjual|melayani\s+pembeli)\b/,
-      patternB: /\b(beli|pembelian|membeli|buyback|beli\s+balik|terima\s+barang\s+bekas)\b/,
-      nameA: 'Penjualan ke Pelanggan',
-      nameB: 'Pembelian dari Pelanggan',
-      entity: 'perhiasan/emas',
-      entityCheck: /\b(emas|perhiasan|gelang|kalung|cincin|logam\s*mulia|gram|karat)\b/
-    },
-    {
-      // Pegadaian / gadai barang: gadai DAN tebus
-      patternA: /\b(gadai|menggadaikan|proses\s+gadai|penerimaan\s+gadai)\b/,
-      patternB: /\b(tebus|penebusan|menebus|ambil\s+kembali|pelunasan\s+gadai)\b/,
-      nameA: 'Penerimaan Gadai',
-      nameB: 'Penebusan Barang Gadai',
-      entity: 'barang gadai',
-      entityCheck: /\b(gadai|barang\s+jaminan|pawn|cicilan|uang\s+pinjaman|penaksir)\b/
-    },
-    {
-      // Tukar tambah kendaraan: jual unit lama DAN terima/beli unit baru
-      patternA: /\b(tukar\s*tambah|trade.?in|beli\s+unit\s+baru|jual\s+unit)\b/,
-      patternB: /\b(terima\s+unit\s+lama|appraisal|taksir\s+harga|harga\s+kendaraan\s+lama)\b/,
-      nameA: 'Penjualan Unit Baru',
-      nameB: 'Penerimaan & Appraisal Unit Lama',
-      entity: 'kendaraan tukar tambah',
-      entityCheck: /\b(kendaraan|mobil|motor|unit|showroom|dealer)\b/
-    }
-  ];
-
-  for (const pattern of DUAL_PATTERNS) {
+  for (const pattern of DUAL_PROCESS_PATTERNS) {
     const matchA = pattern.patternA.test(fullContext);
     const matchB = pattern.patternB.test(fullContext);
     const matchEntity = pattern.entityCheck.test(fullContext);

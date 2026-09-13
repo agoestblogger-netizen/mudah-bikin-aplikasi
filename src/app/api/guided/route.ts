@@ -21,6 +21,9 @@ import {
   detectDualProcess,
   buildDualFlowQuestion,
   buildKasusGandaFromSession,
+  detectAmbiguousStorylineDomain,
+  buildDirectionClarificationCard,
+  DUAL_PROCESS_PATTERNS,
   REQUIRED_ROLE,
   type DomainFlowData,
   type GuidedStepId,
@@ -785,6 +788,62 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'prompt wajib diisi untuk START.' }, { status: 400 });
       }
 
+      // 0. Cek apakah prompt awal masuk domain ambigu (toko emas, pegadaian, dll)
+      // tanpa menyebut kata kunci arah bisnis (jual/beli/gadai/tebus).
+      // Jika ambigu: TAMPILKAN KLARIFIKASI DULU, JANGAN GENERATE NARASI DULU.
+      const ambiguousDomain = detectAmbiguousStorylineDomain(prompt);
+      if (ambiguousDomain) {
+        const pendingSession: MockupSessionState = {
+          step: 'STORYTELLING',
+          match: {
+            templateId: 'MT-20',
+            overlayIds: [],
+            patternIds: ['UP-06', 'UP-09'],
+            tier: 'BASIC',
+            businessCategory: ambiguousDomain.pattern.nameA.includes('Emas')
+              ? 'Toko Emas'
+              : ambiguousDomain.pattern.entity,
+            contextualPainPoints: [],
+            contextualRoles: []
+          },
+          storyline: {
+            narasi: '',
+            asumsiMasalah: '',
+            asumsiAktor: [],
+            asumsiAlurUtama: '',
+            statusKonfirmasi: 'dikoreksi',
+            revisiCount: 0,
+            pendingDirectionClarification: {
+              patternId: ambiguousDomain.pattern.id,
+              originalPrompt: prompt
+            }
+          },
+          roles: { selected: [] },
+          flow: {},
+          painPoints: { selected: [] },
+          features: { selected: [] }
+        };
+
+        const clarificationCard = buildDirectionClarificationCard(ambiguousDomain.pattern);
+        const clarificationNarration =
+          `Halo! Ide aplikasi bisnismu sangat menarik.\n\n` +
+          `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan:\n\n` +
+          `> ❓ **${ambiguousDomain.pattern.clarificationQuestion}**\n\n` +
+          `Silakan pilih arah bisnis di kartu bawah agar narasi yang saya susun langsung tepat sasaran.`;
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: pendingSession,
+          guidedStep: clarificationCard,
+          narration: clarificationNarration,
+          tier: { tier: 'BASIC', reasons: [] },
+          template: null,
+          overlays: [],
+          semantic: null
+        });
+      }
+
       // 1. Sintesis Storyline proses bisnis MURNI AI (POIN 2)
       const storylineResult = await generateStorylineWithAI(
         prompt,
@@ -878,10 +937,124 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'session dan stepId wajib untuk NEXT.' }, { status: 400 });
       }
 
-      // Khusus step STORYTELLING: proses konfirmasi, koreksi kecil, atau meleset jauh (POIN 2)
+      // Khusus step STORYTELLING: proses klarifikasi arah bisnis, konfirmasi, koreksi kecil, atau meleset jauh (POIN 2)
       if (stepId === 'STORYTELLING') {
         const selected = body.selected || [];
         const other = (body.other || '').trim();
+
+        // Sub-handler: Jawaban klarifikasi arah bisnis sebelum narasi dibuat
+        if (session.storyline?.pendingDirectionClarification) {
+          const { patternId, originalPrompt } = session.storyline.pendingDirectionClarification;
+          const pattern = DUAL_PROCESS_PATTERNS.find((p) => p.id === patternId);
+          const choice = selected[0] || 'dir_both';
+
+          let enrichedPrompt = originalPrompt;
+          let isBoth = choice === 'dir_both';
+
+          if (pattern) {
+            if (choice === 'dir_A_only') {
+              enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${pattern.nameA}" (${pattern.optionALabel}). JANGAN buat alur untuk ${pattern.nameB}. Susun cerita proses bisnis murni satu arah untuk ${pattern.nameA}.`;
+            } else if (choice === 'dir_B_only') {
+              enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${pattern.nameB}" (${pattern.optionBLabel}). JANGAN buat alur untuk ${pattern.nameA}. Susun cerita proses bisnis murni satu arah untuk ${pattern.nameB}.`;
+            } else {
+              isBoth = true;
+              enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih melayani DUA ARAH BISNIS SEKALIGUS: "${pattern.nameA}" DAN "${pattern.nameB}". Keduanya sama-sama rutin dan setara. Cerita proses bisnis WAJIB menyebutkan kedua aktivitas ini secara seimbang.`;
+            }
+          }
+
+          // 1. Generate narasi AI dengan prompt yang diperkaya
+          const storylineResult = await generateStorylineWithAI(
+            enrichedPrompt,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          // 2. Pencarian semantik jika tersedia
+          const geminiKey =
+            provider === 'gemini' && userApiKey && userApiKey.trim()
+              ? userApiKey.trim()
+              : process.env.GEMINI_API_KEY || '';
+
+          let semantic: SemanticMappingResult | null = null;
+          if (geminiKey) {
+            try {
+              await ensureSemanticIndex(geminiKey);
+              const semanticQuery = `${storylineResult.businessCategory} ${storylineResult.asumsiAlurUtama} ${enrichedPrompt}`.trim();
+              semantic = await resolveSemanticMapping(semanticQuery, geminiKey);
+            } catch (err) {
+              console.warn('Semantic mapping dilewati:', err);
+            }
+          }
+
+          const templateId = storylineResult.templateId || 'MT-20';
+          const overlayIds = storylineResult.overlayIds || [];
+          const patternIds = storylineResult.patternIds || ['UP-06', 'UP-09'];
+          const tier = detectTier({ patternIds });
+
+          const updatedStorylineSession: MockupSessionState = {
+            ...session,
+            step: 'STORYTELLING',
+            match: {
+              ...session.match,
+              templateId,
+              overlayIds,
+              patternIds,
+              tier: tier.tier,
+              businessCategory: storylineResult.businessCategory,
+              contextualPainPoints: [storylineResult.asumsiMasalah],
+              contextualRoles: storylineResult.asumsiAktor
+            },
+            storyline: {
+              narasi: storylineResult.narasi,
+              asumsiMasalah: storylineResult.asumsiMasalah,
+              asumsiAktor: storylineResult.asumsiAktor,
+              asumsiAlurUtama: storylineResult.asumsiAlurUtama,
+              detailAktor: storylineResult.detailAktor,
+              statusKonfirmasi: 'disetujui',
+              revisiCount: 0
+              // pendingDirectionClarification dibersihkan
+            },
+            flow: {
+              ...session.flow,
+              // Jika pilih "Dua-duanya", tandai dualFlowPreDecided = true
+              ...(isBoth && pattern
+                ? {
+                    dualFlowPreDecided: true,
+                    dualProcessNames: { processA: pattern.nameA, processB: pattern.nameB }
+                  }
+                : {})
+            }
+          };
+
+          const guidedStep = buildGuidedStep(updatedStorylineSession);
+          const narration = updatedStorylineSession.storyline?.narasi || storylineResult.narasi;
+          const matchedTemplate = getMasterTemplateById(templateId);
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedStorylineSession,
+            guidedStep,
+            narration,
+            tier: { tier: tier.tier, reasons: tier.reasons },
+            template: matchedTemplate ? { id: matchedTemplate.id, nama: matchedTemplate.nama } : null,
+            overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama })),
+            semantic: semantic
+              ? {
+                  used: semantic.confident,
+                  topScore: Number(semantic.topScore.toFixed(3)),
+                  candidates: semantic.candidates.slice(0, 5).map((c) => ({
+                    id: c.id,
+                    kind: c.kind,
+                    label: c.label,
+                    similarity: Number(c.similarity.toFixed(3))
+                  }))
+                }
+              : null
+          });
+        }
+
         const existingStory = session.storyline || {
           narasi: '',
           asumsiMasalah: '',
@@ -1100,6 +1273,7 @@ export async function POST(req: Request) {
 
         // Simpan flow data yang sudah terekonsiliasi ke session
         updated.flow = {
+          ...updated.flow,
           alurInti: flowData.alurInti,
           alurPendukung: flowData.alurPendukung.map((ap) => ({
             nama: ap.nama,
@@ -1121,6 +1295,68 @@ export async function POST(req: Request) {
 
         if (reconciled && reconMsg) {
           narration += `> ℹ️ *${reconMsg}*\n\n`;
+        }
+
+        // Jika user sebelumnya sudah memilih "Dua-duanya" saat klarifikasi arah di STORYTELLING,
+        // LANGSUNG proses sebagai kasus ganda TANPA bertanya ulang (POIN 4 instruksi user)
+        if (updated.flow?.dualFlowPreDecided) {
+          const processA = updated.flow?.dualProcessNames?.processA || 'Penjualan ke Pelanggan';
+          const processB = updated.flow?.dualProcessNames?.processB || 'Pembelian dari Pelanggan';
+          const kasusGanda = buildKasusGandaFromSession(updated, processA, processB);
+
+          const updatedWithKasus: MockupSessionState = {
+            ...updated,
+            step: 'ALUR',
+            flow: {
+              ...updated.flow,
+              kasusGanda,
+              alurInti: []
+            }
+          };
+
+          const flowDataForReconcile: DomainFlowData = {
+            ...flowData,
+            kasusGanda
+          };
+          const { updatedSession: reconSession, reconciled: reconPre, message: reconMsgPre } =
+            reconcileCoreOperationalRole(updatedWithKasus, flowDataForReconcile);
+
+          const finalSession: MockupSessionState = {
+            ...reconSession,
+            flow: {
+              ...reconSession.flow,
+              alurPendukung: flowData.alurPendukung.map((ap) => ({ nama: ap.nama, steps: ap.steps })),
+              fiturPendukung: flowData.fiturPendukung.map((fp) => fp.label)
+            }
+          };
+
+          const dualFlowData: DomainFlowData = {
+            ...flowData,
+            kasusGanda
+          };
+          const flowMarkdownDual = renderFlowMarkdown(dualFlowData);
+          const guidedStepDual = buildGuidedStep(finalSession);
+
+          let dualNarration = '';
+          if (removalMessages.length > 0) {
+            dualNarration += removalMessages.join('\n\n') + '\n\n';
+          }
+          dualNarration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTable}\n\n`;
+          if (reconPre && reconMsgPre) {
+            dualNarration += `> ℹ️ *${reconMsgPre}*\n\n`;
+          }
+          dualNarration +=
+            `Sesuai pilihanmu di awal (menangani dua arah bisnis), kedua proses langsung dipisahkan menjadi alur mandiri masing-masing:\n\n` +
+            `${flowMarkdownDual}\n\n` +
+            `Silakan periksa kedua alur di atas. Jika sudah pas, pilih "Sudah pas" untuk lanjut ke penetapan Hak Akses (RBAC).`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: finalSession,
+            guidedStep: guidedStepDual,
+            narration: dualNarration
+          });
         }
 
         const flowMarkdown = renderFlowMarkdown(flowData);

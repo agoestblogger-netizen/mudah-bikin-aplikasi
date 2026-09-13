@@ -189,6 +189,14 @@ export interface MockupSessionState {
     detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>;
     statusKonfirmasi: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
+    /**
+     * Menyimpan data klarifikasi arah bisnis yang sedang menunggu jawaban user
+     * sebelum narasi storytelling di-generate oleh AI.
+     */
+    pendingDirectionClarification?: {
+      patternId: string;
+      originalPrompt: string;
+    };
   };
   roles: {
     selected: string[];
@@ -222,6 +230,11 @@ export interface MockupSessionState {
      * agar handler jawaban bisa membacanya tanpa perlu deteksi ulang.
      */
     dualProcessNames?: { processA: string; processB: string };
+    /**
+     * true jika user sudah memilih "Dua-duanya" saat klarifikasi arah bisnis di step STORYTELLING.
+     * Saat bernilai true, transisi ke step ALUR langsung memproses kasus ganda TANPA bertanya lagi.
+     */
+    dualFlowPreDecided?: boolean;
   };
   rbac?: {
     modul: { nama: string; izinPerRole: { role: string; level: string }[] }[];
