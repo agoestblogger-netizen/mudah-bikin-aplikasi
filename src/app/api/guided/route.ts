@@ -413,6 +413,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
    - DILARANG memakai sebutan generik abstrak seperti "Staf Operasional", "Operator", "Pegawai", atau "Tim Lapangan".
    - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
+   - ATURAN WAJIB SUPER ADMIN (PENGATURAN USER/PENGGUNA DI SEMUA DOMAIN):
+     Tanggung jawab Super Admin WAJIB SELALU secara eksplisit mencakup pengaturan pengguna/user (menambah/menghapus akun staf, menetapkan peran, dan hak akses aplikasi) di SEMUA domain bisnis tanpa terkecuali, terlepas apakah ada peran tata kelola/kebijakan bisnis terpisah atau tidak.
    - ATURAN GROUNDING & DEDUPLIKASI KONSEPTUAL (WAJIB):
      * Setiap peran dalam asumsiAktor HARUS memiliki dasar konseptual yang jelas dan terlibat langsung dalam alur narasi yang diceritakan. JANGAN memunculkan peran seperti "Operator", "Viewer", atau artefak teknis lain yang tidak ada di cerita!
      * Jika narasi hanya menceritakan satu peran staf frontliner yang sama yang melayani kedua arah (misal teller atau kasir), MAKA asumsiAktor HANYA BOLEH berisi 1 peran frontliner tersebut, DILARANG memunculkan peran duplikat/buatan yang fungsinya sama persis!
@@ -470,8 +472,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
   "asumsiAlurUtama": "Aktivitas nyata 1 -> Aktivitas nyata 2 -> Aktivitas nyata 3 -> Pemilik memantau rekap",
   "detailAktor": {
     "Super Admin": {
-      "narasi": "Pemilik atau penanggung jawab utama operasional...",
-      "tanggungJawab": ["Tanggung jawab konkret 1", "Tanggung jawab konkret 2", "Tanggung jawab konkret 3"]
+      "narasi": "Pemilik usaha atau penanggung jawab utama operasional...",
+      "tanggungJawab": ["Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi", "Memantau laporan omzet dan transaksi harian", "Mengatur konfigurasi dan parameter operasional aplikasi"]
     },
     "Peran Spesifik 1": {
       "narasi": "1-2 kalimat penjelasan peran yang digrounding langsung ke cerita nyata...",
@@ -678,8 +680,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
   let fallbackAlur = 'Pelanggan memesan -> Petugas memproses di lokasi -> Pembayaran tercatat -> Pemilik melihat rekap';
   let fallbackDetailAktor: Record<string, { narasi: string; tanggungJawab: string[] }> = {
     'Super Admin': {
-      narasi: `Pemilik usaha atau penanggung jawab utama operasional ${fallbackCategory}. Memastikan alur kerja berjalan tertib dan memantau omzet harian.`,
-      tanggungJawab: ['Memantau transaksi dan omzet harian', 'Mengelola staf dan hak akses akun', 'Mengatur pengaturan operasional aplikasi']
+      narasi: `Pemilik usaha atau penanggung jawab utama operasional ${fallbackCategory}. Memastikan alur kerja berjalan tertib, mengelola akun pengguna serta staf bertugas, dan memantau omzet harian.`,
+      tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau transaksi dan omzet harian operasional', 'Mengatur konfigurasi dan parameter operasional aplikasi']
     }
   };
 
@@ -691,8 +693,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     fallbackAlur = 'Penyewa booking & verifikasi jaminan -> Petugas serah terima kunci & cek unit -> Pengembalian armada -> Pemilik pantau unit aktif & omzet';
     fallbackDetailAktor = {
       'Super Admin': {
-        narasi: 'Pemilik usaha rental kendaraan yang memantau pergerakan armada, jadwal sewa aktif, dan pemasukan keuangan harian.',
-        tanggungJawab: ['Memantau jadwal armada dan sewa aktif', 'Meninjau laporan omzet dan denda keterlambatan', 'Mengatur ketersediaan dan tarif armada']
+        narasi: 'Pemilik usaha rental kendaraan yang mengelola akun staf dan akses sistem, serta memantau pergerakan armada, jadwal sewa aktif, dan pemasukan keuangan harian.',
+        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau jadwal armada dan sewa aktif', 'Meninjau laporan omzet dan denda keterlambatan']
       },
       'Petugas Rental': {
         narasi: 'Petugas garis depan yang memverifikasi dokumen persyaratan penyewa (SIM & KTP/jaminan), mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.',
@@ -713,18 +715,72 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     fallbackNarasi = `Wah, ide usaha cuci kendaraan yang sangat prospektif! Bayangkan saat mobil pelanggan masuk ke area cuci: kasir mencatat plat nomor dan paket pembersihan yang dipilih, lalu tim cuci menyemprot bodi dengan air bertekanan dan memvakum jok hingga bersih kesat. Setelah mobil kinclong dan diserahkan ke pelanggan, kamu sebagai pemilik bisa langsung mengecek rekap jumlah kendaraan yang dicuci dan total omzet hari ini tanpa khawatir selisih. ${CONFIRMATION_CLOSING}`;
     fallbackAktor = ['Super Admin', 'Kasir Penerima Kendaraan', 'Staf Cuci & Vakum', 'Pelanggan'];
     fallbackAlur = 'Mobil datang dicatat kasir -> Staf cuci mencuci & memvakum interior -> Kasir terima pembayaran -> Pemilik pantau rekap harian';
+    fallbackDetailAktor = {
+      'Super Admin': {
+        narasi: 'Pemilik usaha cuci kendaraan yang mengelola akun staf pencuci/kasir dan memantau rekap harian jumlah kendaraan serta omzet.',
+        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau rekapitulasi jumlah kendaraan yang dicuci dan total omzet harian', 'Mengatur paket layanan cuci dan konfigurasi operasional']
+      },
+      'Kasir Penerima Kendaraan': {
+        narasi: 'Petugas loket penerima kendaraan yang mencatat plat nomor, menginput pilihan paket cuci, dan menerima pembayaran pelanggan.',
+        tanggungJawab: ['Mencatat nomor plat kendaraan dan jenis paket pembersihan', 'Menerima pembayaran tunai/nontunai dari pelanggan', 'Memberikan nomor antrean cuci dan menyerahkan nota']
+      },
+      'Staf Cuci & Vakum': {
+        narasi: 'Petugas lapangan yang mencuci bodi kendaraan dengan air bertekanan dan membersihkan interior mobil menggunakan vakum.',
+        tanggungJawab: ['Mencuci bodi mobil dengan sabun salju dan membilas bersih', 'Memvakum karpet serta jok mobil hingga bebas debu', 'Mengeringkan dan menginspeksi hasil akhir kendaraan sebelum diserahkan']
+      },
+      'Pelanggan': {
+        narasi: 'Pemilik kendaraan yang membawa mobil untuk dibersihkan, memilih paket layanan, dan melakukan pembayaran.',
+        tanggungJawab: ['Membawa mobil dan memilih paket pencucian kendaraan', 'Menyelesaikan pembayaran di loket kasir', 'Memeriksa kondisi mobil yang sudah bersih dan meninggalkan area cuci']
+      }
+    };
   } else if (lowerPrompt.includes('gigi') || lowerPrompt.includes('dental') || lowerPrompt.includes('klinik')) {
     fallbackAppName = 'DentalCare Sehat';
     fallbackCategory = 'Klinik Dokter Gigi';
     fallbackNarasi = `Wah, ide klinik gigi yang mulia dan sangat dibutuhkan! Bayangkan alur prakteknya: resepsionis menyambut pasien dengan ramah dan mencatat keluhan serta riwayat gigi di meja depan, lalu dokter gigi melakukan pemeriksaan langsung di dental chair dengan alat yang sudah higienis. Pasien selesai berobat menerima resep dan kuitansi, sementara kamu sebagai pemilik klinik dapat meninjau jadwal kunjungan dan pendapatan harian dengan tenang. ${CONFIRMATION_CLOSING}`;
     fallbackAktor = ['Super Admin', 'Dokter Gigi', 'Resepsionis & Kasir', 'Pasien'];
     fallbackAlur = 'Pasien mendaftar di meja resepsionis -> Dokter periksa di dental chair -> Pembayaran & penyerahan obat -> Pemilik tinjau rekap pasien';
+    fallbackDetailAktor = {
+      'Super Admin': {
+        narasi: 'Pemilik atau penanggung jawab klinik dokter gigi yang mengelola akun staf/dokter dan memantau jadwal kunjungan serta pendapatan harian.',
+        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau laporan kunjungan pasien dan rekap pendapatan klinik', 'Meninjau operasional klinik dan pengaturan data layanan gigi']
+      },
+      'Dokter Gigi': {
+        narasi: 'Tenaga medis profesional yang memeriksa kesehatan gigi dan rongga mulut pasien di dental chair serta menentukan tindakan medis/resep.',
+        tanggungJawab: ['Melakukan pemeriksaan rongga mulut dan gigi di dental chair', 'Melakukan tindakan medis gigi dan memberikan rekomendasi perawatan', 'Menuliskan resep obat dan catatan rekam medis pasien']
+      },
+      'Resepsionis & Kasir': {
+        narasi: 'Petugas meja depan yang menyambut kedatangan pasien, mencatat identitas dan nomor antrean, serta memproses pembayaran pengobatan.',
+        tanggungJawab: ['Mencatat pendaftaran identitas pasien dan keluhan awal', 'Mengatur antrean panggilan ke ruang dental chair', 'Memproses pembayaran biaya perawatan dan menyerahkan kuitansi']
+      },
+      'Pasien': {
+        narasi: 'Masyarakat yang berkunjung ke klinik untuk mendapatkan pemeriksaan, perawatan, atau pembersihan kesehatan gigi.',
+        tanggungJawab: ['Mendaftarkan diri dan menyampaikan keluhan kesehatan gigi', 'Menjalani pemeriksaan dan perawatan di kursi periksa', 'Melakukan pembayaran dan menerima instruksi perawatan lanjutan']
+      }
+    };
   } else if (lowerPrompt.includes('laundry') || lowerPrompt.includes('kiloan') || lowerPrompt.includes('cuci pakaian')) {
     fallbackAppName = 'FreshClean Laundry';
     fallbackCategory = 'Laundry Kiloan & Satuan';
     fallbackNarasi = `Wah, ide laundry yang sangat praktis dan dicari banyak orang! Bayangkan operasional hariannya: staf kasir menimbang tumpukan pakaian kotor pelanggan, memilah pakaian khusus, lalu mencetak nota estimasi selesai. Tim cuci memasukkan pakaian ke mesin cuci dan menyetrika uap hingga rapi berbungkus plastik wangi, sementara kamu sebagai pemilik bisa memantau berat cucian yang diproses serta omzet harian langsung dari ponsel. ${CONFIRMATION_CLOSING}`;
     fallbackAktor = ['Super Admin', 'Kasir Penerima Cucian', 'Staf Cuci & Setrika Uap', 'Pelanggan'];
     fallbackAlur = 'Pakaian ditimbang kasir -> Dicuci & disetrika uap rapi -> Pelanggan ambil cucian bersih -> Pemilik pantau total kiloan & omzet';
+    fallbackDetailAktor = {
+      'Super Admin': {
+        narasi: 'Pemilik usaha laundry kiloan yang mengelola akun kasir dan staf cuci serta memantau volume timbangan cucian dan omzet harian.',
+        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau total berat kiloan pakaian yang diproses dan omzet harian', 'Mengatur paket tarif laundry dan pengaturan operasional toko']
+      },
+      'Kasir Penerima Cucian': {
+        narasi: 'Petugas meja depan yang menerima titipan pakaian kotor pelanggan, menimbang berat kiloan, dan menerbitkan nota bukti pengambilan.',
+        tanggungJawab: ['Menimbang berat pakaian kotor dan mencatat instruksi khusus pelanggan', 'Mencetak nota bukti penerimaan cucian dan estimasi waktu selesai', 'Menerima pembayaran dan menyerahkan pakaian bersih yang sudah selesai']
+      },
+      'Staf Cuci & Setrika Uap': {
+        narasi: 'Petugas operasional yang memilah pakaian, mengoperasikan mesin cuci/dryer, dan menyetrika uap hingga terbungkus plastik rapi.',
+        tanggungJawab: ['Memilah pakaian luntur dan memasukkan ke mesin pencucian', 'Menyetrika pakaian dengan setrika uap sesuai standar keharuman', 'Membungkus cucian rapi dengan plastik dan menyusun di rak pengambilan']
+      },
+      'Pelanggan': {
+        narasi: 'Masyarakat yang menitipkan cucian kotor untuk dicuci bersih, wangi, dan disetrika rapi.',
+        tanggungJawab: ['Menyerahkan pakaian kotor ke meja kasir untuk ditimbang', 'Melakukan pembayaran biaya jasa laundry', 'Mengambil pakaian bersih dengan menunjukkan nota bukti penerimaan']
+      }
+    };
   } else if (lowerPrompt.includes('kafe') || lowerPrompt.includes('cafe') || lowerPrompt.includes('kopi') || lowerPrompt.includes('coffee')) {
     fallbackAppName = 'KopiNusantara Cafe';
     fallbackCategory = 'Kafe & Kedai Kopi';
@@ -734,7 +790,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     fallbackDetailAktor = {
       'Super Admin': {
         narasi: 'Pemilik usaha kafe yang memantau menu terlaris, stok bahan baku kopi, dan pemasukan keuangan harian.',
-        tanggungJawab: ['Memantau laporan penjualan dan omzet harian', 'Mengatur ketersediaan bahan baku dan menu kafe', 'Mengelola staf kasir dan barista']
+        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau laporan penjualan, menu terlaris, dan omzet harian', 'Mengatur ketersediaan bahan baku dan menu kafe']
       },
       'Barista & Dapur': {
         narasi: 'Petugas peracik minuman dan makanan di kafe yang menyiapkan pesanan kopi espresso dan menu sesuai tiket pesanan pelanggan.',
@@ -1152,7 +1208,13 @@ PRINSIP WAJIB & STRICT RULES:
 4. PERAN EKSTERNAL / PELANGGAN / WARGA / PENYEWA / PASIEN:
    Jika peran adalah pihak luar yang dilayani (customer / counterparty), deskripsi dan butir tanggung jawabnya adalah tindakan pengguna layanan (misal: memesan, menyewa, membayar, atau menerima hasil layanan), BUKAN pekerjaan operasional staf internal.
 
-5. PENGECEKAN KEMIRIPAN (isSimilar, similarRoleName, similarityExplanation):
+5. PERAN SUPER ADMIN / OWNER (PENGATURAN USER/PENGGUNA WAJIB DI SEMUA DOMAIN):
+   Jika peran adalah Super Admin atau Pemilik Usaha, butir tanggung jawab WAJIB SELALU secara eksplisit mencantumkan pengaturan pengguna/user (mendaftarkan akun pengguna, penugasan staf, dan penetapan hak akses aplikasi).
+
+6. PERAN TATA KELOLA / GOVERNANCE (PENGURUS / DIREKSI / DEWAN PENGAWAS):
+   Jika peran adalah Pengurus, Direksi, atau Dewan Pengawas, deskripsi dan tanggung jawab fokus pada penetapan kebijakan operasional bisnis, regulasi bunga/plafon/produk, persetujuan batas transaksi khusus, dan evaluasi periodik kinerja organisasi.
+
+7. PENGECEKAN KEMIRIPAN (isSimilar, similarRoleName, similarityExplanation):
    ${existingRoles.length > 0 ? `Bandingkan peran baru dengan daftar peran yang sudah ada di atas:
    - Kemiripan HANYA bernilai true jika kedua peran berada di posisi SETARA dan melakukan PEKERJAAN OPERASIONAL YANG SAMA (contoh: "Kasir Pembayaran" vs "Kasir", "Juru Masak" vs "Koki").
    - HIERARKI / RANTAI PASOK DILARANG DIANGGAP MIRIP: Jika peran baru adalah penampung/penerima dari peran lain (misal: kolektor keliling tingkat 1 vs pengepul penampung tingkat 2), ini adalah BEDA LEVEL/FUNGSI, set isSimilar = false.
@@ -1987,8 +2049,93 @@ export async function POST(req: Request) {
           }
         }
 
-        // Tampilkan alur sistem langsung poin bernomor tanpa narasi pembuka tambahan (POIN 4)
-        const flowData = getDomainFlowDetails(updated);
+        // Periksa apakah domain ini adalah alur dua arah / kasus ganda aktif
+        const isDualFlowActive =
+          Boolean(updated.flow?.dualFlowPreDecided) ||
+          Boolean(session.flow?.kasusGanda && session.flow.kasusGanda.length > 0) ||
+          Boolean(session.flow?.dualProcessNames?.processA && session.flow?.dualProcessNames?.processB);
+
+        if (isDualFlowActive) {
+          const processA =
+            updated.flow?.dualProcessNames?.processA ||
+            session.flow?.dualProcessNames?.processA ||
+            session.storyline?.analisisArah?.duaArah?.prosesA ||
+            'Penjualan ke Pelanggan';
+          const processB =
+            updated.flow?.dualProcessNames?.processB ||
+            session.flow?.dualProcessNames?.processB ||
+            session.storyline?.analisisArah?.duaArah?.prosesB ||
+            'Pembelian dari Pelanggan';
+
+          // Bangun ulang Kasus Ganda secara MENYELURUH dari roles terbaru
+          const kasusGanda = buildKasusGandaFromSession(updated, processA, processB);
+          const flowDataFresh = getDomainFlowDetails(updated, { forceFresh: true });
+
+          const updatedWithKasus: MockupSessionState = {
+            ...updated,
+            step: 'ALUR',
+            flow: {
+              ...updated.flow,
+              kasusGanda,
+              alurInti: [],
+              dualFlowPending: false,
+              dualProcessNames: { processA, processB }
+            }
+          };
+
+          const flowDataForReconcile: DomainFlowData = {
+            ...flowDataFresh,
+            kasusGanda
+          };
+          const { updatedSession: reconSession, reconciled: reconPre, message: reconMsgPre } =
+            reconcileCoreOperationalRole(updatedWithKasus, flowDataForReconcile);
+
+          const finalSession: MockupSessionState = {
+            ...reconSession,
+            flow: {
+              ...reconSession.flow,
+              alurPendukung: flowDataFresh.alurPendukung.map((ap) => ({ nama: ap.nama, steps: ap.steps })),
+              fiturPendukung: flowDataFresh.fiturPendukung.map((fp) => fp.label)
+            }
+          };
+
+          const dualFlowData: DomainFlowData = {
+            ...flowDataFresh,
+            kasusGanda
+          };
+          const flowMarkdownDual = renderFlowMarkdown(dualFlowData);
+          const guidedStepDual = buildGuidedStep(finalSession);
+
+          const summaryTableDual = renderRoleSummaryTable(
+            finalSession.roles,
+            finalSession.match.businessCategory,
+            finalSession.storyline
+          );
+
+          let dualNarration = '';
+          if (removalMessages.length > 0) {
+            dualNarration += removalMessages.join('\n\n') + '\n\n';
+          }
+          dualNarration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTableDual}\n\n`;
+          if (reconPre && reconMsgPre) {
+            dualNarration += `> ℹ️ *${reconMsgPre}*\n\n`;
+          }
+          dualNarration +=
+            `Sesuai kesepakatan alur kerja dua arah bisnis, kedua proses disusun ulang secara mandiri masing-masing:\n\n` +
+            `${flowMarkdownDual}\n\n` +
+            `Silakan periksa kedua alur di atas. Jika sudah pas, pilih "Sudah pas" untuk lanjut ke penetapan Hak Akses (RBAC).`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: finalSession,
+            guidedStep: guidedStepDual,
+            narration: dualNarration
+          });
+        }
+
+        // Alur Satu Arah: Tampilkan alur sistem langsung dari data peran terbaru
+        const flowData = getDomainFlowDetails(updated, { forceFresh: true });
 
         // Rekonsiliasi peran wajib inti berdasarkan alur kerja aktual (POIN 4)
         const { updatedSession, reconciled, message: reconMsg } = reconcileCoreOperationalRole(updated, flowData);
@@ -2018,74 +2165,6 @@ export async function POST(req: Request) {
 
         if (reconciled && reconMsg) {
           narration += `> ℹ️ *${reconMsg}*\n\n`;
-        }
-
-        // Jika user sebelumnya sudah memilih "Dua-duanya" saat klarifikasi arah di STORYTELLING,
-        // LANGSUNG proses sebagai kasus ganda TANPA bertanya ulang (POIN 4 instruksi user)
-        if (updated.flow?.dualFlowPreDecided) {
-          const processA = updated.flow?.dualProcessNames?.processA || 'Penjualan ke Pelanggan';
-          const processB = updated.flow?.dualProcessNames?.processB || 'Pembelian dari Pelanggan';
-          const kasusGanda = buildKasusGandaFromSession(updated, processA, processB);
-
-          const updatedWithKasus: MockupSessionState = {
-            ...updated,
-            step: 'ALUR',
-            flow: {
-              ...updated.flow,
-              kasusGanda,
-              alurInti: []
-            }
-          };
-
-          const flowDataForReconcile: DomainFlowData = {
-            ...flowData,
-            kasusGanda
-          };
-          const { updatedSession: reconSession, reconciled: reconPre, message: reconMsgPre } =
-            reconcileCoreOperationalRole(updatedWithKasus, flowDataForReconcile);
-
-          const finalSession: MockupSessionState = {
-            ...reconSession,
-            flow: {
-              ...reconSession.flow,
-              alurPendukung: flowData.alurPendukung.map((ap) => ({ nama: ap.nama, steps: ap.steps })),
-              fiturPendukung: flowData.fiturPendukung.map((fp) => fp.label)
-            }
-          };
-
-          const dualFlowData: DomainFlowData = {
-            ...flowData,
-            kasusGanda
-          };
-          const flowMarkdownDual = renderFlowMarkdown(dualFlowData);
-          const guidedStepDual = buildGuidedStep(finalSession);
-
-          const summaryTableDual = renderRoleSummaryTable(
-            finalSession.roles,
-            finalSession.match.businessCategory,
-            finalSession.storyline
-          );
-
-          let dualNarration = '';
-          if (removalMessages.length > 0) {
-            dualNarration += removalMessages.join('\n\n') + '\n\n';
-          }
-          dualNarration += `Berikut tabel ringkasan peran yang sudah disepakati:\n\n${summaryTableDual}\n\n`;
-          if (reconPre && reconMsgPre) {
-            dualNarration += `> ℹ️ *${reconMsgPre}*\n\n`;
-          }
-          dualNarration +=
-            `Sesuai pilihanmu di awal (menangani dua arah bisnis), kedua proses langsung dipisahkan menjadi alur mandiri masing-masing:\n\n` +
-            `${flowMarkdownDual}\n\n` +
-            `Silakan periksa kedua alur di atas. Jika sudah pas, pilih "Sudah pas" untuk lanjut ke penetapan Hak Akses (RBAC).`;
-
-          return NextResponse.json({
-            success: true,
-            action,
-            session: finalSession,
-            guidedStep: guidedStepDual,
-            narration: dualNarration
-          });
         }
 
         const flowMarkdown = renderFlowMarkdown(flowData);

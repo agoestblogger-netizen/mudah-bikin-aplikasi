@@ -209,6 +209,13 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
   return result;
 }
 
+export function isGovernanceRole(label: string): boolean {
+  if (!label) return false;
+  const clean = label.trim();
+  if (isSuperAdminRole(clean) || isExternalRole(clean)) return false;
+  return /\b(pengurus|pengawas|direksi|direktur|komite|dewan|pembina|yayasan|board|governance)\b/i.test(clean);
+}
+
 export function isExternalRole(label: string): boolean {
   const clean = label.trim();
   if (/^(petugas|staf|staff|admin|tim|team|koordinator|operator|kolektor|penaksir|kasir|teller|mekanik|montir)\b/i.test(clean)) {
@@ -325,18 +332,113 @@ export function detectCoreOperationalRole(session: MockupSessionState): string {
 export interface StorylineContext {
   narasi?: string;
   asumsiAlurUtama?: string;
+  asumsiAktor?: string[];
   detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>;
+}
+
+function isSuperAdminRole(role: string): boolean {
+  if (!role) return false;
+  const key = canonicalRoleKey(role);
+  return key === 'super-admin' || key === 'owner' || role === REQUIRED_ROLE;
 }
 
 export function getRoleNarrativeAndResponsibilities(
   roleLabel: string,
   businessCategory?: string,
-  storylineContext?: StorylineContext
+  storylineContext?: StorylineContext,
+  currentRolesState?: MockupSessionState['roles']
 ): RoleDetailDefinition {
   const clean = roleLabel.trim();
   const cat = businessCategory || 'bisnis ini';
 
-  // 1. PRIORITAS UTAMA: Gunakan detailAktor hasil AI yang sudah digrounding dari cerita
+  // Kumpulkan seluruh kandidat peran yang diketahui di sesi untuk deteksi tata kelola (governance)
+  const allKnownRoles = [
+    ...(currentRolesState?.selected || []),
+    ...(currentRolesState?.wajib || []),
+    ...(storylineContext?.asumsiAktor || []),
+    ...Object.keys(storylineContext?.detailAktor || {})
+  ];
+  const hasGovernance = allKnownRoles.some((r) => isGovernanceRole(r));
+
+  // 1. Super Admin / Pemilik Usaha
+  if (isSuperAdminRole(clean)) {
+    const userManagementTask = 'Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi';
+
+    // Cari apakah ada definisi awal dari AI di detailAktor
+    let rawDetails: RoleDetailDefinition | undefined;
+    if (storylineContext?.detailAktor) {
+      const directMatch = storylineContext.detailAktor[clean];
+      if (directMatch && directMatch.narasi && directMatch.tanggungJawab?.length) {
+        rawDetails = directMatch;
+      } else {
+        const lowerClean = clean.toLowerCase();
+        for (const [k, v] of Object.entries(storylineContext.detailAktor)) {
+          if (k.toLowerCase() === lowerClean && v && v.narasi && v.tanggungJawab?.length) {
+            rawDetails = v;
+            break;
+          }
+        }
+      }
+    }
+
+    if (hasGovernance) {
+      // BAGIAN B: Pemisahan Tanggung Jawab Governance dari Super Admin
+      // Pangkas bagian yang menjadi domain kebijakan bisnis, bunga, plafon, anggaran, dll.
+      const filteredTasks = (rawDetails?.tanggungJawab || []).filter(
+        (t) => !/\b(kebijakan|bunga|plafon|anggaran|strategis|ad\/art|kepengurusan|rapat anggota|produk simpanan|produk pinjaman)\b/i.test(t)
+      );
+
+      const nonUserFiltered = filteredTasks.filter(
+        (t) => !/\b(user|pengguna|akun|staf|hak\s*akses|peran\s*akses)\b/i.test(t)
+      );
+
+      const cleanTasks = [userManagementTask, ...nonUserFiltered].slice(0, 3);
+      if (cleanTasks.length < 2) {
+        cleanTasks.push('Memantau pengawasan umum operasional sistem, log audit aktivitas, dan rekapitulasi data global');
+      }
+      if (cleanTasks.length < 3) {
+        cleanTasks.push('Mengatur konfigurasi teknis, keamanan akses, dan parameter operasional aplikasi');
+      }
+
+      return {
+        narasi: `Administrator utama sistem dan penanggung jawab teknis operasional aplikasi di ${cat}. Bertanggung jawab atas pengelolaan akun pengguna, pembagian hak akses staf, serta pengawasan teknis dan kestabilan sistem aplikasi.`,
+        tanggungJawab: cleanTasks
+      };
+    }
+
+    // BAGIAN C: Super Admin pada domain umum (tanpa peran governance terpisah)
+    // Tetap memegang tanggung jawab pemilik umum, TETAPI tugas pengaturan user WAJIB selalu ada secara eksplisit
+    let baseTasks = rawDetails?.tanggungJawab && rawDetails.tanggungJawab.length > 0
+      ? [...rawDetails.tanggungJawab]
+      : [
+          `Memantau ringkasan omzet dan laporan transaksi harian ${cat}`,
+          userManagementTask,
+          'Meninjau performa keseluruhan operasional dan pengaturan aplikasi'
+        ];
+
+    const hasUserTask = baseTasks.some((t) =>
+      /\b(user|pengguna|akun\s+staf|akun\s+pengguna|hak\s*akses|peran\s*akses|manajemen\s*pengguna)\b/i.test(t)
+    );
+
+    if (!hasUserTask) {
+      baseTasks.splice(1, 0, userManagementTask);
+      baseTasks = baseTasks.slice(0, 3);
+    } else {
+      const userIdx = baseTasks.findIndex((t) =>
+        /\b(user|pengguna|akun\s+staf|akun\s+pengguna|hak\s*akses|peran\s*akses|manajemen\s*pengguna)\b/i.test(t)
+      );
+      if (userIdx !== -1 && baseTasks[userIdx].length < 30) {
+        baseTasks[userIdx] = userManagementTask;
+      }
+    }
+
+    return {
+      narasi: rawDetails?.narasi || `Pemilik usaha atau penanggung jawab utama operasional ${cat}. Memastikan seluruh aktivitas harian berjalan tertib, memantau pergerakan omzet dan laporan transaksi, serta mengelola akun staf yang bertugas.`,
+      tanggungJawab: baseTasks
+    };
+  }
+
+  // 2. PRIORITAS UTAMA UNTUK ROLE LAIN: Gunakan detailAktor hasil AI yang sudah digrounding dari cerita
   if (storylineContext?.detailAktor) {
     const directMatch = storylineContext.detailAktor[clean];
     if (directMatch && directMatch.narasi && directMatch.tanggungJawab?.length) {
@@ -350,19 +452,19 @@ export function getRoleNarrativeAndResponsibilities(
     }
   }
 
-  // 2. Super Admin / Pemilik Usaha
-  if (canonicalRoleKey(clean) === 'super-admin' || /^(super\s*admin|pemilik|owner)$/i.test(clean)) {
+  // 3. Fallback Khusus: Peran Tata Kelola / Governance (Pengurus Koperasi, Direksi, Dewan Pengawas)
+  if (isGovernanceRole(clean)) {
     return {
-      narasi: `Pemilik usaha atau penanggung jawab utama operasional ${cat}. Memastikan seluruh aktivitas harian berjalan tertib, memantau pergerakan omzet dan laporan transaksi, serta mengelola akun staf yang bertugas.`,
+      narasi: `Pengambil kebijakan strategis dan penanggung jawab tata kelola organisasi di ${cat}. Menetapkan regulasi bisnis, jenis produk layanan, plafon, serta mengevaluasi laporan kinerja periodik.`,
       tanggungJawab: [
-        `Memantau ringkasan omzet dan transaksi harian ${cat}`,
-        'Mendaftarkan dan mengelola hak akses akun staf yang bertugas',
-        'Meninjau performa keseluruhan operasional dan pengaturan aplikasi'
+        `Menetapkan kebijakan operasional bisnis, regulasi bunga/plafon, dan pedoman layanan di ${cat}`,
+        'Menyetujui pengajuan transaksi khusus, kerja sama strategis, atau plafon di atas batas normal',
+        'Mengevaluasi laporan pertanggungjawaban periodik dan kesehatan operasional organisasi'
       ]
     };
   }
 
-  // 3. Pihak Eksternal / Pelanggan / Warga / Penyewa / Pasien (Pihak yang dilayani)
+  // 4. Pihak Eksternal / Pelanggan / Warga / Penyewa / Pasien (Pihak yang dilayani)
   if (isExternalRole(clean)) {
     return {
       narasi: `Pihak pengguna atau pelanggan yang menerima dan memanfaatkan layanan di ${cat}, mengajukan kebutuhan transaksi, serta menerima bukti atau hasil layanan resmi.`,
@@ -374,7 +476,7 @@ export function getRoleNarrativeAndResponsibilities(
     };
   }
 
-  // 4. Fallback Netral Konseptual (HANYA jika detailAktor hasil AI belum tersedia)
+  // 5. Fallback Netral Konseptual (HANYA jika detailAktor hasil AI belum tersedia)
   return {
     narasi: `Petugas operasional di ${cat} yang bertanggung jawab menjalankan aktivitas kerja harian untuk ${clean} sesuai alur yang disepakati.`,
     tanggungJawab: [
@@ -383,11 +485,6 @@ export function getRoleNarrativeAndResponsibilities(
       'Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha'
     ]
   };
-}
-
-function isSuperAdminRole(role: string): boolean {
-  const key = canonicalRoleKey(role);
-  return key === 'super-admin' || key === 'owner' || role === REQUIRED_ROLE;
 }
 
 export function renderRoleSummaryTable(
@@ -416,7 +513,7 @@ export function renderRoleSummaryTable(
     const extra = matchedDelegations.length > 0
       ? ` *(+ melimpahkan tugas ${matchedDelegations.map((d) => d.dariRole).join(', ')})*`
       : '';
-    const details = getRoleNarrativeAndResponsibilities(role, businessCategory, storyline);
+    const details = getRoleNarrativeAndResponsibilities(role, businessCategory, storyline, rolesState);
     const responsibilitiesCol = details.tanggungJawab.slice(0, 2).join('; ') + extra;
     lines.push(`| ${role} | ${status} | ${responsibilitiesCol} |`);
   }
@@ -631,7 +728,7 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   const options: GuidedStepOption[] = [];
 
   // Super Admin (Owner) selalu wajib & locked
-  const ownerDetails = getRoleNarrativeAndResponsibilities(REQUIRED_ROLE, session.match.businessCategory, session.storyline);
+  const ownerDetails = getRoleNarrativeAndResponsibilities(REQUIRED_ROLE, session.match.businessCategory, session.storyline, session.roles);
   options.push({
     id: REQUIRED_ROLE,
     label: REQUIRED_ROLE,
@@ -649,7 +746,7 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
       ? (Boolean(roleKasusA) && (lowerLabel.includes(roleKasusA!) || roleKasusA!.includes(lowerLabel))) ||
         (Boolean(roleKasusB) && (lowerLabel.includes(roleKasusB!) || roleKasusB!.includes(lowerLabel)))
       : label === coreRole;
-    const details = getRoleNarrativeAndResponsibilities(label, session.match.businessCategory, session.storyline);
+    const details = getRoleNarrativeAndResponsibilities(label, session.match.businessCategory, session.storyline, session.roles);
     options.push({
       id: label,
       label: label,
@@ -1168,7 +1265,10 @@ function generateDomainSupportingFeatures(
  * Menghasilkan Alur Inti, Alur Pendukung, dan Fitur Pendukung yang MURNI DIGROUNDING
  * dari session storyline (narasi & alur utama) tanpa mengandalkan template statis per-kategori.
  */
-export function getDomainFlowDetails(session: MockupSessionState): DomainFlowData {
+export function getDomainFlowDetails(
+  session: MockupSessionState,
+  options?: { forceFresh?: boolean }
+): DomainFlowData {
   const narrative = (session.storyline?.narasi || '').toLowerCase();
   const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
   const fullStory = `${narrative} ${mainFlow}`;
@@ -1390,12 +1490,12 @@ export function getDomainFlowDetails(session: MockupSessionState): DomainFlowDat
   );
 
   const alurIntiResult =
-    session.flow?.alurInti && session.flow.alurInti.length > 0
+    !options?.forceFresh && session.flow?.alurInti && session.flow.alurInti.length > 0
       ? session.flow.alurInti
       : deduplicatedSteps;
 
   const alurPendukungResult =
-    session.flow?.alurPendukung && session.flow.alurPendukung.length > 0
+    !options?.forceFresh && session.flow?.alurPendukung && session.flow.alurPendukung.length > 0
       ? session.flow.alurPendukung.map((ap, idx) => ({
           id: `alur_pendukung_${idx + 1}`,
           nama: ap.nama,
@@ -1404,7 +1504,7 @@ export function getDomainFlowDetails(session: MockupSessionState): DomainFlowDat
       : alurPendukung;
 
   const fiturPendukungResult =
-    session.flow?.fiturPendukung && session.flow.fiturPendukung.length > 0
+    !options?.forceFresh && session.flow?.fiturPendukung && session.flow.fiturPendukung.length > 0
       ? session.flow.fiturPendukung.map((fp, idx) => ({
           id: `feat_custom_${idx + 1}`,
           label: fp
@@ -1927,11 +2027,28 @@ export function buildKasusGandaFromSession(
 ): { nama: string; alurInti: FlowStepItem[] }[] {
   const activeOwner = REQUIRED_ROLE;
 
-  // Helper mencari role staf operasional (non-Owner dan BUKAN pihak eksternal/customer)
+  const findGovernanceStaff = (): string | undefined => {
+    const candidates = [
+      ...(session.roles?.selected || []),
+      ...(session.roles?.wajib || []),
+      ...(session.storyline?.asumsiAktor || [])
+    ];
+    for (const c of candidates) {
+      if (isSuperAdminRole(c) || isExternalRole(c)) continue;
+      if (isGovernanceRole(c)) {
+        return resolveActorForStep(c, session.roles);
+      }
+    }
+    return undefined;
+  };
+
+  const governanceStaff = findGovernanceStaff();
+
+  // Helper mencari role staf operasional (non-Owner, non-eksternal, dan non-governance jika ada pilihan staf operasional)
   const findOperationalStaff = (preferredName?: string): string => {
     const selected = session.roles?.selected || [];
     const wajib = session.roles?.wajib || [];
-    const candidates = [
+    const allCandidates = [
       ...wajib.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r)),
       ...selected.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r)),
       ...(session.storyline?.asumsiAktor || []).filter((r) => !isSuperAdminRole(r) && !isExternalRole(r))
@@ -1939,16 +2056,20 @@ export function buildKasusGandaFromSession(
 
     if (preferredName) {
       const prefClean = preferredName.trim().toLowerCase();
-      const match = candidates.find((c) => c.toLowerCase().includes(prefClean) || prefClean.includes(c.toLowerCase()));
+      const match = allCandidates.find((c) => c.toLowerCase().includes(prefClean) || prefClean.includes(c.toLowerCase()));
       if (match) return resolveActorForStep(match, session.roles);
     }
+
+    // Prioritaskan staf operasional murni (bukan governance jika staf operasional tersedia)
+    const operationalOnly = allCandidates.filter((c) => !isGovernanceRole(c));
+    const candidates = operationalOnly.length > 0 ? operationalOnly : allCandidates;
 
     if (candidates.length > 0) {
       return resolveActorForStep(candidates[0], session.roles);
     }
 
     const detected = detectCoreOperationalRole(session);
-    if (!isExternalRole(detected) && !isSuperAdminRole(detected)) {
+    if (!isExternalRole(detected) && !isSuperAdminRole(detected) && !isGovernanceRole(detected)) {
       return resolveActorForStep(detected, session.roles);
     }
 
@@ -2002,23 +2123,37 @@ export function buildKasusGandaFromSession(
 
     // 1. Sisi Pinjaman / Kredit (Pengajuan -> Verifikasi -> Akad -> Pencairan -> Monitoring)
     if (/pinjam|kredit|pembiayaan/i.test(pLower)) {
+      const approvalActor = governanceStaff || operActor;
+      const oversightActor = governanceStaff || activeOwner;
+      const approvalAction = governanceStaff
+        ? `Menyetujui plafon kredit, tenor bunga, dan menandatangani akad pinjaman bersama ${customerActor.toLowerCase()}`
+        : `Menyepakati plafon, tenor bunga, dan menandatangani akad perjanjian pinjaman bersama ${customerActor.toLowerCase()}`;
+      const oversightAction = governanceStaff
+        ? 'Memantau rekapitulasi penyaluran kredit, total dana dicairkan, dan portofolio pinjaman berkala'
+        : 'Memantau rekapitulasi penyaluran kredit, total dana dicairkan, dan pembayaran angsuran';
+
       return [
         { step: 1, pelaku: customerActor, aksi: 'Mengajukan permohonan pinjaman dana dan melengkapi berkas persyaratan' },
         { step: 2, pelaku: operActor, aksi: 'Memeriksa kelengkapan berkas, riwayat keanggotaan, dan menganalisis kelayakan pinjaman' },
-        { step: 3, pelaku: operActor, aksi: `Menyepakati plafon, tenor bunga, dan menandatangani akad perjanjian pinjaman bersama ${customerActor.toLowerCase()}` },
+        { step: 3, pelaku: approvalActor, aksi: approvalAction },
         { step: 4, pelaku: operActor, aksi: `Mencairkan dana pinjaman kepada ${customerActor.toLowerCase()} dan mencatat jadwal angsuran berkala` },
-        { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi penyaluran kredit, total dana dicairkan, dan pembayaran angsuran' }
+        { step: 5, pelaku: oversightActor, aksi: oversightAction }
       ];
     }
 
     // 2. Sisi Simpanan / Tabungan (Setoran -> Hitung Uang -> Catat Buku -> Struk -> Kas Rekap)
     if (/simpan|tabung|setor/i.test(pLower)) {
+      const oversightActor = governanceStaff || activeOwner;
+      const oversightAction = governanceStaff
+        ? 'Memantau mutasi kas simpanan masuk dan rekapitulasi likuiditas harian koperasi'
+        : 'Memantau mutasi kas simpanan masuk dan total saldo likuiditas harian koperasi';
+
       return [
         { step: 1, pelaku: customerActor, aksi: 'Membawa buku tabungan dan menyerahkan uang tunai untuk setoran simpanan' },
         { step: 2, pelaku: operActor, aksi: 'Menghitung jumlah setoran tunai secara teliti dan memverifikasi data keanggotaan' },
         { step: 3, pelaku: operActor, aksi: `Mencatat transaksi setoran dan mencetak pembaruan saldo di buku tabungan ${customerActor.toLowerCase()}` },
         { step: 4, pelaku: operActor, aksi: `Menyerahkan bukti setoran resmi serta buku tabungan kembali kepada ${customerActor.toLowerCase()}` },
-        { step: 5, pelaku: activeOwner, aksi: 'Memantau mutasi kas simpanan masuk dan total saldo likuiditas harian koperasi' }
+        { step: 5, pelaku: oversightActor, aksi: oversightAction }
       ];
     }
 
@@ -2343,6 +2478,15 @@ export function applyGuidedAnswer(
       removedExternalRoles,
       ...(other ? { other } : {})
     };
+
+    // Bersihkan seluruh cache alur lama agar saat masuk ke ALUR, alur kerja
+    // dan atribusi pelaku di-generate ulang secara menyeluruh dari peran terkini
+    if (next.flow) {
+      delete next.flow.alurInti;
+      delete next.flow.alurPendukung;
+      delete next.flow.fiturPendukung;
+      delete next.flow.kasusGanda;
+    }
   } else if (stepId === 'ALUR') {
     const flowData = getDomainFlowDetails(session);
 
