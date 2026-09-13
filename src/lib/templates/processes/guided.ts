@@ -89,7 +89,7 @@ const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
   { key: 'consultant', re: /konsultan|consultant/i },
   { key: 'rental-staff', re: /petugas\s*rental|petugas\s*sewa|staf\s*rental|staf\s*sewa/i },
   { key: 'service-staff', re: /service\s*staff|staff\s*layanan|petugas\s*layanan|staf\s*layanan/i },
-  { key: 'customer', re: /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b)$|\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa|warga|masyarakat)\b/i },
+  { key: 'customer', re: /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|anggota|nasabah|konsumen|\bparent\b)$|\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa|warga|masyarakat|anggota|nasabah)\b/i },
   { key: 'manager', re: /manager|manajer|supervisor|pengawas|kepala|principal/i },
   { key: 'admin-staff', re: /\badmin\b|administrator/i },
 ];
@@ -210,6 +210,16 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
 }
 
 export function isExternalRole(label: string): boolean {
+  const clean = label.trim();
+  if (/^(petugas|staf|staff|admin|tim|team|koordinator|operator|kolektor|penaksir|kasir|teller|mekanik|montir)\b/i.test(clean)) {
+    return false;
+  }
+  if (
+    /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|anggota|nasabah|konsumen)$/i.test(clean) ||
+    /\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa|warga|masyarakat|anggota|nasabah)\b/i.test(clean)
+  ) {
+    return true;
+  }
   return canonicalRoleKey(label) === 'customer';
 }
 
@@ -303,7 +313,7 @@ export function detectCoreOperationalRole(session: MockupSessionState): string {
   for (const a of actors) {
     const clean = a.trim();
     const key = canonicalRoleKey(clean);
-    if (key !== 'super-admin' && key !== 'customer' && !GENERIC_ROLE_RE.test(clean)) {
+    if (key !== 'super-admin' && key !== 'customer' && !isExternalRole(clean) && !GENERIC_ROLE_RE.test(clean)) {
       return EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean;
     }
   }
@@ -1209,9 +1219,9 @@ export function getDomainFlowDetails(session: MockupSessionState): DomainFlowDat
       if (/\b(pemilik|owner|bos|admin|pimpinan|manajer|direktur)\b/i.test(lowerPhase)) {
         assignedActor = activeOwner;
       }
-      // 2. Cek apakah menyebut Pelanggan / Penyewa / Pasien / Tamu / Klien
-      else if (/\b(pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali)\b/i.test(lowerPhase)) {
-        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali/i, 'Pelanggan');
+      // 2. Cek apakah menyebut Pelanggan / Penyewa / Pasien / Tamu / Klien / Anggota / Nasabah
+      else if (/\b(pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah)\b/i.test(lowerPhase)) {
+        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah/i, 'Pelanggan');
       }
       // 3. Cek pencocokan dengan daftar peran yang dikenal di sesi
       else {
@@ -1434,10 +1444,10 @@ export function reconcileCoreOperationalRole(
       return (
         k === 'super-admin' ||
         k === 'owner' ||
-        actor === REQUIRED_ROLE ||
+        isExternalRole(actor) ||
         k === 'customer' ||
         k === 'guest' ||
-        /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien)\b/i.test(actor)
+        /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien|anggota|nasabah|warga)\b/i.test(actor)
       );
     };
 
@@ -1513,7 +1523,8 @@ export function reconcileCoreOperationalRole(
     const isCust =
       key === 'customer' ||
       key === 'guest' ||
-      /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien)\b/i.test(actor);
+      isExternalRole(actor) ||
+      /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien|anggota|nasabah|warga)\b/i.test(actor);
 
     if (isOwner || isCust) continue;
 
@@ -1915,19 +1926,33 @@ export function buildKasusGandaFromSession(
   processB: string
 ): { nama: string; alurInti: FlowStepItem[] }[] {
   const activeOwner = REQUIRED_ROLE;
-  const coreRole =
-    session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
-  const activeCore = resolveActorForStep(coreRole, session.roles);
 
-  const findActor = (pattern: RegExp, defaultName: string): string => {
+  // Helper mencari role staf operasional (non-Owner dan BUKAN pihak eksternal/customer)
+  const findOperationalStaff = (preferredName?: string): string => {
+    const selected = session.roles?.selected || [];
+    const wajib = session.roles?.wajib || [];
     const candidates = [
-      ...(session.roles?.selected || []),
-      ...(session.storyline?.asumsiAktor || [])
+      ...wajib.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r)),
+      ...selected.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r)),
+      ...(session.storyline?.asumsiAktor || []).filter((r) => !isSuperAdminRole(r) && !isExternalRole(r))
     ];
-    for (const c of candidates) {
-      if (pattern.test(c)) return resolveActorForStep(c, session.roles);
+
+    if (preferredName) {
+      const prefClean = preferredName.trim().toLowerCase();
+      const match = candidates.find((c) => c.toLowerCase().includes(prefClean) || prefClean.includes(c.toLowerCase()));
+      if (match) return resolveActorForStep(match, session.roles);
     }
-    return resolveActorForStep(defaultName, session.roles);
+
+    if (candidates.length > 0) {
+      return resolveActorForStep(candidates[0], session.roles);
+    }
+
+    const detected = detectCoreOperationalRole(session);
+    if (!isExternalRole(detected) && !isSuperAdminRole(detected)) {
+      return resolveActorForStep(detected, session.roles);
+    }
+
+    return 'Kasir Operasional';
   };
 
   const findCustomerActor = (): string => {
@@ -1936,8 +1961,8 @@ export function buildKasusGandaFromSession(
       ...(session.storyline?.asumsiAktor || [])
     ];
     for (const c of candidates) {
-      if (/\b(petugas|staf|kasir|sales|admin|montir|mekanik|appraisal)\b/i.test(c)) continue;
-      if (/\b(pelanggan|pembeli|penyewa|pasien|klien|tamu|nasabah|konsumen|anggota)\b/i.test(c)) {
+      if (/\b(petugas|staf|staff|kasir|sales|admin|montir|mekanik|appraisal|teller)\b/i.test(c)) continue;
+      if (isExternalRole(c)) {
         return resolveActorForStep(c, session.roles);
       }
     }
@@ -1947,18 +1972,24 @@ export function buildKasusGandaFromSession(
   const customerActor = findCustomerActor();
 
   const pemisahanRole = session.storyline?.analisisArah?.duaArah?.pemisahanRole;
-  let actorA = activeCore;
-  let actorB = activeCore;
+  let actorA = findOperationalStaff();
+  let actorB = findOperationalStaff();
 
   if (pemisahanRole?.keputusan === 'PISAH') {
     if (pemisahanRole.roleKasusA) {
-      const cleanA = pemisahanRole.roleKasusA.trim();
-      actorA = findActor(new RegExp(cleanA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), cleanA);
+      actorA = findOperationalStaff(pemisahanRole.roleKasusA);
     }
     if (pemisahanRole.roleKasusB) {
-      const cleanB = pemisahanRole.roleKasusB.trim();
-      actorB = findActor(new RegExp(cleanB.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), cleanB);
+      actorB = findOperationalStaff(pemisahanRole.roleKasusB);
     }
+  }
+
+  // Jaminan anti-tabrakan: actorA dan actorB TIDAK BOLEH sama dengan customerActor atau merupakan pihak eksternal
+  if (isExternalRole(actorA) || actorA.toLowerCase() === customerActor.toLowerCase()) {
+    actorA = findOperationalStaff();
+  }
+  if (isExternalRole(actorB) || actorB.toLowerCase() === customerActor.toLowerCase()) {
+    actorB = findOperationalStaff();
   }
 
   // Pembangkitan langkah alur inti per-kasus yang kaya dan grounded ke siklus nyata
@@ -1974,8 +2005,8 @@ export function buildKasusGandaFromSession(
       return [
         { step: 1, pelaku: customerActor, aksi: 'Mengajukan permohonan pinjaman dana dan melengkapi berkas persyaratan' },
         { step: 2, pelaku: operActor, aksi: 'Memeriksa kelengkapan berkas, riwayat keanggotaan, dan menganalisis kelayakan pinjaman' },
-        { step: 3, pelaku: operActor, aksi: 'Menyepakati plafon, tenor bunga, dan menandatangani akad perjanjian pinjaman' },
-        { step: 4, pelaku: operActor, aksi: 'Mencairkan dana pinjaman kepada anggota dan mencatat jadwal angsuran berkala' },
+        { step: 3, pelaku: operActor, aksi: `Menyepakati plafon, tenor bunga, dan menandatangani akad perjanjian pinjaman bersama ${customerActor.toLowerCase()}` },
+        { step: 4, pelaku: operActor, aksi: `Mencairkan dana pinjaman kepada ${customerActor.toLowerCase()} dan mencatat jadwal angsuran berkala` },
         { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi penyaluran kredit, total dana dicairkan, dan pembayaran angsuran' }
       ];
     }
@@ -1985,8 +2016,8 @@ export function buildKasusGandaFromSession(
       return [
         { step: 1, pelaku: customerActor, aksi: 'Membawa buku tabungan dan menyerahkan uang tunai untuk setoran simpanan' },
         { step: 2, pelaku: operActor, aksi: 'Menghitung jumlah setoran tunai secara teliti dan memverifikasi data keanggotaan' },
-        { step: 3, pelaku: operActor, aksi: 'Mencatat transaksi setoran dan mencetak pembaruan saldo di buku tabungan anggota' },
-        { step: 4, pelaku: operActor, aksi: 'Menyerahkan bukti setoran resmi serta buku tabungan kembali kepada anggota' },
+        { step: 3, pelaku: operActor, aksi: `Mencatat transaksi setoran dan mencetak pembaruan saldo di buku tabungan ${customerActor.toLowerCase()}` },
+        { step: 4, pelaku: operActor, aksi: `Menyerahkan bukti setoran resmi serta buku tabungan kembali kepada ${customerActor.toLowerCase()}` },
         { step: 5, pelaku: activeOwner, aksi: 'Memantau mutasi kas simpanan masuk dan total saldo likuiditas harian koperasi' }
       ];
     }
@@ -1998,7 +2029,7 @@ export function buildKasusGandaFromSession(
           { step: 1, pelaku: customerActor, aksi: 'Membawa mata uang asing untuk ditukarkan ke mata uang Rupiah' },
           { step: 2, pelaku: operActor, aksi: 'Memeriksa keaslian pecahan valas menggunakan detektor UV dan menghitung kurs beli' },
           { step: 3, pelaku: operActor, aksi: 'Mengonfirmasi nominal hasil konversi dan mencetak nota transaksi penukaran' },
-          { step: 4, pelaku: operActor, aksi: 'Menyerahkan uang Rupiah dan nota resmi transaksi kepada nasabah' },
+          { step: 4, pelaku: operActor, aksi: `Menyerahkan uang Rupiah dan nota resmi transaksi kepada ${customerActor.toLowerCase()}` },
           { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi stok valas masuk dan mutasi kas penukaran harian' }
         ];
       } else {
@@ -2006,7 +2037,7 @@ export function buildKasusGandaFromSession(
           { step: 1, pelaku: customerActor, aksi: 'Mengajukan kebutuhan pecahan mata uang asing dan memeriksa ketersediaan stok' },
           { step: 2, pelaku: operActor, aksi: 'Menghitung total pembayaran Rupiah berdasarkan kurs jual yang berlaku' },
           { step: 3, pelaku: operActor, aksi: 'Menerima pembayaran tunai/transfer dan mencetak bukti penukaran valas resmi' },
-          { step: 4, pelaku: operActor, aksi: 'Menyerahkan lembaran valas asli sesuai denominasi yang diminta nasabah' },
+          { step: 4, pelaku: operActor, aksi: `Menyerahkan lembaran valas asli sesuai denominasi yang diminta ${customerActor.toLowerCase()}` },
           { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi penjualan valas harian dan sisa stok brankas' }
         ];
       }
@@ -2018,7 +2049,7 @@ export function buildKasusGandaFromSession(
         { step: 1, pelaku: customerActor, aksi: `Mengajukan permintaan ${pLower} dan memilih item yang diinginkan` },
         { step: 2, pelaku: operActor, aksi: `Memeriksa ketersediaan, kondisi, dan kesiapan transaksi ${pLower.replace(/ke\s*pelanggan|unit\s*baru/i, 'item').trim()}` },
         { step: 3, pelaku: operActor, aksi: `Menyepakati nilai transaksi dan menyiapkan dokumen ${pLower}` },
-        { step: 4, pelaku: operActor, aksi: `Menyerahkan item/layanan dan menerima pembayaran dari pelanggan` },
+        { step: 4, pelaku: operActor, aksi: `Menyerahkan item/layanan dan menerima pembayaran dari ${customerActor.toLowerCase()}` },
         { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${pLower} harian dan performa omzet` }
       ];
     }
@@ -2028,18 +2059,47 @@ export function buildKasusGandaFromSession(
       { step: 1, pelaku: customerActor, aksi: `Membawa item/pengajuan untuk proses ${pLower}` },
       { step: 2, pelaku: operActor, aksi: `Memeriksa fisik, keaslian/kondisi teknis, dan menaksir nilai ${pLower.replace(/dari\s*pelanggan|unit\s*lama/i, 'item').trim()}` },
       { step: 3, pelaku: operActor, aksi: `Menyepakati nilai taksiran dan menyiapkan dokumen transaksi ${pLower}` },
-      { step: 4, pelaku: operActor, aksi: `Menyerahkan pembayaran atau nota transaksi kepada pelanggan` },
+      { step: 4, pelaku: operActor, aksi: `Menyerahkan pembayaran atau nota transaksi kepada ${customerActor.toLowerCase()}` },
       { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${pLower} dan pencatatan transaksi masuk` }
     ];
+  };
+
+  // Validasi Anti-Nonsense (Safety Guard)
+  const sanitizeStep = (step: FlowStepItem, operActor: string): FlowStepItem => {
+    let { step: stepNum, pelaku, aksi } = step;
+
+    // 1. Cek kalimat self-referential yang mustahil:
+    // Jika pelaku adalah pihak eksternal, tapi aksinya mengarah kepada/dari pihak yang sama
+    const targetPattern = new RegExp(`\\b(kepada|ke|dari|untuk|bersama)\\s+${pelaku.toLowerCase()}\\b`, 'i');
+    if ((isExternalRole(pelaku) || pelaku.toLowerCase() === customerActor.toLowerCase()) && targetPattern.test(aksi)) {
+      pelaku = operActor;
+    }
+
+    // 2. Jika pelaku eksternal melakukan tugas operasional staf internal:
+    if (isExternalRole(pelaku) || pelaku.toLowerCase() === customerActor.toLowerCase()) {
+      const isStaffAction = /\b(memeriksa\s+kelengkapan|menganalisis\s+kelayakan|mencairkan\s+dana|menghitung\s+jumlah|mencatat\s+transaksi|memverifikasi\s+data|menyerahkan\s+(?:bukti|uang|lembaran|item|pembayaran|nota)|menaksir\s+nilai|mencetak\s+(?:pembaruan|bukti|nota))\b/i.test(aksi);
+      if (isStaffAction) {
+        pelaku = operActor;
+      }
+    }
+
+    // 3. Jika pelaku operasional staf tertukar melakukan tindakan pemicu awal customer
+    if (!isExternalRole(pelaku) && !isSuperAdminRole(pelaku)) {
+      const isCustomerTrigger = /\b(membawa\s+buku\s+tabungan|mengajukan\s+permohonan\s+pinjaman|membawa\s+mata\s+uang\s+asing|mengajukan\s+kebutuhan\s+pecahan|mengajukan\s+permintaan|membawa\s+item)\b/i.test(aksi);
+      if (isCustomerTrigger) {
+        pelaku = customerActor;
+      }
+    }
+
+    return { step: stepNum, pelaku: resolveActorForStep(pelaku, session.roles), aksi };
   };
 
   const alurA = generateCaseSteps(processA, actorA, true);
   const alurB = generateCaseSteps(processB, actorB, false);
 
-  // Terapkan resolveActorForStep agar delegasi role tetap berlaku
   return [
-    { nama: processA, alurInti: alurA.map((s) => ({ ...s, pelaku: resolveActorForStep(s.pelaku, session.roles) })) },
-    { nama: processB, alurInti: alurB.map((s) => ({ ...s, pelaku: resolveActorForStep(s.pelaku, session.roles) })) }
+    { nama: processA, alurInti: alurA.map((s) => sanitizeStep(s, actorA)) },
+    { nama: processB, alurInti: alurB.map((s) => sanitizeStep(s, actorB)) }
   ];
 }
 
