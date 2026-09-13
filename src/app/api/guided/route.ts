@@ -1065,24 +1065,33 @@ export async function analyzeCustomRoleWithAI(input: AnalyzeCustomRoleInput): Pr
     .map((r) => `- ${r.label}${r.description ? `: ${r.description}` : ''}`)
     .join('\n');
 
+  // Deteksi sinyal eksplisit relasi hierarki / rantai pasok pada catatan pengguna
+  const isHierarchicalRelation = Boolean(
+    roleNote &&
+    /\b(menerima\s+(?:hasil|setoran|barang|data|laporan|pembelian)|menampung|membawahi|mengawasi|mengkoordinir|melapor\s+ke|di\s+bawah|dari\s+para|dari\s+setiap|dari\s+semua)\b/i.test(roleNote)
+  );
+
   const systemInstruction = `Anda adalah Analis Proses Bisnis & Perancangan Struktur Kerja Aplikasi.
 Tugas Anda menganalisis peran kustom baru yang diajukan pengguna: "${cleanRole}".
 
 Prinsip evaluasi:
-1. Pengecekan Kemiripan Semantik Peran (Deduplikasi Cerdas):
+1. PRIORITAS UTAMA: CATATAN PENGGUNA ADALAH GROUND TRUTH
+   Jika pengguna menyertakan catatan konteks (${roleNote || 'tidak ada catatan'}), jadikan catatan tersebut sebagai sinyal kebenaran utama mengenai fungsi dan tingkatan peran ini.
+
+2. PENGECEKAN KEMIRIPAN HANYA UNTUK TUGAS SETARA (Bukan Beda Level/Hierarki):
    Bandingkan peran baru "${cleanRole}" dengan daftar peran yang sudah ada di sistem:
 ${existingListStr || '- (belum ada peran)'}
-   Apakah peran baru ini sebenarnya SAMA atau SANGAT SERUPA secara fungsi operasional sehari-hari dengan salah satu peran yang sudah ada?
-   - Contoh mirip: "Pengepul" sangat mirip dengan "Kolektor Keliling" (keduanya mengambil/membeli barang bekas di lapangan). "Kasir Pembayaran" sangat mirip dengan "Kasir". "Juru Masak" mirip dengan "Koki".
-   - Contoh TIDAK mirip: "Admin Gudang" beda dengan "Kasir" atau "Sales". "Mekanik" beda dengan "Admin Servis".
-   Jika mirip: set isSimilar = true, sebutkan similarRoleName dari daftar yang ada, dan similarityExplanation (1 kalimat ringkas ramah pengguna mengapa mirip).
-   Jika tidak mirip: set isSimilar = false, similarRoleName = null, similarityExplanation = null.
+   - Kemiripan HANYA valid jika kedua peran berada di posisi SETARA dan melakukan PEKERJAAN OPERASIONAL YANG SAMA (contoh: "Kasir Pembayaran" vs "Kasir", "Juru Masak" vs "Koki", "Petugas Loket" vs "Resepsionis").
+   - HIERARKI / RANTAI PASOK BERTINGKAT DILARANG DIANGGAP MIRIP:
+     Jika peran baru dijelaskan sebagai pihak yang "menerima dari para...", "menampung hasil pembelian dari para pemilik armada/kolektor", "membawahi", "mengawasi", atau berada di level rantai pasok yang berbeda (misal: kolektor lapangan tingkat 1 vs pengepul penampung tingkat 2), MAKA INI ADALAH DUA PERAN BERBEDA LEVEL DALAM ALUR KERJA, BUKAN PERAN YANG SAMA!
+     Dalam kasus hierarki/rantai pasok ini: set isSimilar = false, similarRoleName = null, similarityExplanation = null.
+   - Jika peran baru memang fungsi baru yang berbeda jelas (misal: "Admin Gudang" beda dengan "Kasir"): set isSimilar = false.
 
-2. Pembuatan Deskripsi Naratif & Tanggung Jawab Peran:
+3. PEMBUATAN DESKRIPSI NARATIF & TANGGUNG JAWAB PERAN:
    Susun deskripsi peran (narasi) dan 2-3 butir tanggung jawab operasional peran baru tersebut:
    - Bahasa Indonesia yang santun, hangat, konkret, profesional, dan ZERO TECH JARGON (dilarang keras menggunakan istilah database/IT/coding seperti database, query, CRUD, tabel, frontend, backend).
    - Selaras dengan alur cerita bisnis: "${story}".
-   ${roleNote ? `- PERHATIKAN CATATAN PENGGUNA INI: "${roleNote}". Narasi dan butir tanggung jawab WAJIB mencerminkan konteks catatan ini.` : '- Analisis secara cerdas dari nama peran dan konteks alur cerita bisnis yang ada.'}
+   ${roleNote ? `- PERHATIKAN CATATAN PENGGUNA INI: "${roleNote}". Narasi dan butir tanggung jawab WAJIB mencerminkan konteks catatan ini secara akurat.` : '- Analisis secara cerdas dari nama peran dan konteks alur cerita bisnis yang ada.'}
 
 Keluarkan HANYA format JSON valid tanpa markdown tambahan di luar JSON:
 {
@@ -1100,7 +1109,7 @@ Kategori bisnis: ${category}`;
   const raw = await invokeAIChat({
     systemInstruction,
     userPrompt,
-    temperature: 0.3,
+    temperature: 0.2,
     maxTokens: 1000,
     provider,
     userApiKey,
@@ -1112,10 +1121,14 @@ Kategori bisnis: ${category}`;
       const cleaned = raw.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
       const parsed = JSON.parse(cleaned);
       if (parsed && typeof parsed.narasi === 'string' && Array.isArray(parsed.tanggungJawab)) {
+        const aiSimilar = Boolean(parsed.isSimilar && parsed.similarRoleName);
+        // Guardrail: Jika catatan pengguna jelas menunjukkan hierarki rantai pasok, jangan pernah konfirmasi kemiripan
+        const finalSimilar = isHierarchicalRelation ? false : aiSimilar;
+
         return {
-          isSimilar: Boolean(parsed.isSimilar && parsed.similarRoleName),
-          similarRoleName: parsed.isSimilar && parsed.similarRoleName ? String(parsed.similarRoleName).trim() : null,
-          similarityExplanation: parsed.similarityExplanation ? String(parsed.similarityExplanation).trim() : null,
+          isSimilar: finalSimilar,
+          similarRoleName: finalSimilar && parsed.similarRoleName ? String(parsed.similarRoleName).trim() : null,
+          similarityExplanation: finalSimilar && parsed.similarityExplanation ? String(parsed.similarityExplanation).trim() : null,
           narasi: parsed.narasi.trim(),
           tanggungJawab: parsed.tanggungJawab.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3)
         };
@@ -1137,20 +1150,22 @@ Kategori bisnis: ${category}`;
     }
   }
 
-  // Cek kemiripan berbasis conceptual similarity
+  // Cek kemiripan berbasis conceptual similarity (hanya jika bukan relasi hierarkis)
   let matchedSimilar: string | null = null;
-  for (const er of existingRoles) {
-    if (er.label.toLowerCase() === cleanRole.toLowerCase()) {
-      matchedSimilar = er.label;
-      break;
-    }
-    const sim = calculateConceptualSimilarity(
-      { id: '', label: cleanRole, description: fallbackNarasi, responsibilities: fallbackTasks },
-      { id: er.id, label: er.label, description: er.description || '', responsibilities: er.responsibilities || [] }
-    );
-    if (sim >= 0.5) {
-      matchedSimilar = er.label;
-      break;
+  if (!isHierarchicalRelation) {
+    for (const er of existingRoles) {
+      if (er.label.toLowerCase() === cleanRole.toLowerCase()) {
+        matchedSimilar = er.label;
+        break;
+      }
+      const sim = calculateConceptualSimilarity(
+        { id: '', label: cleanRole, description: fallbackNarasi, responsibilities: fallbackTasks },
+        { id: er.id, label: er.label, description: er.description || '', responsibilities: er.responsibilities || [] }
+      );
+      if (sim >= 0.5) {
+        matchedSimilar = er.label;
+        break;
+      }
     }
   }
 

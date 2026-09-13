@@ -89,7 +89,7 @@ const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
   { key: 'consultant', re: /konsultan|consultant/i },
   { key: 'rental-staff', re: /petugas\s*rental|petugas\s*sewa|staf\s*rental|staf\s*sewa/i },
   { key: 'service-staff', re: /service\s*staff|staff\s*layanan|petugas\s*layanan|staf\s*layanan/i },
-  { key: 'customer', re: /pelanggan|customer|pembeli|buyer|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b/i },
+  { key: 'customer', re: /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b)$|\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa)\b/i },
   { key: 'manager', re: /manager|manajer|supervisor|pengawas|kepala|principal/i },
   { key: 'admin-staff', re: /\badmin\b|administrator/i },
 ];
@@ -128,7 +128,12 @@ const EN_ROLE_LABEL_MAP: Record<string, string> = {
 
 export function canonicalRoleKey(role: string): string {
   const clean = role.trim();
+  // Perlindungan: Peran staf/petugas/tim internal TIDAK BOLEH dianggap sebagai customer
+  const isExplicitStaff = /^(petugas|staf|staff|admin|tim|team|koordinator|operator|kolektor|penaksir)\b/i.test(clean);
   for (const group of ROLE_GROUPS) {
+    if (isExplicitStaff && group.key === 'customer') {
+      continue;
+    }
     if (group.re.test(clean)) return group.key;
   }
   return clean.toLowerCase();
@@ -372,7 +377,7 @@ export function getRoleNarrativeAndResponsibilities(
       customerTasks[0] = 'Mendaftar antrean dan menyampaikan keluhan gigi/rongga mulut';
       customerTasks[1] = 'Menjalani tindakan medis di dental chair bersama dokter';
       customerTasks[2] = 'Menerima resep obat dan menyelesaikan administrasi pembayaran';
-    } else if (lowerStory.includes('cuci') || lowerStory.includes('mobil') || lowerStory.includes('motor')) {
+    } else if (/\b(cuci|pencucian|car\s*wash|steam)\b/i.test(lowerStory) || /\b(cuci|pencucian)\b/i.test(cat)) {
       customerNarasi = `Pelanggan yang membawa kendaraannya ke ${cat} untuk mendapatkan layanan pencucian serta pembersihan interior/eksterior hingga bersih dan rapi.`;
       customerTasks[0] = 'Memilih paket pencucian atau perawatan kendaraan';
       customerTasks[1] = 'Melakukan pembayaran transaksi di meja kasir';
@@ -389,7 +394,19 @@ export function getRoleNarrativeAndResponsibilities(
   const tasks: string[] = [];
   let roleNarrative = '';
 
-  if (lowerRole.includes('sopir') || lowerRole.includes('driver')) {
+  if (
+    lowerRole.includes('pembeli') ||
+    lowerRole.includes('kolektor') ||
+    lowerRole.includes('penjemput') ||
+    lowerRole.includes('pengepul') ||
+    (lowerRole.includes('petugas') && (lowerStory.includes('rosok') || lowerStory.includes('barang bekas') || lowerStory.includes('timbang')))
+  ) {
+    // Petugas lapangan / pembeli barang bekas / penjemput rosok
+    roleNarrative = `Petugas lapangan di ${cat} yang mendatangi pelanggan atau warga, memeriksa dan menimbang barang bekas, serta memproses pembayaran pembelian di tempat.`;
+    tasks.push('Mendatangi lokasi penjemputan barang dan bertemu langsung dengan warga/pelanggan');
+    tasks.push('Memeriksa kondisi, memilah kategori barang, dan menimbang berat barang yang dibeli');
+    tasks.push('Menyerahkan uang pembayaran pembelian dan mencatat rekap transaksi timbangan');
+  } else if (lowerRole.includes('sopir') || lowerRole.includes('driver')) {
     // Grounding khusus sopir perjalanan kendaraan (BUKAN kurir pengantar barang/paket)
     roleNarrative = `Pengemudi armada di ${cat} yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.`;
     tasks.push('Memastikan unit kendaraan siap pakai dan dalam kondisi bersih sebelum menjemput');
@@ -409,7 +426,10 @@ export function getRoleNarrativeAndResponsibilities(
       tasks.push('Mengecek kondisi fisik armada sebelum dan sesudah digunakan');
     }
     tasks.push('Mengurus serah-terima kunci armada dan bukti tanda terima sewa');
-  } else if (lowerRole.includes('cuci') || lowerRole.includes('vakum') || lowerRole.includes('lap')) {
+  } else if (
+    (lowerRole.includes('cuci') || lowerRole.includes('vakum') || lowerRole.includes('lap')) &&
+    (/\b(cuci|pencucian|car\s*wash|steam)\b/i.test(lowerStory) || /\b(cuci|pencucian)\b/i.test(cat))
+  ) {
     // Petugas cuci mobil/motor
     roleNarrative = `Petugas operasional yang mengerjakan pembersihan langsung pada unit kendaraan di ${cat}, mulai dari penyemprotan air bertekanan, sabun salju, hingga pemvakuman interior.`;
     tasks.push('Menerima antrean slot kendaraan yang masuk ke area cuci');
