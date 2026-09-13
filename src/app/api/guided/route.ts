@@ -29,12 +29,15 @@ import {
   isExternalRole,
   getRoleNarrativeAndResponsibilities,
   calculateConceptualSimilarity,
+  detectCoreOperationalRole,
   type DomainFlowData,
   type GuidedStepId,
   type MockupSessionState,
   type AnalisisArahResult,
   type KondisiArahBisnis,
-  type PemisahanRoleResult
+  type PemisahanRoleResult,
+  type SupportingFlowItem,
+  type SupportingFeatureItem
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -936,6 +939,146 @@ Perbarui cerita dan field asumsi dalam format JSON dengan mematuhi prinsip kumul
     asumsiMasalah: previousStoryline.asumsiMasalah,
     asumsiAktor: previousStoryline.asumsiAktor,
     asumsiAlurUtama: previousStoryline.asumsiAlurUtama
+  };
+}
+
+/**
+ * Menyusun Alur Pendukung dan Fitur Pendukung operasional berbasis analisis AI konseptual terpadu.
+ * Menggantikan total percabangan regex domain dan template statis (Opsi 1).
+ */
+export async function generateSupportingFlowsAndFeaturesWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<{
+  alurPendukung: SupportingFlowItem[];
+  fiturPendukung: SupportingFeatureItem[];
+}> {
+  const startTime = Date.now();
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const activeOwner = REQUIRED_ROLE;
+  const coreRole = session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
+  const narrative = session.storyline?.narasi || '';
+  const mainFlow = session.storyline?.asumsiAlurUtama || '';
+  const problem = session.storyline?.asumsiMasalah || '';
+  const domain = (session as any).domain || session.match?.businessCategory || 'Operasional Bisnis';
+
+  const systemInstruction = `Anda adalah Analis Sistem & Konsultan Desain Alur Kerja Aplikasi AI.
+Tugas Anda: Menyusun Alur Pendukung (Supporting Workflows) dan Fitur Pendukung (Supporting Features) operasional yang BENAR-BENAR SPESIFIK dan RELEVAN dengan narasi cerita bisnis nyata yang sudah dikonfirmasi pengguna serta daftar peran yang aktif.
+
+ATURAN WAJIB:
+1. GROUNDING PENUH KE NARASI & PERAN AKTIF:
+   - Baca dengan cermat Narasi, Masalah Utama, Alur Utama (Alur Inti), dan Daftar Peran yang disepakati.
+   - Alur Pendukung adalah alur kerja operasional penunjang di luar alur utama (misalnya: penanganan komplain hasil pengerjaan, pemeliharaan/kalibrasi sarana kerja fisik, logistik pengadaan bahan baku, atau prosedur keselamatan/kondisi darurat).
+   - Aktor/pelaku di setiap langkah WAJIB diambil HANYA dari Daftar Peran Aktif yang tersedia: ${activeRoles.join(', ')}. DILARANG mengarang nama peran yang tidak ada di daftar!
+   - Kalimat aksi harus menggambarkan aktivitas fisik/operasional nyata manusia di tempat kerja dengan objek spesifik bisnis tersebut.
+
+2. TANPA TEMPLATE GENERIK & TANPA FORMAT KAKU:
+   - DILARANG KERAS menggunakan pola kalimat generik seperti:
+     * "Jaminan Kepuasan & Penyesuaian Kualitas Layanan [Domain]"
+     * "Mengajukan permintaan penyesuaian pengerjaan jika detail layanan belum sesuai kesepakatan"
+     * "Memeriksa catatan pengerjaan awal dan melakukan perbaikan pengerjaan hingga rapi dan tuntas"
+   - Tuliskan nama alur dan aksi menggunakan istilah asli industri tersebut (contoh: di studio rekaman -> "Koreksi Retake Audio & Re-balancing Frekuensi", di kolam renang -> "Pengurasan Endapan Dasar & Uji Kebocoran Pipa", di bengkel -> "Penyetelan Ulang Klep & Uji Emisi", di barbershop -> "Klaim Ulang Potong Gratis jika Hasil Tidak Simetris").
+
+3. FLEKSIBILITAS JUMLAH (TANPA KUOTA ARTIFISIAL):
+   - Jumlah alur pendukung harus proporsional dengan kompleksitas proses bisnis nyata (antara 1 hingga 2 alur pendukung).
+   - Jika narasi bisnis sederhana dan hanya memiliki 1 alur pendukung logis yang relevan, berikan 1 saja! DILARANG memaksakan alur kedua yang mengada-ada.
+   - Fitur Pendukung: Hasilkan 3 hingga 5 fitur bernilai tinggi yang spesifik menunjang efisiensi operasional peran terkait (misal fitur dasbor monitoring khusus, cetak lembar kerja/invoice PDF, integrasi notifikasi WhatsApp, atau filter riwayat kerja).
+
+4. TANPA ISTILAH TEKNIS IT:
+   - Dilarang memakai istilah IT seperti database, backend, CRUD, API, endpoint, tabel SQL.
+
+5. FORMAT OUTPUT JSON WAJIB:
+{
+  "alurPendukung": [
+    {
+      "id": "alur_spesifik_1",
+      "nama": "Nama Alur Pendukung Spesifik Domain",
+      "steps": [
+        { "pelaku": "Nama Peran dari Daftar", "aksi": "Tindakan operasional nyata" },
+        { "pelaku": "Nama Peran dari Daftar", "aksi": "Tindakan operasional nyata" }
+      ]
+    }
+  ],
+  "fiturPendukung": [
+    { "id": "feat_spesifik_1", "label": "Deskripsi fitur pendukung spesifik domain" }
+  ]
+}`;
+
+  const userPrompt = `Domain Bisnis: ${domain}
+Narasi Cerita: "${narrative}"
+Masalah Utama: "${problem}"
+Alur Inti (Alur Utama): "${mainFlow}"
+
+Daftar Peran Aktif:
+- Super Admin (Owner): ${activeOwner}
+- Peran Wajib Inti: ${coreRole}
+- Seluruh Peran Aktif: ${activeRoles.join(', ')}
+
+Susun Alur Pendukung dan Fitur Pendukung operasional yang paling relevan dan spesifik untuk bisnis ini dalam format JSON:`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.5,
+    maxTokens: 3000,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[AI-SUPPORTING-FLOWS] Selesai dalam ${elapsed}ms`);
+
+  if (raw) {
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const alurPendukung: SupportingFlowItem[] = [];
+        if (Array.isArray(parsed.alurPendukung) && parsed.alurPendukung.length > 0) {
+          for (let i = 0; i < parsed.alurPendukung.length; i++) {
+            const ap = parsed.alurPendukung[i];
+            if (ap && typeof ap.nama === 'string' && Array.isArray(ap.steps) && ap.steps.length > 0) {
+              alurPendukung.push({
+                id: ap.id ? String(ap.id).toLowerCase().replace(/[^a-z0-9_]/g, '_') : `alur_pendukung_${i + 1}`,
+                nama: String(ap.nama).trim(),
+                steps: ap.steps.map((s: any) => ({
+                  pelaku: resolveActorForStep(String(s.pelaku || coreRole), session.roles),
+                  aksi: String(s.aksi || '').trim()
+                }))
+              });
+            }
+          }
+        }
+
+        const fiturPendukung: SupportingFeatureItem[] = [];
+        if (Array.isArray(parsed.fiturPendukung) && parsed.fiturPendukung.length > 0) {
+          for (let j = 0; j < parsed.fiturPendukung.length; j++) {
+            const fp = parsed.fiturPendukung[j];
+            const label = typeof fp === 'string' ? fp : fp?.label;
+            const id = fp?.id ? String(fp.id) : `feat_${j + 1}`;
+            if (label) {
+              fiturPendukung.push({ id, label: String(label).trim() });
+            }
+          }
+        }
+
+        if (alurPendukung.length > 0 && fiturPendukung.length > 0) {
+          return { alurPendukung, fiturPendukung };
+        }
+      }
+    } catch (e) {
+      console.warn('[AI-SUPPORTING-FLOWS] Gagal parse JSON AI, menggunakan fallback semantik:', e);
+    }
+  }
+
+  // Fallback semantik jika AI gagal / offline
+  const baseFlow = getDomainFlowDetails(session, { forceFresh: true });
+  return {
+    alurPendukung: baseFlow.alurPendukung,
+    fiturPendukung: baseFlow.fiturPendukung
   };
 }
 
@@ -2096,6 +2239,15 @@ export async function POST(req: Request) {
           }
         }
 
+        // Satu Pemanggilan AI Terpadu untuk Alur Pendukung & Fitur Pendukung (Opsi 1)
+        // Terpicu setiap transisi ROLE -> ALUR dan setiap regenerasi peran
+        const supportingData = await generateSupportingFlowsAndFeaturesWithAI(
+          updated,
+          provider,
+          userApiKey,
+          userModel
+        );
+
         // Periksa apakah domain ini adalah alur dua arah / kasus ganda aktif
         const isDualFlowActive =
           Boolean(updated.flow?.dualFlowPreDecided) ||
@@ -2116,7 +2268,11 @@ export async function POST(req: Request) {
 
           // Bangun ulang Kasus Ganda secara MENYELURUH dari roles terbaru
           const kasusGanda = buildKasusGandaFromSession(updated, processA, processB);
-          const flowDataFresh = getDomainFlowDetails(updated, { forceFresh: true });
+          const flowDataFresh = getDomainFlowDetails(updated, {
+            forceFresh: true,
+            supportingFlows: supportingData.alurPendukung,
+            supportingFeatures: supportingData.fiturPendukung
+          });
 
           const updatedWithKasus: MockupSessionState = {
             ...updated,
@@ -2181,8 +2337,12 @@ export async function POST(req: Request) {
           });
         }
 
-        // Alur Satu Arah: Tampilkan alur sistem langsung dari data peran terbaru
-        const flowData = getDomainFlowDetails(updated, { forceFresh: true });
+        // Alur Satu Arah: Tampilkan alur sistem langsung dari data peran terbaru & supportingData AI
+        const flowData = getDomainFlowDetails(updated, {
+          forceFresh: true,
+          supportingFlows: supportingData.alurPendukung,
+          supportingFeatures: supportingData.fiturPendukung
+        });
 
         // Rekonsiliasi peran wajib inti berdasarkan alur kerja aktual (POIN 4)
         const { updatedSession, reconciled, message: reconMsg } = reconcileCoreOperationalRole(updated, flowData);
