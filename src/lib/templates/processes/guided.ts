@@ -1798,7 +1798,7 @@ export function buildDirectionClarificationCard(
     stepId: 'STORYTELLING',
     title: pertanyaan,
     multi: false,
-    allowOther: false,
+    allowOther: true,
     options: [
       {
         id: 'dir_A_only',

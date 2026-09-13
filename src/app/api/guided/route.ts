@@ -390,7 +390,16 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         "opsiBoth": "Dua-duanya (keterangan)"
       }
 
-1. OBJEK FISIK & AKTIVITAS SPESIFIK DOMAIN (WAJIB):
+1. STRUKTUR ALUR CERITA LENGKAP END-TO-END BERTAHAP (WAJIB 3 FASE - DILARANG MELOMPAT):
+   Narasi cerita (2-4 kalimat) DILARANG melompat langsung ke tengah proses (seperti langsung menimbang barang di timbangan atau langsung cetak nota kasir). Cerita WAJIB merangkai alur lengkap berkesinambungan yang memuat 3 tahapan kronologis:
+   a) Fase Pembuka (Titik Awal Interaksi):
+      Pelanggan/warga/sumber barang mendatangi tempat usaha membawa barang/kebutuhan, atau petugas armada mendatangi lokasi sumber barang untuk penjemputan.
+   b) Fase Inti Operasional (Penanganan Fisik & Layanan Lapangan):
+      Staf/petugas memeriksa kondisi fisik, memilah jenis material/layanan, dan menimbang/menguji kelayakan dengan alat ukur presisi di tempat.
+   c) Fase Penutup (Penyelesaian Transaksi & Rekonsiliasi):
+      Pencatatan nota transaksi/tanda terima, pembayaran tunai/transfer ke pelanggan/warga, dan pelaporan berkala ke buku rekapitulasi pemilik.
+
+2. OBJEK FISIK & AKTIVITAS SPESIFIK DOMAIN (WAJIB):
    - Cerita WAJIB menyebutkan minimal satu detail aktivitas atau objek fisik nyata yang spesifik ke domain bisnis yang diminta pengguna.
    - Contoh objek/aktivitas konkret:
      * Cuci mobil: selang air bertekanan, vakum interior, sabun salju, pengering chamois, plat nomor kendaraan, antrean slot cuci.
@@ -400,7 +409,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
      * Bengkel motor/mobil: estimasi sparepart/oli, montir mengecek mesin, nota servis berkala, riwayat kilometer kendaraan.
    - DILARANG KERAS menggunakan frasa generik lintas-industri seperti: "tim di lapangan", "aktivitas harian", "layanan pelanggan", "tim melayani secara teratur" tanpa detail konkret tambahan!
 
-2. PERAN SPESIFIK & MANUSIAWI (asumsiAktor) BESERTA DETAIL PERAN (detailAktor):
+3. PERAN SPESIFIK & MANUSIAWI (asumsiAktor) BESERTA DETAIL PERAN (detailAktor):
    - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
    - DILARANG memakai sebutan generik abstrak seperti "Staf Operasional", "Operator", "Pegawai", atau "Tim Lapangan".
    - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
@@ -410,21 +419,21 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
      * DILARANG memunculkan dua peran kasir semu seperti "Kasir Penjualan" dan "Kasir Pembelian" jika jenis keahlian keduanya sama persis (misal di money changer atau warung sembako). Gunakan SATU peran representatif (misal "Teller Valas" atau "Kasir Toko").
      * Format asumsiAktor WAJIB berupa array of string sederhana: ["Super Admin", "Peran Frontliner", "Pelanggan"]. DILARANG membuat format gabungan seperti ["Kasir (Sales & Pembelian)"]!
 
-3. TAHAPAN ALUR UTAMA (asumsiAlurUtama):
+4. TAHAPAN ALUR UTAMA (asumsiAlurUtama):
    - Format: "Langkah 1 -> Langkah 2 -> Langkah 3 -> Langkah 4".
    - Tuliskan 3-5 tahapan konkret dari awal interaksi pelanggan sampai akhir proses.
    - DILARANG memakai kalimat umum seperti "Pelanggan memesan -> Petugas memproses -> Pemilik memantau".
    - Jika kondisi DUA_ARAH, alur utama WAJIB merangkum kedua siklus transaksi secara nyata dan berimbang.
      Contoh nyata Koperasi Simpan Pinjam: "Anggota menyetor tabungan & kasir mencatat saldo buku -> Anggota mengajukan pinjaman dana -> Petugas memverifikasi kelayakan & mencairkan dana pinjaman -> Anggota membayar cicilan berkala -> Pengurus memantau rekap simpan pinjam".
 
-4. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
+5. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
    "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
 
-5. NADA HANGAT, BERSAHABAT, & TANPA ISTILAH TEKNIS:
+6. NADA HANGAT, BERSAHABAT, & TANPA ISTILAH TEKNIS:
    - Gunakan bahasa Indonesia percakapan yang santun, luwes, dan akrab layaknya rekan diskusi bisnis yang suportif.
    - DILARANG KERAS menggunakan kata teknis IT/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni interaksi manusia dan barang nyata!
 
-6. KALIMAT PENUTUP WAJIB:
+7. KALIMAT PENUTUP WAJIB:
    Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
    "${CONFIRMATION_CLOSING}"
 
@@ -775,8 +784,9 @@ Tugas Anda: Memperbarui cerita dan asumsi proses bisnis berdasarkan masukan atau
 
 ATURAN WAJIB:
 1. NADA HANGAT & BERSAHABAT: Tanggapi koreksi pengguna dengan positif, apresiatif, dan suportif.
-2. DETAIL OBJEK & AKTIVITAS FISIK KONKRET:
+2. DETAIL OBJEK & AKTIVITAS FISIK KONKRET SERTA STRUKTUR 3 FASE UTUH (DILARANG MELOMPAT):
    - Rangkai kembali cerita sehingga memasukkan poin koreksi pengguna secara alami dan memuat aktivitas/objek fisik nyata (bukan frasa generik seperti "tim lapangan" atau "layanan pelanggan").
+   - Cerita narasi WAJIB utuh 3 fase berurutan dari hulu ke hilir: (1) Interaksi awal pelanggan/warga datang atau dijemput armada, (2) Penanganan inti operasional fisik/pemeriksaan/penimbangan, dan (3) Penyelesaian nota transaksi & pembayaran/rekonsiliasi akhir. DILARANG melompat langsung ke tengah proses.
 3. PERAN DAN ALUR SPESIFIK:
    - asumsiAktor WAJIB mencantumkan nama pekerjaan nyata (contoh: "Staf Cuci & Lap", "Resepsionis", bukan "Staf Operasional"). Selalu sertakan "Super Admin".
    - asumsiAlurUtama WAJIB urutan aksi fisik nyata di lokasi kerja.
@@ -1577,7 +1587,7 @@ export async function POST(req: Request) {
         // Sub-handler: Jawaban klarifikasi arah bisnis sebelum narasi dibuat
         if (session.storyline?.pendingDirectionClarification) {
           const { originalPrompt, opsiA, opsiB, nameA, nameB } = session.storyline.pendingDirectionClarification;
-          const choice = selected[0] || 'dir_both';
+          const choice = selected[0] || (other ? 'dir_custom' : 'dir_both');
 
           let enrichedPrompt = originalPrompt;
           let isBoth = choice === 'dir_both';
@@ -1585,7 +1595,11 @@ export async function POST(req: Request) {
           const labelA = nameA || opsiA || 'Arah Bisnis A';
           const labelB = nameB || opsiB || 'Arah Bisnis B';
 
-          if (choice === 'dir_A_only') {
+          if (other) {
+            const isCustomBoth = /kedua|dua|seimbang|ganda|jual\s+beli|beli\s+jual|dua-duanya/i.test(other);
+            isBoth = isCustomBoth;
+            enrichedPrompt = `${originalPrompt}. PANDUAN PENTING ARAH BISNIS: Pengguna memberikan arahan bisnis spesifik: "${other}". Susun alur cerita proses bisnis lengkap yang fokus penuh pada arahan tersebut secara utuh 3 fase dari hulu ke hilir. JANGAN membuat alur yang bertentangan dengan arahan pengguna ini.`;
+          } else if (choice === 'dir_A_only') {
             enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${labelA}". JANGAN buat alur untuk "${labelB}". Susun cerita proses bisnis murni satu arah untuk ${labelA}.`;
           } else if (choice === 'dir_B_only') {
             enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${labelB}". JANGAN buat alur untuk "${labelA}". Susun cerita proses bisnis murni satu arah untuk ${labelB}.`;

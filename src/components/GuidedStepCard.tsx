@@ -115,6 +115,10 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
       setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     } else {
       setSelected([id]);
+      if (otherOpen) {
+        setOtherOpen(false);
+        setOther('');
+      }
     }
   };
 
@@ -125,7 +129,11 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
 
   const canSubmit = isInputRequired
     ? other.trim().length > 0
-    : selected.length > 0 || (otherOpen && other.trim().length > 0);
+    : otherOpen
+    ? payload.multi
+      ? selected.length > 0 || other.trim().length > 0
+      : other.trim().length > 0
+    : selected.length > 0;
 
   const handleSubmit = () => {
     if (!canSubmit || disabled || submitted) return;
@@ -667,43 +675,58 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
 
       {/* Fallback allowOther untuk step SELAIN ROLE */}
       {payload.stepId !== 'ROLE' && payload.allowOther && (
-        <div className="pt-1 border-t border-white/10">
+        <div className="pt-2 border-t border-white/10 space-y-2">
           {!otherOpen ? (
             <button
               type="button"
-              onClick={() => setOtherOpen(true)}
+              onClick={() => {
+                setOtherOpen(true);
+                if (!payload.multi) {
+                  setSelected([]);
+                }
+              }}
               disabled={disabled}
-              className="inline-flex items-center gap-1.5 text-[10.5px] text-zinc-400 hover:text-[#10f48e] transition-colors"
+              className="w-full py-2 px-3 rounded-xl border border-dashed border-white/20 hover:border-[#10f48e]/50 bg-white/[0.02] hover:bg-[#10f48e]/5 text-[11px] font-medium text-zinc-300 hover:text-[#10f48e] flex items-center justify-center gap-1.5 transition-all"
             >
-              <Plus className="w-3 h-3" />
-              <span>Lainnya (isi sendiri)</span>
+              <Plus className="w-3.5 h-3.5 text-[#10f48e]" />
+              <span>+ Lainnya (isi sendiri)</span>
             </button>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
+            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/15 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-[10.5px] font-semibold text-[#10f48e] flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Tulis arahan / kebutuhan lain:</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtherOpen(false);
+                    setOther('');
+                    if (!payload.multi && initialSelected.length > 0) {
+                      setSelected(initialSelected);
+                    }
+                  }}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+
+              <textarea
                 value={other}
                 onChange={(e) => setOther(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
-                }}
-                placeholder="Tulis kebutuhan lain..."
-                className="flex-1 bg-[#101016] border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-[#10f48e]/50"
+                placeholder="Contoh: Fokus pembelian saja dari sumber barang..."
+                rows={3}
+                className="w-full bg-[#101016] border border-white/15 focus:border-[#10f48e]/60 rounded-lg p-2.5 text-[11px] text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none transition-colors"
                 autoFocus
               />
-              <button
-                type="button"
-                onClick={() => {
-                  setOtherOpen(false);
-                  setOther('');
-                }}
-                className="text-[10px] text-zinc-500 hover:text-zinc-300 px-1"
-              >
-                Tutup
-              </button>
+
+              {other.trim().length === 0 && (
+                <span className="text-[9.5px] text-amber-400/90 block">
+                  * Tuliskan arahan Anda di atas sebelum melanjutkan
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -722,7 +745,11 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
             : 'bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black active:scale-[0.99]'
         }`}
       >
-        {isInputRequired ? 'Kirim Koreksi' : 'Lanjut'}
+        {isInputRequired
+          ? 'Kirim Koreksi'
+          : otherOpen && other.trim().length > 0
+          ? 'Kirim Arahan'
+          : 'Lanjut'}
       </button>
     </div>
   );
