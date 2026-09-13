@@ -21,7 +21,8 @@ import {
   X,
   Settings,
   Search,
-  Loader2
+  Loader2,
+  Cpu
 } from 'lucide-react';
 import { BriefKebutuhanCard, parseBriefKebutuhan } from './BriefKebutuhanCard';
 import { DemoCredentialsCard, parseDemoCredentials } from './DemoCredentialsCard';
@@ -102,6 +103,43 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const [modelCategoryFilter, setModelCategoryFilter] = useState<'ALL' | 'GRATIS' | 'POPULER' | 'CODING' | 'REASONING'>('ALL');
   const [showCustomModelInput, setShowCustomModelInput] = useState(false);
   const [customModelId, setCustomModelId] = useState('');
+
+  // Notifikasi popup model saat chat pertama kali
+  const [modelNotification, setModelNotification] = useState<{ modelName: string } | null>(null);
+  const notificationTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getNotificationModelName = (settings: ModelSettings): string => {
+    if (!settings.token) {
+      return 'Google Gemini (gemini-3.6-flash)';
+    }
+    const providerCfg = getProviderConfig(settings.provider);
+    const label = getModelLabel(settings.model, settings.provider);
+    if (label && label.toLowerCase() !== settings.model.toLowerCase()) {
+      return `${providerCfg.label} (${label})`;
+    }
+    return `${providerCfg.label} (${settings.model})`;
+  };
+
+  const triggerModelNotification = () => {
+    const currentSettings = loadModelSettings();
+    const modelText = getNotificationModelName(currentSettings);
+    setModelNotification({ modelName: modelText });
+
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
+    }
+    notificationTimerRef.current = setTimeout(() => {
+      setModelNotification(null);
+    }, 6000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch katalog live OpenRouter (400+ model)
   useEffect(() => {
@@ -250,6 +288,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   const startGuidedSession = async (prompt: string) => {
+    const isFirstUserChat = !messages.some((m) => m.sender === 'USER');
+    if (isFirstUserChat) {
+      triggerModelNotification();
+    }
     const userMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
       sender: 'USER',
@@ -470,6 +512,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     );
     setLoadingText(contextualText);
 
+    const isFirstUserChat = !messages.some((m) => m.sender === 'USER');
+    if (isFirstUserChat) {
+      triggerModelNotification();
+    }
+
     const userMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
       sender: 'USER',
@@ -683,7 +730,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   }, [externalSendToken]);
 
   const activeProvider = modelConfig.token ? getProviderConfig(modelConfig.provider).label : 'Server Default';
-  const activeModelName = modelConfig.token ? getModelLabel(modelConfig.model, modelConfig.provider) : 'Gemini 2.5 Flash';
+  const activeModelName = modelConfig.token ? getModelLabel(modelConfig.model, modelConfig.provider) : 'Gemini 3.6 Flash';
 
   const allProviderModels: AIModelOption[] = useMemo(() => {
     if (modelConfig.provider === 'openrouter') {
@@ -738,6 +785,31 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-[#08080c] border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative select-none">
       
+      {/* Popup Notifikasi Model AI saat Awal Pemrosesan (Chat Pertama Kali) */}
+      {modelNotification && (
+        <div className="absolute top-[62px] inset-x-3 z-40 animate-fadeIn pointer-events-auto">
+          <div className="flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-xl bg-[#0c1410]/95 border border-[#10f48e]/40 text-white shadow-[0_8px_30px_rgb(0,0,0,0.5)] backdrop-blur-md">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-6 h-6 rounded-lg bg-[#10f48e]/20 border border-[#10f48e]/40 flex items-center justify-center shrink-0">
+                <Cpu className="w-3.5 h-3.5 text-[#10f48e] animate-pulse" />
+              </div>
+              <p className="text-xs truncate">
+                <span className="text-zinc-300">Pemrosesan menggunakan model </span>
+                <span className="font-semibold text-[#10f48e]">{modelNotification.modelName}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModelNotification(null)}
+              className="p-1 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors shrink-0"
+              title="Tutup Notifikasi"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header Panel Chat: Nama Proyek + Dropdown Pemilihan Model AI */}
       <div className="h-14 px-4 border-b border-white/10 bg-[#0e0e13] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
