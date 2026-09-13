@@ -1353,32 +1353,38 @@ export async function POST(req: Request) {
           revisiCount: 0
         };
 
-        const isConfirm =
-          selected.includes('confirm_story') ||
-          (!other && selected.length === 0) ||
-          (Boolean(other) && /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(other));
-
         const isMismatch =
           selected.includes('mismatch_story') ||
           (Boolean(other) && /meleset\s*jauh|salah\s*(semua|total)|bukan\s*begitu|keliru\s*total/i.test(other));
 
+        const isConfirm =
+          selected.includes('confirm_story') ||
+          (!other && selected.length === 0 && !selected.includes('minor_adjust') && !isMismatch) ||
+          (Boolean(other) && !selected.includes('minor_adjust') && !isMismatch && /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(other));
+
+        const isMinorAdjust =
+          selected.includes('minor_adjust') ||
+          (Boolean(other) && !isConfirm && !isMismatch);
+
         const currentRevisi = existingStory.revisiCount || 0;
 
+        // 1. Mismatch Jauh ("Meleset jauh dari proses bisnis saya")
         if (isMismatch) {
           if (currentRevisi >= 2) {
-            // Batas 2 kali koreksi tercapai: lanjut ke ROLE dengan catatan (POIN 2 aturan 5)
+            // Batas 2 kali koreksi tercapai: lanjut ke ROLE dengan catatan
             const updated: MockupSessionState = {
               ...session,
               step: 'ROLE',
               storyline: {
                 ...existingStory,
                 statusKonfirmasi: 'dikoreksi',
+                modeKlarifikasiBertahap: false,
                 revisiCount: currentRevisi
               }
             };
             const guidedStep = buildGuidedStep(updated);
             const narration =
-              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!';
+              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!\n\nOwner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi. Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
             return NextResponse.json({
               success: true,
               action,
@@ -1387,7 +1393,7 @@ export async function POST(req: Request) {
               narration
             });
           } else {
-            // Masuk ke pertanyaan bertahap satu per satu (POIN 2 aturan 4)
+            // Masuk ke pertanyaan bertahap satu per satu
             const nextRevisi = currentRevisi + 1;
             const updated: MockupSessionState = {
               ...session,
@@ -1395,6 +1401,7 @@ export async function POST(req: Request) {
               storyline: {
                 ...existingStory,
                 statusKonfirmasi: 'dikoreksi',
+                modeKlarifikasiBertahap: true,
                 revisiCount: nextRevisi
               }
             };
@@ -1414,8 +1421,32 @@ export async function POST(req: Request) {
           }
         }
 
-        // Jika sebelumnya dalam mode klarifikasi bertahap dan user memberikan jawaban
-        if (currentRevisi > 0 && !isConfirm) {
+        // 2. Jika sebelumnya dalam mode klarifikasi bertahap (mismatch) dan user memberikan jawaban
+        if (existingStory.modeKlarifikasiBertahap && !isConfirm) {
+          if (currentRevisi >= 2) {
+            // Batas 2 kali koreksi tercapai -> lanjut ke ROLE
+            const updated: MockupSessionState = {
+              ...session,
+              step: 'ROLE',
+              storyline: {
+                ...existingStory,
+                statusKonfirmasi: 'dikoreksi',
+                modeKlarifikasiBertahap: false,
+                revisiCount: currentRevisi
+              }
+            };
+            const guidedStep = buildGuidedStep(updated);
+            const narration =
+              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!\n\nOwner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi. Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
+            return NextResponse.json({
+              success: true,
+              action,
+              session: updated,
+              guidedStep,
+              narration
+            });
+          }
+
           const feedback = other || selected.join(', ');
           const refined = await refineStorylineWithAI(
             existingStory,
@@ -1425,6 +1456,11 @@ export async function POST(req: Request) {
             userApiKey,
             userModel
           );
+          let newNarasi = refined.narasi.trim();
+          if (!newNarasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
+            newNarasi = `${newNarasi} ${CONFIRMATION_CLOSING}`.trim();
+          }
+
           const updated: MockupSessionState = {
             ...session,
             step: 'STORYTELLING',
@@ -1435,47 +1471,14 @@ export async function POST(req: Request) {
             storyline: {
               ...existingStory,
               ...refined,
+              narasi: newNarasi,
               statusKonfirmasi: 'dikoreksi',
+              modeKlarifikasiBertahap: false,
               revisiCount: currentRevisi
             }
           };
           const guidedStep = buildGuidedStep(updated);
-          return NextResponse.json({
-            success: true,
-            action,
-            session: updated,
-            guidedStep,
-            narration: updated.storyline?.narasi
-          });
-        }
-
-        // Koreksi kecil / catatan alur: perbarui storyline lalu langsung lanjut ke ROLE (POIN 2 aturan 3)
-        if (other && !isConfirm) {
-          const refined = await refineStorylineWithAI(
-            existingStory,
-            other,
-            false,
-            provider,
-            userApiKey,
-            userModel
-          );
-          const updated: MockupSessionState = {
-            ...session,
-            step: 'ROLE',
-            match: {
-              ...session.match,
-              contextualRoles: refined.asumsiAktor
-            },
-            storyline: {
-              ...existingStory,
-              ...refined,
-              statusKonfirmasi: 'dikoreksi',
-              revisiCount: currentRevisi
-            }
-          };
-          const guidedStep = buildGuidedStep(updated);
-          const narration =
-            'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nSip, catatanmu sudah saya sesuaikan ke alur cerita! Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
+          const narration = `Sip, cerita proses bisnis sudah saya rangkai ulang berdasarkan penjelasanmu:\n\n${newNarasi}`;
           return NextResponse.json({
             success: true,
             action,
@@ -1485,13 +1488,83 @@ export async function POST(req: Request) {
           });
         }
 
-        // Konfirmasi langsung -> lanjut ke ROLE (POIN 2 aturan 3 & POIN 3 pembuka)
+        // 3. Ada koreksi / catatan alur ("minor_adjust"): perbarui narasi & TAMPILKAN ULANG di STORYTELLING
+        if (isMinorAdjust) {
+          if (currentRevisi >= 2) {
+            // Batas 2 kali koreksi tercapai: lanjut ke ROLE dengan catatan
+            const updated: MockupSessionState = {
+              ...session,
+              step: 'ROLE',
+              storyline: {
+                ...existingStory,
+                statusKonfirmasi: 'dikoreksi',
+                modeKlarifikasiBertahap: false,
+                revisiCount: currentRevisi
+              }
+            };
+            const guidedStep = buildGuidedStep(updated);
+            const narration =
+              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!\n\nOwner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi. Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
+            return NextResponse.json({
+              success: true,
+              action,
+              session: updated,
+              guidedStep,
+              narration
+            });
+          }
+
+          // Belum mencapai batas: susun ulang narasi dan TAMPILKAN ULANG ke user di step STORYTELLING
+          const nextRevisi = currentRevisi + 1;
+          const feedback = other || selected.join(', ');
+          const refined = await refineStorylineWithAI(
+            existingStory,
+            feedback,
+            false,
+            provider,
+            userApiKey,
+            userModel
+          );
+          let newNarasi = refined.narasi.trim();
+          if (!newNarasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
+            newNarasi = `${newNarasi} ${CONFIRMATION_CLOSING}`.trim();
+          }
+
+          const updated: MockupSessionState = {
+            ...session,
+            step: 'STORYTELLING',
+            match: {
+              ...session.match,
+              contextualRoles: refined.asumsiAktor
+            },
+            storyline: {
+              ...existingStory,
+              ...refined,
+              narasi: newNarasi,
+              statusKonfirmasi: 'dikoreksi',
+              modeKlarifikasiBertahap: false,
+              revisiCount: nextRevisi
+            }
+          };
+          const guidedStep = buildGuidedStep(updated);
+          const narration = `Sip, catatanmu sudah saya sesuaikan ke alur cerita!\n\n${newNarasi}`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updated,
+            guidedStep,
+            narration
+          });
+        }
+
+        // 4. Konfirmasi langsung ("Sudah sesuai, lanjut ke Role") -> lanjut ke ROLE
         const updated: MockupSessionState = {
           ...session,
           step: 'ROLE',
           storyline: {
             ...existingStory,
-            statusKonfirmasi: 'disetujui'
+            statusKonfirmasi: 'disetujui',
+            modeKlarifikasiBertahap: false
           }
         };
         const guidedStep = buildGuidedStep(updated);

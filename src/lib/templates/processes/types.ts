@@ -216,6 +216,11 @@ export interface MockupSessionState {
     statusKonfirmasi: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
     /**
+     * True jika user sedang dalam sesi tanya jawab bertahap (mismatch_story).
+     * Jika false/undefined, kartu konfirmasi narasi standar yang ditampilkan.
+     */
+    modeKlarifikasiBertahap?: boolean;
+    /**
      * Hasil analisis konseptual arah bisnis dari AI (SATU_ARAH, DUA_ARAH, atau AMBIGU).
      */
     analisisArah?: AnalisisArahResult;

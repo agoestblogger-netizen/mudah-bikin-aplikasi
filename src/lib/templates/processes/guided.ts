@@ -233,7 +233,7 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
   }
 
   const revisiCount = session.storyline?.revisiCount || 0;
-  const isClarifying = revisiCount > 0 && session.storyline?.statusKonfirmasi === 'dikoreksi';
+  const isClarifying = Boolean(session.storyline?.modeKlarifikasiBertahap);
 
   if (isClarifying) {
     return {
@@ -261,7 +261,7 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
 
   return {
     stepId: 'STORYTELLING',
-    title: 'Konfirmasi gambaran proses bisnis aplikasi Anda',
+    title: revisiCount > 0 ? 'Konfirmasi narasi proses bisnis hasil penyesuaian' : 'Konfirmasi gambaran proses bisnis aplikasi Anda',
     multi: false,
     allowOther: true,
     options: [
@@ -2247,23 +2247,41 @@ export function applyGuidedAnswer(
       revisiCount: 0
     };
 
-    if (isMismatch && (existingStory.revisiCount || 0) < 2) {
+    const currentRevisi = existingStory.revisiCount || 0;
+
+    if (isMismatch && currentRevisi < 2) {
       next.storyline = {
         ...existingStory,
         statusKonfirmasi: 'dikoreksi',
-        revisiCount: (existingStory.revisiCount || 0) + 1
+        modeKlarifikasiBertahap: true,
+        revisiCount: currentRevisi + 1
       };
       next.step = 'STORYTELLING';
       return next;
     }
 
+    if (isConfirm || currentRevisi >= 2) {
+      next.storyline = {
+        ...existingStory,
+        narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
+        statusKonfirmasi: isConfirm ? 'disetujui' : 'dikoreksi',
+        modeKlarifikasiBertahap: false,
+        revisiCount: currentRevisi
+      };
+      next.step = 'ROLE';
+      return next;
+    }
+
+    // Jika koreksi kecil (minor_adjust / other) dan belum mencapai batas 2x revisi:
+    // Sesi TETAP berada di step STORYTELLING untuk ditampilkan ulang!
     next.storyline = {
       ...existingStory,
       narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
-      statusKonfirmasi: isConfirm ? 'disetujui' : 'dikoreksi',
-      revisiCount: existingStory.revisiCount || 0
+      statusKonfirmasi: 'dikoreksi',
+      modeKlarifikasiBertahap: false,
+      revisiCount: currentRevisi + 1
     };
-    next.step = 'ROLE';
+    next.step = 'STORYTELLING';
     return next;
   } else if (stepId === 'ROLE') {
     const offeredStep = buildRoleStep(session);
