@@ -968,10 +968,13 @@ export async function generateSupportingFlowsAndFeaturesWithAI(
 Tugas Anda: Menyusun Alur Pendukung (Supporting Workflows) dan Fitur Pendukung (Supporting Features) operasional yang SANGAT KONKRET, SPESIFIK KE INDUSTRI TERKAIT, dan MURNI DIGROUNDING ke narasi cerita bisnis nyata pengguna serta daftar peran yang aktif.
 
 ATURAN WAJIB & LARANGAN MUTLAK:
-1. GROUNDING PENUH KE NARASI & PERAN AKTIF:
-   - Baca dengan cermat Narasi, Masalah Utama, Alur Utama (Alur Inti), dan Daftar Peran yang disepakati.
-   - Alur Pendukung adalah alur kerja operasional penunjang di luar alur utama (misalnya penanganan kendala pengerjaan, restock persediaan bahan kerja/alat, kalibrasi/inspeksi instrumen operasional fisik).
-   - Aktor/pelaku di setiap langkah WAJIB diambil HANYA dari Daftar Peran Aktif yang tersedia: ${activeRoles.join(', ')}. DILARANG mengarang nama peran yang tidak ada di daftar!
+1. GROUNDING PENUH KE NARASI & PERAN AKTIF (ANALISIS KONSEPTUAL TANGGUNG JAWAB):
+   - Baca dengan cermat Narasi, Masalah Utama, Alur Utama (Alur Inti), serta Daftar Peran dan Tanggung Jawabnya.
+   - Aktor/pelaku di setiap langkah WAJIB diambil HANYA dari Daftar Peran Aktif: ${activeRoles.join(', ')}. DILARANG mengarang nama peran yang tidak ada di daftar!
+   - PENUGASAN PERAN GOVERNANCE / PENGAMBIL KEPUTUSAN KONSEPTUAL:
+     * Cermati rincian narasi dan tanggung jawab setiap peran yang diberikan.
+     * Jika ada peran yang secara jelas bertindak sebagai pengambil keputusan, otorisasi, persetujuan batas/plafon, evaluasi risiko, audit, atau pengawas tata kelola (ditentukan DARI ISI TANGGUNG JAWABNYA, BUKAN dari mencocokkan nama peran ke daftar kata kunci), WAJIB libatkan peran tersebut di langkah alur yang memang membutuhkan persetujuan, evaluasi kelayakan, atau otorisasi kebijakan — bukan diserahkan ke staf operasional biasa yang hanya menjalankan tugas rutin lapangan.
+     * Staf operasional biasa menjalankan tugas fisik rutin, pelayanan langsung, dan persiapan teknis.
    - Kalimat aksi harus menggambarkan aktivitas fisik/operasional nyata manusia di tempat kerja dengan objek spesifik bisnis tersebut.
 
 2. LARANGAN KERAS KERANGKA/FORMULA JUDUL ABSTRAK (ANTI-TEMPLATE GENERIK):
@@ -1016,15 +1019,26 @@ ATURAN WAJIB & LARANGAN MUTLAK:
   ]
 }`;
 
+  const roleDescriptions = activeRoles
+    .map((r) => {
+      const detail = session.storyline?.detailAktor?.[r];
+      if (detail && detail.tanggungJawab?.length) {
+        return `- ${r}: ${detail.narasi || ''} (Tanggung Jawab: ${detail.tanggungJawab.join('; ')})`;
+      }
+      return `- ${r}`;
+    })
+    .join('\n');
+
   const userPrompt = `Domain Bisnis: ${domain}
 Narasi Cerita: "${narrative}"
 Masalah Utama: "${problem}"
 Alur Inti (Alur Utama): "${mainFlow}"
 
-Daftar Peran Aktif:
-- Super Admin (Owner): ${activeOwner}
-- Peran Wajib Inti: ${coreRole}
-- Seluruh Peran Aktif: ${activeRoles.join(', ')}
+Daftar Peran Aktif & Rincian Tanggung Jawabnya:
+${roleDescriptions}
+
+Peran Pemilik/Super Admin: ${activeOwner}
+Peran Operasional Utama: ${coreRole}
 
 Susun Alur Pendukung dan Fitur Pendukung operasional yang paling relevan dan spesifik untuk bisnis ini dalam format JSON:`;
 

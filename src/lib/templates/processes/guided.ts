@@ -73,7 +73,7 @@ function collectFeatures(session: MockupSessionState): FeatureInfo[] {
  * BUKAN sebagai sumber saran role baru!
  */
 const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
-  { key: 'super-admin', re: /^(super\s*admin|owner|pemilik|pengurus|direktur|director|founder|yayasan)$/i },
+  { key: 'super-admin', re: /^(super\s*admin|owner|pemilik|founder)$/i },
   { key: 'customer-service', re: /customer\s*(service|success)|cs\b/i },
   { key: 'front-office', re: /resepsionis|front\s*office|front\s*desk|loket|receptionist|petugas\s*loket/i },
   { key: 'cashier', re: /kasir|cashier/i },
@@ -209,10 +209,47 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
   return result;
 }
 
-export function isGovernanceRole(label: string): boolean {
+/**
+ * Menentukan apakah suatu peran merupakan peran tata kelola (governance/pengambil kebijakan).
+ * PRIORITAS: Membaca isi tanggung jawab konseptual dari detailAktor (hasil AI step ROLE).
+ * BUKAN semata-mata dari mencocokkan kata kunci pada nama peran.
+ */
+export function isGovernanceRole(
+  label: string,
+  detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>
+): boolean {
   if (!label) return false;
   const clean = label.trim();
   if (isSuperAdminRole(clean) || isExternalRole(clean)) return false;
+
+  // 1. PRIORITAS UTAMA: Analisis Konseptual dari Isi Tanggung Jawab (Hasil AI Step ROLE)
+  if (detailAktor) {
+    let details = detailAktor[clean];
+    if (!details) {
+      const lower = clean.toLowerCase();
+      for (const [k, v] of Object.entries(detailAktor)) {
+        if (k.toLowerCase() === lower) {
+          details = v;
+          break;
+        }
+      }
+    }
+
+    if (details) {
+      const combinedText = `${details.narasi || ''} ${(details.tanggungJawab || []).join(' ')}`.toLowerCase();
+
+      // Cek apakah tanggung jawab memuat peran pengambil keputusan kebijakan, regulasi, otorisasi, pengawasan, evaluasi kepatuhan
+      const hasStrategicAuthority = /\b(kebijakan|strategis|regulasi|plafon|otorisasi|persetujuan|menyetujui|mengevaluasi|evaluasi|audit|kepatuhan|pengawasan|mengawasi|anggaran|tata kelola|pertanggungjawaban|skema|likuiditas)\b/i.test(combinedText);
+      const isPureFrontlineService = /\b(memotong rambut|mencuci|mengemudi|mengecor|menyeduh|membersihkan|melayani antrean)\b/i.test(combinedText);
+
+      if (hasStrategicAuthority && !isPureFrontlineService) {
+        return true;
+      }
+      return false;
+    }
+  }
+
+  // 2. FALLBACK DARURAT OFFLINE: Hanya jika detailAktor AI belum tersedia sama sekali
   return /\b(pengurus|pengawas|direksi|direktur|komite|dewan|pembina|yayasan|board|governance)\b/i.test(clean);
 }
 
@@ -358,7 +395,7 @@ export function getRoleNarrativeAndResponsibilities(
     ...(storylineContext?.asumsiAktor || []),
     ...Object.keys(storylineContext?.detailAktor || {})
   ];
-  const hasGovernance = allKnownRoles.some((r) => isGovernanceRole(r));
+  const hasGovernance = allKnownRoles.some((r) => isGovernanceRole(r, storylineContext?.detailAktor));
 
   // 1. Super Admin / Pemilik Usaha
   if (isSuperAdminRole(clean)) {
@@ -453,7 +490,7 @@ export function getRoleNarrativeAndResponsibilities(
   }
 
   // 3. Fallback Khusus: Peran Tata Kelola / Governance (Pengurus Koperasi, Direksi, Dewan Pengawas)
-  if (isGovernanceRole(clean)) {
+  if (isGovernanceRole(clean, storylineContext?.detailAktor)) {
     return {
       narasi: `Pengambil kebijakan strategis dan penanggung jawab tata kelola organisasi di ${cat}. Menetapkan regulasi bisnis, jenis produk layanan, plafon, serta mengevaluasi laporan kinerja periodik.`,
       tanggungJawab: [
@@ -1159,7 +1196,10 @@ function generateSemanticSupportingFlows(
 
   // 9. KOPERASI / SIMPAN PINJAM / KREDIT
   if (/koperasi|simpan\s*pinjam|kredit|pinjaman/i.test(fullText)) {
-    const committeeActor = findActor(/komite|kredit|pengurus|analis|surveyor/i, '');
+    const governanceCandidate = session.roles?.selected?.find((r) => isGovernanceRole(r, session.storyline?.detailAktor));
+    const committeeActor = governanceCandidate
+      ? resolveActorForStep(governanceCandidate, session.roles)
+      : findActor(/komite|kredit|pengurus|analis|surveyor/i, '');
     const cashierActor = findActor(/kasir|teller|bendahara/i, activeCore);
     const hasSpecializedCommittee = committeeActor && committeeActor.toLowerCase() !== customerActor.toLowerCase();
 
@@ -2179,7 +2219,7 @@ export function buildKasusGandaFromSession(
     ];
     for (const c of candidates) {
       if (isSuperAdminRole(c) || isExternalRole(c)) continue;
-      if (isGovernanceRole(c)) {
+      if (isGovernanceRole(c, session.storyline?.detailAktor)) {
         return resolveActorForStep(c, session.roles);
       }
     }
@@ -2205,7 +2245,7 @@ export function buildKasusGandaFromSession(
     }
 
     // Prioritaskan staf operasional murni (bukan governance jika staf operasional tersedia)
-    const operationalOnly = allCandidates.filter((c) => !isGovernanceRole(c));
+    const operationalOnly = allCandidates.filter((c) => !isGovernanceRole(c, session.storyline?.detailAktor));
     const candidates = operationalOnly.length > 0 ? operationalOnly : allCandidates;
 
     if (candidates.length > 0) {
@@ -2213,7 +2253,7 @@ export function buildKasusGandaFromSession(
     }
 
     const detected = detectCoreOperationalRole(session);
-    if (!isExternalRole(detected) && !isSuperAdminRole(detected) && !isGovernanceRole(detected)) {
+    if (!isExternalRole(detected) && !isSuperAdminRole(detected) && !isGovernanceRole(detected, session.storyline?.detailAktor)) {
       return resolveActorForStep(detected, session.roles);
     }
 
