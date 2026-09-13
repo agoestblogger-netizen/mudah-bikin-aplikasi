@@ -552,6 +552,10 @@ export function deduplicateRoleOptionsSemantically(options: GuidedStepOption[]):
       if (existing.roleStatus === 'WAJIB_OWNER' || canonicalRoleKey(existing.label) === 'super-admin') {
         return false;
       }
+      // Dilarang menggabungkan dua role WAJIB_INTI yang berbeda (misal role kasus A dan kasus B yang sengaja dipisah)
+      if (existing.roleStatus === 'WAJIB_INTI' && current.roleStatus === 'WAJIB_INTI') {
+        return false;
+      }
       const existingIsExternal = isExternalRole(existing.label) || canonicalRoleKey(existing.label) === 'customer';
       // Jangan gabungkan staf internal dengan pelanggan eksternal
       if (currentIsExternal !== existingIsExternal) {
@@ -663,6 +667,10 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   }
 
   // Tentukan Role Wajib Kedua (Alur Inti)
+  const pemisahanRole = session.storyline?.analisisArah?.duaArah?.pemisahanRole;
+  const isDualSeparated = pemisahanRole?.keputusan === 'PISAH';
+  const roleKasusA = pemisahanRole?.roleKasusA?.toLowerCase();
+  const roleKasusB = pemisahanRole?.roleKasusB?.toLowerCase();
   const coreRole = detectCoreOperationalRole(session);
 
   const options: GuidedStepOption[] = [];
@@ -681,7 +689,11 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
 
   // Tambahkan role lainnya murni dari kandidat cerita yang lolos grounding
   for (const label of candidateLabels) {
-    const isCore = label === coreRole;
+    const lowerLabel = label.toLowerCase();
+    const isCore = isDualSeparated
+      ? (Boolean(roleKasusA) && (lowerLabel.includes(roleKasusA!) || roleKasusA!.includes(lowerLabel))) ||
+        (Boolean(roleKasusB) && (lowerLabel.includes(roleKasusB!) || roleKasusB!.includes(lowerLabel)))
+      : label === coreRole;
     const details = getRoleNarrativeAndResponsibilities(label, session.match.businessCategory, session.storyline);
     options.push({
       id: label,
@@ -1466,14 +1478,73 @@ export function reconcileCoreOperationalRole(
   newCoreRole: string;
   message?: string;
 } {
-  // Jika kasusGanda aktif, gabungkan semua steps dari kedua kasus
+  const currentCoreRole =
+    session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
+
+  // Jika kasus ganda dan pemisahanRole adalah PISAH, pertahankan kedua role operasional
+  const pemisahanRole = session.storyline?.analisisArah?.duaArah?.pemisahanRole;
+  if (pemisahanRole?.keputusan === 'PISAH' && flowData.kasusGanda && flowData.kasusGanda.length >= 2) {
+    const isExternalOrOwner = (actor: string) => {
+      const k = canonicalRoleKey(actor);
+      return (
+        k === 'super-admin' ||
+        k === 'owner' ||
+        actor === REQUIRED_ROLE ||
+        k === 'customer' ||
+        k === 'guest' ||
+        /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien)\b/i.test(actor)
+      );
+    };
+
+    const actorA = flowData.kasusGanda[0]?.alurInti.find((s) => !isExternalOrOwner(s.pelaku))?.pelaku;
+    const actorB = flowData.kasusGanda[1]?.alurInti.find((s) => !isExternalOrOwner(s.pelaku))?.pelaku;
+
+    const dualCoreWajib = [REQUIRED_ROLE];
+    if (actorA && !dualCoreWajib.includes(actorA)) dualCoreWajib.push(actorA);
+    if (actorB && !dualCoreWajib.includes(actorB)) dualCoreWajib.push(actorB);
+
+    const currentWajibSet = new Set(session.roles?.wajib || []);
+    const hasAll = dualCoreWajib.every((r) => currentWajibSet.has(r));
+
+    if (hasAll) {
+      return {
+        updatedSession: session,
+        reconciled: false,
+        previousCoreRole: currentCoreRole,
+        newCoreRole: dualCoreWajib.slice(1).join(' & ')
+      };
+    }
+
+    const oldSelected = session.roles?.selected || [];
+    const newSelected = Array.from(new Set([...oldSelected, ...dualCoreWajib]));
+    const newTambahan = (session.roles?.tambahan || []).filter((r) => !dualCoreWajib.includes(r));
+
+    const updatedSession: MockupSessionState = {
+      ...session,
+      roles: {
+        ...session.roles,
+        wajib: dualCoreWajib,
+        selected: newSelected,
+        tambahan: newTambahan
+      }
+    };
+
+    const dualNames = dualCoreWajib.slice(1);
+    return {
+      updatedSession,
+      reconciled: true,
+      previousCoreRole: currentCoreRole,
+      newCoreRole: dualNames.join(' & '),
+      message: `Berdasarkan dua alur transaksi yang berjalan (${flowData.kasusGanda.map((k) => k.nama).join(' & ')}), role operasional inti diselaraskan ke **${dualNames.join('** dan **')}**.`
+    };
+  }
+
+  // Jika kasusGanda aktif tanpa pemisahan peran, gabungkan semua steps dari kedua kasus
   // untuk menentukan aktor paling sentral secara komprehensif.
   const steps =
     flowData.kasusGanda && flowData.kasusGanda.length > 0
       ? flowData.kasusGanda.flatMap((k) => k.alurInti)
       : flowData.alurInti;
-  const currentCoreRole =
-    session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
 
   if (!steps || steps.length === 0) {
     return {
@@ -1914,27 +1985,53 @@ export function buildKasusGandaFromSession(
     return resolveActorForStep(defaultName, session.roles);
   };
 
-  const customerActor = findActor(
-    /pelanggan|pembeli|penyewa|pasien|klien|tamu|nasabah/i,
-    'Pelanggan'
-  );
+  const findCustomerActor = (): string => {
+    const candidates = [
+      ...(session.roles?.selected || []),
+      ...(session.storyline?.asumsiAktor || [])
+    ];
+    for (const c of candidates) {
+      if (/\b(petugas|staf|kasir|sales|admin|montir|mekanik|appraisal)\b/i.test(c)) continue;
+      if (/\b(pelanggan|pembeli|penyewa|pasien|klien|tamu|nasabah|konsumen|anggota)\b/i.test(c)) {
+        return resolveActorForStep(c, session.roles);
+      }
+    }
+    return 'Pelanggan';
+  };
 
-  // Kasus A — alur transaksi keluar (jual, gadai keluar, unit baru keluar)
+  const customerActor = findCustomerActor();
+
+  const pemisahanRole = session.storyline?.analisisArah?.duaArah?.pemisahanRole;
+  let actorA = activeCore;
+  let actorB = activeCore;
+
+  if (pemisahanRole?.keputusan === 'PISAH') {
+    if (pemisahanRole.roleKasusA) {
+      const cleanA = pemisahanRole.roleKasusA.trim();
+      actorA = findActor(new RegExp(cleanA.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), cleanA);
+    }
+    if (pemisahanRole.roleKasusB) {
+      const cleanB = pemisahanRole.roleKasusB.trim();
+      actorB = findActor(new RegExp(cleanB.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), cleanB);
+    }
+  }
+
+  // Kasus A — alur transaksi keluar (jual, simpanan keluar, unit baru keluar)
   const alurA: FlowStepItem[] = [
     { step: 1, pelaku: customerActor, aksi: `Mengajukan permintaan ${processA.toLowerCase()} dan memilih item yang diinginkan` },
-    { step: 2, pelaku: activeCore, aksi: `Memeriksa ketersediaan, kondisi, dan menaksir nilai ${processA.toLowerCase().replace(/ke\s*pelanggan|unit\s*baru/i, 'item').trim()}` },
-    { step: 3, pelaku: activeCore, aksi: `Menyepakati harga dan menyiapkan dokumen transaksi ${processA.toLowerCase()}` },
-    { step: 4, pelaku: activeCore, aksi: `Menyerahkan item dan menerima pembayaran dari pelanggan` },
+    { step: 2, pelaku: actorA, aksi: `Memeriksa ketersediaan, kondisi, dan kesiapan transaksi ${processA.toLowerCase().replace(/ke\s*pelanggan|unit\s*baru/i, 'item').trim()}` },
+    { step: 3, pelaku: actorA, aksi: `Menyepakati nilai transaksi dan menyiapkan dokumen ${processA.toLowerCase()}` },
+    { step: 4, pelaku: actorA, aksi: `Menyerahkan item/layanan dan menerima pembayaran dari pelanggan` },
     { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processA.toLowerCase()} harian dan performa omzet` }
   ];
 
-  // Kasus B — alur transaksi masuk (beli, tebus, appraisal unit lama)
+  // Kasus B — alur transaksi masuk (beli, pinjaman/appraisal unit bekas)
   const alurB: FlowStepItem[] = [
-    { step: 1, pelaku: customerActor, aksi: `Membawa item untuk proses ${processB.toLowerCase()}` },
-    { step: 2, pelaku: activeCore, aksi: `Memeriksa fisik, keaslian, dan menaksir harga item yang dibawa pelanggan` },
-    { step: 3, pelaku: activeCore, aksi: `Menyepakati harga taksiran dan menyiapkan dokumen ${processB.toLowerCase()}` },
-    { step: 4, pelaku: activeCore, aksi: `Menyerahkan pembayaran atau nota transaksi kepada pelanggan` },
-    { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processB.toLowerCase()} dan stok item masuk` }
+    { step: 1, pelaku: customerActor, aksi: `Membawa item/pengajuan untuk proses ${processB.toLowerCase()}` },
+    { step: 2, pelaku: actorB, aksi: `Memeriksa fisik, keaslian/kondisi teknis, dan menaksir nilai ${processB.toLowerCase().replace(/dari\s*pelanggan|unit\s*lama/i, 'item').trim()}` },
+    { step: 3, pelaku: actorB, aksi: `Menyepakati nilai taksiran dan menyiapkan dokumen transaksi ${processB.toLowerCase()}` },
+    { step: 4, pelaku: actorB, aksi: `Menyerahkan pembayaran atau nota transaksi kepada pelanggan` },
+    { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processB.toLowerCase()} dan pencatatan transaksi masuk` }
   ];
 
   // Terapkan resolveActorForStep agar delegasi role tetap berlaku
@@ -2113,9 +2210,10 @@ export function applyGuidedAnswer(
     return next;
   } else if (stepId === 'ROLE') {
     const offeredStep = buildRoleStep(session);
-    const coreOption = offeredStep.options.find((o) => o.roleStatus === 'WAJIB_INTI');
-    const coreRole = coreOption ? coreOption.id : detectCoreOperationalRole(session);
-    let selectedRoles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE, coreRole]);
+    const coreOptions = offeredStep.options.filter((o) => o.roleStatus === 'WAJIB_INTI');
+    const coreRoles =
+      coreOptions.length > 0 ? coreOptions.map((o) => o.id) : [detectCoreOperationalRole(session)];
+    let selectedRoles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE, ...coreRoles]);
     if (!selectedRoles.includes(REQUIRED_ROLE)) {
       selectedRoles = [REQUIRED_ROLE, ...selectedRoles];
     }
@@ -2124,8 +2222,10 @@ export function applyGuidedAnswer(
     }
 
     const wajib = [REQUIRED_ROLE];
-    if (coreRole && coreRole !== REQUIRED_ROLE && !wajib.includes(coreRole)) {
-      wajib.push(coreRole);
+    for (const cr of coreRoles) {
+      if (cr && cr !== REQUIRED_ROLE && !wajib.includes(cr)) {
+        wajib.push(cr);
+      }
     }
 
     const tambahan = selectedRoles.filter((r) => !wajib.includes(r));

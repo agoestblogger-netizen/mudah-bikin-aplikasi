@@ -172,6 +172,13 @@ export type SessionStep =
 
 export type KondisiArahBisnis = 'SATU_ARAH' | 'DUA_ARAH' | 'AMBIGU';
 
+export interface PemisahanRoleResult {
+  keputusan: 'PISAH' | 'GABUNG';
+  alasan: string;
+  roleKasusA?: string;
+  roleKasusB?: string;
+}
+
 export interface AnalisisArahResult {
   kondisi: KondisiArahBisnis;
   alasan: string;
@@ -179,6 +186,7 @@ export interface AnalisisArahResult {
     prosesA: string;
     prosesB: string;
     entitasBersama?: string;
+    pemisahanRole?: PemisahanRoleResult;
   };
   klarifikasiAmbigu?: {
     pertanyaan: string;

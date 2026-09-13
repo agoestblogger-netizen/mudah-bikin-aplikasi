@@ -29,7 +29,8 @@ import {
   type GuidedStepId,
   type MockupSessionState,
   type AnalisisArahResult,
-  type KondisiArahBisnis
+  type KondisiArahBisnis,
+  type PemisahanRoleResult
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -275,15 +276,42 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
       - Koperasi Simpan Pinjam: "Menerima simpanan/tabungan anggota (dana masuk)" vs "Menyalurkan pinjaman/kredit anggota (dana keluar)"
       - Toko Emas Jual-Beli: "Menjual perhiasan emas (barang keluar)" vs "Membeli emas bekas/buyback dari pelanggan (barang masuk)"
       - Pegadaian: "Penerimaan titip gadai (barang masuk, pinjaman cair)" vs "Penebusan barang gadai (pelunasan, barang kembali)"
-      - Showroom Tukar Tambah: "Penjualan unit baru" vs "Penerimaan & appraisal unit lama"
+      - Toko Jual Beli Motor / Mobil / HP Bekas: "Penjualan unit siap pakai (barang keluar)" vs "Pembelian / tukar tambah / appraisal unit bekas (barang masuk)"
       - Money Changer: "Pembelian valas dari nasabah" vs "Penjualan valas ke nasabah"
+      
       ATURAN MUTLAK JIKA DUA_ARAH:
-      Narasi di field "narasi" dan urutan alur di "asumsiAlurUtama" WAJIB mencakup KEDUA sisi tersebut secara proporsional dan seimbang! DILARANG KERAS menjatuhkan salah satu sisi (seperti hanya menceritakan simpanan tanpa pinjaman)!
-      Sebutkan nama kedua arah di objek "duaArah": { "prosesA": "...", "prosesB": "...", "entitasBersama": "..." }.
+      1. Narasi di field "narasi" dan urutan alur di "asumsiAlurUtama" WAJIB mencakup KEDUA sisi tersebut secara proporsional dan seimbang! DILARANG KERAS menjatuhkan salah satu sisi (seperti hanya menceritakan simpanan tanpa pinjaman)!
+      2. ANALISIS PEMISAHAN ROLE FRONTLINER (pemisahanRole - WAJIB DIISI):
+         Untuk role frontliner yang terlibat di kedua sisi transaksi (Kasus A dan Kasus B), lakukan analisis konseptual:
+         Apakah tugas/keahlian yang dibutuhkan di sisi A cukup berbeda dari sisi B sehingga sebaiknya jadi DUA ROLE TERPISAH, atau cukup mirip sehingga wajar DIGABUNG jadi SATU ROLE?
+         - PISAH jadi dua role:
+           Jika tugasnya membutuhkan keahlian/fokus yang jelas berbeda — misal satu sisi butuh keahlian teknis appraisal/penaksiran/inspeksi fisik kondisi barang bekas (contoh: "Petugas Appraisal Motor Bekas", "Teknisi Cek Unit", "Penaksir Emas"), sedangkan sisi lain murni transaksi penjualan/sales (contoh: "Kasir Penjualan Motor", "Sales Counter").
+           Atau jika narasi/konteks menyiratkan orang berbeda untuk tiap sisi.
+           Jika PISAH: "asumsiAktor" WAJIB memunculkan kedua role terpisah ini dengan nama yang jelas menunjukkan sisi mana, dan buatkan detail masing-masing di "detailAktor".
+         - GABUNG jadi satu role:
+           Jika tugas frontliner pada dasarnya sama, cuma arah uang/barangnya beda (misal kasir teller money changer yang melayani beli & jual valas, atau kasir toko emas sederhana).
+           SYARAT MUTLAK JIKA GABUNG:
+           Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan!
+           DILARANG KERAS menulis kata "atau" (misal: "menghitung transaksi jual beli atau tukar tambah", "mencatat penjualan atau pembelian").
+           WAJIB diganti menjadi rincian konkret: "menghitung harga untuk transaksi penjualan unit baru maupun penerimaan unit tukar tambah", "mencatat transaksi penjualan unit serta pendataan unit bekas yang masuk".
+      Sebutkan nama kedua arah dan analisis pemisahan role di objek "duaArah":
+      {
+        "prosesA": "...",
+        "prosesB": "...",
+        "entitasBersama": "...",
+        "pemisahanRole": {
+          "keputusan": "PISAH" | "GABUNG",
+          "alasan": "Alasan konseptual transparan mengapa dipisah atau digabung",
+          "roleKasusA": "Nama role frontliner untuk proses A (jika PISAH)",
+          "roleKasusB": "Nama role frontliner untuk proses B (jika PISAH)"
+        }
+      }
    c) "AMBIGU" (ATURAN PRIORITAS UNTUK PROMPT SINGKAT TANPA DETAIL ARAH):
-      JIKA permintaan pengguna sangat singkat atau umum (hanya menyebut jenis usaha seperti "buatkan aplikasi toko emas", "aplikasi pegadaian", "aplikasi tukar tambah", "aplikasi leasing") TANPA menyebutkan secara eksplisit apakah hanya satu arah atau dua arah:
+      JIKA permintaan pengguna menyebut nama usaha umum tanpa kata arah/transaksi (contoh: "buatkan aplikasi toko emas", "aplikasi pegadaian", "showroom motor", "dealer mobil", "koperasi") TANPA menyebutkan secara spesifik apakah hanya satu arah atau dua arah:
       AI DILARANG MENEBAK SENDIRI apakah satu arah atau dua arah! AI WAJIB menyimpulkan "AMBIGU".
-      Dan AI WAJIB mengisi objek "klarifikasiAmbigu" dengan pertanyaan ramah dan natural sesuai konteks domain tersebut:
+      CATATAN PENTING: Jika pengguna SUDAH secara eksplisit menyebutkan kedua arah transaksi (seperti "jual beli", "simpan pinjam", "tukar tambah", "jual dan beli emas"), maka itu SUDAH JELAS "DUA_ARAH", DILARANG disimpulkan sebagai AMBIGU!
+      
+      Jika kondisi AMBIGU, AI WAJIB mengisi objek "klarifikasiAmbigu" dengan pertanyaan ramah dan natural sesuai konteks domain tersebut:
       {
         "pertanyaan": "Pertanyaan ramah memastikan fokus arah bisnis (contoh: Toko emas ini fokusnya menjual perhiasan ke pelanggan, menerima pembelian emas bekas, atau dua-duanya?)",
         "opsiA": "Arah bisnis A (contoh: Penjualan perhiasan ke pelanggan)",
@@ -308,9 +336,11 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - ATURAN GROUNDING & DEDUPLIKASI KONSEPTUAL (WAJIB):
      * Setiap peran dalam asumsiAktor HARUS memiliki dasar konseptual yang jelas dan terlibat langsung dalam alur narasi yang diceritakan. JANGAN memunculkan peran seperti "Operator", "Viewer", atau artefak teknis lain yang tidak ada di cerita!
      * JANGAN memunculkan "Pemilik" atau "Owner" sebagai peran terpisah jika sudah ada "Super Admin" (Super Admin sudah otomatis merepresentasikan Pemilik).
-     * Jika dua peran memiliki konsep makna atau tanggung jawab yang sama (contoh: "Penyewa" dan "Member", atau "Kasir" dan "Petugas Pembayaran"), satukan menjadi satu peran saja.
+     * Jika dua peran memiliki konsep makna atau tanggung jawab yang sama (contoh: "Penyewa" dan "Member", atau "Kasir" dan "Petugas Pembayaran"), satukan menjadi satu peran saja (kecuali di domain DUA_ARAH di mana AI menyimpulkan PISAH peran frontliner).
    - DETAIL AKTOR (detailAktor):
      * Untuk SETIAP peran di asumsiAktor, buatkan deskripsi naratif singkat (1-2 kalimat) dan 2-3 butir tanggung jawab konkret yang MURNI DIGROUNDING DARI CERITA domain tersebut.
+     * LARANGAN KATA "ATAU" PADA TANGGUNG JAWAB (WAJIB):
+       DILARANG KERAS menggunakan kata "atau" yang mengaburkan tanggung jawab peran (seperti "melayani penjualan atau pembelian", "menghitung harga jual beli atau tukar tambah"). Tuliskan secara eksplisit rincian kedua konteks menggunakan kata sambung "serta", "dan", atau "maupun".
 
 3. URUTAN ALUR NYATA (asumsiAlurUtama):
    - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
@@ -335,7 +365,13 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     "duaArah": {
       "prosesA": "Nama proses transaksi keluar/penjualan/setoran (jika DUA_ARAH)",
       "prosesB": "Nama proses transaksi masuk/pembelian/pinjaman (jika DUA_ARAH)",
-      "entitasBersama": "Objek/barang/dana utama yang terlibat"
+      "entitasBersama": "Objek/barang/dana utama yang terlibat",
+      "pemisahanRole": {
+        "keputusan": "PISAH" | "GABUNG",
+        "alasan": "Alasan konseptual mengapa dipisah atau digabung",
+        "roleKasusA": "Nama role frontliner kasus A (jika PISAH)",
+        "roleKasusB": "Nama role frontliner kasus B (jika PISAH)"
+      }
     },
     "klarifikasiAmbigu": {
       "pertanyaan": "Pertanyaan ramah memastikan fokus arah bisnis (jika AMBIGU)",
@@ -364,7 +400,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nAnalisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU), susun cerita proses bisnis yang hangat dan hidup memuat aktivitas konkret, lalu ekstrak field terstruktur:`,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nAnalisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU) dan analisis pemisahan role frontliner jika DUA_ARAH, susun cerita proses bisnis yang hangat dan hidup memuat aktivitas konkret, lalu ekstrak field terstruktur:`,
     temperature: 0.6,
     maxTokens: 4000,
     provider,
@@ -397,9 +433,19 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           for (const [k, v] of Object.entries(parsed.detailAktor)) {
             if (v && typeof v === 'object') {
               const obj = v as any;
+              const rawTasks = Array.isArray(obj.tanggungJawab) ? obj.tanggungJawab.map(String) : [];
+              // Sanitasi kata "atau" yang mengaburkan tanggung jawab ganda
+              const sanitizedTasks = rawTasks.map((t: string) => {
+                let s = t;
+                s = s.replace(/\bjual\s+beli\s+atau\s+tukar\s*tambah\b/gi, 'penjualan serta penerimaan unit tukar tambah');
+                s = s.replace(/\bpenjualan\s+atau\s+pembelian\b/gi, 'penjualan maupun pembelian');
+                s = s.replace(/\bsimpan\s*pinjam\s+atau\s+kredit\b/gi, 'simpanan serta penyaluran kredit');
+                s = s.replace(/\bsetor\s+atau\s+tarik\b/gi, 'setoran maupun penarikan');
+                return s;
+              });
               detailAktor[k] = {
                 narasi: String(obj.narasi || '').trim(),
-                tanggungJawab: Array.isArray(obj.tanggungJawab) ? obj.tanggungJawab.map(String) : []
+                tanggungJawab: sanitizedTasks
               };
             }
           }
@@ -412,13 +458,25 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
             ? rawArah.kondisi
             : 'SATU_ARAH') as KondisiArahBisnis;
 
+          let pemisahanRole: PemisahanRoleResult | undefined = undefined;
+          if (rawArah.duaArah?.pemisahanRole && typeof rawArah.duaArah.pemisahanRole === 'object') {
+            const rawPr = rawArah.duaArah.pemisahanRole;
+            pemisahanRole = {
+              keputusan: rawPr.keputusan === 'PISAH' ? 'PISAH' : 'GABUNG',
+              alasan: String(rawPr.alasan || '').trim(),
+              roleKasusA: rawPr.roleKasusA ? String(rawPr.roleKasusA).trim() : undefined,
+              roleKasusB: rawPr.roleKasusB ? String(rawPr.roleKasusB).trim() : undefined
+            };
+          }
+
           analisisArah = {
             kondisi,
             alasan: String(rawArah.alasan || '').trim(),
             duaArah: rawArah.duaArah ? {
               prosesA: String(rawArah.duaArah.prosesA || '').trim(),
               prosesB: String(rawArah.duaArah.prosesB || '').trim(),
-              entitasBersama: String(rawArah.duaArah.entitasBersama || '').trim()
+              entitasBersama: String(rawArah.duaArah.entitasBersama || '').trim(),
+              pemisahanRole
             } : undefined,
             klarifikasiAmbigu: rawArah.klarifikasiAmbigu ? {
               pertanyaan: String(rawArah.klarifikasiAmbigu.pertanyaan || '').trim(),
