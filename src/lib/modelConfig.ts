@@ -161,10 +161,36 @@ export function loadModelSettings(): ModelSettings {
   }
 
   const ls = window.localStorage;
-  const provider = (ls.getItem(PROVIDER_KEY_STORAGE) as AIProvider | null) || DEFAULT_PROVIDER;
-  const token = ls.getItem(PROVIDER_TOKEN_STORAGE) || '';
+  let provider = (ls.getItem(PROVIDER_KEY_STORAGE) as AIProvider | null) || DEFAULT_PROVIDER;
+  const token = (ls.getItem(PROVIDER_TOKEN_STORAGE) || '').trim();
 
   let model = ls.getItem(PROVIDER_MODEL_STORAGE) || '';
+
+  // Auto-detect provider dari format token jika ada inkonsistensi
+  if (token) {
+    if (token.startsWith('sk-or-') && provider !== 'openrouter') {
+      provider = 'openrouter';
+      ls.setItem(PROVIDER_KEY_STORAGE, 'openrouter');
+      if (!model || model.startsWith('gemini') || model === 'gpt-4o-mini') {
+        model = OPENROUTER_DEFAULT_MODEL;
+        ls.setItem(PROVIDER_MODEL_STORAGE, model);
+      }
+    } else if ((token.startsWith('sk-proj-') || (token.startsWith('sk-') && !token.startsWith('sk-or-'))) && provider !== 'openai') {
+      provider = 'openai';
+      ls.setItem(PROVIDER_KEY_STORAGE, 'openai');
+      if (!model || model.startsWith('gemini') || model.includes('/')) {
+        model = OPENAI_DEFAULT_MODEL;
+        ls.setItem(PROVIDER_MODEL_STORAGE, model);
+      }
+    } else if (token.startsWith('AIza') && provider !== 'gemini') {
+      provider = 'gemini';
+      ls.setItem(PROVIDER_KEY_STORAGE, 'gemini');
+      if (!model || !model.startsWith('gemini')) {
+        model = GEMINI_DEFAULT_MODEL;
+        ls.setItem(PROVIDER_MODEL_STORAGE, model);
+      }
+    }
+  }
 
   // Migrasi dari storage lama (single-provider OpenRouter) jika ditemukan
   if (!token && !ls.getItem(PROVIDER_TOKEN_STORAGE)) {
@@ -187,9 +213,33 @@ export function loadModelSettings(): ModelSettings {
 export function saveModelSettings(settings: ModelSettings): void {
   if (typeof window === 'undefined') return;
   const ls = window.localStorage;
-  ls.setItem(PROVIDER_KEY_STORAGE, settings.provider);
-  ls.setItem(PROVIDER_TOKEN_STORAGE, settings.token.trim());
-  ls.setItem(PROVIDER_MODEL_STORAGE, settings.model);
+  const trimmedToken = settings.token.trim();
+
+  // Auto-detect provider dari format key saat menyimpan
+  let finalProvider = settings.provider;
+  let finalModel = settings.model;
+  if (trimmedToken) {
+    if (trimmedToken.startsWith('sk-or-')) {
+      finalProvider = 'openrouter';
+      if (!finalModel || finalModel.startsWith('gemini') || finalModel === 'gpt-4o-mini') {
+        finalModel = OPENROUTER_DEFAULT_MODEL;
+      }
+    } else if (trimmedToken.startsWith('sk-proj-') || (trimmedToken.startsWith('sk-') && !trimmedToken.startsWith('sk-or-'))) {
+      finalProvider = 'openai';
+      if (!finalModel || finalModel.startsWith('gemini') || finalModel.includes('/')) {
+        finalModel = OPENAI_DEFAULT_MODEL;
+      }
+    } else if (trimmedToken.startsWith('AIza')) {
+      finalProvider = 'gemini';
+      if (!finalModel || !finalModel.startsWith('gemini')) {
+        finalModel = GEMINI_DEFAULT_MODEL;
+      }
+    }
+  }
+
+  ls.setItem(PROVIDER_KEY_STORAGE, finalProvider);
+  ls.setItem(PROVIDER_TOKEN_STORAGE, trimmedToken);
+  ls.setItem(PROVIDER_MODEL_STORAGE, finalModel || DEFAULT_MODELS[finalProvider]);
   ls.removeItem(LEGACY_OPENROUTER_KEY_STORAGE);
   ls.removeItem(LEGACY_OPENROUTER_MODEL_STORAGE);
 

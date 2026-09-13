@@ -124,17 +124,29 @@ async function invokeAIChat(options: {
   } = options;
 
   const hasUserKey = Boolean(userApiKey && userApiKey.trim());
+  const trimmedKey = (userApiKey || '').trim();
+
+  // Auto-detect provider dari format key pengguna jika ada inkonsistensi pilihan di dropdown
+  let effectiveProvider = provider;
+  if (trimmedKey.startsWith('sk-or-')) {
+    effectiveProvider = 'openrouter';
+  } else if (trimmedKey.startsWith('sk-proj-') || (trimmedKey.startsWith('sk-') && !trimmedKey.startsWith('sk-or-'))) {
+    effectiveProvider = 'openai';
+  } else if (trimmedKey.startsWith('AIza')) {
+    effectiveProvider = 'gemini';
+  }
+
+  const isUserGemini = hasUserKey && effectiveProvider === 'gemini';
+  const isOpenRouter = hasUserKey && effectiveProvider === 'openrouter';
+
   const requestedProvider = hasUserKey
-    ? provider === 'gemini'
+    ? isUserGemini
       ? 'gemini'
       : 'openai'
     : (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
 
-  const isUserGemini = hasUserKey && provider === 'gemini';
-  const isOpenRouter = hasUserKey && (provider === 'openrouter' || (userApiKey || '').startsWith('sk-or-'));
-
-  const geminiApiKey = isUserGemini ? userApiKey!.trim() : process.env.GEMINI_API_KEY;
-  const openaiApiKey = isUserGemini ? undefined : hasUserKey ? userApiKey!.trim() : process.env.OPENAI_API_KEY;
+  const geminiApiKey = isUserGemini ? trimmedKey : process.env.GEMINI_API_KEY;
+  const openaiApiKey = isUserGemini ? undefined : hasUserKey ? trimmedKey : process.env.OPENAI_API_KEY;
   const openaiBaseUrl = isUserGemini
     ? undefined
     : hasUserKey
@@ -148,7 +160,9 @@ async function invokeAIChat(options: {
     activeGemini = 'gemini-3.6-flash';
   }
   const openaiModel = hasUserKey
-    ? userModel || (isOpenRouter ? OPENROUTER_DEFAULT_MODEL : DEFAULT_OPENAI_MODEL)
+    ? userModel && (isOpenRouter || !userModel.includes('/'))
+      ? userModel
+      : (isOpenRouter ? OPENROUTER_DEFAULT_MODEL : DEFAULT_OPENAI_MODEL)
     : process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
 
   try {
@@ -1322,8 +1336,9 @@ export async function POST(req: Request) {
 
       // KONDISI 1 & 2: SATU_ARAH atau DUA_ARAH
       // 2. Pencarian semantik (Gemini embedding jika tersedia)
+      const isGeminiKey = (userApiKey || '').trim().startsWith('AIza') || (provider === 'gemini' && !(userApiKey || '').trim().startsWith('sk-'));
       const geminiKey =
-        provider === 'gemini' && userApiKey && userApiKey.trim()
+        isGeminiKey && userApiKey && userApiKey.trim()
           ? userApiKey.trim()
           : process.env.GEMINI_API_KEY || '';
 
@@ -1453,8 +1468,9 @@ export async function POST(req: Request) {
           );
 
           // 2. Pencarian semantik jika tersedia
+          const isGeminiKey = (userApiKey || '').trim().startsWith('AIza') || (provider === 'gemini' && !(userApiKey || '').trim().startsWith('sk-'));
           const geminiKey =
-            provider === 'gemini' && userApiKey && userApiKey.trim()
+            isGeminiKey && userApiKey && userApiKey.trim()
               ? userApiKey.trim()
               : process.env.GEMINI_API_KEY || '';
 
@@ -1867,8 +1883,15 @@ export async function POST(req: Request) {
         });
         updated = { ...updated, match: { ...updated.match, tier: tier.tier } };
 
-        // Kalimat konfirmasi eksplisit jika ada role tambahan yang dihapus (POIN 3)
+        // Kalimat konfirmasi eksplisit jika ada role yang dihapus / dideselect
         const removalMessages: string[] = [];
+        if (updated.roles.removedExternalRoles && updated.roles.removedExternalRoles.length > 0) {
+          for (const extRole of updated.roles.removedExternalRoles) {
+            removalMessages.push(
+              `Oke, role ${extRole} dihapus — berarti aplikasi tidak perlu akun/login terpisah untuk ${extRole.toLowerCase()}. Interaksi dengan ${extRole.toLowerCase()} tetap berjalan lewat staf yang sudah tercatat di alur kerja.`
+            );
+          }
+        }
         if (updated.roles.tugasDilimpahkan && updated.roles.tugasDilimpahkan.length > 0) {
           for (const d of updated.roles.tugasDilimpahkan) {
             removalMessages.push(

@@ -245,6 +245,7 @@ export interface MockupSessionState {
     wajib?: string[];
     tambahan?: string[];
     tugasDilimpahkan?: { dariRole: string; keRole: string; daftarTugas: string[] }[];
+    removedExternalRoles?: string[];
   };
   flow: {
     selectedId?: string;

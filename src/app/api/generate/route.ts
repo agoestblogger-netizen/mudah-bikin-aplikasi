@@ -1372,24 +1372,33 @@ ${staffLandingGuide}
     // - tanpa key user -> server default (env AI_PROVIDER, default gemini)
     // - key gemini     -> jalur native Gemini, override key+model user
     // - key openai     -> api.openai.com/v1
-    // - key openrouter -> openrouter.ai/api/v1
+    const trimmedKey = (userApiKey || '').trim();
+    let effectiveProvider = provider;
+    if (trimmedKey.startsWith('sk-or-')) {
+      effectiveProvider = 'openrouter';
+    } else if (trimmedKey.startsWith('sk-proj-') || (trimmedKey.startsWith('sk-') && !trimmedKey.startsWith('sk-or-'))) {
+      effectiveProvider = 'openai';
+    } else if (trimmedKey.startsWith('AIza')) {
+      effectiveProvider = 'gemini';
+    }
+
+    const isUserGemini = useUserKey && effectiveProvider === 'gemini';
+    const isOpenRouter = useUserKey && effectiveProvider === 'openrouter';
+
     const requestedProvider = useUserKey
-      ? (provider === 'gemini' ? 'gemini' : 'openai')
+      ? (isUserGemini ? 'gemini' : 'openai')
       : (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
 
-    const isUserGemini = useUserKey && provider === 'gemini';
-    const isOpenRouter = useUserKey && provider === 'openrouter';
-
-    const geminiApiKey = isUserGemini ? userApiKey.trim() : process.env.GEMINI_API_KEY;
+    const geminiApiKey = isUserGemini ? trimmedKey : process.env.GEMINI_API_KEY;
     const aiProvider = isUserGemini ? 'gemini' : requestedProvider;
 
-    const openaiApiKey = isUserGemini ? undefined : (useUserKey ? userApiKey.trim() : process.env.OPENAI_API_KEY);
+    const openaiApiKey = isUserGemini ? undefined : (useUserKey ? trimmedKey : process.env.OPENAI_API_KEY);
     const openaiBaseUrl = isUserGemini
       ? undefined
       : (useUserKey ? (isOpenRouter ? OPENROUTER_API_BASE : OPENAI_API_BASE) : 'https://api.openai.com/v1');
 
     const activeGeminiModel = isUserGemini ? (userModel || DEFAULT_GEMINI_MODEL) : getGeminiModel();
-    const activeOpenAIModel = useUserKey ? (userModel || OPENROUTER_DEFAULT_MODEL) : getOpenAIModel();
+    const activeOpenAIModel = useUserKey ? (userModel || (isOpenRouter ? OPENROUTER_DEFAULT_MODEL : DEFAULT_OPENAI_MODEL)) : getOpenAIModel();
 
     if (aiProvider === 'gemini' && !geminiApiKey) {
       return NextResponse.json({

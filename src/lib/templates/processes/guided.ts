@@ -89,7 +89,7 @@ const ROLE_GROUPS: Array<{ key: string; re: RegExp }> = [
   { key: 'consultant', re: /konsultan|consultant/i },
   { key: 'rental-staff', re: /petugas\s*rental|petugas\s*sewa|staf\s*rental|staf\s*sewa/i },
   { key: 'service-staff', re: /service\s*staff|staff\s*layanan|petugas\s*layanan|staf\s*layanan/i },
-  { key: 'customer', re: /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b)$|\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa)\b/i },
+  { key: 'customer', re: /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|\bparent\b)$|\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa|warga|masyarakat)\b/i },
   { key: 'manager', re: /manager|manajer|supervisor|pengawas|kepala|principal/i },
   { key: 'admin-staff', re: /\badmin\b|administrator/i },
 ];
@@ -209,7 +209,7 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
   return result;
 }
 
-function isExternalRole(label: string): boolean {
+export function isExternalRole(label: string): boolean {
   return canonicalRoleKey(label) === 'customer';
 }
 
@@ -395,10 +395,19 @@ export function getRoleNarrativeAndResponsibilities(
   let roleNarrative = '';
 
   if (
+    lowerRole.includes('pengepul') ||
+    lowerRole.includes('penampung') ||
+    (lowerRole.includes('gudang') && (lowerStory.includes('rosok') || lowerStory.includes('barang bekas')))
+  ) {
+    // Pengepul / Pos Penampungan Barang Bekas (Standby di gudang penerimaan)
+    roleNarrative = `Pihak penampung di ${cat} yang standby di pos atau gudang penerimaan untuk menerima, menimbang ulang, dan merekap setoran barang rosok dari para kolektor atau armada keliling.`;
+    tasks.push('Menerima dan memeriksa setoran barang rosok dari para kolektor atau armada keliling');
+    tasks.push('Menimbang total tonase/bobot barang masuk dan mencatat rekonsiliasi setoran');
+    tasks.push('Mengatur pengelompokan dan penyimpanan stok barang rosok di area penampungan');
+  } else if (
     lowerRole.includes('pembeli') ||
     lowerRole.includes('kolektor') ||
     lowerRole.includes('penjemput') ||
-    lowerRole.includes('pengepul') ||
     (lowerRole.includes('petugas') && (lowerStory.includes('rosok') || lowerStory.includes('barang bekas') || lowerStory.includes('timbang')))
   ) {
     // Petugas lapangan / pembeli barang bekas / penjemput rosok
@@ -479,8 +488,10 @@ export function renderRoleSummaryTable(
   for (const role of selected) {
     const isOwner = isSuperAdminRole(role);
     const status = isOwner ? 'Wajib (Owner)' : 'Aktif';
-    const delegation = delegations.find((d) => d.keRole.toLowerCase() === role.toLowerCase());
-    const extra = delegation ? ` *(+ melimpahkan tugas ${delegation.dariRole})*` : '';
+    const matchedDelegations = delegations.filter((d) => d.keRole.toLowerCase() === role.toLowerCase());
+    const extra = matchedDelegations.length > 0
+      ? ` *(+ melimpahkan tugas ${matchedDelegations.map((d) => d.dariRole).join(', ')})*`
+      : '';
     const details = getRoleNarrativeAndResponsibilities(role, businessCategory, storyline);
     const responsibilitiesCol = details.tanggungJawab.slice(0, 2).join('; ') + extra;
     lines.push(`| ${role} | ${status} | ${responsibilitiesCol} |`);
@@ -2330,14 +2341,23 @@ export function applyGuidedAnswer(
     const removedRoles = offeredRoles.filter((r) => !selectedRoles.includes(r) && r !== REQUIRED_ROLE);
 
     const tugasDilimpahkan: { dariRole: string; keRole: string; daftarTugas: string[] }[] = [];
+    const removedExternalRoles: string[] = [];
+
     for (const r of removedRoles) {
-      const details = getRoleNarrativeAndResponsibilities(r, session.match.businessCategory, session.storyline);
-      if (details.tanggungJawab.length > 0) {
-        tugasDilimpahkan.push({
-          dariRole: r,
-          keRole: REQUIRED_ROLE,
-          daftarTugas: details.tanggungJawab
-        });
+      if (isExternalRole(r)) {
+        // Peran eksternal (Pelanggan, Warga, Penyewa, Pasien, dll) adalah pihak yang dilayani
+        // Tindakan transaksi mereka TIDAK dilimpahkan ke Owner/Admin
+        removedExternalRoles.push(r);
+      } else {
+        // Peran operasional / staf internal dilimpahkan ke Owner jika dihapus
+        const details = getRoleNarrativeAndResponsibilities(r, session.match.businessCategory, session.storyline);
+        if (details.tanggungJawab.length > 0) {
+          tugasDilimpahkan.push({
+            dariRole: r,
+            keRole: REQUIRED_ROLE,
+            daftarTugas: details.tanggungJawab
+          });
+        }
       }
     }
 
@@ -2346,6 +2366,7 @@ export function applyGuidedAnswer(
       wajib,
       tambahan,
       tugasDilimpahkan,
+      removedExternalRoles,
       ...(other ? { other } : {})
     };
   } else if (stepId === 'ALUR') {

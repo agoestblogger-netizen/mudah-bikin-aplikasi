@@ -67,18 +67,28 @@ export async function POST(req: Request) {
 
     const hasUserKey = typeof userApiKey === 'string' && userApiKey.trim().length > 0;
     const useUserKey = hasUserKey;
+    const trimmedKey = (userApiKey || '').trim();
+
+    let effectiveProvider = provider;
+    if (trimmedKey.startsWith('sk-or-')) {
+      effectiveProvider = 'openrouter';
+    } else if (trimmedKey.startsWith('sk-proj-') || (trimmedKey.startsWith('sk-') && !trimmedKey.startsWith('sk-or-'))) {
+      effectiveProvider = 'openai';
+    } else if (trimmedKey.startsWith('AIza')) {
+      effectiveProvider = 'gemini';
+    }
+
+    const isUserGemini = useUserKey && effectiveProvider === 'gemini';
+    const isOpenRouter = useUserKey && effectiveProvider === 'openrouter';
 
     const requestedProvider = useUserKey
-      ? (provider === 'gemini' ? 'gemini' : 'openai')
+      ? (isUserGemini ? 'gemini' : 'openai')
       : (process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'openai')).toLowerCase();
 
-    const isUserGemini = useUserKey && provider === 'gemini';
-    const isOpenRouter = useUserKey && (provider === 'openrouter' || (typeof userApiKey === 'string' && userApiKey.startsWith('sk-or-')));
-
-    const geminiApiKey = isUserGemini ? userApiKey.trim() : process.env.GEMINI_API_KEY;
+    const geminiApiKey = isUserGemini ? trimmedKey : process.env.GEMINI_API_KEY;
     const aiProvider = isUserGemini ? 'gemini' : requestedProvider;
 
-    const openaiApiKey = isUserGemini ? undefined : (useUserKey ? userApiKey.trim() : process.env.OPENAI_API_KEY);
+    const openaiApiKey = isUserGemini ? undefined : (useUserKey ? trimmedKey : process.env.OPENAI_API_KEY);
     const openaiBaseUrl = isUserGemini
       ? undefined
       : (useUserKey ? (isOpenRouter ? OPENROUTER_API_BASE : OPENAI_API_BASE) : 'https://api.openai.com/v1');

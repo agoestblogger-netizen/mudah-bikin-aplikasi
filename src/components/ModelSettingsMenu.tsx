@@ -37,6 +37,18 @@ export const ModelSettingsMenu: React.FC<ModelSettingsMenuProps> = ({
     setKey('');
   };
 
+  const handleKeyChange = (val: string) => {
+    setKey(val);
+    const trimmed = val.trim();
+    if (trimmed.startsWith('sk-or-') && providerId !== 'openrouter') {
+      setProviderId('openrouter');
+    } else if ((trimmed.startsWith('sk-proj-') || (trimmed.startsWith('sk-') && !trimmed.startsWith('sk-or-'))) && providerId !== 'openai') {
+      setProviderId('openai');
+    } else if (trimmed.startsWith('AIza') && providerId !== 'gemini') {
+      setProviderId('gemini');
+    }
+  };
+
   const handleSave = () => {
     const trimmed = key.trim();
     let effectiveModel = model;
@@ -92,7 +104,7 @@ export const ModelSettingsMenu: React.FC<ModelSettingsMenuProps> = ({
           <input
             type={showKey ? 'text' : 'password'}
             value={key}
-            onChange={(e) => setKey(e.target.value)}
+            onChange={(e) => handleKeyChange(e.target.value)}
             placeholder={activeProvider.keyPlaceholder}
             autoComplete="off"
             spellCheck={false}
