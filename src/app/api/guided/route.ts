@@ -282,18 +282,30 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
       ATURAN MUTLAK JIKA DUA_ARAH:
       1. Narasi di field "narasi" dan urutan alur di "asumsiAlurUtama" WAJIB mencakup KEDUA sisi tersebut secara proporsional dan seimbang! DILARANG KERAS menjatuhkan salah satu sisi (seperti hanya menceritakan simpanan tanpa pinjaman)!
       2. ANALISIS PEMISAHAN ROLE FRONTLINER (pemisahanRole - WAJIB DIISI):
-         Untuk role frontliner yang terlibat di kedua sisi transaksi (Kasus A dan Kasus B), lakukan analisis konseptual:
-         Apakah tugas/keahlian yang dibutuhkan di sisi A cukup berbeda dari sisi B sehingga sebaiknya jadi DUA ROLE TERPISAH, atau cukup mirip sehingga wajar DIGABUNG jadi SATU ROLE?
-         - PISAH jadi dua role:
-           Jika tugasnya membutuhkan keahlian/fokus yang jelas berbeda — misal satu sisi butuh keahlian teknis appraisal/penaksiran/inspeksi fisik kondisi barang bekas (contoh: "Petugas Appraisal Motor Bekas", "Teknisi Cek Unit", "Penaksir Emas"), sedangkan sisi lain murni transaksi penjualan/sales (contoh: "Kasir Penjualan Motor", "Sales Counter").
-           Atau jika narasi/konteks menyiratkan orang berbeda untuk tiap sisi.
-           Jika PISAH: "asumsiAktor" WAJIB memunculkan kedua role terpisah ini dengan nama yang jelas menunjukkan sisi mana, dan buatkan detail masing-masing di "detailAktor".
-         - GABUNG jadi satu role:
-           Jika tugas frontliner pada dasarnya sama, cuma arah uang/barangnya beda (misal kasir teller money changer yang melayani beli & jual valas, atau kasir toko emas sederhana).
-           SYARAT MUTLAK JIKA GABUNG:
-           Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan!
+         Analisis peran frontliner yang bertugas di kedua sisi transaksi (Kasus A dan Kasus B):
+         Apakah tugas/keahlian yang dibutuhkan di sisi A cukup berbeda dari sisi B sehingga sebaiknya jadi DUA ROLE TERPISAH, atau wajar DIGABUNG jadi SATU ROLE?
+
+         PRINSIP KONSEPTUAL WAJIB DIPATUHI (HINDARI BIAS SISTEMIK KE "PISAH"):
+         a) "GABUNG" ADALAH HASIL YANG VALID, ALAMI, DAN SANGAT UMUM di dunia bisnis nyata, terutama untuk UMKM dan bisnis skala kecil-menengah di mana satu staf lazim menangani kedua arah transaksi di loket/meja yang sama. PISAH BUKAN default atau pilihan "lebih aman"!
+         b) BEDA ARAH KALKULASI / TRANSAKSI BUKAN ALASAN UNTUK PISAH:
+            - Money changer: Melayani beli valas (nasabah jual valas ke konter) dan jual valas (nasabah beli valas dari konter) dilakukan oleh TELLER YANG SAMA di loket yang sama, menggunakan kalkulasi kurs yang simetris dan alat deteksi uang palsu yang sama. DILARANG KERAS memisahkan menjadi 'Kasir Jual' dan 'Kasir Beli'! Money changer WAJIB "GABUNG" (peran frontliner: "Teller Valas" atau "Kasir Transaksi Valas").
+            - Agen bank / PPOB: Menyetor uang tunai vs menarik uang tunai dilayani oleh staf/operator loket yang sama di konter yang sama menggunakan mesin EDC yang sama. WAJIB "GABUNG" (peran frontliner: "Operator Loket").
+            - Warung / Toko kelontong: Melayani pembelian sembako vs tukar galon/tabung gas kosong dilayani oleh kasir/penjaga warung yang sama. WAJIB "GABUNG" (peran frontliner: "Kasir Toko").
+            - Jika kedua sisi sama-sama berupa kegiatan kasir/administratif ("menghitung angka, menerima/menyerahkan uang kas, dan mencatat nota"), maka itu tanda mutlak harus "GABUNG".
+         c) "PISAH" HANYA VALID JIKA ADA PERBEDAAN KEAHLIAN YANG BENAR-BENAR SIGNIFIKAN DAN BERBEDA JENIS:
+            - Contoh valid PISAH: Satu sisi membutuhkan keahlian teknis/fisik mendalam untuk membongkar mesin, mengecek rangka, dan menaksir kondisi fisik kendaraan bekas (technical appraisal / inspeksi teknis), sedangkan sisi lain murni penjualan/sales kasir showroom motor/mobil. Atau penaksiran uji kimia/karat emas oleh penaksir khusus vs kasir display perhiasan baru.
+            - Pertimbangkan skala usaha: Bisnis UMKM minim staf, sehingga kecenderungan wajar adalah GABUNG kecuali jika ada kebutuhan keahlian teknis fisik yang tidak mungkin dirangkap oleh kasir biasa.
+
+         ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) JIKA GABUNG:
+         - DILARANG KERAS memunculkan dua peran kasir/petugas terpisah per sisi transaksi (seperti 'Kasir Jual Valas' dan 'Kasir Beli Valas', atau 'Kasir Setor' dan 'Kasir Tarik') jika keputusannya GABUNG!
+         - "asumsiAktor" WAJIB HANYA memunculkan SATU peran frontliner gabungan (contoh: "Teller Valas", "Operator Loket", "Kasir Toko").
+         - Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan!
            DILARANG KERAS menulis kata "atau" (misal: "menghitung transaksi jual beli atau tukar tambah", "mencatat penjualan atau pembelian").
-           WAJIB diganti menjadi rincian konkret: "menghitung harga untuk transaksi penjualan unit baru maupun penerimaan unit tukar tambah", "mencatat transaksi penjualan unit serta pendataan unit bekas yang masuk".
+           WAJIB diganti menjadi rincian konkret: "menghitung kurs transaksi penjualan valas maupun pembelian valas nasabah", "mencatat transaksi penyetoran tunai serta penarikan tunai nasabah".
+
+         ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) JIKA PISAH:
+         - "asumsiAktor" WAJIB memunculkan kedua role terpisah dengan nama yang jelas menunjukkan sisi mana (misal: "Sales Motor Baru" dan "Petugas Appraisal Motor Bekas"), dan buatkan detail masing-masing di "detailAktor".
+
       Sebutkan nama kedua arah dan analisis pemisahan role di objek "duaArah":
       {
         "prosesA": "...",
@@ -485,6 +497,47 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
               opsiBoth: String(rawArah.klarifikasiAmbigu.opsiBoth || '').trim()
             } : undefined
           };
+        }
+
+        // Safeguard integritas peran jika keputusan adalah GABUNG:
+        // Pastikan tidak ada dua peran kasir semu yang terpisah arah di asumsiAktor
+        if (analisisArah?.kondisi === 'DUA_ARAH' && analisisArah.duaArah?.pemisahanRole?.keputusan === 'GABUNG') {
+          const staffRoles = asumsiAktor.filter(
+            (r: string) => !/^(super\s*admin|pemilik|owner|pelanggan|penyewa|nasabah|anggota|pasien|konsumen)\b/i.test(r)
+          );
+          if (staffRoles.length >= 2) {
+            const hasOppositeStaff =
+              staffRoles.some((r: string) => /jual|penjualan|setor|setoran|simpan/i.test(r)) &&
+              staffRoles.some((r: string) => /beli|pembelian|tarik|penarikan|pinjam/i.test(r));
+            if (hasOppositeStaff) {
+              const lowerCat = businessCategory.toLowerCase();
+              const combinedStaffName =
+                lowerCat.includes('valas') || lowerCat.includes('money')
+                  ? 'Teller Valas'
+                  : lowerCat.includes('bank') || lowerCat.includes('ppob')
+                  ? 'Operator Loket'
+                  : 'Kasir Operasional';
+
+              const newAktor = asumsiAktor.filter((r: string) => !staffRoles.includes(r));
+              newAktor.splice(1, 0, combinedStaffName);
+              asumsiAktor.length = 0;
+              asumsiAktor.push(...newAktor);
+
+              if (detailAktor) {
+                const combinedTasks: string[] = [];
+                for (const sr of staffRoles) {
+                  if (detailAktor[sr]) {
+                    combinedTasks.push(...detailAktor[sr].tanggungJawab);
+                    delete detailAktor[sr];
+                  }
+                }
+                detailAktor[combinedStaffName] = {
+                  narasi: `Staf frontliner yang melayani transaksi di ${businessCategory}.`,
+                  tanggungJawab: Array.from(new Set(combinedTasks)).slice(0, 3)
+                };
+              }
+            }
+          }
         }
 
         return {
