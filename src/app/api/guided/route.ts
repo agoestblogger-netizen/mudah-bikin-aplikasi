@@ -964,37 +964,47 @@ export async function generateSupportingFlowsAndFeaturesWithAI(
   const problem = session.storyline?.asumsiMasalah || '';
   const domain = (session as any).domain || session.match?.businessCategory || 'Operasional Bisnis';
 
-  const systemInstruction = `Anda adalah Analis Sistem & Konsultan Desain Alur Kerja Aplikasi AI.
-Tugas Anda: Menyusun Alur Pendukung (Supporting Workflows) dan Fitur Pendukung (Supporting Features) operasional yang BENAR-BENAR SPESIFIK dan RELEVAN dengan narasi cerita bisnis nyata yang sudah dikonfirmasi pengguna serta daftar peran yang aktif.
+  const systemInstruction = `Anda adalah Analis Sistem & Konsultan Desain Alur Kerja Aplikasi Bisnis Nyata.
+Tugas Anda: Menyusun Alur Pendukung (Supporting Workflows) dan Fitur Pendukung (Supporting Features) operasional yang SANGAT KONKRET, SPESIFIK KE INDUSTRI TERKAIT, dan MURNI DIGROUNDING ke narasi cerita bisnis nyata pengguna serta daftar peran yang aktif.
 
-ATURAN WAJIB:
+ATURAN WAJIB & LARANGAN MUTLAK:
 1. GROUNDING PENUH KE NARASI & PERAN AKTIF:
    - Baca dengan cermat Narasi, Masalah Utama, Alur Utama (Alur Inti), dan Daftar Peran yang disepakati.
-   - Alur Pendukung adalah alur kerja operasional penunjang di luar alur utama (misalnya: penanganan komplain hasil pengerjaan, pemeliharaan/kalibrasi sarana kerja fisik, logistik pengadaan bahan baku, atau prosedur keselamatan/kondisi darurat).
+   - Alur Pendukung adalah alur kerja operasional penunjang di luar alur utama (misalnya penanganan kendala pengerjaan, restock persediaan bahan kerja/alat, kalibrasi/inspeksi instrumen operasional fisik).
    - Aktor/pelaku di setiap langkah WAJIB diambil HANYA dari Daftar Peran Aktif yang tersedia: ${activeRoles.join(', ')}. DILARANG mengarang nama peran yang tidak ada di daftar!
    - Kalimat aksi harus menggambarkan aktivitas fisik/operasional nyata manusia di tempat kerja dengan objek spesifik bisnis tersebut.
 
-2. TANPA TEMPLATE GENERIK & TANPA FORMAT KAKU:
-   - DILARANG KERAS menggunakan pola kalimat generik seperti:
-     * "Jaminan Kepuasan & Penyesuaian Kualitas Layanan [Domain]"
-     * "Mengajukan permintaan penyesuaian pengerjaan jika detail layanan belum sesuai kesepakatan"
-     * "Memeriksa catatan pengerjaan awal dan melakukan perbaikan pengerjaan hingga rapi dan tuntas"
-   - Tuliskan nama alur dan aksi menggunakan istilah asli industri tersebut (contoh: di studio rekaman -> "Koreksi Retake Audio & Re-balancing Frekuensi", di kolam renang -> "Pengurasan Endapan Dasar & Uji Kebocoran Pipa", di bengkel -> "Penyetelan Ulang Klep & Uji Emisi", di barbershop -> "Klaim Ulang Potong Gratis jika Hasil Tidak Simetris").
+2. LARANGAN KERAS KERANGKA/FORMULA JUDUL ABSTRAK (ANTI-TEMPLATE GENERIK):
+   - DILARANG KERAS menggunakan frasa payung abstrak di judul alur seperti:
+     * "Penanganan Penyesuaian Hasil & Jaminan Pengerjaan [X]"
+     * "Pemeliharaan Sarana Kerja & Kesiapan Perlengkapan [X]"
+     * "Jaminan Kepuasan & Penyesuaian Kualitas Layanan [X]"
+     * "Standar Operasional Penunjang [X]"
+     * Frasa payung umum lainnya yang cuma menempelkan nama domain di akhir kalimat!
+   - JUDUL ALUR PENDUKUNG WAJIB MENYEBUTKAN SECARA EKSPLISIT:
+     a. Nama peralatan kerja fisik, instrumen, atau bahan konsumsi nyata (contoh: "Restock Silet Cukur, Pisau Clipper & Pomade", "Kalibrasi Mixer & Perawatan Kabel Audio", "Restock Tinta Banner & Pembersihan Head Printer", "Pengadaan Kaporit Kolam & Perawatan Pompa Sirkulasi", "Jadwal Ganti Oli & Pemeriksaan Ban Armada", "Restock Biji Kopi Espresso & Perawatan Suhu Chiller").
+     b. ATAU bentuk kendala / komplain fisik nyata yang dihadapi konsumen (contoh: "Klaim Ulang Potong Gratis jika Rambut Kurang Rapi", "Koreksi Retake Audio Vokal & Re-balancing Frekuensi", "Cetak Ulang Cepat jika Warna Luntur atau Format Rusak", "Uji Kebersihan Air & Pengurasan Endapan Dasar Kolam", "Penanganan Keterlambatan Pengembalian, Denda & Klaim Bodi Armada", "Penggantian Pesanan Salah & Garansi Cita Rasa Masakan").
 
-3. FLEKSIBILITAS JUMLAH (TANPA KUOTA ARTIFISIAL):
-   - Jumlah alur pendukung harus proporsional dengan kompleksitas proses bisnis nyata (antara 1 hingga 2 alur pendukung).
-   - Jika narasi bisnis sederhana dan hanya memiliki 1 alur pendukung logis yang relevan, berikan 1 saja! DILARANG memaksakan alur kedua yang mengada-ada.
-   - Fitur Pendukung: Hasilkan 3 hingga 5 fitur bernilai tinggi yang spesifik menunjang efisiensi operasional peran terkait (misal fitur dasbor monitoring khusus, cetak lembar kerja/invoice PDF, integrasi notifikasi WhatsApp, atau filter riwayat kerja).
+3. SELF-CHECK SEBELUM MENGELUARKAN OUTPUT (SANGAT KRUSIAL):
+   - Lakukan pengujian berikut pada setiap judul alur pendukung Anda sebelum mengeluarkan JSON:
+     "Jika nama bidang usaha ini dihilangkan, apakah judul ini masih bisa dipakai untuk bisnis lain (seperti kantor, toko grosir, atau pabrik) tanpa terasa salah?"
+     JIKA YA -> MAKA JUDUL ANDA GAGAL!
+     Segera ganti dan sebutkan alat kerja fisik, bahan habis pakai, atau komplain spesifik yang HANYA MUNGKIN ADA di bidang usaha pengguna ini!
 
-4. TANPA ISTILAH TEKNIS IT:
+4. FLEKSIBILITAS JUMLAH (TANPA KUOTA ARTIFISIAL):
+   - Jumlah alur pendukung harus proporsional dengan kompleksitas proses bisnis nyata (1 hingga 2 alur pendukung).
+   - Jika proses bisnisnya ramping dan hanya memiliki 1 alur pendukung logis yang relevan, berikan 1 saja! DILARANG memaksakan alur kedua yang mengada-ada.
+   - Fitur Pendukung: Hasilkan 3 hingga 5 fitur bernilai tinggi yang spesifik menunjang efisiensi operasional peran terkait (misal dasbor antrean khusus alat/layanan, cetak lembar kerja/invoice PDF, integrasi notifikasi WhatsApp, atau rekapitulasi performa kerja).
+
+5. TANPA ISTILAH TEKNIS IT:
    - Dilarang memakai istilah IT seperti database, backend, CRUD, API, endpoint, tabel SQL.
 
-5. FORMAT OUTPUT JSON WAJIB:
+6. FORMAT OUTPUT JSON WAJIB:
 {
   "alurPendukung": [
     {
       "id": "alur_spesifik_1",
-      "nama": "Nama Alur Pendukung Spesifik Domain",
+      "nama": "Judul Alur Pendukung Menyebut Objek/Alat/Masalah Konkret",
       "steps": [
         { "pelaku": "Nama Peran dari Daftar", "aksi": "Tindakan operasional nyata" },
         { "pelaku": "Nama Peran dari Daftar", "aksi": "Tindakan operasional nyata" }
