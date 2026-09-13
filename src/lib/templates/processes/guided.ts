@@ -879,7 +879,7 @@ function generateSemanticSupportingFlows(
   const problem = (session.storyline?.asumsiMasalah || '').trim();
   const domain = ((session as any).domain || session.match?.businessCategory || 'Layanan').trim();
 
-  const customerActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|tamu|member|warga|siswa|murid/i, 'Pelanggan');
+  const customerActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|tamu|member|warga|siswa|murid|anggota|nasabah/i, 'Pelanggan');
   const fullText = `${domain} ${narrative} ${mainFlow} ${problem}`.toLowerCase();
 
   // 1. BARBERSHOP / SALON / PANGKAS RAMBUT
@@ -1159,11 +1159,26 @@ function generateSemanticSupportingFlows(
 
   // 9. KOPERASI / SIMPAN PINJAM / KREDIT
   if (/koperasi|simpan\s*pinjam|kredit|pinjaman/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_restrukturisasi_kredit',
-        nama: 'Penanganan Tunggakan Angsuran & Penjadwalan Ulang Kredit Bermasalah',
-        steps: [
+    const committeeActor = findActor(/komite|kredit|pengurus|analis|surveyor/i, '');
+    const cashierActor = findActor(/kasir|teller|bendahara/i, activeCore);
+    const hasSpecializedCommittee = committeeActor && committeeActor.toLowerCase() !== customerActor.toLowerCase();
+
+    const alurRestrukturisasiSteps = hasSpecializedCommittee
+      ? [
+          {
+            pelaku: customerActor,
+            aksi: 'Menyampaikan kendala likuiditas keuangan dan mengajukan keringanan tenor atau jadwal angsuran baru'
+          },
+          {
+            pelaku: cashierActor,
+            aksi: 'Menyiapkan data riwayat angsuran, total sisa baki debet pinjaman, dan berkas jaminan debitur'
+          },
+          {
+            pelaku: committeeActor,
+            aksi: 'Menganalisis profil kelayakan, menyetujui skema restrukturisasi, dan menetapkan jadwal cicilan baru'
+          }
+        ]
+      : [
           {
             pelaku: customerActor,
             aksi: 'Menyampaikan kendala likuiditas keuangan dan mengajukan keringanan tenor atau jadwal angsuran baru'
@@ -1172,12 +1187,24 @@ function generateSemanticSupportingFlows(
             pelaku: activeCore,
             aksi: 'Menganalisis profil kemampuan bayar debitur dan merumuskan kesepakatan perpanjangan jadwal pembayaran pinjaman'
           }
+        ];
+
+    const alurAuditKasSteps = hasSpecializedCommittee
+      ? [
+          {
+            pelaku: cashierActor,
+            aksi: 'Menghitung fisik uang tunai di brankas kasir dan mencocokkan totalnya dengan buku mutasi transaksi harian'
+          },
+          {
+            pelaku: committeeActor,
+            aksi: 'Melakukan verifikasi kas opname bersama pengawas dan menandatangani berita acara rekonsiliasi kas'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Mengotorisasi laporan audit kas harian dan memastikan cadangan likuiditas simpanan koperasi aman'
+          }
         ]
-      },
-      {
-        id: 'alur_audit_brankas_koperasi',
-        nama: 'Audit Fisik Brankas Tunai & Rekonsiliasi Saldo Kas Simpanan',
-        steps: [
+      : [
           {
             pelaku: activeCore,
             aksi: 'Menghitung fisik uang tunai di brankas kasir dan mencocokkan totalnya dengan buku mutasi transaksi harian'
@@ -1186,7 +1213,18 @@ function generateSemanticSupportingFlows(
             pelaku: activeOwner,
             aksi: 'Mengotorisasi laporan berita acara kas opname dan memastikan kepatuhan pembukuan keuangan koperasi'
           }
-        ]
+        ];
+
+    return [
+      {
+        id: 'alur_restrukturisasi_kredit',
+        nama: 'Penanganan Tunggakan Angsuran & Penjadwalan Ulang Kredit Bermasalah',
+        steps: alurRestrukturisasiSteps
+      },
+      {
+        id: 'alur_audit_brankas_koperasi',
+        nama: 'Audit Fisik Brankas Tunai & Rekonsiliasi Saldo Kas Simpanan',
+        steps: alurAuditKasSteps
       }
     ];
   }

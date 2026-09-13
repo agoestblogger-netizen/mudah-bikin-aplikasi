@@ -295,6 +295,17 @@ async function runUnifiedSupportingFlowTests() {
   assert(sessionInAlur2.flow.alurPendukung !== undefined && sessionInAlur2.flow.alurPendukung.length > 0, 'Alur Pendukung sukses ter-refresh!');
   assert(sessionInAlur2.flow.fiturPendukung !== undefined && sessionInAlur2.flow.fiturPendukung.length > 0, 'Fitur Pendukung sukses ter-refresh!');
 
+  const actorsInPutaran2 = resKoperasi2.alurPendukung.flatMap(ap => ap.steps.map(s => s.pelaku));
+  console.log('Aktor langkah Alur Pendukung Putaran 2:', actorsInPutaran2);
+  assert(
+    actorsInPutaran2.includes('Pengurus Komite Kredit'),
+    'Role baru "Pengurus Komite Kredit" BENAR-BENAR MUNCUL sebagai pelaku di langkah Alur Pendukung Putaran 2'
+  );
+  assert(
+    actorsInPutaran2.includes('Anggota Koperasi'),
+    'Aktor konsumen di alur koperasi adalah "Anggota Koperasi" (bukan teks generik "Pelanggan")'
+  );
+
   console.log(`\n=== SUMMARY: ${passed} PASSED, ${failed} FAILED ===`);
   if (failed > 0) {
     process.exit(1);
