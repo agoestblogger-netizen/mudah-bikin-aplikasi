@@ -840,36 +840,61 @@ async function refineStorylineWithAI(
   const systemInstruction = `Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator".
 Tugas Anda: Memperbarui cerita dan asumsi proses bisnis berdasarkan masukan atau koreksi dari pengguna dengan gaya bahasa yang hangat, ramah, dan SANGAT SPESIFIK ke domain bisnis terkait.
 
-ATURAN WAJIB:
-1. NADA HANGAT & BERSAHABAT: Tanggapi koreksi pengguna dengan positif, apresiatif, dan suportif.
-2. DETAIL OBJEK & AKTIVITAS FISIK KONKRET SERTA STRUKTUR 3 FASE UTUH (DILARANG MELOMPAT):
-   - Rangkai kembali cerita sehingga memasukkan poin koreksi pengguna secara alami dan memuat aktivitas/objek fisik nyata (bukan frasa generik seperti "tim lapangan" atau "layanan pelanggan").
-   - Cerita narasi WAJIB utuh 3 fase berurutan dari hulu ke hilir: (1) Interaksi awal pelanggan/warga datang atau dijemput armada, (2) Penanganan inti operasional fisik/pemeriksaan/penimbangan, dan (3) Penyelesaian nota transaksi & pembayaran/rekonsiliasi akhir. DILARANG melompat langsung ke tengah proses.
-3. PERAN DAN ALUR SPESIFIK:
-   - asumsiAktor WAJIB mencantumkan nama pekerjaan nyata (contoh: "Staf Cuci & Lap", "Resepsionis", bukan "Staf Operasional"). Selalu sertakan "Super Admin".
-   - asumsiAlurUtama WAJIB urutan aksi fisik nyata di lokasi kerja.
-4. ATURAN SELF-CHECK EKSPLISIT:
-   "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
-5. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema, backend). Ceritakan alur aktivitas kerja nyata manusia!
-6. KALIMAT PENUTUP WAJIB: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
+ATURAN WAJIB (PRINSIP KUMULATIF & PRESERVASI MUTLAK):
+1. PRINSIP KUMULATIF & PRESERVASI FAKTA LAMA (PALING KRUSIAL & MUTLAK):
+   - "Cerita Sebelumnya" adalah satu-satunya sumber kebenaran yang WAJIB dipertahankan utuh.
+   - Anda WAJIB MEMPERTAHANKAN SEMUA detail fakta operasional, aktivitas fisik nyata, lokasi kerja (misal: rumah warga vs gudang vs toko), alur kerja, dan nama peran yang SUDAH ADA di Cerita Sebelumnya.
+   - Masukan / koreksi pengguna HANYA menambal, mengoreksi, atau menambahkan bagian spesifik yang secara eksplisit disinggung.
+   - DILARANG KERAS MENGHAPUS, MENYEDERHANAKAN, ATAU MENGUBAH detail fakta yang tidak disinggung pengguna!
+     * Contoh: Jika di cerita sebelumnya sudah ada detail "disetor ke gudang untuk ditimbang ulang dan dipilah", dan koreksi pengguna terbaru hanya membahas "pembayaran langsung di depan rumah warga", Anda WAJIB TETAP MEMPERTAHANKAN alur setor ke gudang, penimbangan ulang, dan pemilahan tersebut secara utuh!
+     * Jangan pernah menghilangkan alur lanjutan ke gudang, sortir barang, pengepul, atau rekonsiliasi kas yang sudah pernah ada di putaran sebelumnya.
+
+2. FLEKSIBILITAS LOKASI & WAKTU PEMBAYARAN:
+   - Waktu dan lokasi pembayaran WAJIB mengikuti instruksi pengguna dan logika operasional bisnis nyata:
+     * Jika pengguna menyatakan pembayaran dilakukan di tempat / di rumah warga saat penjemputan barang, MAKA pembayaran tersebut terjadi langsung di sana setelah timbang awal.
+     * DILARANG memindahkan pembayaran ke gudang atau ke akhir alur jika pengguna sudah menegaskan pembayaran terjadi di depan / di rumah warga!
+     * Alur lanjutan di gudang/kantor adalah untuk penimbangan ulang, sortir kategori barang, dan rekonsiliasi kas/stok harian.
+
+3. STRUKTUR LENGKAP TANPA PEMOTONGAN (3-6 KALIMAT):
+   - Rangkai kembali cerita secara utuh dari hulu ke hilir dengan 3-6 kalimat lengkap yang kaya detail konkret.
+   - JANGAN memotong atau meringkas proses operasional hanya demi membuat kalimat pendek. Semua detail penting yang sudah disepakati harus tetap hadir.
+
+4. NADA HANGAT & BERSAHABAT: Tanggapi koreksi pengguna dengan positif, apresiatif, dan suportif.
+
+5. PERAN DAN ALUR SPESIFIK:
+   - asumsiAktor WAJIB mencantumkan nama pekerjaan nyata (contoh: "Pengumpul Barang Rosok", "Pengepul / Petugas Gudang", "Warga Penjual", bukan sekadar "Staf Operasional"). Selalu sertakan "Super Admin".
+   - asumsiAlurUtama WAJIB urutan aksi fisik nyata di lokasi kerja yang mencerminkan keseluruhan alur secara kumulatif.
+
+6. ATURAN SELF-CHECK EKSPLISIT:
+   "Sebelum menampilkan cerita, cek: Apakah ada fakta lama dari Cerita Sebelumnya yang hilang atau mundur? Jika ada yang hilang (misal proses gudang atau bayar di tempat), tambahkan kembali sebelum mengirim hasil."
+
+7. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema, backend). Ceritakan alur aktivitas kerja nyata manusia!
+
+8. KALIMAT PENUTUP WAJIB: Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
 "${CONFIRMATION_CLOSING}"
-7. PERBARUI FIELD DALAM FORMAT JSON:
+
+9. PERBARUI FIELD DALAM FORMAT JSON:
 {
-  "narasi": "2-4 kalimat cerita terbaru yang hangat, memuat detail konkret, dan ditutup dengan kalimat konfirmasi wajib.",
+  "narasi": "Cerita lengkap kumulatif yang hangat, memuat seluruh detail operasional konkret tanpa ada yang hilang, dan ditutup dengan kalimat konfirmasi wajib.",
   "asumsiMasalah": "Masalah utama yang diselesaikan",
   "asumsiAktor": ["Super Admin", "..."],
-  "asumsiAlurUtama": "..."
+  "asumsiAlurUtama": "Rangkuman alur fisik lengkap kumulatif dari hulu ke hilir"
 }`;
 
-  const userPrompt = `Cerita Sebelumnya:
+  const riwayatText =
+    previousStoryline.riwayatKoreksi && previousStoryline.riwayatKoreksi.length > 0
+      ? `\n\nRiwayat Catatan / Koreksi yang Terakumulasi Sebelumnya:\n${previousStoryline.riwayatKoreksi.map((r, i) => `${i + 1}. ${r}`).join('\n')}`
+      : '';
+
+  const userPrompt = `Cerita Sebelumnya (Wajib dipertahankan seluruh fakta di dalamnya):
 "${previousStoryline.narasi}"
 Aktor Sebelumnya: ${previousStoryline.asumsiAktor.join(', ')}
-Alur Sebelumnya: ${previousStoryline.asumsiAlurUtama}
+Alur Sebelumnya: ${previousStoryline.asumsiAlurUtama}${riwayatText}
 
-Masukan / Koreksi Pengguna:
+Masukan / Koreksi Terbaru Pengguna (HANYA ubah/tambal bagian ini, pertahankan semua detail lainnya):
 "${userFeedback}"
 
-Perbarui cerita dan field asumsi dalam format JSON dengan nada hangat dan ramah:`;
+Perbarui cerita dan field asumsi dalam format JSON dengan mematuhi prinsip kumulatif (semua detail lama wajib tetap utuh):`;
 
   const raw = await invokeAIChat({
     systemInstruction,
@@ -1787,22 +1812,41 @@ export async function POST(req: Request) {
           revisiCount: 0
         };
 
-        const isMismatch =
-          selected.includes('mismatch_story') ||
-          (Boolean(other) && /meleset\s*jauh|salah\s*(semua|total)|bukan\s*begitu|keliru\s*total/i.test(other));
+        const feedbackText = (other || '').trim();
+        const hasSpecificDetails =
+          feedbackText.length >= 25 ||
+          /\b(bayar|pembayaran|tunai|transfer|harga|timbang|timbangan|berat|nominal|nota|struk|kwitansi|warga|pelanggan|gudang|pengepul|pengumpul|sopir|kurir|kasir|staf|admin|jemput|setor|pilah|sortir|kirim|jadwal|waktu|langsung|di tempat|lokasi|alur|tahap|langkah)\b/i.test(
+            feedbackText
+          );
+
+        const isExplicitMismatchWithoutDetails =
+          selected.includes('mismatch_story') && !hasSpecificDetails;
+        const isTextMismatchWithoutDetails =
+          Boolean(feedbackText) &&
+          !hasSpecificDetails &&
+          /^(meleset\s*jauh|salah\s*(semua|total)|bukan\s*begitu|keliru\s*total|bukan\s*ini)$/i.test(feedbackText);
+
+        const isMismatch = isExplicitMismatchWithoutDetails || isTextMismatchWithoutDetails;
 
         const isConfirm =
           selected.includes('confirm_story') ||
-          (!other && selected.length === 0 && !selected.includes('minor_adjust') && !isMismatch) ||
-          (Boolean(other) && !selected.includes('minor_adjust') && !isMismatch && /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(other));
+          (!feedbackText && selected.length === 0 && !selected.includes('minor_adjust') && !isMismatch) ||
+          (Boolean(feedbackText) &&
+            !selected.includes('minor_adjust') &&
+            !isMismatch &&
+            !hasSpecificDetails &&
+            /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(feedbackText));
 
         const isMinorAdjust =
           selected.includes('minor_adjust') ||
-          (Boolean(other) && !isConfirm && !isMismatch);
+          hasSpecificDetails ||
+          (Boolean(feedbackText) && !isConfirm && !isMismatch);
 
         const currentRevisi = existingStory.revisiCount || 0;
+        const prevRiwayat = existingStory.riwayatKoreksi || [];
+        const newRiwayat = feedbackText ? [...prevRiwayat, feedbackText] : prevRiwayat;
 
-        // 1. Mismatch Jauh ("Meleset jauh dari proses bisnis saya")
+        // 1. Mismatch Jauh ("Meleset jauh dari proses bisnis saya") HANYA jika benar-benar tanpa detail konkret
         if (isMismatch) {
           // Masuk ke pertanyaan bertahap satu per satu
           const nextRevisi = currentRevisi + 1;
@@ -1813,7 +1857,8 @@ export async function POST(req: Request) {
               ...existingStory,
               statusKonfirmasi: 'dikoreksi',
               modeKlarifikasiBertahap: true,
-              revisiCount: nextRevisi
+              revisiCount: nextRevisi,
+              riwayatKoreksi: newRiwayat
             }
           };
           const questionNarration =
@@ -1833,9 +1878,9 @@ export async function POST(req: Request) {
 
         // 2. Jika sebelumnya dalam mode klarifikasi bertahap (mismatch) dan user memberikan jawaban
         if (existingStory.modeKlarifikasiBertahap && !isConfirm) {
-          const feedback = other || selected.join(', ');
+          const feedback = feedbackText || selected.join(', ');
           const refined = await refineStorylineWithAI(
-            existingStory,
+            { ...existingStory, riwayatKoreksi: newRiwayat },
             feedback,
             true,
             provider,
@@ -1860,7 +1905,8 @@ export async function POST(req: Request) {
               narasi: newNarasi,
               statusKonfirmasi: 'dikoreksi',
               modeKlarifikasiBertahap: false,
-              revisiCount: currentRevisi + 1
+              revisiCount: currentRevisi + 1,
+              riwayatKoreksi: newRiwayat
             }
           };
           const guidedStep = buildGuidedStep(updated);
@@ -1874,12 +1920,12 @@ export async function POST(req: Request) {
           });
         }
 
-        // 3. Ada koreksi / catatan alur ("minor_adjust"): perbarui narasi & TAMPILKAN ULANG di STORYTELLING
+        // 3. Ada koreksi / catatan alur ("minor_adjust" atau koreksi spesifik): perbarui narasi & TAMPILKAN ULANG di STORYTELLING
         if (isMinorAdjust) {
           const nextRevisi = currentRevisi + 1;
-          const feedback = other || selected.join(', ');
+          const feedback = feedbackText || selected.join(', ');
           const refined = await refineStorylineWithAI(
-            existingStory,
+            { ...existingStory, riwayatKoreksi: newRiwayat },
             feedback,
             false,
             provider,
@@ -1904,7 +1950,8 @@ export async function POST(req: Request) {
               narasi: newNarasi,
               statusKonfirmasi: 'dikoreksi',
               modeKlarifikasiBertahap: false,
-              revisiCount: nextRevisi
+              revisiCount: nextRevisi,
+              riwayatKoreksi: newRiwayat
             }
           };
           const guidedStep = buildGuidedStep(updated);

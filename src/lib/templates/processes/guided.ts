@@ -2599,27 +2599,52 @@ export function applyGuidedAnswer(
   const next: MockupSessionState = JSON.parse(JSON.stringify(session));
 
   if (stepId === 'STORYTELLING') {
+    const feedbackText = (other || '').trim();
+    const hasSpecificDetails =
+      feedbackText.length >= 25 ||
+      /\b(bayar|pembayaran|tunai|transfer|harga|timbang|timbangan|berat|nominal|nota|struk|kwitansi|warga|pelanggan|gudang|pengepul|pengumpul|sopir|kurir|kasir|staf|admin|jemput|setor|pilah|sortir|kirim|jadwal|waktu|langsung|di tempat|lokasi|alur|tahap|langkah)\b/i.test(
+        feedbackText
+      );
+
+    const isExplicitMismatchWithoutDetails =
+      selected.includes('mismatch_story') && !hasSpecificDetails;
+    const isTextMismatchWithoutDetails =
+      Boolean(feedbackText) &&
+      !hasSpecificDetails &&
+      /^(meleset\s*jauh|salah\s*(semua|total)|bukan\s*begitu|keliru\s*total|bukan\s*ini)$/i.test(feedbackText);
+
+    const isMismatch = isExplicitMismatchWithoutDetails || isTextMismatchWithoutDetails;
+
     const isConfirm =
       selected.includes('confirm_story') ||
-      (!other && selected.length === 0 && !selected.includes('mismatch_story') && !selected.includes('minor_adjust'));
-    const isMismatch = selected.includes('mismatch_story');
+      (!feedbackText && selected.length === 0 && !selected.includes('minor_adjust') && !isMismatch) ||
+      (Boolean(feedbackText) &&
+        !selected.includes('minor_adjust') &&
+        !isMismatch &&
+        !hasSpecificDetails &&
+        /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(feedbackText));
+
     const existingStory = next.storyline || {
       narasi: other || selected.join(' '),
       asumsiMasalah: '',
       asumsiAktor: next.match.contextualRoles || ['Super Admin', 'Staf', 'Pelanggan'],
       asumsiAlurUtama: '',
       statusKonfirmasi: 'disetujui',
-      revisiCount: 0
+      revisiCount: 0,
+      riwayatKoreksi: []
     };
 
     const currentRevisi = existingStory.revisiCount || 0;
+    const prevRiwayat = existingStory.riwayatKoreksi || [];
+    const newRiwayat = feedbackText ? [...prevRiwayat, feedbackText] : prevRiwayat;
 
     if (isMismatch) {
       next.storyline = {
         ...existingStory,
         statusKonfirmasi: 'dikoreksi',
         modeKlarifikasiBertahap: true,
-        revisiCount: currentRevisi + 1
+        revisiCount: currentRevisi + 1,
+        riwayatKoreksi: newRiwayat
       };
       next.step = 'STORYTELLING';
       return next;
@@ -2631,20 +2656,22 @@ export function applyGuidedAnswer(
         narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
         statusKonfirmasi: 'disetujui',
         modeKlarifikasiBertahap: false,
-        revisiCount: currentRevisi
+        revisiCount: currentRevisi,
+        riwayatKoreksi: newRiwayat
       };
       next.step = 'ROLE';
       return next;
     }
 
-    // Jika koreksi kecil (minor_adjust / other) dan belum mencapai batas 2x revisi:
+    // Jika koreksi kecil (minor_adjust / other):
     // Sesi TETAP berada di step STORYTELLING untuk ditampilkan ulang!
     next.storyline = {
       ...existingStory,
       narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
       statusKonfirmasi: 'dikoreksi',
       modeKlarifikasiBertahap: false,
-      revisiCount: currentRevisi + 1
+      revisiCount: currentRevisi + 1,
+      riwayatKoreksi: newRiwayat
     };
     next.step = 'STORYTELLING';
     return next;

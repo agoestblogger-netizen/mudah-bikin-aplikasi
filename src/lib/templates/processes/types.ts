@@ -216,6 +216,10 @@ export interface MockupSessionState {
     statusKonfirmasi: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
     /**
+     * Riwayat semua masukan / koreksi pengguna yang terakumulasi secara kumulatif.
+     */
+    riwayatKoreksi?: string[];
+    /**
      * True jika user sedang dalam sesi tanya jawab bertahap (mismatch_story).
      * Jika false/undefined, kartu konfirmasi narasi standar yang ditampilkan.
      */
