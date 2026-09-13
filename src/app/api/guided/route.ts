@@ -37,7 +37,8 @@ import {
   type KondisiArahBisnis,
   type PemisahanRoleResult,
   type SupportingFlowItem,
-  type SupportingFeatureItem
+  type SupportingFeatureItem,
+  renderRbacMarkdownTable
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -1277,6 +1278,408 @@ Perbarui dan kembalikan JSON lengkap:`;
   }
 
   return applyDeterministicFlowCorrection(currentFlow, userCorrection, session);
+}
+
+export interface RbacMatrixResult {
+  modul: {
+    nama: string;
+    deskripsiFungsional?: string;
+    izinPerRole: { role: string; level: string; keterangan?: string }[];
+  }[];
+  markdownTable: string;
+  catatanPelimpahan?: string[];
+}
+
+export function generateFallbackRbacMatrix(session: MockupSessionState): RbacMatrixResult {
+  const removedExt = session.roles?.removedExternalRoles || [];
+  const activeRoles = (session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan']).filter(
+    (r) => !removedExt.includes(r)
+  );
+  const flowData = session.flow || {};
+  const alurPendukung = flowData.alurPendukung || [];
+  const delegated = session.roles?.tugasDilimpahkan || [];
+  const ownerRole = activeRoles.find((r) => isSuperAdminRole(r)) || activeRoles[0] || 'Super Admin';
+  const customerRole = activeRoles.find((r) => isExternalRole(r));
+
+  const modul: {
+    nama: string;
+    deskripsiFungsional?: string;
+    izinPerRole: { role: string; level: string; keterangan?: string }[];
+  }[] = [];
+
+  // Modul 1: Portal Pemesanan Mandiri (Jika ada peran eksternal/pelanggan)
+  if (customerRole) {
+    modul.push({
+      nama: 'Pengajuan & Reservasi Layanan Mandiri',
+      deskripsiFungsional: 'Portal mandiri pelanggan untuk pemesanan, pengajuan reservasi, dan cek status invoice',
+      izinPerRole: activeRoles.map((r) => {
+        if (r === customerRole) {
+          return { role: r, level: 'Buat & Pantau (Milik Sendiri)', keterangan: 'Akses terbatas ke data pesanan pribadi' };
+        }
+        if (r === ownerRole) {
+          return { role: r, level: 'Supervisi & Otorisasi Tarif', keterangan: 'Akses pantau dan kontrol seluruh antrean' };
+        }
+        return { role: r, level: 'Verifikasi & Konfirmasi Pengajuan', keterangan: 'Validasi kelayakan berkas dan ketersediaan layanan' };
+      })
+    });
+  }
+
+  // Modul 2: Operasional Lapangan & Pengerjaan Layanan
+  modul.push({
+    nama: 'Operasional Lapangan & Pelaksanaan Layanan',
+    deskripsiFungsional: 'Pencatatan checklist, pelaksanaan teknis, inspeksi fisik, dan serah-terima layanan',
+    izinPerRole: activeRoles.map((r) => {
+      if (customerRole && r === customerRole) {
+        return { role: r, level: 'Lihat Status Pengerjaan (Milik Sendiri)', keterangan: 'Menerima bukti pengerjaan/berita acara' };
+      }
+      if (r === ownerRole) {
+        return { role: r, level: 'Supervisi Mutu & Kontrol Operasional', keterangan: 'Monitoring progres dan eskalasi kendala' };
+      }
+      return { role: r, level: 'Eksekusi Lapangan & Catat Pengerjaan', keterangan: 'Input data inspeksi, serah terima, dan checklist fisik' };
+    })
+  });
+
+  // Modul 3: Penanganan Kendala & Sarana Kerja (Alur Pendukung)
+  if (alurPendukung.length > 0) {
+    modul.push({
+      nama: 'Pemeliharaan Sarana & Penanganan Kendala Layanan',
+      deskripsiFungsional: 'Pencatatan pemeliharaan alat, stok bahan kerja, dan tindak lanjut komplain operasional',
+      izinPerRole: activeRoles.map((r) => {
+        if (customerRole && r === customerRole) {
+          return { role: r, level: 'Kirim Masukan / Komplain (Milik Sendiri)', keterangan: 'Hanya seputar layanan yang digunakan' };
+        }
+        if (r === ownerRole) {
+          return { role: r, level: 'Persetujuan Biaya & Evaluasi Solusi', keterangan: 'Otorisasi pengeluaran dan solusi klaim' };
+        }
+        return { role: r, level: 'Pelaksana Teknis & Lapor Kondisi', keterangan: 'Pemeriksaan rutin dan penanganan lapangan' };
+      })
+    });
+  }
+
+  // Modul 4: Kasir & Pembayaran
+  modul.push({
+    nama: 'Transaksi Pembayaran & Rekapitulasi Kasir',
+    deskripsiFungsional: 'Penerimaan pembayaran, penerbitan struk transaksi, dan rekap omzet harian',
+    izinPerRole: activeRoles.map((r) => {
+      if (customerRole && r === customerRole) {
+        return { role: r, level: 'Lihat Tagihan & Bukti Bayar Pribadi', keterangan: 'Unduh nota pembayaran sendiri' };
+      }
+      if (r === ownerRole) {
+        return { role: r, level: 'Audit Keuangan & Laporan Konsolidasi', keterangan: 'Akses penuh pembukuan dan kas' };
+      }
+      return { role: r, level: 'Input Pembayaran & Cetak Struk', keterangan: 'Pencatatan transaksi kasir harian' };
+    })
+  });
+
+  // Modul 5: Manajemen Master Data & Hak Akses
+  modul.push({
+    nama: 'Manajemen Sistem, Master Data & Hak Akses',
+    deskripsiFungsional: 'Pengaturan katalog harga, data master, akun pengguna, dan log audit',
+    izinPerRole: activeRoles.map((r) => {
+      if (r === ownerRole) {
+        return { role: r, level: 'Kontrol Penuh & Pengaturan Sistem', keterangan: 'Kelola akun staf, hak akses, dan tarif' };
+      }
+      return { role: r, level: '-', keterangan: 'Tidak memiliki hak akses' };
+    })
+  });
+
+  const catatanPelimpahan: string[] = [];
+  if (delegated.length > 0) {
+    delegated.forEach((d) => {
+      catatanPelimpahan.push(
+        `Wewenang operasional "${d.dariRole}" dialihkan sepenuhnya ke "${d.keRole}" karena perampingan organisasi (${d.daftarTugas.join(', ')}).`
+      );
+    });
+  }
+
+  const markdownTable = renderRbacMarkdownTable(activeRoles, modul, catatanPelimpahan);
+
+  return {
+    modul,
+    markdownTable,
+    catatanPelimpahan: catatanPelimpahan.length > 0 ? catatanPelimpahan : undefined
+  };
+}
+
+export async function generateRbacMatrixWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<RbacMatrixResult> {
+  const startTime = Date.now();
+  const removedExt = session.roles?.removedExternalRoles || [];
+  const activeRoles = (session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan']).filter(
+    (r) => !removedExt.includes(r)
+  );
+  const flowData = session.flow || {};
+  const alurInti = flowData.alurInti || [];
+  const alurPendukung = flowData.alurPendukung || [];
+  const fiturPendukung = flowData.fiturPendukung || [];
+  const businessDomain = session.match?.businessCategory || session.storyline?.asumsiAlurUtama || 'Operasional Bisnis';
+  const narrative = session.storyline?.narasi || '';
+  const delegated = session.roles?.tugasDilimpahkan || [];
+
+  const delegationNotesPrompt =
+    delegated.length > 0
+      ? `\n⚠️ ATURAN KHUSUS PELIMPAHAN TUGAS (WAJIB DIPATUHI):
+${delegated
+  .map(
+    (d) =>
+      `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan seluruh wewenangnya DILIMPAHKAN ke "${d.keRole}".
+  * JANGAN membuat kolom untuk "${d.dariRole}". Kolom role WAJIB HANYA terdiri dari: ${activeRoles.join(', ')}.
+  * Seluruh modul yang mencakup tugas "${d.dariRole}" (${d.daftarTugas.join(', ')}) TETAP HARUS ADA di baris modul, dan wewenang operasionalnya diberikan kepada "${d.keRole}".
+  * Buat catatan pelimpahan: "Wewenang ${d.dariRole} dialihkan ke ${d.keRole} karena perampingan organisasi."`
+  )
+  .join('\n')}`
+      : '';
+
+  const systemInstruction = `Anda adalah Analis Keamanan Sistem & Perancang Matriks Hak Akses (Role-Based Access Control / RBAC) untuk Aplikasi Bisnis Nyata.
+Tugas Anda: Menyusun Matriks Hak Akses (RBAC) per Modul Fungsional yang SANGAT PRESISI, AMAN, dan MURNI DIGROUNDING pada alur kerja nyata dan peran yang aktif.
+
+ATURAN WAJIB & LARANGAN MUTLAK:
+1. KOLOM ROLE WAJIB HANYA PERAN AKTIF:
+   Daftar Peran Aktif: ${activeRoles.join(', ')}.
+   DILARANG KERAS membuat kolom untuk peran yang tidak ada di daftar ini! Peran eksternal yang tidak dipakai dilarang muncul!
+
+2. PEMISAHAN MODUL FUNGSIONAL (SEPARATION OF DUTIES):
+   - Jika suatu proses alur kerja melibatkan serah-terima atau pergantian pelaku (contoh: Pelanggan/Penyewa membuat booking/reservasi → Petugas melakukan inspeksi fisik/serah-terima unit/layanan), DILARANG KERAS menggabungkannya ke dalam 1 baris modul!
+   - WAJIB dipecah menjadi modul-modul fungsional terpisah:
+     * Modul Pengguna Luar / Self-Service (misal: "Pengajuan & Reservasi Unit" atau "Pemesanan Layanan Mandiri")
+     * Modul Operasional Internal Staf (misal: "Inspeksi Fisik & Serah-Terima Armada" atau "Pelaksanaan Pengerjaan Layanan")
+   - Modul hanya digabung jika mengelola objek data yang sama dengan hirarki otorisasi (misal: "Manajemen Katalog Layanan / Tarif").
+
+3. ACTION-SCOPED PERMISSIONS (DILARANG KERAS CRUD GENERIK):
+   - DILARANG KERAS menuliskan label izin generik polos seperti "Create, Read", "CRUD", "Read Only", "Akses Penuh", "View, Edit".
+   - Setiap izin WAJIB menyebutkan CAKUPAN DATA (SCOPE) dan TINDAKAN SPESIFIK:
+     * Untuk Pelanggan / Customer / Penyewa: "Buat & Pantau (Milik Sendiri)" atau "Input Form & Upload Berkas (Milik Sendiri)". Role publik TIDAK BOLEH memiliki akses ke modul operasional internal staf!
+     * Untuk Staf Operasional: "Verifikasi Berkas & Eksekusi Lapangan (Semua Data Aktif)" atau "Input Hasil Inspeksi & Catat Pengembalian".
+     * Untuk Pemilik / Super Admin: "Supervisi, Otorisasi Pembatalan, & Audit Penuh" atau "Pengaturan Master Data & Kontrol Penuh".
+     * Jika role TIDAK BERHAK / tidak terlibat pada modul tersebut: tulis "-" atau "Tidak Memiliki Akses".
+
+4. JUMLAH MODUL PROPORSIONAL:
+   - Buat 4 hingga 6 modul fungsional yang mencakup seluruh Alur Inti, Alur Pendukung, dan Fitur Utama sistem ini.
+   - Setiap modul harus punya nama yang jelas dan deskripsi fungsional 1 kalimat.
+
+${delegationNotesPrompt}
+
+5. FORMAT OUTPUT JSON WAJIB:
+{
+  "modul": [
+    {
+      "nama": "Nama Modul Fungsional",
+      "deskripsiFungsional": "Deskripsi singkat fungsi dan tujuan modul ini",
+      "izinPerRole": [
+        { "role": "Nama Peran", "level": "Tindakan Spesifik (Cakupan Data)", "keterangan": "penjelasan singkat batasan wewenang" }
+      ]
+    }
+  ],
+  "catatanPelimpahan": [
+    "Catatan pelimpahan jika ada peran yang tugasnya dialihkan"
+  ]
+}`;
+
+  const userPrompt = `Domain Usaha: ${businessDomain}
+
+Gambaran Proses:
+${narrative}
+
+Daftar Peran Aktif:
+${activeRoles.join(', ')}
+
+Alur Inti Operasional:
+${alurInti.map((s) => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
+
+Alur Pendukung:
+${alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
+
+Fitur Pendukung:
+${fiturPendukung.map((fp) => `- ${typeof fp === 'string' ? fp : (fp as any)?.label || fp}`).join('\n')}
+
+Susun matriks hak akses per modul fungsional dalam format JSON:`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.4,
+    maxTokens: 3500,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[AI-RBAC] Selesai dalam ${elapsed}ms`);
+
+  if (raw) {
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed.modul) && parsed.modul.length > 0) {
+          const validatedModul: {
+            nama: string;
+            deskripsiFungsional?: string;
+            izinPerRole: { role: string; level: string; keterangan?: string }[];
+          }[] = [];
+
+          for (const m of parsed.modul) {
+            if (m && typeof m.nama === 'string') {
+              const izinPerRole: { role: string; level: string; keterangan?: string }[] = [];
+              for (const r of activeRoles) {
+                const found = Array.isArray(m.izinPerRole)
+                  ? m.izinPerRole.find((ip: any) => String(ip.role || '').trim().toLowerCase() === r.toLowerCase())
+                  : null;
+                izinPerRole.push({
+                  role: r,
+                  level: found ? String(found.level || '-').trim() : '-',
+                  keterangan: found?.keterangan ? String(found.keterangan).trim() : undefined
+                });
+              }
+              validatedModul.push({
+                nama: String(m.nama).trim(),
+                deskripsiFungsional: m.deskripsiFungsional ? String(m.deskripsiFungsional).trim() : undefined,
+                izinPerRole
+              });
+            }
+          }
+
+          if (validatedModul.length > 0) {
+            const catatanPelimpahan = Array.isArray(parsed.catatanPelimpahan) && parsed.catatanPelimpahan.length > 0
+              ? parsed.catatanPelimpahan.map((c: any) => String(c).trim())
+              : delegated.length > 0
+                ? delegated.map((d) => `Wewenang operasional "${d.dariRole}" dialihkan ke "${d.keRole}" karena perampingan staf (${d.daftarTugas.join(', ')}).`)
+                : undefined;
+
+            const markdownTable = renderRbacMarkdownTable(activeRoles, validatedModul, catatanPelimpahan);
+            return {
+              modul: validatedModul,
+              markdownTable,
+              catatanPelimpahan
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AI-RBAC] Gagal parse JSON AI, beralih ke fallback deterministik:', e);
+    }
+  }
+
+  return generateFallbackRbacMatrix(session);
+}
+
+export async function reviseRbacMatrixWithAI(
+  session: MockupSessionState,
+  userCorrection: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<RbacMatrixResult> {
+  const startTime = Date.now();
+  const currentModul = session.rbac?.modul || [];
+  const removedExt = session.roles?.removedExternalRoles || [];
+  const activeRoles = (session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan']).filter(
+    (r) => !removedExt.includes(r)
+  );
+  const delegated = session.roles?.tugasDilimpahkan || [];
+
+  if (currentModul.length === 0) {
+    return generateRbacMatrixWithAI(session, provider, apiKey, model);
+  }
+
+  const systemInstruction = `Anda adalah Analis Keamanan Sistem & Perancang RBAC.
+Tugas Anda: Memperbaiki dan memperbarui Matriks Hak Akses (RBAC) berdasarkan koreksi pengguna.
+
+ATURAN REVISI (KONSISTEN & KUMULATIF):
+1. Baca koreksi pengguna dengan teliti: sesuaikan baris modul atau wewenang role yang diminta.
+2. PERTAHANKAN seluruh modul dan wewenang peran lain yang tidak diminta diubah (KUMULATIF).
+3. Kolom peran WAJIB HANYA terdiri dari: ${activeRoles.join(', ')}.
+4. Pertahankan kaidah Action-Scoped Permissions (sebutkan Scope: "Milik Sendiri", "Semua Data", dsb) dan hindari CRUD generik.
+5. Format output JSON sama persis dengan format modul RBAC.`;
+
+  const userPrompt = `Matriks Hak Akses Saat Ini:
+${JSON.stringify(currentModul, null, 2)}
+
+Daftar Peran Aktif:
+${activeRoles.join(', ')}
+
+Koreksi / Penyesuaian Pengguna:
+"${userCorrection}"
+
+Perbarui dan kembalikan JSON lengkap:`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.4,
+    maxTokens: 3500,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[AI-RBAC-REVISE] Selesai dalam ${elapsed}ms`);
+
+  if (raw) {
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed.modul) && parsed.modul.length > 0) {
+          const validatedModul: {
+            nama: string;
+            deskripsiFungsional?: string;
+            izinPerRole: { role: string; level: string; keterangan?: string }[];
+          }[] = [];
+
+          for (const m of parsed.modul) {
+            if (m && typeof m.nama === 'string') {
+              const izinPerRole: { role: string; level: string; keterangan?: string }[] = [];
+              for (const r of activeRoles) {
+                const found = Array.isArray(m.izinPerRole)
+                  ? m.izinPerRole.find((ip: any) => String(ip.role || '').trim().toLowerCase() === r.toLowerCase())
+                  : null;
+                izinPerRole.push({
+                  role: r,
+                  level: found ? String(found.level || '-').trim() : '-',
+                  keterangan: found?.keterangan ? String(found.keterangan).trim() : undefined
+                });
+              }
+              validatedModul.push({
+                nama: String(m.nama).trim(),
+                deskripsiFungsional: m.deskripsiFungsional ? String(m.deskripsiFungsional).trim() : undefined,
+                izinPerRole
+              });
+            }
+          }
+
+          if (validatedModul.length > 0) {
+            const catatanPelimpahan = Array.isArray(parsed.catatanPelimpahan) && parsed.catatanPelimpahan.length > 0
+              ? parsed.catatanPelimpahan.map((c: any) => String(c).trim())
+              : session.rbac?.catatanPelimpahan;
+
+            const markdownTable = renderRbacMarkdownTable(activeRoles, validatedModul, catatanPelimpahan);
+            return {
+              modul: validatedModul,
+              markdownTable,
+              catatanPelimpahan
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AI-RBAC-REVISE] Gagal parse JSON revisi:', e);
+    }
+  }
+
+  // Fallback koreksi jika LLM gagal: pertahankan modul yang ada
+  const markdownTable = renderRbacMarkdownTable(activeRoles, currentModul, session.rbac?.catatanPelimpahan);
+  return {
+    modul: currentModul,
+    markdownTable,
+    catatanPelimpahan: session.rbac?.catatanPelimpahan
+  };
 }
 
 async function generateNarration(
@@ -2613,9 +3016,34 @@ export async function POST(req: Request) {
 
         // Normal: persetujuan alur -> lanjut ke RBAC (POIN 5)
         let updated = applyGuidedAnswer(session, 'ALUR', body.selected || [], body.other);
+
+        // Syarat 1: Generate RBAC segar jika belum ada atau baru dibersihkan dari cache
+        if (!updated.rbac || !updated.rbac.modul || updated.rbac.modul.length === 0) {
+          const rbacResult = await generateRbacMatrixWithAI(updated, provider, userApiKey, userModel);
+          updated.rbac = {
+            modul: rbacResult.modul,
+            markdownTable: rbacResult.markdownTable,
+            catatanPelimpahan: rbacResult.catatanPelimpahan,
+            statusKonfirmasi: 'dikoreksi',
+            revisiCount: 0
+          };
+        }
+
         const guidedStep = buildGuidedStep(updated);
+        const tableMarkdown =
+          updated.rbac.markdownTable ||
+          renderRbacMarkdownTable(
+            updated.roles?.selected || [],
+            updated.rbac.modul,
+            updated.rbac.catatanPelimpahan
+          );
+
         const narration =
-          'Mantap! Alur kerja dan fitur pendukung sudah tersimpan.\n\nSekarang, yuk kita atur pembagian hak akses (RBAC) untuk masing-masing peran di aplikasi:';
+          `Mantap! Alur kerja dan fitur pendukung sudah tersimpan.\n\n` +
+          `Berikut adalah rancangan matriks pembagian hak akses (RBAC) per modul fungsional untuk setiap peran di aplikasi Anda:\n\n` +
+          `${tableMarkdown}\n\n` +
+          `Silakan periksa pembagian wewenang di atas. Jika sudah pas, klik "Sudah pas" untuk lanjut ke perancangan Skema Data.`;
+
         return NextResponse.json({
           success: true,
           action,
@@ -2625,7 +3053,74 @@ export async function POST(req: Request) {
         });
       }
 
-      // Default applyGuidedAnswer untuk langkah berikutnya (ALUR, RBAC, dst)
+      // Khusus step RBAC: tangani koreksi hak akses atau persetujuan lanjut ke SKEMA_DATA
+      if (stepId === 'RBAC') {
+        const isCorrection =
+          (body.selected && body.selected.includes('koreksi_rbac')) ||
+          Boolean(body.other && body.other.trim());
+
+        if (isCorrection) {
+          const correctionText = (body.other || '').trim() || (body.selected || []).join(', ');
+          const revised = await reviseRbacMatrixWithAI(
+            session,
+            correctionText,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'RBAC', // TETAP DI STEP RBAC (Syarat 3)
+            rbac: {
+              modul: revised.modul,
+              markdownTable: revised.markdownTable,
+              catatanPelimpahan: revised.catatanPelimpahan,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: (session.rbac?.revisiCount || 0) + 1
+            }
+          };
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          const tableMarkdown =
+            revised.markdownTable ||
+            renderRbacMarkdownTable(
+              updatedSession.roles?.selected || [],
+              revised.modul,
+              revised.catatanPelimpahan
+            );
+
+          const narration =
+            `Siap, matriks hak akses telah saya perbarui sesuai masukanmu:\n\n` +
+            `${tableMarkdown}\n\n` +
+            `Silakan tinjau kembali perubahan di atas. Jika sudah sesuai, pilih "Sudah pas" untuk lanjut ke tahap Skema Data.`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
+
+        // User memilih confirm_rbac ("Sudah pas, lanjut ke Skema Data")
+        let updated = applyGuidedAnswer(session, 'RBAC', body.selected || [], body.other);
+        const guidedStep = buildGuidedStep(updated);
+        const narration =
+          `Bagus sekali! Matriks hak akses (RBAC) telah disetujui.\n\n` +
+          `Sekarang, mari kita tentukan struktur skema tabel dan relasi data untuk aplikasi Anda:`;
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Default applyGuidedAnswer untuk langkah berikutnya (SKEMA_DATA, dst)
       let updated = applyGuidedAnswer(session, stepId, body.selected || [], body.other);
 
       const guidedStep = buildGuidedStep(updated);

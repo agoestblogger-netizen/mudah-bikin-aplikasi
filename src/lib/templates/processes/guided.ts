@@ -2449,7 +2449,46 @@ function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
   };
 }
 
+export function renderRbacMarkdownTable(
+  roles: string[],
+  modulList: { nama: string; deskripsiFungsional?: string; izinPerRole: { role: string; level: string; keterangan?: string }[] }[],
+  catatanPelimpahan?: string[]
+): string {
+  if (!roles || roles.length === 0 || !modulList || modulList.length === 0) return '';
+
+  const header = `| Modul Fungsional | ${roles.join(' | ')} |`;
+  const divider = `| :--- | ${roles.map(() => ':---').join(' | ')} |`;
+
+  const rows = modulList.map((m) => {
+    const cells = roles.map((r) => {
+      const match = m.izinPerRole.find(
+        (ip) => ip.role.trim().toLowerCase() === r.trim().toLowerCase()
+      );
+      if (!match || !match.level || match.level.trim() === '-' || /tidak ada|tidak memiliki/i.test(match.level)) {
+        return '-';
+      }
+      return match.level.trim();
+    });
+    const moduleName = m.deskripsiFungsional
+      ? `**${m.nama}**<br>*${m.deskripsiFungsional}*`
+      : `**${m.nama}**`;
+    return `| ${moduleName} | ${cells.join(' | ')} |`;
+  });
+
+  let table = `${header}\n${divider}\n${rows.join('\n')}`;
+
+  if (catatanPelimpahan && catatanPelimpahan.length > 0) {
+    table +=
+      `\n\n> ℹ️ **Catatan Wewenang & Pelimpahan Tugas:**\n` +
+      catatanPelimpahan.map((c) => `> - ${c}`).join('\n');
+  }
+
+  return table;
+}
+
 function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
+  const isRevising = Boolean(session.rbac?.revisiCount && session.rbac.revisiCount > 0);
+  const totalModul = session.rbac?.modul?.length || 0;
   return {
     stepId: 'RBAC',
     title: 'Matriks Hak Akses & Pembagian Wewenang Role',
@@ -2458,16 +2497,19 @@ function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
     options: [
       {
         id: 'confirm_rbac',
-        label: '✅ Setujui matriks hak akses per role',
+        label: '✅ Sudah pas, lanjut ke Skema Data',
         recommended: true,
-        description: 'Tampilan Depan, Penjaga Akses, dan Database'
+        description:
+          totalModul > 0
+            ? `Hak akses ${totalModul} modul fungsional per peran sudah sesuai kebutuhan operasional.`
+            : 'Pembagian wewenang dan batasan akses antar-peran sudah tepat.'
       },
       {
         id: 'koreksi_rbac',
-        label: '✏️ Ada koreksi pada hak akses role',
-        description: 'Tulis role atau modul apa yang wewenangnya perlu diubah',
+        label: isRevising ? '✏️ Masih ada koreksi hak akses role' : '✏️ Ada koreksi hak akses role',
+        description: 'Tuliskan modul atau peran mana yang hak akses/wewenangnya perlu disesuaikan.',
         requiresInput: true,
-        inputPlaceholder: 'Contoh: Kasir jangan diberi akses menghapus data transaksi...'
+        inputPlaceholder: 'Contoh: Kasir jangan diberi akses hapus data, atau Penyewa boleh batalkan booking sendiri...'
       }
     ]
   };
@@ -2698,6 +2740,8 @@ export function applyGuidedAnswer(
       delete next.flow.fiturPendukung;
       delete next.flow.kasusGanda;
     }
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC saat daftar role berubah
+    delete next.rbac;
   } else if (stepId === 'ALUR') {
     const flowData = getDomainFlowDetails(session);
 
@@ -2753,8 +2797,13 @@ export function applyGuidedAnswer(
       fiturPendukung: selectedFitur,
       ...(other ? { other } : {})
     };
+
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC saat alur kerja berubah
+    delete next.rbac;
   } else if (stepId === 'RBAC') {
-    // Diproses di Poin 5
+    if (next.rbac) {
+      next.rbac.statusKonfirmasi = 'disetujui';
+    }
   } else if (stepId === 'SKEMA_DATA') {
     // Diproses di Poin 6
   } else if (stepId === 'SIMULASI_DB') {
@@ -2929,6 +2978,11 @@ export function compileBriefFromSession(
       session.roles.tugasDilimpahkan.forEach((d) => {
         lines.push(`    * Dari ${d.dariRole} ke ${d.keRole}: ${d.daftarTugas.join('; ')}`);
       });
+    }
+    if (session.rbac?.modul && session.rbac.modul.length > 0) {
+      lines.push('- **Matriks Hak Akses (RBAC) per Modul Fungsional**:');
+      const tableMd = session.rbac.markdownTable || renderRbacMarkdownTable(roles, session.rbac.modul, session.rbac.catatanPelimpahan);
+      lines.push(tableMd);
     }
     lines.push('- **Job Description & Struktur Halaman per Role**:');
     for (const role of roles) {

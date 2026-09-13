@@ -283,7 +283,15 @@ export interface MockupSessionState {
     dualFlowPreDecided?: boolean;
   };
   rbac?: {
-    modul: { nama: string; izinPerRole: { role: string; level: string }[] }[];
+    modul: {
+      nama: string;
+      deskripsiFungsional?: string;
+      izinPerRole: { role: string; level: string; keterangan?: string }[];
+    }[];
+    markdownTable?: string;
+    catatanPelimpahan?: string[];
+    statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+    revisiCount?: number;
   };
   dataSchema?: {
     tabel: { nama: string; field: { nama: string; tipe: string; keterangan: string }[] }[];
