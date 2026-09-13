@@ -27,7 +27,9 @@ import {
   REQUIRED_ROLE,
   type DomainFlowData,
   type GuidedStepId,
-  type MockupSessionState
+  type MockupSessionState,
+  type AnalisisArahResult,
+  type KondisiArahBisnis
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -151,7 +153,31 @@ async function invokeAIChat(options: {
         if (text.trim()) return text.trim();
       } else {
         const errText = await res.text().catch(() => '');
-        console.warn(`Gemini call failed (${res.status}):`, errText);
+        console.warn(`Gemini call failed (${res.status}), mencoba fallback ke OpenAI...`);
+        const fallbackKey = process.env.OPENAI_API_KEY;
+        if (fallbackKey) {
+          const fallbackRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${fallbackKey}`
+            },
+            body: JSON.stringify({
+              model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+              messages: [
+                { role: 'system', content: systemInstruction },
+                { role: 'user', content: userPrompt }
+              ],
+              temperature,
+              max_tokens: maxTokens
+            })
+          });
+          if (fallbackRes.ok) {
+            const data = await fallbackRes.json();
+            const text = data.choices?.[0]?.message?.content || '';
+            if (text.trim()) return text.trim();
+          }
+        }
       }
     } else if (openaiApiKey) {
       const isGemmaOrNoSystem = openaiModel.toLowerCase().includes('gemma') || openaiModel.toLowerCase().includes('r1');
@@ -218,6 +244,7 @@ interface AIStorylineResult {
   asumsiAktor: string[];
   asumsiAlurUtama: string;
   detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>;
+  analisisArah?: AnalisisArahResult;
 }
 
 const CONFIRMATION_CLOSING = 'Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.';
@@ -235,6 +262,35 @@ export async function generateStorylineWithAI(
 Tugas Anda: Menyambut ide pengguna dengan hangat, apresiatif, dan ramah, lalu merangkai cerita proses bisnis (2-4 kalimat) yang mengalir luwes, hidup, dan SANGAT SPESIFIK ke domain bisnis tersebut.
 
 PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
+0. ANALISIS KONSEPTUAL ARAH BISNIS (analisisArah - WAJIB):
+   Analisis aktivitas frontliner / customer-facing dari permintaan pengguna untuk menyimpulkan salah satu dari tiga kondisi berikut:
+   a) "SATU_ARAH":
+      Aliran transaksi hanya SEARAH dari bisnis ke pelanggan (pelanggan memesan/dilayani dan membayar bisnis).
+      * Kafe, kedai kopi, restoran, bakery, rumah makan: Pelanggan memesan hidangan/minuman dan membayar ke kasir. Memiliki variasi menu kafe dan resto BUKAN dua arah transaksi! Ini MURNI "SATU_ARAH".
+      * Cuci mobil, klinik gigi/medis, salon, barbershop, apotek, toko baju, retail umum: Pelanggan memesan/dilayani dan membayar. Ini MURNI "SATU_ARAH".
+      * Rental mobil/motor/kost: Alur linier satu arah dengan tahap serah dan terima (pelanggan sewa, serah-terima kunci, lalu pengembalian unit saat durasi sewa selesai) TETAP dianggap "SATU_ARAH", karena ini adalah satu proses berkesinambungan awal-akhir, bukan dua transaksi berlawanan!
+      * Aktivitas sisipan/sesekali dengan modalitas rendah (misal bengkel yang "kadang juga jual sparepart") tetap "SATU_ARAH".
+   b) "DUA_ARAH":
+      HANYA JIKA ada dua jenis transaksi rutin dengan pelanggan yang ALIRANNYA BERLAWANAN (ada aliran barang/dana masuk DAN aliran barang/dana keluar):
+      - Koperasi Simpan Pinjam: "Menerima simpanan/tabungan anggota (dana masuk)" vs "Menyalurkan pinjaman/kredit anggota (dana keluar)"
+      - Toko Emas Jual-Beli: "Menjual perhiasan emas (barang keluar)" vs "Membeli emas bekas/buyback dari pelanggan (barang masuk)"
+      - Pegadaian: "Penerimaan titip gadai (barang masuk, pinjaman cair)" vs "Penebusan barang gadai (pelunasan, barang kembali)"
+      - Showroom Tukar Tambah: "Penjualan unit baru" vs "Penerimaan & appraisal unit lama"
+      - Money Changer: "Pembelian valas dari nasabah" vs "Penjualan valas ke nasabah"
+      ATURAN MUTLAK JIKA DUA_ARAH:
+      Narasi di field "narasi" dan urutan alur di "asumsiAlurUtama" WAJIB mencakup KEDUA sisi tersebut secara proporsional dan seimbang! DILARANG KERAS menjatuhkan salah satu sisi (seperti hanya menceritakan simpanan tanpa pinjaman)!
+      Sebutkan nama kedua arah di objek "duaArah": { "prosesA": "...", "prosesB": "...", "entitasBersama": "..." }.
+   c) "AMBIGU" (ATURAN PRIORITAS UNTUK PROMPT SINGKAT TANPA DETAIL ARAH):
+      JIKA permintaan pengguna sangat singkat atau umum (hanya menyebut jenis usaha seperti "buatkan aplikasi toko emas", "aplikasi pegadaian", "aplikasi tukar tambah", "aplikasi leasing") TANPA menyebutkan secara eksplisit apakah hanya satu arah atau dua arah:
+      AI DILARANG MENEBAK SENDIRI apakah satu arah atau dua arah! AI WAJIB menyimpulkan "AMBIGU".
+      Dan AI WAJIB mengisi objek "klarifikasiAmbigu" dengan pertanyaan ramah dan natural sesuai konteks domain tersebut:
+      {
+        "pertanyaan": "Pertanyaan ramah memastikan fokus arah bisnis (contoh: Toko emas ini fokusnya menjual perhiasan ke pelanggan, menerima pembelian emas bekas, atau dua-duanya?)",
+        "opsiA": "Arah bisnis A (contoh: Penjualan perhiasan ke pelanggan)",
+        "opsiB": "Arah bisnis B (contoh: Pembelian emas bekas dari pelanggan)",
+        "opsiBoth": "Dua-duanya (keterangan)"
+      }
+
 1. OBJEK FISIK & AKTIVITAS SPESIFIK DOMAIN (WAJIB):
    - Cerita WAJIB menyebutkan minimal satu detail aktivitas atau objek fisik nyata yang spesifik ke domain bisnis yang diminta pengguna.
    - Contoh objek/aktivitas konkret:
@@ -255,11 +311,9 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
      * Jika dua peran memiliki konsep makna atau tanggung jawab yang sama (contoh: "Penyewa" dan "Member", atau "Kasir" dan "Petugas Pembayaran"), satukan menjadi satu peran saja.
    - DETAIL AKTOR (detailAktor):
      * Untuk SETIAP peran di asumsiAktor, buatkan deskripsi naratif singkat (1-2 kalimat) dan 2-3 butir tanggung jawab konkret yang MURNI DIGROUNDING DARI CERITA domain tersebut.
-     * Contoh: Jika ada "Sopir" di rental mobil, deskripsikan mengantar penumpang perjalanan dan kenyamanan berkendara (DILARANG menyebut paket/barang kurir!). Jika ada "Petugas Kunci", deskripsikan verifikasi SIM/BPKB/jaminan dan cek kilometer!
 
 3. URUTAN ALUR NYATA (asumsiAlurUtama):
    - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
-   - Contoh: "Pelanggan datang bawa mobil -> Kasir catat paket cuci & plat nomor -> Staf cuci semprot busa & vakum jok -> Kasir terima pembayaran -> Pemilik cek total mobil & omzet".
    - DILARANG memakai kalimat umum seperti "Pelanggan memesan -> Petugas memproses -> Pemilik memantau".
 
 4. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
@@ -275,6 +329,21 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
 7. FORMAT OUTPUT HANYA JSON VALID:
 {
+  "analisisArah": {
+    "kondisi": "SATU_ARAH" | "DUA_ARAH" | "AMBIGU",
+    "alasan": "Penjelasan konseptual mengapa dinilai satu arah, dua arah, atau ambigu",
+    "duaArah": {
+      "prosesA": "Nama proses transaksi keluar/penjualan/setoran (jika DUA_ARAH)",
+      "prosesB": "Nama proses transaksi masuk/pembelian/pinjaman (jika DUA_ARAH)",
+      "entitasBersama": "Objek/barang/dana utama yang terlibat"
+    },
+    "klarifikasiAmbigu": {
+      "pertanyaan": "Pertanyaan ramah memastikan fokus arah bisnis (jika AMBIGU)",
+      "opsiA": "Arah bisnis A",
+      "opsiB": "Arah bisnis B",
+      "opsiBoth": "Dua-duanya (keterangan)"
+    }
+  },
   "appName": "Nama aplikasi kreatif & spesifik domain",
   "businessCategory": "Kategori industri konkret",
   "narasi": "2-4 kalimat cerita proses bisnis hangat yang menyebut aktivitas & objek fisik nyata domain ini. ${CONFIRMATION_CLOSING}",
@@ -295,7 +364,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nSusun cerita proses bisnis yang hangat, hidup, dan memuat detail objek/aktivitas fisik konkret spesifik domain ini, lalu ekstrak field terstruktur beserta detailAktor:`,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nAnalisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU), susun cerita proses bisnis yang hangat dan hidup memuat aktivitas konkret, lalu ekstrak field terstruktur:`,
     temperature: 0.6,
     maxTokens: 4000,
     provider,
@@ -336,6 +405,30 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           }
         }
 
+        let analisisArah: AnalisisArahResult | undefined = undefined;
+        if (parsed.analisisArah && typeof parsed.analisisArah === 'object') {
+          const rawArah = parsed.analisisArah;
+          const kondisi: KondisiArahBisnis = (['SATU_ARAH', 'DUA_ARAH', 'AMBIGU'].includes(rawArah.kondisi)
+            ? rawArah.kondisi
+            : 'SATU_ARAH') as KondisiArahBisnis;
+
+          analisisArah = {
+            kondisi,
+            alasan: String(rawArah.alasan || '').trim(),
+            duaArah: rawArah.duaArah ? {
+              prosesA: String(rawArah.duaArah.prosesA || '').trim(),
+              prosesB: String(rawArah.duaArah.prosesB || '').trim(),
+              entitasBersama: String(rawArah.duaArah.entitasBersama || '').trim()
+            } : undefined,
+            klarifikasiAmbigu: rawArah.klarifikasiAmbigu ? {
+              pertanyaan: String(rawArah.klarifikasiAmbigu.pertanyaan || '').trim(),
+              opsiA: String(rawArah.klarifikasiAmbigu.opsiA || '').trim(),
+              opsiB: String(rawArah.klarifikasiAmbigu.opsiB || '').trim(),
+              opsiBoth: String(rawArah.klarifikasiAmbigu.opsiBoth || '').trim()
+            } : undefined
+          };
+        }
+
         return {
           appName,
           businessCategory,
@@ -350,7 +443,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           asumsiAlurUtama:
             String(parsed.asumsiAlurUtama || '').trim() ||
             'Pelanggan mendaftar -> Petugas mengerjakan layanan -> Pembayaran & struk -> Pemilik mengecek rekap',
-          detailAktor
+          detailAktor,
+          analisisArah
         };
       }
     } catch (e) {
@@ -788,34 +882,45 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'prompt wajib diisi untuk START.' }, { status: 400 });
       }
 
-      // 0. Cek apakah prompt awal masuk domain ambigu (toko emas, pegadaian, dll)
-      // tanpa menyebut kata kunci arah bisnis (jual/beli/gadai/tebus).
-      // Jika ambigu: TAMPILKAN KLARIFIKASI DULU, JANGAN GENERATE NARASI DULU.
-      const ambiguousDomain = detectAmbiguousStorylineDomain(prompt);
-      if (ambiguousDomain) {
+      // 1. Sintesis Storyline & Analisis Konseptual Arah Bisnis MURNI AI (POIN 2 & Instruksi Revisi)
+      const storylineResult = await generateStorylineWithAI(
+        prompt,
+        provider,
+        userApiKey,
+        userModel
+      );
+
+      const analisis = storylineResult.analisisArah;
+
+      // KONDISI 3: AMBIGU — Permintaan terlalu singkat/umum menurut AI, tampilkan kartu klarifikasi sebelum narasi difinalkan
+      if (analisis && analisis.kondisi === 'AMBIGU' && analisis.klarifikasiAmbigu) {
+        const amb = analisis.klarifikasiAmbigu;
         const pendingSession: MockupSessionState = {
           step: 'STORYTELLING',
           match: {
-            templateId: 'MT-20',
-            overlayIds: [],
-            patternIds: ['UP-06', 'UP-09'],
+            templateId: storylineResult.templateId || 'MT-20',
+            overlayIds: storylineResult.overlayIds || [],
+            patternIds: storylineResult.patternIds || ['UP-06', 'UP-09'],
             tier: 'BASIC',
-            businessCategory: ambiguousDomain.pattern.nameA.includes('Emas')
-              ? 'Toko Emas'
-              : ambiguousDomain.pattern.entity,
-            contextualPainPoints: [],
-            contextualRoles: []
+            businessCategory: storylineResult.businessCategory,
+            contextualPainPoints: [storylineResult.asumsiMasalah],
+            contextualRoles: storylineResult.asumsiAktor
           },
           storyline: {
-            narasi: '',
-            asumsiMasalah: '',
-            asumsiAktor: [],
-            asumsiAlurUtama: '',
+            narasi: storylineResult.narasi,
+            asumsiMasalah: storylineResult.asumsiMasalah,
+            asumsiAktor: storylineResult.asumsiAktor,
+            asumsiAlurUtama: storylineResult.asumsiAlurUtama,
+            detailAktor: storylineResult.detailAktor,
             statusKonfirmasi: 'dikoreksi',
             revisiCount: 0,
+            analisisArah: analisis,
             pendingDirectionClarification: {
-              patternId: ambiguousDomain.pattern.id,
-              originalPrompt: prompt
+              originalPrompt: prompt,
+              pertanyaan: amb.pertanyaan,
+              opsiA: amb.opsiA,
+              opsiB: amb.opsiB,
+              opsiBoth: amb.opsiBoth || 'Dua-duanya'
             }
           },
           roles: { selected: [] },
@@ -824,11 +929,17 @@ export async function POST(req: Request) {
           features: { selected: [] }
         };
 
-        const clarificationCard = buildDirectionClarificationCard(ambiguousDomain.pattern);
+        const clarificationCard = buildDirectionClarificationCard({
+          pertanyaan: amb.pertanyaan,
+          opsiA: amb.opsiA,
+          opsiB: amb.opsiB,
+          opsiBoth: amb.opsiBoth
+        });
+
         const clarificationNarration =
           `Halo! Ide aplikasi bisnismu sangat menarik.\n\n` +
           `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan:\n\n` +
-          `> ❓ **${ambiguousDomain.pattern.clarificationQuestion}**\n\n` +
+          `> ❓ **${amb.pertanyaan}**\n\n` +
           `Silakan pilih arah bisnis di kartu bawah agar narasi yang saya susun langsung tepat sasaran.`;
 
         return NextResponse.json({
@@ -844,14 +955,7 @@ export async function POST(req: Request) {
         });
       }
 
-      // 1. Sintesis Storyline proses bisnis MURNI AI (POIN 2)
-      const storylineResult = await generateStorylineWithAI(
-        prompt,
-        provider,
-        userApiKey,
-        userModel
-      );
-
+      // KONDISI 1 & 2: SATU_ARAH atau DUA_ARAH
       // 2. Pencarian semantik (Gemini embedding jika tersedia)
       const geminiKey =
         provider === 'gemini' && userApiKey && userApiKey.trim()
@@ -874,6 +978,8 @@ export async function POST(req: Request) {
       const patternIds = storylineResult.patternIds || ['UP-06', 'UP-09'];
       const tier = detectTier({ patternIds });
 
+      const isDual = analisis?.kondisi === 'DUA_ARAH' && Boolean(analisis.duaArah);
+
       const session: MockupSessionState = {
         step: 'STORYTELLING',
         match: {
@@ -892,10 +998,21 @@ export async function POST(req: Request) {
           asumsiAlurUtama: storylineResult.asumsiAlurUtama,
           detailAktor: storylineResult.detailAktor,
           statusKonfirmasi: 'disetujui',
-          revisiCount: 0
+          revisiCount: 0,
+          analisisArah: analisis
         },
         roles: { selected: [] },
-        flow: {},
+        flow: {
+          ...(isDual
+            ? {
+                dualFlowPreDecided: true,
+                dualProcessNames: {
+                  processA: analisis!.duaArah!.prosesA,
+                  processB: analisis!.duaArah!.prosesB
+                }
+              }
+            : {})
+        },
         painPoints: { selected: [] },
         features: { selected: [] }
       };
@@ -944,22 +1061,22 @@ export async function POST(req: Request) {
 
         // Sub-handler: Jawaban klarifikasi arah bisnis sebelum narasi dibuat
         if (session.storyline?.pendingDirectionClarification) {
-          const { patternId, originalPrompt } = session.storyline.pendingDirectionClarification;
-          const pattern = DUAL_PROCESS_PATTERNS.find((p) => p.id === patternId);
+          const { originalPrompt, opsiA, opsiB, nameA, nameB } = session.storyline.pendingDirectionClarification;
           const choice = selected[0] || 'dir_both';
 
           let enrichedPrompt = originalPrompt;
           let isBoth = choice === 'dir_both';
 
-          if (pattern) {
-            if (choice === 'dir_A_only') {
-              enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${pattern.nameA}" (${pattern.optionALabel}). JANGAN buat alur untuk ${pattern.nameB}. Susun cerita proses bisnis murni satu arah untuk ${pattern.nameA}.`;
-            } else if (choice === 'dir_B_only') {
-              enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${pattern.nameB}" (${pattern.optionBLabel}). JANGAN buat alur untuk ${pattern.nameA}. Susun cerita proses bisnis murni satu arah untuk ${pattern.nameB}.`;
-            } else {
-              isBoth = true;
-              enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih melayani DUA ARAH BISNIS SEKALIGUS: "${pattern.nameA}" DAN "${pattern.nameB}". Keduanya sama-sama rutin dan setara. Cerita proses bisnis WAJIB menyebutkan kedua aktivitas ini secara seimbang.`;
-            }
+          const labelA = nameA || opsiA || 'Arah Bisnis A';
+          const labelB = nameB || opsiB || 'Arah Bisnis B';
+
+          if (choice === 'dir_A_only') {
+            enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${labelA}". JANGAN buat alur untuk "${labelB}". Susun cerita proses bisnis murni satu arah untuk ${labelA}.`;
+          } else if (choice === 'dir_B_only') {
+            enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih fokus HANYA pada "${labelB}". JANGAN buat alur untuk "${labelA}". Susun cerita proses bisnis murni satu arah untuk ${labelB}.`;
+          } else {
+            isBoth = true;
+            enrichedPrompt = `${originalPrompt}. PANDUAN PENTING: Pengguna memilih melayani DUA ARAH BISNIS SEKALIGUS: "${labelA}" DAN "${labelB}". Keduanya sama-sama rutin dan setara. Cerita proses bisnis WAJIB menyebutkan kedua aktivitas ini secara seimbang.`;
           }
 
           // 1. Generate narasi AI dengan prompt yang diperkaya
@@ -1012,16 +1129,20 @@ export async function POST(req: Request) {
               asumsiAlurUtama: storylineResult.asumsiAlurUtama,
               detailAktor: storylineResult.detailAktor,
               statusKonfirmasi: 'disetujui',
-              revisiCount: 0
+              revisiCount: 0,
+              analisisArah: storylineResult.analisisArah
               // pendingDirectionClarification dibersihkan
             },
             flow: {
               ...session.flow,
               // Jika pilih "Dua-duanya", tandai dualFlowPreDecided = true
-              ...(isBoth && pattern
+              ...(isBoth
                 ? {
                     dualFlowPreDecided: true,
-                    dualProcessNames: { processA: pattern.nameA, processB: pattern.nameB }
+                    dualProcessNames: {
+                      processA: storylineResult.analisisArah?.duaArah?.prosesA || labelA,
+                      processB: storylineResult.analisisArah?.duaArah?.prosesB || labelB
+                    }
                   }
                 : {})
             }

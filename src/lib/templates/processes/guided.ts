@@ -211,11 +211,24 @@ function isExternalRole(label: string): boolean {
 function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
   // Jika sedang menunggu klarifikasi arah bisnis sebelum narasi dibuat
   if (session.storyline?.pendingDirectionClarification) {
-    const pattern = DUAL_PROCESS_PATTERNS.find(
-      (p) => p.id === session.storyline?.pendingDirectionClarification?.patternId
-    );
-    if (pattern) {
-      return buildDirectionClarificationCard(pattern);
+    const pend = session.storyline.pendingDirectionClarification;
+    if (pend.pertanyaan && pend.opsiA && pend.opsiB) {
+      return buildDirectionClarificationCard({
+        pertanyaan: pend.pertanyaan,
+        opsiA: pend.opsiA,
+        opsiB: pend.opsiB,
+        opsiBoth: pend.opsiBoth,
+        nameA: pend.nameA,
+        nameB: pend.nameB
+      });
+    }
+    if (pend.patternId) {
+      const pattern = DUAL_PROCESS_PATTERNS.find(
+        (p) => p.id === pend.patternId
+      );
+      if (pattern) {
+        return buildDirectionClarificationCard(pattern);
+      }
     }
   }
 
@@ -1744,31 +1757,53 @@ export function detectAmbiguousStorylineDomain(prompt: string): {
   return null;
 }
 
+export interface DynamicClarificationData {
+  pertanyaan: string;
+  opsiA: string;
+  opsiB: string;
+  opsiBoth?: string;
+  nameA?: string;
+  nameB?: string;
+}
+
 /**
  * Menyusun GuidedStepPayload kartu klarifikasi arah bisnis sebelum narasi dibuat.
+ * Mendukung data dinamis dari analisis AI maupun pattern statis.
  */
 export function buildDirectionClarificationCard(
-  pattern: DualProcessPattern
+  data: DynamicClarificationData | DualProcessPattern
 ): GuidedStepPayload {
+  const pertanyaan = 'pertanyaan' in data ? data.pertanyaan : data.clarificationQuestion;
+  const opsiA = 'opsiA' in data ? data.opsiA : data.optionALabel;
+  const opsiB = 'opsiB' in data ? data.opsiB : data.optionBLabel;
+  const opsiBoth =
+    'opsiBoth' in data && data.opsiBoth
+      ? data.opsiBoth
+      : 'optionBothLabel' in data
+        ? data.optionBothLabel
+        : 'Dua-duanya (melayani kedua proses secara setara)';
+  const nameA = 'nameA' in data && data.nameA ? data.nameA : opsiA;
+  const nameB = 'nameB' in data && data.nameB ? data.nameB : opsiB;
+
   return {
     stepId: 'STORYTELLING',
-    title: pattern.clarificationQuestion,
+    title: pertanyaan,
     multi: false,
     allowOther: false,
     options: [
       {
         id: 'dir_A_only',
-        label: `🛒 ${pattern.optionALabel}`,
-        description: `Fokus utama pada alur ${pattern.nameA.toLowerCase()}.`
+        label: `🛒 ${opsiA}`,
+        description: `Fokus utama pada alur ${nameA.toLowerCase()}.`
       },
       {
         id: 'dir_B_only',
-        label: `📥 ${pattern.optionBLabel}`,
-        description: `Fokus utama pada alur ${pattern.nameB.toLowerCase()}.`
+        label: `📥 ${opsiB}`,
+        description: `Fokus utama pada alur ${nameB.toLowerCase()}.`
       },
       {
         id: 'dir_both',
-        label: `⚖️ ${pattern.optionBothLabel}`,
+        label: `⚖️ ${opsiBoth}`,
         description: `Melayani kedua proses secara setara dan sama-sama rutin.`,
         recommended: true
       }
@@ -1778,7 +1813,8 @@ export function buildDirectionClarificationCard(
 
 /**
  * Mendeteksi apakah narasi/alur yang sudah lengkap memiliki dua proses inti yang setara.
- * Jika iya, mengembalikan metadata kedua proses tersebut.
+ * SUMBER KEBENARAN TUNGGAL: Hasil analisis konseptual AI di storyline atau session state.
+ * Tidak ada lagi hardcoded regex list nama domain.
  */
 export function detectDualProcess(session: MockupSessionState): {
   isDual: boolean;
@@ -1786,47 +1822,29 @@ export function detectDualProcess(session: MockupSessionState): {
   processB: string;
   entity: string;
 } | null {
-  const narrative = (session.storyline?.narasi || '').toLowerCase();
-  const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
-  const fullContext = `${narrative} ${mainFlow}`;
-
   // Guard: kalau dualFlowPending atau kasusGanda sudah ada, jangan deteksi ulang
   if (session.flow?.dualFlowPending || (session.flow?.kasusGanda && session.flow.kasusGanda.length > 0)) {
     return null;
   }
 
-  // Helper: cek modalitas rendah ("kadang", "sesekali", "juga") — tandai proses sekunder, bukan setara
-  const hasWeakModality = (text: string) =>
-    /\b(kadang|sesekali|juga|terkadang|jarang|sering juga|sampingan|tambahan)\b/.test(text);
-
-  for (const pattern of DUAL_PROCESS_PATTERNS) {
-    const matchA = pattern.patternA.test(fullContext);
-    const matchB = pattern.patternB.test(fullContext);
-    const matchEntity = pattern.entityCheck.test(fullContext);
-
-    if (!matchA || !matchB || !matchEntity) continue;
-
-    // LAPIS KONSEPTUAL: pastikan keduanya bukan disebutkan dengan modalitas rendah
-    // Cari kalimat/frasa yang mengandung proses B, cek apakah ada kata modalitas lemah
-    // di sekitar kata kunci proses B (±50 karakter)
-    const patternBMatches = [...fullContext.matchAll(new RegExp(pattern.patternB.source, 'gi'))];
-    let allWeakB = patternBMatches.length > 0;
-    for (const m of patternBMatches) {
-      const start = Math.max(0, (m.index || 0) - 50);
-      const end = Math.min(fullContext.length, (m.index || 0) + 50);
-      const surrounding = fullContext.slice(start, end);
-      if (!hasWeakModality(surrounding)) {
-        allWeakB = false; // setidaknya satu kemunculan tanpa modalitas lemah → setara
-        break;
-      }
-    }
-    if (allWeakB) continue; // proses B hanya disebut dengan "kadang/sesekali" → bukan setara
-
+  // 1. Cek dari flag dualFlowPreDecided / dualProcessNames (disimpan saat klarifikasi di STORYTELLING)
+  if (session.flow?.dualFlowPreDecided && session.flow?.dualProcessNames) {
     return {
       isDual: true,
-      processA: pattern.nameA,
-      processB: pattern.nameB,
-      entity: pattern.entity
+      processA: session.flow.dualProcessNames.processA,
+      processB: session.flow.dualProcessNames.processB,
+      entity: session.match.businessCategory || 'operasional'
+    };
+  }
+
+  // 2. Cek dari hasil analisis konseptual AI di storyline
+  const analisis = session.storyline?.analisisArah;
+  if (analisis && analisis.kondisi === 'DUA_ARAH' && analisis.duaArah) {
+    return {
+      isDual: true,
+      processA: analisis.duaArah.prosesA,
+      processB: analisis.duaArah.prosesB,
+      entity: analisis.duaArah.entitasBersama || session.match.businessCategory || 'operasional'
     };
   }
 

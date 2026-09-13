@@ -170,6 +170,24 @@ export type SessionStep =
   | 'SIMULASI_DB'
   | 'REVIEW_FINAL';
 
+export type KondisiArahBisnis = 'SATU_ARAH' | 'DUA_ARAH' | 'AMBIGU';
+
+export interface AnalisisArahResult {
+  kondisi: KondisiArahBisnis;
+  alasan: string;
+  duaArah?: {
+    prosesA: string;
+    prosesB: string;
+    entitasBersama?: string;
+  };
+  klarifikasiAmbigu?: {
+    pertanyaan: string;
+    opsiA: string;
+    opsiB: string;
+    opsiBoth?: string;
+  };
+}
+
 export interface MockupSessionState {
   step: SessionStep;
   match: {
@@ -190,12 +208,22 @@ export interface MockupSessionState {
     statusKonfirmasi: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
     /**
+     * Hasil analisis konseptual arah bisnis dari AI (SATU_ARAH, DUA_ARAH, atau AMBIGU).
+     */
+    analisisArah?: AnalisisArahResult;
+    /**
      * Menyimpan data klarifikasi arah bisnis yang sedang menunggu jawaban user
-     * sebelum narasi storytelling di-generate oleh AI.
+     * sebelum narasi storytelling difinalkan oleh AI.
      */
     pendingDirectionClarification?: {
-      patternId: string;
+      patternId?: string;
       originalPrompt: string;
+      pertanyaan?: string;
+      opsiA?: string;
+      opsiB?: string;
+      opsiBoth?: string;
+      nameA?: string;
+      nameB?: string;
     };
   };
   roles: {
