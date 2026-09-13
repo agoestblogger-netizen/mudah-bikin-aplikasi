@@ -1124,34 +1124,204 @@ function generateDomainSupportingFlows(
     ];
   }
 
-  // 8. ADAPTIF UNIVERSAL (Domain Lainnya)
-  const domainLabel = session.match?.businessCategory || 'Layanan';
+  // 8. DOMAIN: BARBERSHOP / SALON / PANGKAS RAMBUT
+  if (/barber|pangkas.*rambut|potong.*rambut|cukur|salon|kapster|hairstylist|perawatan.*rambut/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_garansi_potong',
+        nama: 'Klaim Ulang Potong Gratis jika Hasil Tidak Rapi',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Menyampaikan bagian potongan rambut yang dirasa kurang rapi atau belum simetris sebelum meninggalkan kursi pangkas'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Merapikan ulang potongan rambut, kumis, atau jenggot secara cermat tanpa memungut biaya tambahan'
+          }
+        ]
+      },
+      {
+        id: 'alur_restock_alat_cukur',
+        nama: 'Restock Alat Cukur & Produk Perawatan Rambut',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mencatat silet cukur sekali pakai, minyak blade clipper, pomade, dan tonik rambut yang stoknya menipis'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Menyetujui anggaran belanja dan memesan perlengkapan pangkas serta produk grooming ke suplier resmi'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 9. DOMAIN: TOKO RITEL / SEMBAKO / KELONTONG / DISTRIBUSI
+  if (/toko|sembako|kelontong|retail|ritel|minimarket|grosir|distributor/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_retur_barang',
+        nama: 'Penanganan Retur Barang Cacat & Penukaran Produk Rusak',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Membawa kembali barang yang rusak kemasan, cacat pabrik, atau kedaluwarsa beserta struk belanja'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Memeriksa kondisi fisik barang, memvalidasi nomor struk kasir, dan mengganti dengan produk baru yang layak'
+          }
+        ]
+      },
+      {
+        id: 'alur_restock_suplier',
+        nama: 'Pengecekan Stok Menipis & Pemesanan Barang ke Pemasok',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mendata item barang di etalase dan gudang yang mendekati batas minimum reorder'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Menerbitkan pesanan pembelian (PO) ke distributor pemasok dan mengonfirmasi jadwal pengiriman barang'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 10. DOMAIN: KURSUS / BIMBEL / PELATIHAN / PENDIDIKAN
+  if (/kursus|bimbel|pelatihan|les|sekolah|edukasi|akademi|training|workshop|guru|tutor|instruktur/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_kelas_pengganti',
+        nama: 'Penjadwalan Kelas Pengganti (Make-up Class) & Izin Siswa',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Mengajukan permohonan izin berhalangan hadir dan memilih opsi jadwal kelas pengganti'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Memverifikasi ketersediaan kuota kelas pengganti dan menetapkan jadwal belajar baru bagi siswa'
+          }
+        ]
+      },
+      {
+        id: 'alur_modul_belajar',
+        nama: 'Pengadaan Modul Pembelajaran & Pemeliharaan Sarana Praktik',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mendata kebutuhan modul cetak, lembar latihan, dan perlengkapan praktik belajar yang perlu pengadaan'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Menyetujui anggaran pencetakan modul materi dan memastikan kesiapan fasilitas ruang belajar'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 11. DOMAIN: KATERING / EVENT / PRASMANAN
+  if (/katering|catering|hajatan|prasmanan|event\s*organizer|dekorasi|wedding/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_penyesuaian_menu',
+        nama: 'Penyesuaian Menu Prasmanan & Tambahan Porsi di Lokasi Acara',
+        steps: [
+          {
+            pelaku: customerActor,
+            aksi: 'Mengonfirmasi perubahan jumlah porsi hidangan atau menu khusus sebelum hari pelaksanaan acara'
+          },
+          {
+            pelaku: activeCore,
+            aksi: 'Menyesuaikan alokasi bahan baku dapur dan memperbarui rincian surat pesanan katering'
+          }
+        ]
+      },
+      {
+        id: 'alur_inventaris_alat_saji',
+        nama: 'Pemeriksaan Inventaris Alat Pemanas & Peralatan Saji Pasca Acara',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Menghitung dan memeriksa kelengkapan alat saji, pemanas makanan, piring, dan sendok pasca selesai acara'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Mencatat rekonsiliasi pengembalian inventaris sewa dan memproses pencairan uang jaminan'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 12. DOMAIN: PENITIPAN HEWAN / PET SHOP / GROOMING
+  if (/hewan|pet|anjing|kucing|grooming|veteriner|pakan.*hewan/i.test(fullContext)) {
+    return [
+      {
+        id: 'alur_kondisi_hewan',
+        nama: 'Pelaporan Kondisi Harian Hewan Titipan & Penanganan Darurat',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mengunggah foto dan catatan nafsu makan harian hewan titipan untuk dikonfirmasi ke pemilik'
+          },
+          {
+            pelaku: customerActor,
+            aksi: 'Memeriksa pembaruan kondisi hewan kesayangan dan menyetujui instruksi perawatan tambahan jika diperlukan'
+          }
+        ]
+      },
+      {
+        id: 'alur_restock_pakan_grooming',
+        nama: 'Restock Pakan Khusus, Shampo Kutu & Desinfeksi Kandang',
+        steps: [
+          {
+            pelaku: activeCore,
+            aksi: 'Mendata persediaan pakan hewan, vitamin, shampo grooming, dan cairan desinfektan kandang yang menipis'
+          },
+          {
+            pelaku: activeOwner,
+            aksi: 'Memproses pembelian pakan dan perlengkapan ke suplier resmi produk hewan peliharaan'
+          }
+        ]
+      }
+    ];
+  }
+
+  // 13. ADAPTIF UNIVERSAL (MURNI DIGROUNDING KE KONTEKS DOMAIN & NARASI, BEBAS DARI TEMPLATE GENERIK LAMA)
+  const domainLabel = session.match?.businessCategory || 'Layanan Operasional';
   return [
     {
-      id: 'alur_komplain_layanan',
-      nama: `Penanganan Komplain & Garansi Hasil ${domainLabel}`,
+      id: 'alur_jaminan_kualitas',
+      nama: `Jaminan Kepuasan & Penyesuaian Kualitas Layanan ${domainLabel}`,
       steps: [
         {
           pelaku: customerActor,
-          aksi: 'Menyampaikan catatan atau keluhan jika hasil layanan membutuhkan penyesuaian'
+          aksi: `Mengajukan permintaan penyesuaian pengerjaan jika detail layanan ${domainLabel.toLowerCase()} belum sesuai kesepakatan`
         },
         {
           pelaku: activeCore,
-          aksi: 'Memeriksa kendala yang dilaporkan dan menindaklanjuti perbaikan hingga tuntas'
+          aksi: `Memeriksa catatan pengerjaan awal dan melakukan perbaikan pengerjaan ${domainLabel.toLowerCase()} hingga rapi dan tuntas`
         }
       ]
     },
     {
-      id: 'alur_operasional_restock',
-      nama: `Koordinasi Operasional & Pengadaan Perlengkapan ${domainLabel}`,
+      id: 'alur_restock_sarana',
+      nama: `Pengadaan Bahan Baku & Perlengkapan Operasional ${domainLabel}`,
       steps: [
         {
           pelaku: activeCore,
-          aksi: 'Mencatat kebutuhan operasional atau perlengkapan kerja yang perlu pengadaan'
+          aksi: `Mendata sisa persediaan sarana kerja, bahan pendukung, atau perlengkapan ${domainLabel.toLowerCase()} yang mulai menipis`
         },
         {
           pelaku: activeOwner,
-          aksi: 'Memeriksa pengajuan operasional, menyetujui anggaran, dan memperbarui catatan inventaris'
+          aksi: `Menyetujui anggaran belanja dan memastikan pasokan sarana operasional ${domainLabel.toLowerCase()} siap digunakan`
         }
       ]
     }
@@ -1250,14 +1420,69 @@ function generateDomainSupportingFeatures(
     ];
   }
 
-  // 8. ADAPTIF UNIVERSAL
-  const domainLabel = session.match?.businessCategory || 'Operasional';
+  // 8. DOMAIN: BARBERSHOP / SALON / PANGKAS RAMBUT
+  if (/barber|pangkas.*rambut|potong.*rambut|cukur|salon|kapster|hairstylist|perawatan.*rambut/i.test(fullContext)) {
+    return [
+      { id: 'feat_antrean_barber', label: 'Dasbor antrean pangkas rambut & pemilihan kapster/barber favorit' },
+      { id: 'feat_katalog_gaya', label: 'Katalog visual model gaya rambut & daftar tarif layanan grooming' },
+      { id: 'feat_struk_barber', label: 'Cetak struk pembayaran pangkas, cuci rambut, dan pembelian pomade (PDF)' },
+      { id: 'feat_wa_antrean_cukur', label: 'Notifikasi WhatsApp otomatis saat giliran nomor antrean pangkas tiba' },
+      { id: 'feat_komisi_barber', label: 'Rekapitulasi komisi bagi hasil barber harian dan rekap omzet mingguan' }
+    ];
+  }
+
+  // 9. DOMAIN: TOKO RITEL / SEMBAKO / KELONTONG / DISTRIBUSI
+  if (/toko|sembako|kelontong|retail|ritel|minimarket|grosir|distributor/i.test(fullContext)) {
+    return [
+      { id: 'feat_barcode_stok', label: 'Pencarian cepat & pemindaian kode produk barang di rak dan etalase' },
+      { id: 'feat_peringatan_minimum', label: 'Peringatan otomatis stok barang menipis mendekati batas reorder' },
+      { id: 'feat_struk_kasir_toko', label: 'Cetak struk belanja kasir instan dan nota penjualan resmi (PDF)' },
+      { id: 'feat_wa_order_sembako', label: 'Notifikasi WhatsApp rekap pesanan dan status pengiriman barang' },
+      { id: 'feat_ekspor_penjualan', label: 'Ekspor laporan laba kotor, kas kasir harian, dan mutasi barang' }
+    ];
+  }
+
+  // 10. DOMAIN: KURSUS / BIMBEL / PELATIHAN / PENDIDIKAN
+  if (/kursus|bimbel|pelatihan|les|sekolah|edukasi|akademi|training|workshop|guru|tutor|instruktur/i.test(fullContext)) {
+    return [
+      { id: 'feat_jadwal_absensi_siswa', label: 'Kalender interaktif jadwal bimbingan dan presensi kehadiran siswa' },
+      { id: 'feat_modul_belajar_repo', label: 'Pusat unduh modul materi ajar digital dan bank soal latihan siswa' },
+      { id: 'feat_kwitansi_spp', label: 'Cetak kwitansi pembayaran biaya kursus/SPP resmi dan kartu ujian (PDF)' },
+      { id: 'feat_wa_pengingat_kelas', label: 'Notifikasi WhatsApp otomatis pengingat jadwal kelas dan evaluasi belajar' },
+      { id: 'feat_ekspor_perkembangan', label: 'Ekspor laporan perkembangan nilai dan rekapitulasi presensi siswa' }
+    ];
+  }
+
+  // 11. DOMAIN: KATERING / EVENT / PRASMANAN
+  if (/katering|catering|hajatan|prasmanan|event\s*organizer|dekorasi|wedding/i.test(fullContext)) {
+    return [
+      { id: 'feat_kalender_acara_dp', label: 'Kalender jadwal pelaksanaan acara dan pelunasan uang muka (DP)' },
+      { id: 'feat_katalog_paket_menu', label: 'Manajemen katalog paket menu prasmanan, porsi pondokan, dan tester' },
+      { id: 'feat_invoice_surat_jalan', label: 'Cetak invoice resmi pesanan katering dan surat jalan pengiriman (PDF)' },
+      { id: 'feat_wa_konfirmasi_menu', label: 'Notifikasi WhatsApp konfirmasi final rincian menu dan jam penyajian' },
+      { id: 'feat_ekspor_belanja_dapur', label: 'Ekspor estimasi kebutuhan bahan baku dapur per tanggal acara' }
+    ];
+  }
+
+  // 12. DOMAIN: PENITIPAN HEWAN / PET SHOP / GROOMING
+  if (/hewan|pet|anjing|kucing|grooming|veteriner|pakan.*hewan/i.test(fullContext)) {
+    return [
+      { id: 'feat_status_kandang_makan', label: 'Dasbor pemantauan status nomor kandang, porsi makan, dan jadwal rawat' },
+      { id: 'feat_buku_kesehatan_hewan', label: 'Buku rekam medis hewan titipan (riwayat vaksin, alergi, dan catatan dokter)' },
+      { id: 'feat_kwitansi_titip_hewan', label: 'Cetak kwitansi penitipan hewan dan rincian biaya grooming resmi (PDF)' },
+      { id: 'feat_wa_foto_hewan', label: 'Notifikasi WhatsApp kirim foto kondisi harian dan tingkah laku hewan' },
+      { id: 'feat_ekspor_okupansi_pet', label: 'Ekspor laporan okupansi kandang dan rekap pendapatan layanan grooming' }
+    ];
+  }
+
+  // 13. ADAPTIF UNIVERSAL (MURNI DIGROUNDING KE KONTEKS DOMAIN & NARASI)
+  const domainLabel = session.match?.businessCategory || 'Layanan Bisnis';
   return [
-    { id: 'feat_status_operasional', label: `Dasbor pemantauan status aktivitas operasional ${domainLabel} harian` },
-    { id: 'feat_filter_riwayat', label: 'Filter pencarian cepat data riwayat transaksi dan nomor identitas' },
-    { id: 'feat_cetak_bukti', label: 'Cetak bukti transaksi, invoice resmi, atau surat tanda terima (PDF)' },
-    { id: 'feat_notif_wa', label: 'Notifikasi pengingat otomatis ke WhatsApp terkait status layanan' },
-    { id: 'feat_ekspor_data', label: 'Ekspor rekapitulasi omzet dan laporan operasional ke format spreadsheet' }
+    { id: 'feat_status_operasional', label: `Dasbor pemantauan status aktivitas dan riwayat proses ${domainLabel} harian` },
+    { id: 'feat_filter_riwayat', label: `Pencarian cepat riwayat transaksi, catatan layanan, dan arsip dokumen ${domainLabel}` },
+    { id: 'feat_cetak_bukti', label: `Cetak lembar bukti transaksi, nota resmi, atau surat konfirmasi ${domainLabel} (PDF)` },
+    { id: 'feat_notif_wa', label: `Pengingat dan notifikasi WhatsApp otomatis terkait jadwal atau status layanan ${domainLabel}` },
+    { id: 'feat_ekspor_data', label: `Ekspor laporan performa operasional dan rekapitulasi penerimaan ${domainLabel} ke Excel` }
   ];
 }
 
