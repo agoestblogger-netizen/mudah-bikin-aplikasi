@@ -431,6 +431,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
 6. NADA HANGAT, BERSAHABAT, & TANPA ISTILAH TEKNIS:
    - Gunakan bahasa Indonesia percakapan yang santun, luwes, dan akrab layaknya rekan diskusi bisnis yang suportif.
+   - Awali narasi cerita dengan kalimat apresiasi dan pembuka yang ramah dan hangat.
+     Contoh: "Aplikasi yang ingin kamu buat sangat menarik, mari kita bahas alurnya lebih dalam." atau variasi apresiasi senada yang bersahabat dan positif.
    - DILARANG KERAS menggunakan kata teknis IT/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni interaksi manusia dan barang nyata!
 
 7. KALIMAT PENUTUP WAJIB:
@@ -1461,10 +1463,10 @@ export async function POST(req: Request) {
         });
 
         const clarificationNarration =
-          `Halo! Ide aplikasi bisnismu sangat menarik.\n\n` +
-          `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan:\n\n` +
+          `Aplikasi yang ingin kamu buat sangat menarik, mari kita bahas lebih dalam.\n\n` +
+          `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan terlebih dahulu:\n\n` +
           `> ❓ **${amb.pertanyaan}**\n\n` +
-          `Silakan pilih arah bisnis di kartu bawah agar narasi yang saya susun langsung tepat sasaran.`;
+          `Silakan pilih arah bisnis di kartu bawah agar alur yang saya siapkan langsung tepat sasaran.`;
 
         return NextResponse.json({
           success: true,
@@ -1543,8 +1545,16 @@ export async function POST(req: Request) {
       };
 
       const guidedStep = buildGuidedStep(session);
-      // Narasi chat awal langsung cerita proses bisnis (POIN 2)
-      const narration = session.storyline?.narasi || storylineResult.narasi;
+      // Narasi chat awal: pastikan SELALU diawali kalimat pembuka ramah standar sebelum cerita alur (Bagian B)
+      let initialNarration = (session.storyline?.narasi || storylineResult.narasi || '').trim();
+      const hasGreetingPrefix = /^(aplikasi\s+yang\s+ingin|ide\s+aplikasi|halo|wah|senang|terima\s*kasih|keren|luar\s*biasa)/i.test(initialNarration);
+      if (!hasGreetingPrefix) {
+        initialNarration = `Aplikasi yang ingin kamu buat sangat menarik, mari kita bahas alurnya lebih dalam.\n\n${initialNarration}`;
+      }
+      const narration = initialNarration;
+      if (session.storyline) {
+        session.storyline.narasi = initialNarration;
+      }
 
       const matchedTemplate = getMasterTemplateById(templateId);
 
@@ -1732,85 +1742,35 @@ export async function POST(req: Request) {
 
         // 1. Mismatch Jauh ("Meleset jauh dari proses bisnis saya")
         if (isMismatch) {
-          if (currentRevisi >= 2) {
-            // Batas 2 kali koreksi tercapai: lanjut ke ROLE dengan catatan
-            const updated: MockupSessionState = {
-              ...session,
-              step: 'ROLE',
-              storyline: {
-                ...existingStory,
-                statusKonfirmasi: 'dikoreksi',
-                modeKlarifikasiBertahap: false,
-                revisiCount: currentRevisi
-              }
-            };
-            await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
-            const guidedStep = buildGuidedStep(updated);
-            const narration =
-              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!\n\nOwner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi. Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
-            return NextResponse.json({
-              success: true,
-              action,
-              session: updated,
-              guidedStep,
-              narration
-            });
-          } else {
-            // Masuk ke pertanyaan bertahap satu per satu
-            const nextRevisi = currentRevisi + 1;
-            const updated: MockupSessionState = {
-              ...session,
-              step: 'STORYTELLING',
-              storyline: {
-                ...existingStory,
-                statusKonfirmasi: 'dikoreksi',
-                modeKlarifikasiBertahap: true,
-                revisiCount: nextRevisi
-              }
-            };
-            const questionNarration =
-              nextRevisi === 1
-                ? 'Siap, tidak apa-apa! Supaya ceritanya lebih tepat sasaran: boleh ceritakan apa masalah operasional paling mendesak yang ingin kamu bereskan lebih dulu?'
-                : 'Paham. Lalu siapa saja orang atau pihak yang terlibat langsung dalam aktivitas tersebut sehari-hari?';
+          // Masuk ke pertanyaan bertahap satu per satu
+          const nextRevisi = currentRevisi + 1;
+          const updated: MockupSessionState = {
+            ...session,
+            step: 'STORYTELLING',
+            storyline: {
+              ...existingStory,
+              statusKonfirmasi: 'dikoreksi',
+              modeKlarifikasiBertahap: true,
+              revisiCount: nextRevisi
+            }
+          };
+          const questionNarration =
+            nextRevisi === 1
+              ? 'Siap, tidak apa-apa! Supaya ceritanya lebih tepat sasaran: boleh ceritakan apa masalah operasional paling mendesak yang ingin kamu bereskan lebih dulu?'
+              : 'Paham. Lalu siapa saja orang atau pihak yang terlibat langsung dalam aktivitas tersebut sehari-hari?';
 
-            const guidedStep = buildGuidedStep(updated);
-            return NextResponse.json({
-              success: true,
-              action,
-              session: updated,
-              guidedStep,
-              narration: questionNarration
-            });
-          }
+          const guidedStep = buildGuidedStep(updated);
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updated,
+            guidedStep,
+            narration: questionNarration
+          });
         }
 
         // 2. Jika sebelumnya dalam mode klarifikasi bertahap (mismatch) dan user memberikan jawaban
         if (existingStory.modeKlarifikasiBertahap && !isConfirm) {
-          if (currentRevisi >= 2) {
-            // Batas 2 kali koreksi tercapai -> lanjut ke ROLE
-            const updated: MockupSessionState = {
-              ...session,
-              step: 'ROLE',
-              storyline: {
-                ...existingStory,
-                statusKonfirmasi: 'dikoreksi',
-                modeKlarifikasiBertahap: false,
-                revisiCount: currentRevisi
-              }
-            };
-            await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
-            const guidedStep = buildGuidedStep(updated);
-            const narration =
-              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!\n\nOwner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi. Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
-            return NextResponse.json({
-              success: true,
-              action,
-              session: updated,
-              guidedStep,
-              narration
-            });
-          }
-
           const feedback = other || selected.join(', ');
           const refined = await refineStorylineWithAI(
             existingStory,
@@ -1838,7 +1798,7 @@ export async function POST(req: Request) {
               narasi: newNarasi,
               statusKonfirmasi: 'dikoreksi',
               modeKlarifikasiBertahap: false,
-              revisiCount: currentRevisi
+              revisiCount: currentRevisi + 1
             }
           };
           const guidedStep = buildGuidedStep(updated);
@@ -1854,32 +1814,6 @@ export async function POST(req: Request) {
 
         // 3. Ada koreksi / catatan alur ("minor_adjust"): perbarui narasi & TAMPILKAN ULANG di STORYTELLING
         if (isMinorAdjust) {
-          if (currentRevisi >= 2) {
-            // Batas 2 kali koreksi tercapai: lanjut ke ROLE dengan catatan
-            const updated: MockupSessionState = {
-              ...session,
-              step: 'ROLE',
-              storyline: {
-                ...existingStory,
-                statusKonfirmasi: 'dikoreksi',
-                modeKlarifikasiBertahap: false,
-                revisiCount: currentRevisi
-              }
-            };
-            await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
-            const guidedStep = buildGuidedStep(updated);
-            const narration =
-              'Siap, kita simpan pemahaman proses bisnis sejauh ini dan lanjut dulu ke penentuan peran ya. Tenang saja, kamu masih bisa mengoreksi lagi nanti pas melihat detail di bagian berikutnya!\n\nOwner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi. Sekarang, yuk kita pilih siapa saja pengguna yang akan mengoperasikan aplikasi ini:';
-            return NextResponse.json({
-              success: true,
-              action,
-              session: updated,
-              guidedStep,
-              narration
-            });
-          }
-
-          // Belum mencapai batas: susun ulang narasi dan TAMPILKAN ULANG ke user di step STORYTELLING
           const nextRevisi = currentRevisi + 1;
           const feedback = other || selected.join(', ');
           const refined = await refineStorylineWithAI(
@@ -2041,7 +1975,7 @@ export async function POST(req: Request) {
         if (updated.roles.removedExternalRoles && updated.roles.removedExternalRoles.length > 0) {
           for (const extRole of updated.roles.removedExternalRoles) {
             removalMessages.push(
-              `Oke, role ${extRole} dihapus — berarti aplikasi tidak perlu akun/login terpisah untuk ${extRole.toLowerCase()}. Interaksi dengan ${extRole.toLowerCase()} tetap berjalan lewat staf yang sudah tercatat di alur kerja.`
+              `Oke, role ${extRole} tidak dipakai sebagai akun terpisah — berarti aplikasi tidak perlu login khusus untuk ${extRole.toLowerCase()}. Interaksi dengan ${extRole.toLowerCase()} tetap berjalan lewat staf yang sudah tercatat di alur kerja.`
             );
           }
         }

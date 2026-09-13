@@ -2187,7 +2187,7 @@ export function applyGuidedAnswer(
 
     const currentRevisi = existingStory.revisiCount || 0;
 
-    if (isMismatch && currentRevisi < 2) {
+    if (isMismatch) {
       next.storyline = {
         ...existingStory,
         statusKonfirmasi: 'dikoreksi',
@@ -2198,11 +2198,11 @@ export function applyGuidedAnswer(
       return next;
     }
 
-    if (isConfirm || currentRevisi >= 2) {
+    if (isConfirm) {
       next.storyline = {
         ...existingStory,
         narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
-        statusKonfirmasi: isConfirm ? 'disetujui' : 'dikoreksi',
+        statusKonfirmasi: 'disetujui',
         modeKlarifikasiBertahap: false,
         revisiCount: currentRevisi
       };
