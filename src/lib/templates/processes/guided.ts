@@ -2016,23 +2016,80 @@ export function buildKasusGandaFromSession(
     }
   }
 
-  // Kasus A — alur transaksi keluar (jual, simpanan keluar, unit baru keluar)
-  const alurA: FlowStepItem[] = [
-    { step: 1, pelaku: customerActor, aksi: `Mengajukan permintaan ${processA.toLowerCase()} dan memilih item yang diinginkan` },
-    { step: 2, pelaku: actorA, aksi: `Memeriksa ketersediaan, kondisi, dan kesiapan transaksi ${processA.toLowerCase().replace(/ke\s*pelanggan|unit\s*baru/i, 'item').trim()}` },
-    { step: 3, pelaku: actorA, aksi: `Menyepakati nilai transaksi dan menyiapkan dokumen ${processA.toLowerCase()}` },
-    { step: 4, pelaku: actorA, aksi: `Menyerahkan item/layanan dan menerima pembayaran dari pelanggan` },
-    { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processA.toLowerCase()} harian dan performa omzet` }
-  ];
+  // Pembangkitan langkah alur inti per-kasus yang kaya dan grounded ke siklus nyata
+  const generateCaseSteps = (
+    procName: string,
+    operActor: string,
+    isA: boolean
+  ): FlowStepItem[] => {
+    const pLower = procName.toLowerCase();
 
-  // Kasus B — alur transaksi masuk (beli, pinjaman/appraisal unit bekas)
-  const alurB: FlowStepItem[] = [
-    { step: 1, pelaku: customerActor, aksi: `Membawa item/pengajuan untuk proses ${processB.toLowerCase()}` },
-    { step: 2, pelaku: actorB, aksi: `Memeriksa fisik, keaslian/kondisi teknis, dan menaksir nilai ${processB.toLowerCase().replace(/dari\s*pelanggan|unit\s*lama/i, 'item').trim()}` },
-    { step: 3, pelaku: actorB, aksi: `Menyepakati nilai taksiran dan menyiapkan dokumen transaksi ${processB.toLowerCase()}` },
-    { step: 4, pelaku: actorB, aksi: `Menyerahkan pembayaran atau nota transaksi kepada pelanggan` },
-    { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${processB.toLowerCase()} dan pencatatan transaksi masuk` }
-  ];
+    // 1. Sisi Pinjaman / Kredit (Pengajuan -> Verifikasi -> Akad -> Pencairan -> Monitoring)
+    if (/pinjam|kredit|pembiayaan/i.test(pLower)) {
+      return [
+        { step: 1, pelaku: customerActor, aksi: 'Mengajukan permohonan pinjaman dana dan melengkapi berkas persyaratan' },
+        { step: 2, pelaku: operActor, aksi: 'Memeriksa kelengkapan berkas, riwayat keanggotaan, dan menganalisis kelayakan pinjaman' },
+        { step: 3, pelaku: operActor, aksi: 'Menyepakati plafon, tenor bunga, dan menandatangani akad perjanjian pinjaman' },
+        { step: 4, pelaku: operActor, aksi: 'Mencairkan dana pinjaman kepada anggota dan mencatat jadwal angsuran berkala' },
+        { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi penyaluran kredit, total dana dicairkan, dan pembayaran angsuran' }
+      ];
+    }
+
+    // 2. Sisi Simpanan / Tabungan (Setoran -> Hitung Uang -> Catat Buku -> Struk -> Kas Rekap)
+    if (/simpan|tabung|setor/i.test(pLower)) {
+      return [
+        { step: 1, pelaku: customerActor, aksi: 'Membawa buku tabungan dan menyerahkan uang tunai untuk setoran simpanan' },
+        { step: 2, pelaku: operActor, aksi: 'Menghitung jumlah setoran tunai secara teliti dan memverifikasi data keanggotaan' },
+        { step: 3, pelaku: operActor, aksi: 'Mencatat transaksi setoran dan mencetak pembaruan saldo di buku tabungan anggota' },
+        { step: 4, pelaku: operActor, aksi: 'Menyerahkan bukti setoran resmi serta buku tabungan kembali kepada anggota' },
+        { step: 5, pelaku: activeOwner, aksi: 'Memantau mutasi kas simpanan masuk dan total saldo likuiditas harian koperasi' }
+      ];
+    }
+
+    // 3. Sisi Valas (Money Changer Beli vs Jual)
+    if (/valas|kurs|uang asing/i.test(pLower)) {
+      if (/beli|pembelian/i.test(pLower)) {
+        return [
+          { step: 1, pelaku: customerActor, aksi: 'Membawa mata uang asing untuk ditukarkan ke mata uang Rupiah' },
+          { step: 2, pelaku: operActor, aksi: 'Memeriksa keaslian pecahan valas menggunakan detektor UV dan menghitung kurs beli' },
+          { step: 3, pelaku: operActor, aksi: 'Mengonfirmasi nominal hasil konversi dan mencetak nota transaksi penukaran' },
+          { step: 4, pelaku: operActor, aksi: 'Menyerahkan uang Rupiah dan nota resmi transaksi kepada nasabah' },
+          { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi stok valas masuk dan mutasi kas penukaran harian' }
+        ];
+      } else {
+        return [
+          { step: 1, pelaku: customerActor, aksi: 'Mengajukan kebutuhan pecahan mata uang asing dan memeriksa ketersediaan stok' },
+          { step: 2, pelaku: operActor, aksi: 'Menghitung total pembayaran Rupiah berdasarkan kurs jual yang berlaku' },
+          { step: 3, pelaku: operActor, aksi: 'Menerima pembayaran tunai/transfer dan mencetak bukti penukaran valas resmi' },
+          { step: 4, pelaku: operActor, aksi: 'Menyerahkan lembaran valas asli sesuai denominasi yang diminta nasabah' },
+          { step: 5, pelaku: activeOwner, aksi: 'Memantau rekapitulasi penjualan valas harian dan sisa stok brankas' }
+        ];
+      }
+    }
+
+    // 4. Default Kasus A (Transaksi Keluar / Penjualan)
+    if (isA) {
+      return [
+        { step: 1, pelaku: customerActor, aksi: `Mengajukan permintaan ${pLower} dan memilih item yang diinginkan` },
+        { step: 2, pelaku: operActor, aksi: `Memeriksa ketersediaan, kondisi, dan kesiapan transaksi ${pLower.replace(/ke\s*pelanggan|unit\s*baru/i, 'item').trim()}` },
+        { step: 3, pelaku: operActor, aksi: `Menyepakati nilai transaksi dan menyiapkan dokumen ${pLower}` },
+        { step: 4, pelaku: operActor, aksi: `Menyerahkan item/layanan dan menerima pembayaran dari pelanggan` },
+        { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${pLower} harian dan performa omzet` }
+      ];
+    }
+
+    // 5. Default Kasus B (Transaksi Masuk / Pembelian / Appraisal)
+    return [
+      { step: 1, pelaku: customerActor, aksi: `Membawa item/pengajuan untuk proses ${pLower}` },
+      { step: 2, pelaku: operActor, aksi: `Memeriksa fisik, keaslian/kondisi teknis, dan menaksir nilai ${pLower.replace(/dari\s*pelanggan|unit\s*lama/i, 'item').trim()}` },
+      { step: 3, pelaku: operActor, aksi: `Menyepakati nilai taksiran dan menyiapkan dokumen transaksi ${pLower}` },
+      { step: 4, pelaku: operActor, aksi: `Menyerahkan pembayaran atau nota transaksi kepada pelanggan` },
+      { step: 5, pelaku: activeOwner, aksi: `Memantau rekapitulasi ${pLower} dan pencatatan transaksi masuk` }
+    ];
+  };
+
+  const alurA = generateCaseSteps(processA, actorA, true);
+  const alurB = generateCaseSteps(processB, actorB, false);
 
   // Terapkan resolveActorForStep agar delegasi role tetap berlaku
   return [

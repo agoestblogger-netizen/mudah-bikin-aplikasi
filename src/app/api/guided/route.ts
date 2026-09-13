@@ -280,8 +280,26 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
       - Money Changer: "Pembelian valas dari nasabah" vs "Penjualan valas ke nasabah"
       
       ATURAN MUTLAK JIKA DUA_ARAH:
-      1. Narasi di field "narasi" dan urutan alur di "asumsiAlurUtama" WAJIB mencakup KEDUA sisi tersebut secara proporsional dan seimbang! DILARANG KERAS menjatuhkan salah satu sisi (seperti hanya menceritakan simpanan tanpa pinjaman)!
-      2. ANALISIS PEMISAHAN ROLE FRONTLINER (pemisahanRole - WAJIB DIISI):
+      1. KEPUTUSAN GABUNG/PISAH ROLE TIDAK BOLEH MEMANGKAS KEDALAMAN NARASI & ALUR BISNIS:
+         - Keputusan apakah peran frontliner DIGABUNG atau DIPISAH HANYA menentukan pembagian akun pengguna/staf, SAMA SEKALI DILARANG menyederhanakan atau memangkas narasi proses bisnis!
+         - Walaupun peran frontliner DIGABUNG (misal satu staf kasir/operasional), cerita di field "narasi" dan tahapan di "asumsiAlurUtama" WAJIB TETAP MERINCI SIKLUS LENGKAP KEDUA SISI TRANSAKSI!
+      
+      2. CAKUPAN SIKLUS PROSES KEDUA SISI (DILARANG MENYEMPITKAN PROSES HANYA KE TRANSAKSI KASIR):
+         - Koperasi Simpan Pinjam:
+           * Sisi SIMPAN (dana masuk): Anggota menyetor tabungan/simpanan sukarela, pencatatan buku tabungan & penambahan saldo simpanan.
+           * Sisi PINJAM (dana keluar & siklus kredit): Anggota mengajukan permohonan pinjaman dana, petugas memverifikasi berkas & kelayakan kredit, dana pinjaman dicairkan kepada anggota, dan selanjutnya anggota membayar angsuran/cicilan berkala.
+           * DILARANG KERAS menyempitkan sisi pinjam hanya menjadi "membayar cicilan di meja kasir"! Proses PENGAJUAN PINJAMAN, VERIFIKASI/ANALISIS KELAYAKAN, dan PENCAIRAN DANA PINJAMAN WAJIB tertulis eksplisit di "narasi" dan "asumsiAlurUtama"!
+         - Toko Emas Jual-Beli:
+           * Sisi JUAL: Pelanggan memilih perhiasan di etalase, cek kadar/gramasi, cetak nota/surat emas resmi.
+           * Sisi BELI/BUYBACK: Pelanggan membawa emas lama, penaksir menguji kadar/gosok batu uji/timbang presisi, penetapan harga taksiran, hingga penyerahan uang buyback ke pelanggan.
+         - Toko Jual Beli Motor / Mobil / HP Bekas:
+           * Sisi JUAL: Konsumen memilih unit siap pakai di display/showroom, negosiasi harga, pembayaran, dan serah terima unit & surat kendaraan.
+           * Sisi BELI/TUKAR TAMBAH: Konsumen membawa kendaraan lama, petugas melakukan appraisal teknis (cek nomor mesin, fisik rangka, kilometer, dan BPKB), penaksiran harga beli, dan pembayaran dana ke konsumen.
+         - Money Changer:
+           * Sisi BELI VALAS: Nasabah membawa mata uang asing, teller memeriksa keaslian uang dengan detektor UV, menghitung kurs beli, dan menyerahkan uang Rupiah.
+           * Sisi JUAL VALAS: Nasabah membutuhkan valas untuk bepergian, teller menghitung kurs jual, menerima pembayaran Rupiah, dan menyerahkan pecahan mata uang asing.
+
+      3. ANALISIS PEMISAHAN ROLE FRONTLINER (pemisahanRole - WAJIB DIISI):
          Analisis peran frontliner yang bertugas di kedua sisi transaksi (Kasus A dan Kasus B):
          Apakah tugas/keahlian yang dibutuhkan di sisi A cukup berbeda dari sisi B sehingga sebaiknya jadi DUA ROLE TERPISAH, atau wajar DIGABUNG jadi SATU ROLE?
 
@@ -298,7 +316,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
          ATURAN MUTLAK DAFTAR AKTOR (asumsiAktor) JIKA GABUNG:
          - DILARANG KERAS memunculkan dua peran kasir/petugas terpisah per sisi transaksi (seperti 'Kasir Jual Valas' dan 'Kasir Beli Valas', atau 'Kasir Setor' dan 'Kasir Tarik') jika keputusannya GABUNG!
-         - "asumsiAktor" WAJIB HANYA memunculkan SATU peran frontliner gabungan (contoh: "Teller Valas", "Operator Loket", "Kasir Toko").
+         - "asumsiAktor" WAJIB HANYA memunculkan SATU peran frontliner gabungan (contoh: "Teller Valas", "Operator Loket", "Kasir Toko", "Kasir Operasional").
          - Tanggung jawab di "detailAktor" WAJIB ditulis eksplisit merinci kedua sisi tanpa kata "atau" yang mengaburkan!
            DILARANG KERAS menulis kata "atau" (misal: "menghitung transaksi jual beli atau tukar tambah", "mencatat penjualan atau pembelian").
            WAJIB diganti menjadi rincian konkret: "menghitung kurs transaksi penjualan valas maupun pembelian valas nasabah", "mencatat transaksi penyetoran tunai serta penarikan tunai nasabah".
@@ -357,6 +375,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 3. URUTAN ALUR NYATA (asumsiAlurUtama):
    - asumsiAlurUtama WAJIB menyebutkan urutan alur tindakan fisik nyata dari awal sampai akhir.
    - DILARANG memakai kalimat umum seperti "Pelanggan memesan -> Petugas memproses -> Pemilik memantau".
+   - Jika kondisi DUA_ARAH, alur utama WAJIB merangkum kedua siklus transaksi secara nyata dan berimbang.
+     Contoh nyata Koperasi Simpan Pinjam: "Anggota menyetor tabungan & kasir mencatat saldo buku -> Anggota mengajukan pinjaman dana -> Petugas memverifikasi kelayakan & mencairkan dana pinjaman -> Anggota membayar cicilan berkala -> Pengurus memantau rekap simpan pinjam".
 
 4. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
    "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
