@@ -2830,14 +2830,34 @@ export function generateDeterministicSimulasiDb(
   const contohTabel: SimulasiContohTabel[] = metas.map((m) => {
     const baris = [0, 1, 2].map((idx) => {
       const row: Record<string, any> = {};
+      const tableNilai =
+        nilaiAI[m.table.nama] ||
+        Object.entries(nilaiAI).find(
+          ([k]) => k.toLowerCase().replace(/[\s_]+/g, '') === m.table.nama.toLowerCase().replace(/[\s_]+/g, '')
+        )?.[1];
+
       for (const f of m.table.field) {
         const fLower = f.nama.toLowerCase();
+        const fType = (f.tipe || '').toLowerCase();
         const isPkField = m.pkField && fLower === m.pkField.nama.toLowerCase();
-        const isIdLike = /^(id|kode)/i.test(f.nama) || isPkField;
-        const aiCell = !isRelasiField(f) && !isIdLike ? nilaiAI[m.table.nama]?.[f.nama] : undefined;
+        const isRelasi =
+          isRelasiField(f) ||
+          fType.includes('relasi ke') ||
+          (fLower.endsWith('_id') && fLower !== 'id') ||
+          (fLower.startsWith('id_') && (!m.pkField || fLower !== m.pkField.nama.toLowerCase()));
+        const isIdLike = /^(id|kode)/i.test(f.nama) || isPkField || isRelasi;
+
+        const aiFieldVals =
+          !isIdLike && tableNilai
+            ? (tableNilai[f.nama] ??
+               Object.entries(tableNilai).find(
+                 ([k]) => k.toLowerCase().replace(/[\s_]+/g, '') === f.nama.toLowerCase().replace(/[\s_]+/g, '')
+               )?.[1])
+            : undefined;
+
         row[f.nama] =
-          aiCell && Array.isArray(aiCell) && aiCell.length > 0
-            ? aiCell[idx % aiCell.length]
+          aiFieldVals && Array.isArray(aiFieldVals) && aiFieldVals.length > 0 && aiFieldVals[idx % aiFieldVals.length] !== undefined
+            ? aiFieldVals[idx % aiFieldVals.length]
             : generateFieldValue(f, idx, m);
       }
       return row;

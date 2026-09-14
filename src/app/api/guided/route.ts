@@ -2687,8 +2687,14 @@ function cariFieldPK(tabel: { field: { nama: string; tipe?: string }[] }): { nam
   );
 }
 
-const fieldBolehDiisiAI = (f: { nama: string; tipe?: string }, pkField: { nama: string } | null): boolean =>
-  !/relasi ke/i.test(f.tipe || '') && !(pkField && f.nama === pkField.nama) && !/^(id|kode)/i.test(f.nama);
+const fieldBolehDiisiAI = (f: { nama: string; tipe?: string }, pkField: { nama: string } | null): boolean => {
+  const fLower = f.nama.toLowerCase();
+  const fType = (f.tipe || '').toLowerCase();
+  const isPk = Boolean(pkField && fLower === pkField.nama.toLowerCase());
+  const isFk = fType.includes('relasi ke') || fLower.endsWith('_id') || (fLower.startsWith('id_') && fLower !== 'id');
+  const isIdLike = /^(id|kode)/i.test(fLower) || isPk || isFk;
+  return !isIdLike;
+};
 
 const normKeyIsi = (s: string): string => s.toLowerCase().replace(/[\s_]+/g, '');
 
@@ -2713,6 +2719,12 @@ export async function aiIsiNilaiSimulasiDb(
   const tables = session.dataSchema?.tabel || [];
   if (tables.length === 0) return null;
 
+  const domain = session.match?.businessCategory || 'Aplikasi Bisnis';
+  const cleanNarasi = session.storyline?.narasi
+    ? session.storyline.narasi.replace(/Apakah ini sudah menggambarkan[\s\S]*$/i, '').trim()
+    : '';
+  const alurUtama = session.storyline?.asumsiAlurUtama || '';
+
   const schemaBrief = tables
     .map((t) => {
       const pk = cariFieldPK(t);
@@ -2720,15 +2732,17 @@ export async function aiIsiNilaiSimulasiDb(
         .filter((f) => fieldBolehDiisiAI(f, pk))
         .map((f) => `    - ${f.nama} (${f.tipe}) — ${f.keterangan || '-'}`)
         .join('\n');
-      return `Tabel "${t.nama}"${t.keterangan ? ` (${t.keterangan})` : ''}:\n${fields}`;
+      return `Tabel "${t.nama}"${t.keterangan ? ` (${t.keterangan})` : ''}:\n${fields || '    (semua field ID/relasi deterministik)'}`;
     })
-    .join('\n');
+    .join('\n\n');
 
-  const systemInstruction = `Anda adalah penulis data contoh (dummy data) yang realistis untuk aplikasi bisnis.
-Anda HANYA mengisi NILAI KONTEN tiap field — Anda TIDAK membuat struktur, ID, maupun relasi.
+  const systemInstruction = `Anda adalah penulis data contoh (dummy data) yang realistis dan kontekstual untuk prototipe aplikasi bisnis.
+Tugas Anda: Mengisi NILAI KONTEN untuk field-field non-ID/non-relasi pada setiap tabel.
+Anda HANYA mengisi konten (teks nama barang/layanan, kategori, pilihan status, harga wajar, warna, ukuran, tanggal, dsb).
+Anda TIDAK membuat struktur tabel, ID primer, maupun relasi antar-tabel (karena ID & relasi sudah diatur secara deterministik oleh sistem).
 
 ATURAN KETAT:
-1. Output JSON valid tanpa komentar, tanpa markdown fence:
+1. Kembalikan JSON valid tanpa markdown codeblock, tanpa komentar:
 {
   "nilai": {
     "<nama tabel persis>": {
@@ -2736,13 +2750,22 @@ ATURAN KETAT:
     }
   }
 }
-2. Sertakan SEMUA tabel dan SEMUA field yang terdaftar di bawah, masing-masing PERSIS 3 nilai (sesuai 3 baris data).
-3. Nilai harus kontektual dengan KETERANGAN field: bila keterangan menyebut pilihan (mis. "Tersedia / Disewa / Bengkel") gunakan nilai dari pilihan itu; bila field produk/barang/warna/ukuran, gunakan istilah nyata domain tersebut — JANGAN pakai nama orang.
-4. Untuk tipe "angka": nilai berupa angka (number) yang masuk akal (harga, jumlah, stok, durasi, dsb).
-5. Untuk tipe "tanggal": format "YYYY-MM-DD".
-6. DILARANG memakai placeholder seperti "Contoh Data", "Nama X", "...", "-", atau "dummy".`;
+2. Sertakan SEMUA tabel dan SEMUA field yang terdaftar di bawah, masing-masing PERSIS 3 nilai berbeda yang masuk akal dan realistis untuk 3 baris data.
+3. Nilai HARUS sangat kontekstual dengan domain bisnis dan KETERANGAN field:
+   - Jika field produk/barang/layanan/varian: gunakan nama produk/layanan nyata sesuai domain (misal distro/pakaian: "Kemeja Flannel Tartan", "Kaos Polos Cotton Combed", "Jaket Denim Trucker"; klinik hewan: "Kucing Persia", "Anjing Golden Retriever", "Kelinci Holland Lop"; es krim: "Vanilla Classic", "Dark Chocolate", "Strawberry Swirl").
+   - Jika field ukuran baju/produk: gunakan ukuran industri nyata ("S", "M", "L", "XL").
+   - Jika field warna: gunakan warna nyata ("Hitam Solid", "Navy Blue", "Olive Green", "Maroon").
+   - Jika field status/ketersediaan: patuhi pilihan yang tertulis di keterangan field (misal "Tersedia", "Disewa", "Perawatan" atau "Aktif", "Nonaktif"). JANGAN gunakan status transaksi ("Selesai", "Diproses") pada kolom ketersediaan barang.
+   - JANGAN PERNAH menaruh nama orang di field nama barang/produk/varian/status/ukuran/warna/spesifikasi.
+   - Nama orang HANYA boleh dipakai untuk field nama pelanggan, nama staf, nama dokter, nama peminjam (gunakan nama orang Indonesia: "Budi Santoso", "Siti Rahma", "Ahmad Hidayat").
+4. Untuk tipe "angka": kembalikan angka murni (number) dalam rentang nominal wajar (misal harga: 25000, 75000, 150000; stok: 10, 25, 50; bobot kg: 2.5, 4.0, 7.5).
+5. Untuk tipe "tanggal": format "YYYY-MM-DD" (misal "2026-09-10", "2026-09-11", "2026-09-12").
+6. DILARANG memakai placeholder seperti "Contoh Data", "Item 1", "Dummy", "...", "-", atau mengulang-ulang nama field.`;
 
-  const userPrompt = `Bangun nilai contoh untuk seluruh tabel berikut (SEMUA tabel, setiap field PERSIS 3 nilai):
+  const userPrompt = `Bangun nilai contoh realistis untuk aplikasi berikut:
+Domain Bisnis: ${domain}
+${cleanNarasi ? `Gambaran Alur Kerja: ${cleanNarasi}\n` : ''}${alurUtama ? `Alur Utama: ${alurUtama}\n` : ''}
+Daftar tabel dan field yang perlu diisi (SEMUA tabel, setiap field PERSIS 3 nilai realistis):
 
 ${schemaBrief}`;
 
