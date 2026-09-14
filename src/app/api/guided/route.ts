@@ -39,7 +39,9 @@ import {
   type SupportingFlowItem,
   type SupportingFeatureItem,
   renderRbacMarkdownTable,
-  renderDataSchemaMarkdown
+  renderDataSchemaMarkdown,
+  generateDeterministicSimulasiDb,
+  renderSimulasiDbMarkdown
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -2399,6 +2401,161 @@ Perbarui dan kembalikan JSON lengkap:`;
   };
 }
 
+export interface SimulasiDbResult {
+  contohData: {
+    tabel: string;
+    baris: Record<string, any>[];
+  };
+  akunLogin: {
+    nama: string;
+    role: string;
+    username: string;
+    password: string;
+  }[];
+  instruksiGenerator: string[];
+  markdownTable?: string;
+}
+
+export async function reviseSimulasiDbWithAI(
+  session: MockupSessionState,
+  userCorrection: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<SimulasiDbResult> {
+  const startTime = Date.now();
+  const currentSimulasi = session.simulasiDb || generateDeterministicSimulasiDb(session);
+  const activeRoles =
+    session.roles?.selected && session.roles.selected.length > 0
+      ? session.roles.selected
+      : [REQUIRED_ROLE];
+  const tables = session.dataSchema?.tabel || [];
+  const targetTableName = currentSimulasi.contohData?.tabel || (tables[0]?.nama ?? 'transaksi');
+  const targetTable = tables.find((t) => t.nama === targetTableName) || tables[0];
+  const targetFields = targetTable?.field || [];
+  const targetFieldNames = targetFields.map((f) => f.nama);
+
+  const systemInstruction = `Anda adalah Spesialis Data Dummy & Akun Uji Coba Prototipe Aplikasi Bisnis.
+Tugas Anda: Memperbarui data contoh (3 baris) dan/atau akun demo login berdasarkan koreksi pengguna.
+
+ATURAN REVISI KONSISTEN & KETAT:
+1. NAMA FIELD PADA DATA CONTOH HARUS PERSIS SAMA 100% dengan field skema: [${targetFieldNames.join(', ')}]. DILARANG mengubah atau menambah nama field lain!
+2. Kembalikan tepat 3 baris data contoh yang realistis sesuai koreksi pengguna.
+3. Akun login HARUS HANYA mencakup peran aktif: [${activeRoles.join(', ')}]. Format kredensial: username = lowercase(namaRole tanpa spasi), password = username + "123". Nama akun dapat disesuaikan jika pengguna memintanya.
+4. Format output JSON:
+{
+  "contohData": {
+    "tabel": "${targetTableName}",
+    "baris": [
+      { ... 3 baris dengan key persis sesuai field skema ... }
+    ]
+  },
+  "akunLogin": [
+    { "nama": "...", "role": "...", "username": "...", "password": "..." }
+  ]
+}`;
+
+  const userPrompt = `Tabel Target: ${targetTableName}
+Field yang Tersedia:
+${JSON.stringify(targetFields, null, 2)}
+
+Data Contoh Saat Ini:
+${JSON.stringify(currentSimulasi.contohData?.baris || [], null, 2)}
+
+Daftar Akun Demo Saat Ini:
+${JSON.stringify(currentSimulasi.akunLogin || [], null, 2)}
+
+Koreksi / Masukan Pengguna:
+"${userCorrection}"
+
+Perbarui dan kembalikan JSON hasil revisi:`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.3,
+    maxTokens: 3000,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[AI-SIMULASI-DB-REVISE] Selesai dalam ${elapsed}ms`);
+
+  const instruksiGenerator = currentSimulasi.instruksiGenerator || [
+    'Simpan tiap tabel dari session.dataSchema sebagai state di memori (React state atau array biasa saat generate kode nanti) — BUKAN localStorage/sessionStorage.',
+    'Isi 3-5 baris data dummy per tabel dengan relasi yang VALID — field bertipe "relasi ke [Entitas]" harus benar-benar merujuk ke ID yang ada di tabel entitas tersebut, bukan angka acak.',
+    'Akses data lewat fungsi terpisah per tabel (tambahTransaksi(), ambilProdukById(), dst) — bukan manipulasi array langsung tersebar di banyak tempat kode.',
+    'Simulasikan relasi antar tabel secara manual di kode (pencarian berdasarkan id) — konsisten dengan cara kerja backend Google Sheets nanti yang tidak punya JOIN otomatis.',
+    'Terapkan RBAC sejak prototipe menggunakan akun dummy di atas — role yang tidak punya akses ke suatu modul (sesuai matriks RBAC dari POIN 5) tidak boleh melihat data/fitur modul itu di prototipe.'
+  ];
+
+  if (raw) {
+    try {
+      const parsed = robustJsonParse<any>(raw);
+      if (parsed && parsed.contohData && Array.isArray(parsed.contohData.baris) && parsed.contohData.baris.length > 0) {
+        // Validasi dan paksa setiap baris data contoh HANYA dan PERSIS menggunakan nama field dari skema
+        const validatedRows: Record<string, any>[] = [];
+        for (let i = 0; i < Math.min(parsed.contohData.baris.length, 3); i++) {
+          const r = parsed.contohData.baris[i];
+          const validRow: Record<string, any> = {};
+          for (const f of targetFields) {
+            const existingKey = Object.keys(r).find((k) => k.toLowerCase() === f.nama.toLowerCase());
+            if (existingKey !== undefined && r[existingKey] !== undefined) {
+              validRow[f.nama] = r[existingKey];
+            } else {
+              validRow[f.nama] = currentSimulasi.contohData.baris[i]?.[f.nama] ?? `Contoh ${f.nama} ${i + 1}`;
+            }
+          }
+          validatedRows.push(validRow);
+        }
+
+        // Validasi akun login
+        let validatedAkun = currentSimulasi.akunLogin;
+        if (Array.isArray(parsed.akunLogin) && parsed.akunLogin.length > 0) {
+          validatedAkun = activeRoles.map((role) => {
+            const cleanUser = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const pass = `${cleanUser}123`;
+            const matched = parsed.akunLogin.find(
+              (a: any) =>
+                a && (a.role?.toLowerCase() === role.toLowerCase() || a.username?.toLowerCase() === cleanUser)
+            );
+            return {
+              nama: matched?.nama ? String(matched.nama).trim() : `Akun Demo ${role}`,
+              role,
+              username: cleanUser,
+              password: pass
+            };
+          });
+        }
+
+        const res: SimulasiDbResult = {
+          contohData: {
+            tabel: targetTableName,
+            baris: validatedRows.length > 0 ? validatedRows : currentSimulasi.contohData.baris
+          },
+          akunLogin: validatedAkun,
+          instruksiGenerator
+        };
+        res.markdownTable = renderSimulasiDbMarkdown(res);
+        return res;
+      }
+    } catch (err) {
+      console.warn('[AI-SIMULASI-DB-REVISE] Gagal parse JSON revisi simulasi DB:', err);
+    }
+  }
+
+  // Fallback: kembalikan current simulasi
+  const md = renderSimulasiDbMarkdown(currentSimulasi);
+  return {
+    contohData: currentSimulasi.contohData,
+    akunLogin: currentSimulasi.akunLogin,
+    instruksiGenerator,
+    markdownTable: md
+  };
+}
+
 async function generateNarration(
   session: MockupSessionState,
   action: GuidedAction,
@@ -3798,6 +3955,7 @@ export async function POST(req: Request) {
           };
           // Regenerasi otomatis saat RBAC berubah
           delete updatedSession.dataSchema;
+          delete updatedSession.simulasiDb;
 
           const guidedStep = buildGuidedStep(updatedSession);
           const tableMarkdown =
@@ -3894,6 +4052,8 @@ export async function POST(req: Request) {
               revisiCount: currentCount + 1
             }
           };
+          // Regenerasi otomatis saat skema data berubah
+          delete updatedSession.simulasiDb;
 
           const guidedStep = buildGuidedStep(updatedSession);
           const schemaMarkdown = revisedResult.markdownTable || renderDataSchemaMarkdown(revisedResult.tabel, revisedResult.korelasiRingkas);
@@ -3913,6 +4073,86 @@ export async function POST(req: Request) {
 
         // User memilih confirm_schema ("Sudah pas, lanjut ke Simulasi Database")
         let updated = applyGuidedAnswer(session, 'SKEMA_DATA', body.selected || [], body.other);
+
+        // Pastikan simulasi database digenerate saat transisi ke SIMULASI_DB
+        if (
+          !updated.simulasiDb ||
+          !updated.simulasiDb.contohData ||
+          !updated.simulasiDb.contohData.baris ||
+          updated.simulasiDb.contohData.baris.length === 0
+        ) {
+          updated.simulasiDb = generateDeterministicSimulasiDb(updated);
+        }
+
+        const guidedStep = buildGuidedStep(updated);
+        const simulasiMarkdown =
+          updated.simulasiDb?.markdownTable ||
+          (updated.simulasiDb ? renderSimulasiDbMarkdown(updated.simulasiDb) : '');
+        const narration =
+          `Bagus sekali! Skema data telah disepakati.\n\n` +
+          `Berikut simulasi database singkat (data contoh) dan akun demo untuk login uji coba prototipe Anda:\n\n` +
+          `${simulasiMarkdown}\n\n` +
+          `Silakan periksa contoh data dan akun login di atas. Jika sudah pas, klik "Sudah pas, lanjut ke Ringkasan Final".`;
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Penanganan khusus untuk step SIMULASI_DB
+      if (stepId === 'SIMULASI_DB') {
+        const isCorrection =
+          body.selected?.includes('koreksi_simulasi') ||
+          Boolean(body.other && body.other.trim().length > 0);
+
+        if (isCorrection) {
+          const userCorrection = (body.other || (body.selected && body.selected.join(', ')) || '').trim();
+          const currentCount = session.simulasiDb?.revisiCount || 0;
+
+          const revisedResult = await reviseSimulasiDbWithAI(
+            session,
+            userCorrection,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'SIMULASI_DB', // TETAP DI STEP SIMULASI_DB
+            simulasiDb: {
+              contohData: revisedResult.contohData,
+              akunLogin: revisedResult.akunLogin,
+              instruksiGenerator: revisedResult.instruksiGenerator,
+              markdownTable: revisedResult.markdownTable,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: currentCount + 1
+            }
+          };
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          const simulasiMarkdown =
+            revisedResult.markdownTable || renderSimulasiDbMarkdown(revisedResult);
+          const narration =
+            `Siap, simulasi database dan akun demo telah saya perbarui sesuai masukanmu:\n\n` +
+            `${simulasiMarkdown}\n\n` +
+            `Silakan tinjau kembali perubahan di atas. Jika sudah sesuai, pilih "Sudah pas, lanjut ke Ringkasan Final".`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
+
+        // User memilih confirm_simulasi ("Sudah pas, lanjut ke Ringkasan Final")
+        let updated = applyGuidedAnswer(session, 'SIMULASI_DB', body.selected || [], body.other);
         const guidedStep = buildGuidedStep(updated);
         const narration = await generateNarration(
           updated,

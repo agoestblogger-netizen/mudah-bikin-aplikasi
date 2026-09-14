@@ -2305,6 +2305,224 @@ export function renderDataSchemaMarkdown(
   return fullMarkdown;
 }
 
+/**
+ * Menghasilkan simulasi database deterministik:
+ * 1. Satu tabel utama dari session.dataSchema dengan 3 baris data contoh realistis.
+ * 2. Akun demo login untuk seluruh role aktif di session.roles.selected.
+ * 3. 5 instruksi internal untuk generator kode prototipe.
+ */
+export function generateDeterministicSimulasiDb(
+  session: MockupSessionState
+): NonNullable<MockupSessionState['simulasiDb']> {
+  const tables = session.dataSchema?.tabel || [];
+
+  // 1. Pilih entitas utama yang paling representatif dari alur inti
+  let mainTable = tables.find((t) =>
+    !/^(pengguna|users?|akun|roles?)$/i.test(t.nama) &&
+    /transaksi|penyewaan|sewa|rental|booking|order|pesanan|timbang|setor|servis|service|pinjam|bayar|katalog|armada|produk|barang|work_order/i.test(t.nama)
+  );
+
+  if (!mainTable) {
+    mainTable = tables.find((t) => !/^(pengguna|users?|akun|roles?)$/i.test(t.nama)) || tables[0];
+  }
+
+  const tableName = mainTable ? mainTable.nama : 'transaksi_utama';
+  const fields = mainTable?.field || [
+    { nama: 'id', tipe: 'text', keterangan: 'ID unik transaksi' },
+    { nama: 'tanggal', tipe: 'tanggal', keterangan: 'Waktu transaksi' },
+    { nama: 'total_biaya', tipe: 'angka', keterangan: 'Nominal transaksi' }
+  ];
+
+  // Helper membuat nilai contoh realistis sesuai tipe & nama field
+  const generateFieldValue = (field: { nama: string; tipe: string; keterangan?: string }, rowIdx: number): any => {
+    const fName = field.nama.toLowerCase();
+    const fType = field.tipe.toLowerCase();
+
+    if (fType === 'tanggal' || fName.includes('tanggal') || fName.includes('tgl') || fName.includes('date')) {
+      return ['2026-09-10', '2026-09-11', '2026-09-12'][rowIdx];
+    }
+
+    if (fType.includes('relasi ke') || fName.endsWith('_id') || (fName.startsWith('id_') && fName !== 'id')) {
+      const match = fType.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
+      const targetEntity = match ? match[1] : fName.replace(/(_id|^id_)/g, '');
+      const prefix = targetEntity.substring(0, 3).toUpperCase();
+      return [`${prefix}-001`, `${prefix}-002`, `${prefix}-003`][rowIdx];
+    }
+
+    if (
+      fType === 'angka' ||
+      /^(angka|number|integer|nominal|harga|tarif|biaya|total|jumlah|stok|berat|durasi|tenor|kilometer|km)$/i.test(fType)
+    ) {
+      if (/harga|tarif|biaya|nominal|bayar|total|omset|pinjaman/i.test(fName)) {
+        return [150000, 250000, 500000][rowIdx];
+      }
+      if (/berat|bobot|kg|timbangan/i.test(fName)) {
+        return [25, 40, 65][rowIdx];
+      }
+      if (/durasi|hari|bulan|tenor|hari_sewa/i.test(fName)) {
+        return [1, 3, 7][rowIdx];
+      }
+      if (/km|kilometer|odometer/i.test(fName)) {
+        return [12450, 12600, 12850][rowIdx];
+      }
+      if (/stok|qty|jumlah|kuantitas/i.test(fName)) {
+        return [5, 12, 20][rowIdx];
+      }
+      return [10, 20, 30][rowIdx];
+    }
+
+    // Default text
+    if (/^id$|^kode|^nomor_nota|^no_nota|^id_nota/i.test(fName)) {
+      const pfx = tableName.substring(0, 3).toUpperCase();
+      return [`${pfx}-001`, `${pfx}-002`, `${pfx}-003`][rowIdx];
+    }
+    if (/nama|pelanggan|warga|penyewa|anggota|konsumen|pasien|pembeli|klien/i.test(fName)) {
+      return ['Budi Santoso', 'Siti Rahma', 'Ahmad Hidayat'][rowIdx];
+    }
+    if (/plat|nopol|nomor_plat/i.test(fName)) {
+      return ['B 1234 ABC', 'D 5678 EFG', 'L 9012 HIJ'][rowIdx];
+    }
+    if (/merk|tipe|model|mobil|motor|kendaraan/i.test(fName)) {
+      return ['Toyota Avanza', 'Honda Brio', 'Mitsubishi Xpander'][rowIdx];
+    }
+    if (/barang|rosok|item|suku_cadang|sparepart|produk/i.test(fName)) {
+      return ['Kardus Bekas', 'Besi Tua', 'Tembaga Super'][rowIdx];
+    }
+    if (/status/i.test(fName)) {
+      return ['Selesai', 'Diproses', 'Menunggu Verifikasi'][rowIdx];
+    }
+    if (/catatan|keterangan|deskripsi|keluhan|gejala/i.test(fName)) {
+      return ['Kondisi baik & lengkap', 'Perlu penanganan lanjutan', 'Selesai tepat waktu'][rowIdx];
+    }
+    if (/kontak|telepon|wa|whatsapp|hp/i.test(fName)) {
+      return ['081234567890', '081298765432', '085712345678'][rowIdx];
+    }
+    if (/petugas|diperiksa_oleh|mekanik|pengumpul|kasir|admin/i.test(fName)) {
+      return ['Staf Lapangan 1', 'Staf Lapangan 2', 'Staf Lapangan 1'][rowIdx];
+    }
+
+    return [`Contoh Data ${rowIdx + 1}`, `Contoh Data ${rowIdx + 2}`, `Contoh Data ${rowIdx + 3}`][rowIdx];
+  };
+
+  const sampleRows: Record<string, any>[] = [0, 1, 2].map((idx) => {
+    const row: Record<string, any> = {};
+    for (const f of fields) {
+      row[f.nama] = generateFieldValue(f, idx);
+    }
+    return row;
+  });
+
+  // 2. Akun Demo Login (HANYA role aktif di session.roles.selected)
+  const activeRoles =
+    session.roles?.selected && session.roles.selected.length > 0 ? session.roles.selected : [REQUIRED_ROLE];
+
+  const akunLogin = activeRoles.map((role) => {
+    const cleanUsername = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const password = `${cleanUsername}123`;
+    let nama = `Akun Demo ${role}`;
+
+    if (isSuperAdminRole(role)) {
+      nama = 'Pak Bambang (Pemilik)';
+    } else if (/kasir/i.test(role)) {
+      nama = 'Siti Rahma (Kasir)';
+    } else if (/pengumpul/i.test(role)) {
+      nama = 'Joko Purnomo (Pengumpul)';
+    } else if (/mekanik|montir/i.test(role)) {
+      nama = 'Agus Mekanik';
+    } else if (/barista/i.test(role)) {
+      nama = 'Rian Barista';
+    } else if (/bendahara/i.test(role)) {
+      nama = 'Ibu Sri (Bendahara)';
+    } else if (/ketua/i.test(role)) {
+      nama = 'Pak Bambang (Ketua)';
+    } else if (/penyewa/i.test(role)) {
+      nama = 'Dimas (Penyewa)';
+    } else if (/warga/i.test(role)) {
+      nama = 'Pak RT Warga';
+    } else if (/anggota|member/i.test(role)) {
+      nama = 'Ahmad (Anggota)';
+    } else if (/pelanggan|konsumen/i.test(role)) {
+      nama = 'Budi Santoso (Pelanggan)';
+    }
+
+    return {
+      nama,
+      role,
+      username: cleanUsername,
+      password
+    };
+  });
+
+  // 3. 5 Instruksi internal generator prototipe (TIDAK DITAMPILKAN KE USER)
+  const instruksiGenerator = [
+    'Simpan tiap tabel dari session.dataSchema sebagai state di memori (React state atau array biasa saat generate kode nanti) — BUKAN localStorage/sessionStorage.',
+    'Isi 3-5 baris data dummy per tabel dengan relasi yang VALID — field bertipe "relasi ke [Entitas]" harus benar-benar merujuk ke ID yang ada di tabel entitas tersebut, bukan angka acak.',
+    'Akses data lewat fungsi terpisah per tabel (tambahTransaksi(), ambilProdukById(), dst) — bukan manipulasi array langsung tersebar di banyak tempat kode.',
+    'Simulasikan relasi antar tabel secara manual di kode (pencarian berdasarkan id) — konsisten dengan cara kerja backend Google Sheets nanti yang tidak punya JOIN otomatis.',
+    'Terapkan RBAC sejak prototipe menggunakan akun dummy di atas — role yang tidak punya akses ke suatu modul (sesuai matriks RBAC dari POIN 5) tidak boleh melihat data/fitur modul itu di prototipe.'
+  ];
+
+  const result = {
+    contohData: {
+      tabel: tableName,
+      baris: sampleRows
+    },
+    akunLogin,
+    instruksiGenerator,
+    statusKonfirmasi: 'disetujui' as const,
+    revisiCount: 0
+  };
+
+  const md = renderSimulasiDbMarkdown(result);
+  return {
+    ...result,
+    markdownTable: md
+  };
+}
+
+/**
+ * Merender representasi markdown dari simulasi database untuk ditampilkan di chat (versi pendek).
+ */
+export function renderSimulasiDbMarkdown(
+  simulasiDb: NonNullable<MockupSessionState['simulasiDb']>
+): string {
+  const { contohData, akunLogin } = simulasiDb;
+
+  let md = `> 💡 *Catatan: Data yang muncul di prototipe nanti masih berupa data contoh, bukan data asli — Anda dapat mengubah atau menggantinya kapan saja nanti.*\n\n`;
+
+  // 1. Tabel Contoh Data
+  if (contohData && contohData.baris && contohData.baris.length > 0) {
+    const columns = Object.keys(contohData.baris[0]);
+    const header = `| ${columns.map((c) => `\`${c}\``).join(' | ')} |`;
+    const divider = `| ${columns.map(() => ':---').join(' | ')} |`;
+    const rows = contohData.baris.map((r) => {
+      const cells = columns.map((col) => {
+        const val = r[col];
+        if (typeof val === 'number') {
+          return val.toLocaleString('id-ID');
+        }
+        return String(val ?? '-');
+      });
+      return `| ${cells.join(' | ')} |`;
+    });
+
+    md += `### 📋 Contoh Data Awal: \`${contohData.tabel}\`\n${header}\n${divider}\n${rows.join('\n')}\n\n`;
+  }
+
+  // 2. Tabel Akun Demo Login
+  if (akunLogin && akunLogin.length > 0) {
+    const header = `| Nama Akun | Role | Username | Password |`;
+    const divider = `| :--- | :--- | :--- | :--- |`;
+    const rows = akunLogin.map((a) => {
+      return `| ${a.nama} | **${a.role}** | \`${a.username}\` | \`${a.password}\` |`;
+    });
+
+    md += `### 🔑 Akun Demo untuk Uji Coba Login\n${header}\n${divider}\n${rows.join('\n')}`;
+  }
+
+  return md;
+}
+
 function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
   const isRevising = Boolean(session.rbac?.revisiCount && session.rbac.revisiCount > 0);
   const totalModul = session.rbac?.modul?.length || 0;
@@ -2364,6 +2582,7 @@ function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
 }
 
 function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
+  const isRevising = Boolean(session.simulasiDb?.revisiCount && session.simulasiDb.revisiCount > 0);
   return {
     stepId: 'SIMULASI_DB',
     title: 'Simulasi Data Awal & Akun Demo Login',
@@ -2372,16 +2591,16 @@ function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
     options: [
       {
         id: 'confirm_simulasi',
-        label: '✅ Setujui data contoh & akun demo',
+        label: '✅ Sudah pas, lanjut ke Ringkasan Final',
         recommended: true,
-        description: '3 baris contoh data & kredensial login per role'
+        description: 'Data contoh dan kredensial akun uji coba sudah sesuai kebutuhan prototipe.'
       },
       {
         id: 'koreksi_simulasi',
-        label: '✏️ Ada koreksi data contoh / akun demo',
-        description: 'Tulis data awal atau akun login yang ingin disesuaikan',
+        label: isRevising ? '✏️ Masih ada koreksi data contoh / akun demo' : '✏️ Ada koreksi data contoh / akun demo',
+        description: 'Tuliskan data contoh atau akun login yang ingin disesuaikan nilainya.',
         requiresInput: true,
-        inputPlaceholder: 'Contoh: Ubah data armada contoh jadi Avanza dan Innova...'
+        inputPlaceholder: 'Contoh: Ubah data armada jadi Avanza & Innova, atau ubah nama akun kasir...'
       }
     ]
   };
@@ -2564,9 +2783,10 @@ export function applyGuidedAnswer(
       delete next.flow.fiturPendukung;
       delete next.flow.kasusGanda;
     }
-    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC dan Skema Data saat daftar role berubah
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC, Skema Data, dan Simulasi DB saat daftar role berubah
     delete next.rbac;
     delete next.dataSchema;
+    delete next.simulasiDb;
   } else if (stepId === 'ALUR') {
     const flowData = getDomainFlowDetails(session);
 
@@ -2623,9 +2843,10 @@ export function applyGuidedAnswer(
       ...(other ? { other } : {})
     };
 
-    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC dan Skema Data saat alur kerja berubah
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC, Skema Data, dan Simulasi DB saat alur kerja berubah
     delete next.rbac;
     delete next.dataSchema;
+    delete next.simulasiDb;
   } else if (stepId === 'RBAC') {
     if (next.rbac) {
       next.rbac.statusKonfirmasi = 'disetujui';
@@ -2635,7 +2856,9 @@ export function applyGuidedAnswer(
       next.dataSchema.statusKonfirmasi = 'disetujui';
     }
   } else if (stepId === 'SIMULASI_DB') {
-    // Diproses di Poin 7
+    if (next.simulasiDb) {
+      next.simulasiDb.statusKonfirmasi = 'disetujui';
+    }
   } else if (stepId === 'REVIEW_FINAL') {
     // Diproses di Poin 8
   }
@@ -2816,6 +3039,17 @@ export function compileBriefFromSession(
       lines.push('- **Skema Tabel & Relasi Data**:');
       const schemaMd = session.dataSchema.markdownTable || renderDataSchemaMarkdown(session.dataSchema.tabel, session.dataSchema.korelasiRingkas);
       lines.push(schemaMd);
+    }
+    if (session.simulasiDb) {
+      lines.push('- **Simulasi Database & Akun Demo**:');
+      const simMd = session.simulasiDb.markdownTable || renderSimulasiDbMarkdown(session.simulasiDb);
+      lines.push(simMd);
+      if (session.simulasiDb.instruksiGenerator && session.simulasiDb.instruksiGenerator.length > 0) {
+        lines.push('- **Instruksi Internal Generator Prototipe**:');
+        session.simulasiDb.instruksiGenerator.forEach((ins, idx) => {
+          lines.push(`  ${idx + 1}. ${ins}`);
+        });
+      }
     }
     lines.push('- **Job Description & Struktur Halaman per Role**:');
     for (const role of roles) {

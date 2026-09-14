@@ -304,6 +304,22 @@ export interface MockupSessionState {
     statusKonfirmasi?: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
   };
+  simulasiDb?: {
+    contohData: {
+      tabel: string;
+      baris: Record<string, any>[];
+    };
+    akunLogin: {
+      nama: string;
+      role: string;
+      username: string;
+      password: string;
+    }[];
+    markdownTable?: string;
+    instruksiGenerator?: string[];
+    statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+    revisiCount?: number;
+  };
   painPoints: { selected: string[]; other?: string };
   features: {
     selected: { id: string; priority: 'WAJIB' | 'NYUSUL' }[];
