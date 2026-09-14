@@ -2,7 +2,10 @@ import {
   generateStorylineWithAI,
   sanitizeStorylineNarrative,
   isClicheStorylineOpening,
-  lacksGreetingOpening
+  lacksGreetingOpening,
+  extractBusinessNameFromPrompt,
+  buildStandardGreeting,
+  ensureStandardGreetingInNarasi
 } from '../src/app/api/guided/route';
 import {
   applyGuidedAnswer,
@@ -86,17 +89,53 @@ async function runTests() {
     }
   }
 
-  // Test 1.1b: Deteksi ketiadaan sapaan (klausa temporal operasional seperti "Ketika pemilik membawa...")
-  const lacksGreetingSample = 'Ketika pemilik kendaraan membawa motor ke bengkel, mereka disambut oleh teknisi yang siap membantu.';
-  if (!lacksGreetingOpening(lacksGreetingSample)) {
-    throw new Error(`FAILED: Gagal mendeteksi ketiadaan sapaan pada klausa temporal: "${lacksGreetingSample}"`);
-  }
-  const hasGreetingSample = 'Klinik gigi ini selalu ramai dengan pasien yang menunggu perawatan.';
-  if (lacksGreetingOpening(hasGreetingSample)) {
-    throw new Error(`FAILED: Kalimat dengan sapaan/observasi salah terdeteksi lacksGreetingOpening: "${hasGreetingSample}"`);
+  // Test 1.1b: Verifikasi Kalimat Pembuka Deterministik Standar di Berbagai Domain
+  const domainPrompts = [
+    { prompt: 'buatkan aplikasi cuci mobil', expected: 'Berikut adalah flow proses bisnis dari cuci mobil.' },
+    { prompt: 'aplikasi bengkel motor', expected: 'Berikut adalah flow proses bisnis dari bengkel motor.' },
+    { prompt: 'klinik dokter gigi', expected: 'Berikut adalah flow proses bisnis dari klinik dokter gigi.' },
+    { prompt: 'kafe', expected: 'Berikut adalah flow proses bisnis dari kafe.' },
+    { prompt: 'toko emas', expected: 'Berikut adalah flow proses bisnis dari toko emas.' },
+    { prompt: 'koperasi simpan pinjam', expected: 'Berikut adalah flow proses bisnis dari koperasi simpan pinjam.' },
+    { prompt: 'laundry kiloan', expected: 'Berikut adalah flow proses bisnis dari laundry kiloan.' },
+    { prompt: 'tolong buatkan sistem kasir cuci mobil dan motor', expected: 'Berikut adalah flow proses bisnis dari kasir cuci mobil dan motor.' },
+    { prompt: 'buatkan aplikasi toko emas. PANDUAN PENTING: Pengguna memilih fokus...', expected: 'Berikut adalah flow proses bisnis dari toko emas.' }
+  ];
+
+  for (const dp of domainPrompts) {
+    const greeting = buildStandardGreeting(dp.prompt);
+    console.log(`[Greeting Check] "${dp.prompt}" -> "${greeting}"`);
+    if (greeting !== dp.expected) {
+      throw new Error(`FAILED: Format greeting tidak sesuai! Diharapkan: "${dp.expected}", Dihasilkan: "${greeting}"`);
+    }
   }
 
-  console.log('✅ Deteksi kerangka klise vs segar berfungsi akurat 100%.');
+  // Uji ensureStandardGreetingInNarasi menjamin pembuka hadir dan membersihkan klise jika ada
+  const greetingTest = 'Berikut adalah flow proses bisnis dari cuci mobil.';
+  const narasiTanpaSapaan = 'Pelanggan membawa mobil kotor ke tempat pencucian. Staf kasir mencatat plat nomor.';
+  const wrapped1 = ensureStandardGreetingInNarasi(narasiTanpaSapaan, greetingTest);
+  if (!wrapped1.startsWith(greetingTest)) {
+    throw new Error(`FAILED: ensureStandardGreetingInNarasi gagal menambahkan greeting ke narasi polos: "${wrapped1}"`);
+  }
+
+  const narasiDenganKliseLama = 'Ide untuk aplikasi cuci kendaraan ini sangat tepat untuk meningkatkan efisiensi pelayanan. Pelanggan membawa mobil kotor ke tempat pencucian.';
+  const wrapped2 = ensureStandardGreetingInNarasi(narasiDenganKliseLama, greetingTest);
+  if (!wrapped2.startsWith(greetingTest) || wrapped2.includes('sangat tepat untuk')) {
+    throw new Error(`FAILED: ensureStandardGreetingInNarasi gagal menggantikan sapaan klise lama: "${wrapped2}"`);
+  }
+
+  // Pastikan jaring pengaman klise tetap aktif untuk isi narasi di luar kalimat pembuka standar
+  const narasiDenganKliseDiTengah = `${greetingTest} Pelanggan datang ke kasir. Sistem antrean ini sangat penting untuk kelancaran layanan. Staf memproses pesanan.`;
+  if (!isClicheStorylineOpening(narasiDenganKliseDiTengah)) {
+    throw new Error(`FAILED: Jaring pengaman isClicheStorylineOpening gagal mendeteksi klise di dalam badan narasi!`);
+  }
+
+  const narasiBersihStandar = `${greetingTest} Pelanggan membawa mobil kotor ke gerbang antrean. Washer menyemprotkan air dan menggosok bodi kendaraan secara menyeluruh. Kasir menerima pembayaran dan mencetak nota.`;
+  if (isClicheStorylineOpening(narasiBersihStandar)) {
+    throw new Error(`FAILED: Narasi bersih standar salah terdeteksi klise!`);
+  }
+
+  console.log('✅ Kalimat pembuka deterministik standar & jaring pengaman narasi berfungsi 100%.');
 
   // Test 1.2: Sanitasi narasi aman (hanya kata ganti orang pertama jamak, tidak menyentuh kata kerja/benda lain)
   const testDirtyNarratives = [
