@@ -8,7 +8,6 @@ import { initialProjectState } from '@/lib/defaultState';
 import { AppProjectState, SavedProject } from '@/types/app';
 import { Navbar } from '@/components/Navbar';
 import { ChatPanel } from '@/components/ChatPanel';
-import { BriefEditorPage } from '@/components/BriefEditorPage';
 import { SavedProjectsList } from '@/components/SavedProjectsList';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SavedProjectsModal } from '@/components/SavedProjectsModal';
@@ -1701,18 +1700,7 @@ export default function AppWorkspacePage() {
             <div className="col-start-1 row-start-2 flex-1 overflow-hidden p-4 relative">
               {rightPanelTab === 'PREVIEW' ? (
                 <div className="w-full h-full bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-inner relative">
-                  {projectState.sessionState?.step === 'REVIEW_FINAL' &&
-                  projectState.sessionState?.compiledBrief &&
-                  !projectState.canvasCode.html &&
-                  !isGenerating ? (
-                    <BriefEditorPage
-                      session={projectState.sessionState}
-                      onApprove={handleApproveGuidedBrief}
-                      onUpdateSession={(next) =>
-                        handleUpdateState({ sessionState: next }, { skipIframeReload: true })
-                      }
-                    />
-                  ) : projectState.canvasCode.html ? (
+                  {projectState.canvasCode.html ? (
                     <div ref={overlayRef} className="relative w-full h-full">
                       <div
                         className={`absolute inset-0 z-20 ${interactionMode === 'mark' ? 'pointer-events-auto' : 'pointer-events-none'}`}

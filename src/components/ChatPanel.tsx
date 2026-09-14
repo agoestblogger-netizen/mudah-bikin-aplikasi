@@ -425,30 +425,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       let finalMessages = [...updatedMessages, aiMsg];
       setMessages(finalMessages);
 
-      // Langkah E selesai: langsung COMPILE brief untuk halaman validasi (E.5)
-      if (!data.guidedStep) {
-        const authHeaders = await getAuthHeaders();
-        const compRes = await fetch('/api/guided', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders },
-          body: JSON.stringify({
-            action: 'COMPILE',
-            session: nextSession,
-            ...guidedApiPayload()
-          })
-        });
-        const compData = await compRes.json();
-        if (compRes.ok && compData.success) {
-          nextSession = { ...(compData.session as MockupSessionState), compiledBrief: compData.brief };
-          const briefMsg: ChatMessage = {
-            id: 'msg-' + (Date.now() + 2),
-            sender: 'AI',
-            text: compData.narration || 'Brief sudah siap. Silakan periksa halaman Brief lalu setujui.',
-            timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-          };
-          finalMessages = [...finalMessages, briefMsg];
-          setMessages(finalMessages);
-        }
+      // Tangani tombol "Setujui & Buat Prototipe" dari kartu REVIEW_FINAL
+      if (data.action === 'APPROVE' || (stepId === 'REVIEW_FINAL' && selected.includes('approve_prototype'))) {
+        const briefText = data.brief || nextSession.compiledBrief || '';
+        onUpdateState({ chatMessages: finalMessages, sessionState: nextSession });
+        setSelectedMode('BUILD');
+        setTimeout(() => {
+          handleSendMessage(
+            `Saya menyetujui Brief Kebutuhan ini. Silakan buatkan prototipe aplikasinya sekarang.\n\n${briefText}`,
+            'BUILD'
+          );
+        }, 100);
+        return;
       }
 
       onUpdateState({ chatMessages: finalMessages, sessionState: nextSession });

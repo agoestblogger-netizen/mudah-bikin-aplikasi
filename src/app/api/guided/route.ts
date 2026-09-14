@@ -41,7 +41,8 @@ import {
   renderRbacMarkdownTable,
   renderDataSchemaMarkdown,
   generateDeterministicSimulasiDb,
-  renderSimulasiDbMarkdown
+  renderSimulasiDbMarkdown,
+  renderReviewFinalMarkdown
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -4153,15 +4154,88 @@ export async function POST(req: Request) {
 
         // User memilih confirm_simulasi ("Sudah pas, lanjut ke Ringkasan Final")
         let updated = applyGuidedAnswer(session, 'SIMULASI_DB', body.selected || [], body.other);
+        updated.compiledBrief = compileBriefFromSession(updated);
         const guidedStep = buildGuidedStep(updated);
-        const narration = await generateNarration(
-          updated,
-          'NEXT',
-          guidedStep?.title,
-          provider,
-          userApiKey,
-          userModel
-        );
+        const narration = renderReviewFinalMarkdown(updated);
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Penanganan khusus untuk step REVIEW_FINAL (Gate Akhir)
+      if (stepId === 'REVIEW_FINAL') {
+        const isApprove = body.selected?.includes('approve_prototype');
+
+        if (isApprove) {
+          const completeness = isBriefBusinessComplete(session);
+          if (!completeness.complete) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Spesifikasi aplikasi belum lengkap: ${completeness.missing.join('; ')}`,
+                completeness
+              },
+              { status: 400 }
+            );
+          }
+
+          let updated = applyGuidedAnswer(session, 'REVIEW_FINAL', ['approve_prototype']);
+          updated.compiledBrief = compileBriefFromSession(updated);
+
+          return NextResponse.json({
+            success: true,
+            action: 'APPROVE',
+            session: updated,
+            brief: updated.compiledBrief,
+            narration:
+              '🎉 **Spesifikasi Aplikasi Disetujui!**\n\n' +
+              'Semua kebutuhan telah lengkap dan terverifikasi. Kami sekarang beralih ke mode BUILD untuk merancang prototipe aplikasi Anda secara langsung.'
+          });
+        }
+
+        // User memilih salah satu tombol navigasi "Lihat & Edit [Bagian]"
+        let updated = applyGuidedAnswer(session, 'REVIEW_FINAL', body.selected || [], body.other);
+        const guidedStep = buildGuidedStep(updated);
+
+        let narration = 'Silakan tinjau dan sesuaikan bagian ini:';
+        if (updated.step === 'ROLE') {
+          const roleTable = renderRoleSummaryTable(
+            updated.roles,
+            session.match?.businessCategory || 'Bisnis',
+            session.storyline
+          );
+          narration = `Berikut tinjauan peran (roles) aplikasi Anda saat ini:\n\n${roleTable}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan wewenang peran.`;
+        } else if (updated.step === 'ALUR') {
+          const flowData = getDomainFlowDetails(updated);
+          const flowMd = renderFlowMarkdown(flowData);
+          narration = `Berikut tinjauan alur kerja operasional aplikasi Anda saat ini:\n\n${flowMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan alur.`;
+        } else if (updated.step === 'RBAC') {
+          const rbacMd =
+            updated.rbac?.markdownTable ||
+            renderRbacMarkdownTable(
+              updated.roles?.selected || [],
+              updated.rbac?.modul || [],
+              updated.rbac?.catatanPelimpahan
+            );
+          narration = `Berikut tinjauan matriks hak akses (RBAC) aplikasi Anda saat ini:\n\n${rbacMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan hak akses.`;
+        } else if (updated.step === 'SKEMA_DATA') {
+          const schemaMd =
+            updated.dataSchema?.markdownTable ||
+            (updated.dataSchema
+              ? renderDataSchemaMarkdown(updated.dataSchema.tabel, updated.dataSchema.korelasiRingkas)
+              : '');
+          narration = `Berikut tinjauan skema basis data aplikasi Anda saat ini:\n\n${schemaMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan struktur tabel.`;
+        } else if (updated.step === 'SIMULASI_DB') {
+          const simMd =
+            updated.simulasiDb?.markdownTable ||
+            (updated.simulasiDb ? renderSimulasiDbMarkdown(updated.simulasiDb) : '');
+          narration = `Berikut tinjauan simulasi database & akun demo login saat ini:\n\n${simMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan data contoh.`;
+        }
 
         return NextResponse.json({
           success: true,

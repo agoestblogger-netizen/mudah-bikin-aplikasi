@@ -2606,8 +2606,133 @@ function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
   };
 }
 
-function buildReviewFinalStep(session: MockupSessionState): GuidedStepPayload | null {
-  return null; // REVIEW_FINAL dirangkum dalam kartu final di chat sebelum eksekusi build
+/**
+ * Merender representasi markdown ringkasan final untuk ditampilkan di chat (kartu penutup).
+ */
+export function renderReviewFinalMarkdown(session: MockupSessionState): string {
+  const completeness = isBriefBusinessComplete(session);
+  const lines: string[] = [];
+
+  const appName =
+    session.match?.businessCategory
+      ? (session.match.businessCategory.toLowerCase().startsWith('aplikasi')
+          ? session.match.businessCategory
+          : `Aplikasi ${session.match.businessCategory}`)
+      : 'Aplikasi Baru';
+
+  lines.push(`## 🎯 Ringkasan Final Spesifikasi: **${appName}**\n`);
+  lines.push(`Seluruh tahapan spesifikasi telah dikonfirmasi. Berikut ikhtisar singkat sistem yang akan dirancang:\n`);
+
+  // 1. Fokus Solusi
+  if (session.storyline?.asumsiMasalah || session.storyline?.asumsiAlurUtama) {
+    if (session.storyline.asumsiMasalah) {
+      lines.push(`> 📝 **Fokus Solusi:** ${session.storyline.asumsiMasalah}`);
+    }
+    if (session.storyline.asumsiAlurUtama) {
+      lines.push(`> 🔄 **Proses Utama:** ${session.storyline.asumsiAlurUtama}`);
+    }
+    lines.push('');
+  }
+
+  // 2. Peran (Roles)
+  const activeRoles = session.roles?.selected || [];
+  const tugasDilimpahkan = session.roles?.tugasDilimpahkan || [];
+  let roleDesc = `**${activeRoles.length} Peran Aktif:** ${activeRoles.map((r) => `\`${r}\``).join(', ')}`;
+  if (tugasDilimpahkan.length > 0) {
+    roleDesc += ` *(Tugas ${tugasDilimpahkan.map((t) => t.dariRole).join(', ')} dilimpahkan ke ${tugasDilimpahkan[0].keRole})*`;
+  }
+  lines.push(`- 👥 **Peran Pengguna (Roles):** ${roleDesc}`);
+
+  // 3. Alur Kerja
+  const alurIntiCount = session.flow?.alurInti?.length || 0;
+  const alurPendukungCount = session.flow?.alurPendukung?.length || 0;
+  let flowDesc = `${alurIntiCount} langkah alur inti`;
+  if (alurPendukungCount > 0) {
+    const names = session.flow?.alurPendukung?.map((ap) => ap.nama).join(', ');
+    flowDesc += ` + ${alurPendukungCount} alur pendukung (${names})`;
+  }
+  lines.push(`- ⚡ **Alur Kerja Operasional:** ${flowDesc}`);
+
+  // 4. RBAC
+  const modulCount = session.rbac?.modul?.length || 0;
+  lines.push(`- 🛡️ **Hak Akses & Wewenang (RBAC):** ${modulCount} modul fungsional terkonfigurasi`);
+
+  // 5. Skema Data
+  const tableNames = session.dataSchema?.tabel?.map((t) => `\`${t.nama}\``) || [];
+  lines.push(`- 🗄️ **Skema Basis Data:** ${tableNames.length} tabel entitas (${tableNames.join(', ') || '-'})`);
+
+  // 6. Simulasi Data & Akun Demo
+  const simTabel = session.simulasiDb?.contohData?.tabel || '-';
+  const akunDemoCount = session.simulasiDb?.akunLogin?.length || 0;
+  lines.push(`- 🔑 **Simulasi DB & Akun Demo:** Tabel contoh \`${simTabel}\` (3 baris) & ${akunDemoCount} akun demo login siap pakai`);
+
+  lines.push('');
+
+  // Status kelengkapan
+  if (completeness.complete) {
+    lines.push(`> ✅ **Status Spesifikasi: LENGKAP & SIAP DIBANGUN**  \n> Klik tombol **"🚀 Setujui & Buat Prototipe"** di bawah untuk memulai perancangan aplikasi Anda, atau pilih **"Lihat & Edit [Bagian]"** bila ingin menyempurnakan bagian tertentu.`);
+  } else {
+    lines.push(`> ⚠️ **Status Spesifikasi: BELUM LENGKAP**  \n> Mohon lengkapi bagian berikut sebelum membuat prototipe:  \n> ${completeness.missing.map((m) => `• ${m}`).join('\n> ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function buildReviewFinalStep(session: MockupSessionState): GuidedStepPayload {
+  const completeness = isBriefBusinessComplete(session);
+  const options: GuidedStepOption[] = [];
+
+  if (completeness.complete) {
+    options.push({
+      id: 'approve_prototype',
+      label: '🚀 Setujui & Buat Prototipe',
+      recommended: true,
+      description: 'Seluruh spesifikasi sudah siap. Langsung rancang prototipe aplikasi sekarang.'
+    });
+  } else {
+    options.push({
+      id: 'incomplete_notice',
+      label: '⚠️ Belum Lengkap: Lengkapi Bagian yang Kurang',
+      description: `Bagian belum lengkap: ${completeness.missing.join('; ')}`
+    });
+  }
+
+  // Tombol navigasi kembali ke step terkait untuk ditinjau / diedit
+  options.push(
+    {
+      id: 'edit_role',
+      label: '✏️ Lihat & Edit Peran (Role)',
+      description: `Daftar peran aktif: ${session.roles?.selected?.join(', ') || '-'}`
+    },
+    {
+      id: 'edit_alur',
+      label: '✏️ Lihat & Edit Alur Kerja',
+      description: `Alur inti: ${session.flow?.alurInti?.length || 0} langkah`
+    },
+    {
+      id: 'edit_rbac',
+      label: '✏️ Lihat & Edit Hak Akses (RBAC)',
+      description: `Matriks wewenang: ${session.rbac?.modul?.length || 0} modul fungsional`
+    },
+    {
+      id: 'edit_schema',
+      label: '✏️ Lihat & Edit Skema Data',
+      description: `Skema tabel: ${session.dataSchema?.tabel?.length || 0} entitas data`
+    },
+    {
+      id: 'edit_simulasi',
+      label: '✏️ Lihat & Edit Simulasi DB & Akun Demo',
+      description: `Tabel contoh: ${session.simulasiDb?.contohData?.tabel || '-'}, Akun login: ${session.simulasiDb?.akunLogin?.length || 0} role`
+    }
+  );
+
+  return {
+    stepId: 'REVIEW_FINAL',
+    title: 'Ringkasan Final Spesifikasi Aplikasi',
+    multi: false,
+    allowOther: false,
+    options
+  };
 }
 
 export function buildGuidedStep(session: MockupSessionState): GuidedStepPayload | null {
@@ -2860,7 +2985,31 @@ export function applyGuidedAnswer(
       next.simulasiDb.statusKonfirmasi = 'disetujui';
     }
   } else if (stepId === 'REVIEW_FINAL') {
-    // Diproses di Poin 8
+    if (selected.includes('edit_role')) {
+      next.step = 'ROLE';
+      return next;
+    }
+    if (selected.includes('edit_alur')) {
+      next.step = 'ALUR';
+      return next;
+    }
+    if (selected.includes('edit_rbac')) {
+      next.step = 'RBAC';
+      return next;
+    }
+    if (selected.includes('edit_schema')) {
+      next.step = 'SKEMA_DATA';
+      return next;
+    }
+    if (selected.includes('edit_simulasi')) {
+      next.step = 'SIMULASI_DB';
+      return next;
+    }
+    if (selected.includes('approve_prototype')) {
+      next.compiledBrief = compileBriefFromSession(next);
+      next.step = 'REVIEW_FINAL';
+      return next;
+    }
   }
 
   next.step = nextSessionStep(stepId);
@@ -2873,15 +3022,46 @@ export interface BriefCompleteness {
 }
 
 /**
- * Gate proses: validasi kelengkapan data sebelum build.
+ * Gate proses: validasi kelengkapan data sebelum build (POIN 8: Seluruh 5 bagian wajib lengkap).
  */
 export function isBriefBusinessComplete(session: MockupSessionState): BriefCompleteness {
   const missing: string[] = [];
+
+  // 1. Validasi Roles (minimal 1 peran aktif)
   if (!session.roles?.selected || session.roles.selected.length === 0) {
-    missing.push('Minimal 1 peran aplikasi dipilih');
+    missing.push('Daftar peran (roles) belum ditentukan');
   }
-  if (!session.flow?.selectedId && (!session.flow?.alurInti || session.flow.alurInti.length === 0)) {
-    missing.push('Alur kerja utama belum dipilih');
+
+  // 2. Validasi Flow (alurInti ATAU kasusGanda tidak boleh kosong dua-duanya)
+  const hasAlurInti = Boolean(session.flow?.alurInti && session.flow.alurInti.length > 0);
+  const hasKasusGanda = Boolean(
+    session.flow?.kasusGanda &&
+    Array.isArray(session.flow.kasusGanda) &&
+    session.flow.kasusGanda.length > 0
+  );
+  if (!hasAlurInti && !hasKasusGanda) {
+    missing.push('Alur kerja utama (Alur Inti) belum ditetapkan');
+  }
+
+  // 3. Validasi RBAC (minimal 1 modul terisi)
+  if (!session.rbac?.modul || session.rbac.modul.length === 0) {
+    missing.push('Matriks hak akses (RBAC) belum dirancang');
+  }
+
+  // 4. Validasi Skema Data (minimal 1 tabel terisi)
+  if (!session.dataSchema?.tabel || session.dataSchema.tabel.length === 0) {
+    missing.push('Skema tabel data belum dirancang');
+  }
+
+  // 5. Validasi Simulasi DB (contohData dan akunLogin harus terisi)
+  if (
+    !session.simulasiDb?.contohData ||
+    !session.simulasiDb?.contohData?.baris ||
+    session.simulasiDb.contohData.baris.length === 0 ||
+    !session.simulasiDb?.akunLogin ||
+    session.simulasiDb.akunLogin.length === 0
+  ) {
+    missing.push('Simulasi database & akun demo login belum dibuat');
   }
 
   return {
