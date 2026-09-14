@@ -1247,12 +1247,15 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       const badgeEl = document.getElementById('currentRoleBadge');
       if (badgeEl) badgeEl.innerText = role;
 
-      const matched = DEMO_ACCOUNTS.find(a => a.role === role);
-      if (matched && matched.landingTab) {
+      // WAJIB MUTLAK (Bagian A - Anti-Tampilan Sama):
+      // SETIAP role yang login WAJIB langsung diarahkan ke landingTab miliknya!
+      // DILARANG KERAS membiarkan tab Super Admin tetap terbuka saat Kasir/Barber/Pelanggan login!
+      const matched = (typeof DEMO_ACCOUNTS !== 'undefined' ? DEMO_ACCOUNTS : []).find(a => a.role === role);
+      if (matched && matched.landingTab && typeof showTab === 'function') {
         showTab(matched.landingTab);
       } else {
-        const firstTab = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
-        if (firstTab) firstTab.click();
+        const firstVisibleTab = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
+        if (firstVisibleTab) firstVisibleTab.click();
       }
 
       render();
@@ -1338,9 +1341,10 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
    - Saat pengguna login sebagai "Anggota", tab-tab milik "Admin" WAJIB 100% TERSEMBUNYI! Pengguna "Anggota" HANYA melihat tab fitur miliknya (misal: Kartu Digital, Profil Pribadi, Iuran Saya).
    - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Tambah/Edit/Hapus seluruh anggota) pada tampilan Anggota!
 
-4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS:
-   - Fungsi loginAs(role) WAJIB memanggil filterTabsByRole(role) untuk menampilkan HANYA tab yang memiliki data-access-roles sesuai peran aktif, dan menyembunyikan tab peran lainnya.
-   - loginAs(role) kemudian otomatis mengaktifkan tab pertama milik peran tersebut.
+4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS (WAJIB MUTLAK — BAGIAN A):
+   - Fungsi loginAs(role) WAJIB memanggil filterTabsByRole(role) untuk menampilkan HANYA tab yang memiliki data-access-roles sesuai peran aktif.
+   - SETELAH filterTabsByRole(role), loginAs(role) WAJIB MEMANGGIL showTab(matched.landingTab) (atau klik tab pertama yang terlihat).
+   - DILARANG KERAS membiarkan tab Super Admin tetap aktif/terbuka saat peran lain (seperti Kasir, Barber, Pelanggan) login! Setiap peran WAJIB langsung disambut oleh halaman/tab landing miliknya sendiri.
    - Navigasi tab WAJIB memiliki styling CSS modern (.tab-nav dan .tab-btn dengan border-radius, background, dan warna tegas, bukan button polos HTML bawaan).
 
 5. ISOLASI KONTEN TAB DALAM CSS (WAJIB MUTLAK — ANTI-TUMPUK HALAMAN):

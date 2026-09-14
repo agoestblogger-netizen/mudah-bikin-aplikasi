@@ -778,6 +778,13 @@ function loginAs(role) {
   if (typeof filterTabsByRole === 'function') filterTabsByRole(role);
   var badge = document.getElementById('currentRoleBadge');
   if (badge) badge.innerText = role;
+  var matched = (typeof DEMO_ACCOUNTS !== 'undefined' ? DEMO_ACCOUNTS : []).find(function(a) { return a.role === role; });
+  if (matched && matched.landingTab && typeof showTab === 'function') {
+    showTab(matched.landingTab);
+  } else {
+    var firstVisible = Array.from(document.querySelectorAll('.tab-btn')).find(function(b) { return b.style.display !== 'none'; });
+    if (firstVisible) firstVisible.click();
+  }
   if (typeof render === 'function') { try { render(); } catch (e) {} }
 }`);
       hasLoginAsFunc = true;
@@ -799,6 +806,57 @@ function loginAs(role) {
         `ROLE_GATING_MISSING_LOGIN_AS: Fungsi loginAs(role) tidak ditemukan di dalam tag <script>. ` +
         `Aplikasi multi-role WAJIB memiliki fungsi loginAs(role) yang memanggil filterTabsByRole(role).`
       );
+    }
+
+    // 10a.2 Verifikasi Aktivasi Landing Tab Saat Login (Bagian A: Sinkronisasi Tab & Role)
+    // Pada aplikasi multi-role bertab, fungsi login WAJIB mengalihkan tab aktif (memanggil showTab/landingTab atau mengklik tab pertama yang terlihat).
+    // DILARANG membiarkan tab Super Admin tetap terbuka untuk semua peran yang login!
+    if (isMultiRoleApp && (tabBtnMatches.length > 0 || repairedHtml.includes('tab-content') || repairedHtml.includes('tab-pane'))) {
+      const loginFuncMatch = combinedJs.match(/(?:function\s+(?:loginAs|switchRole|selectRole)\s*\(([^)]*)\)|(?:loginAs|switchRole|selectRole)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)|(?:loginAs|switchRole|selectRole)\s*=\s*\(([^)]*)\)\s*=>)\s*\{([\s\S]*?)\n\s*\}/);
+      
+      const hasTabSwitchInLogin = loginFuncMatch ? (
+        /showTab\s*\(|switchTab\s*\(|openTab\s*\(|selectTab\s*\(|\.click\s*\(|\.classList\.add\s*\(\s*['"]active['"]\s*\)|landingTab/i.test(loginFuncMatch[4])
+      ) : false;
+
+      if (!hasTabSwitchInLogin) {
+        // Cek apakah fungsi showTab/setara ada di script untuk auto-repair
+        const hasShowTabFunc = /(?:function\s+showTab|showTab\s*=)/.test(combinedJs);
+        let repairedLoginTab = false;
+
+        if (hasShowTabFunc && repairedHtml.includes('function loginAs')) {
+          const loginTabInjectCode = `
+      // Auto-repaired landing tab switch (Bagian A)
+      var matchedAcc = (typeof DEMO_ACCOUNTS !== 'undefined' ? DEMO_ACCOUNTS : []).find(function(a) { return a.role === role; });
+      if (matchedAcc && matchedAcc.landingTab && typeof showTab === 'function') {
+        showTab(matchedAcc.landingTab);
+      } else {
+        var firstVisibleTab = Array.from(document.querySelectorAll('.tab-btn')).find(function(b) { return b.style.display !== 'none'; });
+        if (firstVisibleTab) firstVisibleTab.click();
+      }`;
+
+          if (/function loginAs\s*\([^)]*\)\s*\{[\s\S]*?render\(\)/.test(repairedHtml)) {
+            repairedHtml = repairedHtml.replace(
+              /(function loginAs\s*\([^)]*\)\s*\{[\s\S]*?)(render\(\);?)/,
+              `$1${loginTabInjectCode}\n      $2`
+            );
+            repairedLoginTab = true;
+          } else {
+            repairedHtml = repairedHtml.replace(
+              /(function loginAs\s*\([^)]*\)\s*\{[\s\S]*?)(\n\s*\})/,
+              `$1${loginTabInjectCode}$2`
+            );
+            repairedLoginTab = true;
+          }
+        }
+
+        if (!repairedLoginTab) {
+          issues.push(
+            `LOGIN_TAB_NOT_SWITCHED: Fungsi loginAs(role) tidak mengaktifkan tab landing per role ` +
+            `(tidak memanggil showTab(landingTab) atau firstVisibleTab.click()). ` +
+            `Akibatnya seluruh role yang login akan melihat tampilan tab yang sama persis!`
+          );
+        }
+      }
     }
 
     if (!hasFilterTabsByRole && tabBtnMatches.length > 0) {
