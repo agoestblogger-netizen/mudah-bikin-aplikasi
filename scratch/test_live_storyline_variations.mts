@@ -150,6 +150,7 @@ async function runLiveVerification() {
   console.log('🔬 UJI KHUSUS: PENGUJIAN BERULANG 3 DOMAIN TERDAMPAK (CUCI, EMAS, KOPERASI)');
   console.log('================================================================');
   const affectedDomains = [
+    { name: 'Bengkel Motor (Anti-Klausa Temporal)', prompt: 'aplikasi servis berkala dan riwayat kendaraan bengkel motor' },
     { name: 'Cuci Mobil & Motor', prompt: 'buatkan aplikasi cuci mobil dan motor' },
     { name: 'Toko Emas Jual Beli', prompt: 'aplikasi jual beli dan penaksiran toko emas' },
     { name: 'Koperasi Simpan Pinjam', prompt: 'aplikasi simpan pinjam dan catatan setoran anggota koperasi' }
@@ -167,7 +168,10 @@ async function runLiveVerification() {
       const firstS = res.narasi.split(/[\.\n\?\!]/)[0].trim();
       console.log(`   [Run ${run}] 👉 "${firstS}."`);
       if (isClicheStorylineOpening(firstS)) {
-        throw new Error(`FAILED: [${domain.name} Run ${run}] Masih menghasilkan pola klise/boilerplate: "${firstS}"`);
+        throw new Error(`FAILED: [${domain.name} Run ${run}] Masih menghasilkan pola klise/pujian: "${firstS}"`);
+      }
+      if (lacksGreetingOpening(firstS)) {
+        throw new Error(`FAILED: [${domain.name} Run ${run}] Langsung melompat ke kronologi operasional tanpa sapaan: "${firstS}"`);
       }
       if (/^mari\s+kita\s+lihat\s+bagaimana\s+alur\s+operasional/i.test(firstS)) {
         throw new Error(`FAILED: [${domain.name} Run ${run}] Masih meniru boilerplate anchor kaku: "${firstS}"`);

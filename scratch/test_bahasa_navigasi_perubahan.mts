@@ -1,7 +1,8 @@
 import {
   generateStorylineWithAI,
   sanitizeStorylineNarrative,
-  isClicheStorylineOpening
+  isClicheStorylineOpening,
+  lacksGreetingOpening
 } from '../src/app/api/guided/route';
 import {
   applyGuidedAnswer,
@@ -44,7 +45,12 @@ async function runTests() {
     // Kasus Baru: Pola pujian tanpa kata benda anchor di awal (subjek bebas)
     'Sistem antrean dan rekam medis pasien di klinik dokter gigi ini sangat penting untuk kelancaran layanan.',
     'Mengelola koperasi simpan pinjam adalah langkah cerdas untuk membantu anggota dalam pengelolaan keuangan.',
-    'Membangun sistem antrean dan rekam medis pasien adalah langkah penting untuk meningkatkan efisiensi layanan kesehatan.'
+    'Membangun sistem antrean dan rekam medis pasien adalah langkah penting untuk meningkatkan efisiensi layanan kesehatan.',
+    // Kasus Imbuhan: Kata sifat pujian dengan akhiran -nya dan intensifier "betapa"
+    'Melihat banyaknya kendaraan yang parkir, tampak jelas betapa pentingnya layanan ini bagi pemilik kendaraan.',
+    'Aplikasi ini menunjukkan bermanfaatnya sistem digital untuk operasional bengkel.',
+    'Strategisnya lokasi ini dalam menarik pelanggan menjadi keunggulan tersendiri.',
+    'Krusialnya koordinasi tim bagi kelancaran transaksi di meja kasir.'
   ];
   const freshSamples = [
     'Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba. Pelanggan datang...',
@@ -74,6 +80,17 @@ async function runTests() {
       throw new Error(`FAILED: Kalimat segar salah terdeteksi sebagai klise: "${s}"`);
     }
   }
+
+  // Test 1.1b: Deteksi ketiadaan sapaan (klausa temporal operasional seperti "Ketika pemilik membawa...")
+  const lacksGreetingSample = 'Ketika pemilik kendaraan membawa motor ke bengkel, mereka disambut oleh teknisi yang siap membantu.';
+  if (!lacksGreetingOpening(lacksGreetingSample)) {
+    throw new Error(`FAILED: Gagal mendeteksi ketiadaan sapaan pada klausa temporal: "${lacksGreetingSample}"`);
+  }
+  const hasGreetingSample = 'Klinik gigi ini selalu ramai dengan pasien yang menunggu perawatan.';
+  if (lacksGreetingOpening(hasGreetingSample)) {
+    throw new Error(`FAILED: Kalimat dengan sapaan/observasi salah terdeteksi lacksGreetingOpening: "${hasGreetingSample}"`);
+  }
+
   console.log('✅ Deteksi kerangka klise vs segar berfungsi akurat 100%.');
 
   // Test 1.2: Sanitasi narasi aman (hanya kata ganti orang pertama jamak, tidak menyentuh kata kerja/benda lain)
