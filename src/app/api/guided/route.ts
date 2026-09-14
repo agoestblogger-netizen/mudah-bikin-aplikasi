@@ -38,7 +38,8 @@ import {
   type PemisahanRoleResult,
   type SupportingFlowItem,
   type SupportingFeatureItem,
-  renderRbacMarkdownTable
+  renderRbacMarkdownTable,
+  renderDataSchemaMarkdown
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -2002,6 +2003,402 @@ Perbarui dan kembalikan JSON lengkap:`;
   };
 }
 
+export interface DataSchemaResult {
+  tabel: {
+    nama: string;
+    keterangan?: string;
+    field: { nama: string; tipe: string; keterangan: string }[];
+  }[];
+  korelasiRingkas?: string;
+  markdownTable?: string;
+}
+
+export function generateFallbackDataSchema(session: MockupSessionState): DataSchemaResult {
+  const delegated = session.roles?.tugasDilimpahkan || [];
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const rbacModul = session.rbac?.modul || [];
+  const alurPendukung = session.flow?.alurPendukung || [];
+
+  const tabel: {
+    nama: string;
+    keterangan?: string;
+    field: { nama: string; tipe: string; keterangan: string }[];
+  }[] = [];
+
+  // Tabel 1: pengguna (selalu ada untuk multi-role RBAC)
+  tabel.push({
+    nama: 'pengguna',
+    keterangan: 'Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem',
+    field: [
+      { nama: 'id', tipe: 'text', keterangan: 'Identitas unik pengguna' },
+      { nama: 'nama_lengkap', tipe: 'text', keterangan: 'Nama lengkap pengguna atau staf' },
+      { nama: 'role', tipe: 'text', keterangan: `Peran pengguna (${activeRoles.join(' / ')})` },
+      { nama: 'kontak', tipe: 'text', keterangan: 'Nomor WhatsApp atau alamat email aktif' },
+      { nama: 'status_aktif', tipe: 'text', keterangan: 'Status keaktifan akun (Aktif / Nonaktif)' }
+    ]
+  });
+
+  const getDelegationNote = (defaultActor: string): string => {
+    const d = delegated.find((item) => item.dariRole.toLowerCase() === defaultActor.toLowerCase());
+    if (d) {
+      return `Selalu diisi oleh ${d.keRole} — peran "${d.dariRole}" telah dialihkan ke "${d.keRole}" karena perampingan organisasi`;
+    }
+    return `ID atau nama ${defaultActor} yang memproses data`;
+  };
+
+  const operationalRole = activeRoles.find((r) => !isSuperAdminRole(r) && !isExternalRole(r)) || 'Staf Operasional';
+  const customerRole = activeRoles.find((r) => isExternalRole(r));
+
+  // Tabel 2: Transaksi / Permohonan Utama (disarikan dari modul mandiri / alur inti)
+  const selfServiceModul = rbacModul.find((m) => /mandiri|pemesanan|pengajuan|pendaftaran|booking/i.test(m.nama));
+  const mainEntityName = selfServiceModul
+    ? selfServiceModul.nama.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+    : 'transaksi_layanan';
+
+  tabel.push({
+    nama: mainEntityName,
+    keterangan: 'Mencatat data transaksi permohonan atau pemesanan utama dari pengguna',
+    field: [
+      { nama: 'id', tipe: 'text', keterangan: 'Kode transaksi unik' },
+      { nama: customerRole ? `${customerRole.toLowerCase().replace(/\s+/g, '_')}_id` : 'pelanggan_id', tipe: 'relasi ke pengguna', keterangan: 'ID akun pihak pemohon / pelanggan' },
+      { nama: 'tanggal_pengajuan', tipe: 'tanggal', keterangan: 'Waktu permohonan atau pemesanan dibuat' },
+      { nama: 'rincian_kebutuhan', tipe: 'text', keterangan: 'Deskripsi permohonan, item, atau layanan yang diminta' },
+      { nama: 'status_transaksi', tipe: 'text', keterangan: 'Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan)' },
+      { nama: 'diverifikasi_oleh', tipe: 'relasi ke pengguna', keterangan: getDelegationNote(operationalRole) }
+    ]
+  });
+
+  // Tabel 3: Pengerjaan Fisik / Operasional Lapangan (disarikan dari modul staf operasional)
+  const operationalModul = rbacModul.find((m) => /operasional|pelaksanaan|verifikasi|inspeksi|layanan/i.test(m.nama) && m !== selfServiceModul);
+  const opEntityName = operationalModul
+    ? operationalModul.nama.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+    : 'pelaksanaan_tugas';
+
+  tabel.push({
+    nama: opEntityName,
+    keterangan: 'Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan',
+    field: [
+      { nama: 'id', tipe: 'text', keterangan: 'Identitas unik lembar pengerjaan' },
+      { nama: `${mainEntityName}_id`, tipe: `relasi ke ${mainEntityName}`, keterangan: 'Referensi ke transaksi permohonan terkait' },
+      { nama: 'tanggal_pelaksanaan', tipe: 'tanggal', keterangan: 'Waktu eksekusi atau verifikasi dilakukan' },
+      { nama: 'catatan_pemeriksaan', tipe: 'text', keterangan: 'Hasil observasi, kelayakan fisik, atau status kelengkapan' },
+      { nama: 'petugas_eksekusi', tipe: 'relasi ke pengguna', keterangan: getDelegationNote(operationalRole) }
+    ]
+  });
+
+  // Tabel 4: Penanganan Kendala / Alur Pendukung (jika ada)
+  if (alurPendukung.length > 0) {
+    tabel.push({
+      nama: 'penanganan_kendala',
+      keterangan: 'Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung',
+      field: [
+        { nama: 'id', tipe: 'text', keterangan: 'Nomor tiket kendala unik' },
+        { nama: `${mainEntityName}_id`, tipe: `relasi ke ${mainEntityName}`, keterangan: 'Referensi ke transaksi terkait (bila ada)' },
+        { nama: 'tanggal_laporan', tipe: 'tanggal', keterangan: 'Waktu kendala atau jadwal servis dicatat' },
+        { nama: 'deskripsi_kendala', tipe: 'text', keterangan: 'Rincian kendala teknis atau permohonan penyesuaian' },
+        { nama: 'tindakan_solusi', tipe: 'text', keterangan: 'Langkah penyelesaian yang disetujui atau dieksekusi' },
+        { nama: 'ditangani_oleh', tipe: 'relasi ke pengguna', keterangan: getDelegationNote(operationalRole) }
+      ]
+    });
+  }
+
+  const korelasiRingkas =
+    `Setiap transaksi baru tercatat di tabel \`${mainEntityName}\` dengan menghubungkan akun \`pengguna\`. ` +
+    `Staf operasional menindaklanjuti proses melalui tabel \`${opEntityName}\` untuk verifikasi dan pencatatan hasil kerja harian. ` +
+    (alurPendukung.length > 0
+      ? `Bila ditemukan kendala operasional atau jadwal pemeliharaan, tiket dicatat pada tabel \`penanganan_kendala\` untuk ditindaklanjuti hingga tuntas.`
+      : `Seluruh riwayat transaksi dapat diaudit sewaktu-waktu oleh Super Admin untuk rekapitulasi performa.`);
+
+  const markdownTable = renderDataSchemaMarkdown(tabel, korelasiRingkas);
+
+  return {
+    tabel,
+    korelasiRingkas,
+    markdownTable
+  };
+}
+
+export async function generateDataSchemaWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<DataSchemaResult> {
+  const startTime = Date.now();
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const delegated = session.roles?.tugasDilimpahkan || [];
+  const narrative = session.storyline?.narasi || '';
+  const mainFlow = session.flow?.alurInti || [];
+  const alurPendukung = session.flow?.alurPendukung || [];
+  const rbacModul = session.rbac?.modul || [];
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+
+  const delegationRulesPrompt = delegated.length > 0
+    ? `\n⚠️ ATURAN KHUSUS PELIMPAHAN TUGAS PADA FIELD TABEL (WAJIB DIPATUHI):
+${delegated.map((d) => `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan seluruh wewenangnya dialihkan ke "${d.keRole}".
+  * Setiap field pencatat/pemroses yang secara normal dikerjakan oleh "${d.dariRole}" (misal: dicatat_oleh, diverifikasi_oleh, kasir_id) WAJIB diberi keterangan: "Selalu diisi oleh ${d.keRole} — peran ${d.dariRole} telah dialihkan ke ${d.keRole} karena perampingan organisasi."`).join('\n')}`
+    : '';
+
+  const systemInstruction = `Anda adalah Analis Basis Data & Perancang Skema Data Aplikasi Bisnis Nyata.
+Tugas Anda: Menyusun Skema Tabel Data dan Relasi Entitas yang SANGAT PRESISI, MURNI DIGROUNDING pada alur proses bisnis nyata, peran pengguna yang aktif, dan matriks hak akses (RBAC) yang telah disepakati.
+
+ATURAN WAJIB & STRICT PRINCIPLES:
+1. MURNI ANALISIS KONSEPTUAL (DILARANG KERAS TEMPLATE INDUSTRI / CABANG DOMAIN):
+   - Seluruh tabel dan field WAJIB disimpulkan murni dari narasi, alur operasional, peran aktif, dan modul RBAC pengguna!
+   - DILARANG menggunakan daftar tabel template bawaan yang tidak relevan dengan kebutuhan alur bisnis saat ini.
+
+2. PEMETAAN DARI MODUL RBAC & ALUR KERJA:
+   - Gunakan matriks modul RBAC sebagai petunjuk utama entitas data. Setiap modul fungsional umumnya membutuhkan setidaknya satu tabel data transaksi/pencatatan.
+   - Jika proses bisnis membutuhkan struktur master-detail atau log tersendiri (misal: rincian item, angsuran cicilan, riwayat servis), sediakan tabel terkait secara proporsional.
+   - Tabel akun pengguna / peran (misal: "pengguna") WAJIB ada untuk mendukung otorisasi RBAC peran-peran aktif: ${activeRoles.join(', ')}.
+
+3. TANPA KUOTA ARTIFISIAL (3 HINGGA 6 TABEL PROPORSIONAL):
+   - Rancang skema dengan jumlah tabel yang pas dan proporsional (biasanya 3 sampai 6 tabel).
+   - Jangan membuat tabel kembung atau tabel dummy yang tidak ada kaitannya dengan alur kerja pengguna.
+
+4. TIPE DATA MANUSIAWI (LEVEL PENGGUNA AWAM - ZERO TECH JARGON):
+   - DILARANG KERAS memakai istilah teknis SQL seperti VARCHAR, INT, BIGINT, BOOLEAN, ENUM, TIMESTAMP, FOREIGN KEY!
+   - Gunakan HANYA 4 tipe data yang mudah dipahami orang awam:
+     a. "text" (untuk nama, catatan, kode, status, nomor surat, alamat)
+     b. "angka" (untuk nominal uang, tarif, harga, durasi waktu, jumlah item, persentase)
+     c. "tanggal" (untuk tanggal pengajuan, batas waktu, jadwal pelaksanaan, jam transaksi)
+     d. "relasi ke [Nama Tabel]" (untuk hubungan antar-entitas, contoh: "relasi ke pengguna", "relasi ke pemesanan")
+
+5. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
+   - Di akhir, berikan 2-3 kalimat penjelasan korelasi ringkas yang menggambarkan aliran data antar-tabel dari hulu ke hilir.
+${delegationRulesPrompt}
+
+6. FORMAT OUTPUT JSON WAJIB:
+{
+  "tabel": [
+    {
+      "nama": "nama_tabel_huruf_kecil_underscore",
+      "keterangan": "Fungsi dan tujuan tabel ini",
+      "field": [
+        { "nama": "id", "tipe": "text", "keterangan": "Identitas unik record" },
+        { "nama": "nama_field", "tipe": "text", "keterangan": "Fungsi field ini" }
+      ]
+    }
+  ],
+  "korelasiRingkas": "2-3 kalimat ringkas alur keterhubungan antar-tabel dari transaksi awal hingga pelaporan akhir."
+}`;
+
+  const userPrompt = `Domain Usaha: ${businessDomain}
+
+Gambaran Proses:
+${narrative}
+
+Daftar Peran Aktif:
+${activeRoles.join(', ')}
+
+Alur Inti Operasional:
+${mainFlow.map((s) => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
+
+Alur Pendukung:
+${alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
+
+Matriks Modul RBAC yang Disepakati:
+${rbacModul.map((m) => `- ${m.nama}: ${m.deskripsiFungsional || ''}`).join('\n')}
+
+Rancang skema tabel data dan relasi dalam format JSON:`;
+
+  const parseAndValidateDataSchema = (rawText: string | null): DataSchemaResult | null => {
+    if (!rawText) return null;
+    try {
+      const parsed = robustJsonParse<any>(rawText);
+      if (parsed && Array.isArray(parsed.tabel) && parsed.tabel.length > 0) {
+        const validatedTables: {
+          nama: string;
+          keterangan?: string;
+          field: { nama: string; tipe: string; keterangan: string }[];
+        }[] = [];
+
+        for (const t of parsed.tabel) {
+          if (t && typeof t.nama === 'string' && Array.isArray(t.field) && t.field.length > 0) {
+            const validFields: { nama: string; tipe: string; keterangan: string }[] = [];
+            for (const f of t.field) {
+              if (f && typeof f.nama === 'string') {
+                validFields.push({
+                  nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
+                  tipe: String(f.tipe || 'text').trim(),
+                  keterangan: String(f.keterangan || '').trim()
+                });
+              }
+            }
+            if (validFields.length > 0) {
+              validatedTables.push({
+                nama: String(t.nama).trim().toLowerCase().replace(/\s+/g, '_'),
+                keterangan: t.keterangan ? String(t.keterangan).trim() : undefined,
+                field: validFields
+              });
+            }
+          }
+        }
+
+        if (validatedTables.length >= 2) {
+          const korelasi = parsed.korelasiRingkas ? String(parsed.korelasiRingkas).trim() : undefined;
+          const markdownTable = renderDataSchemaMarkdown(validatedTables, korelasi);
+          return {
+            tabel: validatedTables,
+            korelasiRingkas: korelasi,
+            markdownTable
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[AI-DATA-SCHEMA] Gagal parse JSON skema data:', e);
+    }
+    return null;
+  };
+
+  let raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.3,
+    maxTokens: 4000,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  let parsedSchema = parseAndValidateDataSchema(raw);
+
+  if (!parsedSchema && (provider || apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)) {
+    console.log('[AI-DATA-SCHEMA] Melakukan retry AI 1x dengan prompt penegasan format...');
+    const retryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN PENTING:
+Output JSON Anda sebelumnya gagal diproses atau tidak lengkap!
+WAJIB keluarkan HANYA JSON murni yang valid tanpa komentar, tanpa trailing comma, dan memuat array "tabel" (dengan "nama" dan array "field") serta "korelasiRingkas".`;
+
+    raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt: retryPrompt,
+      temperature: 0.2,
+      maxTokens: 4000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+    parsedSchema = parseAndValidateDataSchema(raw);
+  }
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[AI-DATA-SCHEMA] Selesai dalam ${elapsed}ms`);
+
+  if (parsedSchema) {
+    return parsedSchema;
+  }
+
+  console.warn('[AI-DATA-SCHEMA] AI call gagal atau tidak valid, beralih ke fallback deterministik dinamis');
+  return generateFallbackDataSchema(session);
+}
+
+export async function reviseDataSchemaWithAI(
+  session: MockupSessionState,
+  userCorrection: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<DataSchemaResult> {
+  const startTime = Date.now();
+  const currentTables = session.dataSchema?.tabel || [];
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+
+  if (currentTables.length === 0) {
+    return generateDataSchemaWithAI(session, provider, apiKey, model);
+  }
+
+  const systemInstruction = `Anda adalah Analis Basis Data & Perancang Skema Data Aplikasi Bisnis.
+Tugas Anda: Memperbaiki dan memperbarui Skema Tabel Data berdasarkan koreksi atau masukan pengguna.
+
+ATURAN REVISI (KONSISTEN & KUMULATIF):
+1. Baca koreksi pengguna dengan teliti: sesuaikan tabel, field, atau relasi yang diminta.
+2. PERTAHANKAN seluruh tabel dan kolom lain yang tidak diminta diubah (KUMULATIF).
+3. Pertahankan tipe data manusiawi: "text", "angka", "tanggal", "relasi ke [Tabel]".
+4. Format output JSON sama persis dengan format skema data sebelumnya.`;
+
+  const userPrompt = `Skema Tabel Data Saat Ini:
+${JSON.stringify(currentTables, null, 2)}
+
+Korelasi Saat Ini:
+"${session.dataSchema?.korelasiRingkas || ''}"
+
+Daftar Peran Aktif:
+${activeRoles.join(', ')}
+
+Koreksi / Penyesuaian Pengguna:
+"${userCorrection}"
+
+Perbarui dan kembalikan JSON lengkap:`;
+
+  const raw = await invokeAIChat({
+    systemInstruction,
+    userPrompt,
+    temperature: 0.3,
+    maxTokens: 4000,
+    provider,
+    userApiKey: apiKey,
+    userModel: model
+  });
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[AI-DATA-SCHEMA-REVISE] Selesai dalam ${elapsed}ms`);
+
+  if (raw) {
+    try {
+      const parsed = robustJsonParse<any>(raw);
+      if (parsed && Array.isArray(parsed.tabel) && parsed.tabel.length > 0) {
+        const validatedTables: {
+          nama: string;
+          keterangan?: string;
+          field: { nama: string; tipe: string; keterangan: string }[];
+        }[] = [];
+
+        for (const t of parsed.tabel) {
+          if (t && typeof t.nama === 'string' && Array.isArray(t.field) && t.field.length > 0) {
+            const validFields: { nama: string; tipe: string; keterangan: string }[] = [];
+            for (const f of t.field) {
+              if (f && typeof f.nama === 'string') {
+                validFields.push({
+                  nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
+                  tipe: String(f.tipe || 'text').trim(),
+                  keterangan: String(f.keterangan || '').trim()
+                });
+              }
+            }
+            if (validFields.length > 0) {
+              validatedTables.push({
+                nama: String(t.nama).trim().toLowerCase().replace(/\s+/g, '_'),
+                keterangan: t.keterangan ? String(t.keterangan).trim() : undefined,
+                field: validFields
+              });
+            }
+          }
+        }
+
+        if (validatedTables.length > 0) {
+          const korelasi = parsed.korelasiRingkas ? String(parsed.korelasiRingkas).trim() : session.dataSchema?.korelasiRingkas;
+          const markdownTable = renderDataSchemaMarkdown(validatedTables, korelasi);
+          return {
+            tabel: validatedTables,
+            korelasiRingkas: korelasi,
+            markdownTable
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[AI-DATA-SCHEMA-REVISE] Gagal parse JSON revisi:', e);
+    }
+  }
+
+  // Fallback koreksi jika LLM gagal: pertahankan tabel yang ada
+  const markdownTable = renderDataSchemaMarkdown(currentTables, session.dataSchema?.korelasiRingkas);
+  return {
+    tabel: currentTables,
+    korelasiRingkas: session.dataSchema?.korelasiRingkas,
+    markdownTable
+  };
+}
+
 async function generateNarration(
   session: MockupSessionState,
   action: GuidedAction,
@@ -3399,6 +3796,8 @@ export async function POST(req: Request) {
               revisiCount: (session.rbac?.revisiCount || 0) + 1
             }
           };
+          // Regenerasi otomatis saat RBAC berubah
+          delete updatedSession.dataSchema;
 
           const guidedStep = buildGuidedStep(updatedSession);
           const tableMarkdown =
@@ -3425,10 +3824,39 @@ export async function POST(req: Request) {
 
         // User memilih confirm_rbac ("Sudah pas, lanjut ke Skema Data")
         let updated = applyGuidedAnswer(session, 'RBAC', body.selected || [], body.other);
+
+        // Pastikan skema data digenerate saat transisi ke SKEMA_DATA
+        if (!updated.dataSchema || !updated.dataSchema.tabel || updated.dataSchema.tabel.length === 0) {
+          try {
+            const schemaResult = await generateDataSchemaWithAI(updated, provider, userApiKey, userModel);
+            updated.dataSchema = {
+              tabel: schemaResult.tabel,
+              korelasiRingkas: schemaResult.korelasiRingkas,
+              markdownTable: schemaResult.markdownTable,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: 0
+            };
+          } catch (err: any) {
+            console.error('[guided/route] Error generating data schema with AI:', err);
+            const fallback = generateFallbackDataSchema(updated);
+            const md = renderDataSchemaMarkdown(fallback.tabel, fallback.korelasiRingkas);
+            updated.dataSchema = {
+              tabel: fallback.tabel,
+              korelasiRingkas: fallback.korelasiRingkas,
+              markdownTable: md,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: 0
+            };
+          }
+        }
+
         const guidedStep = buildGuidedStep(updated);
+        const schemaMarkdown = updated.dataSchema?.markdownTable || (updated.dataSchema ? renderDataSchemaMarkdown(updated.dataSchema.tabel, updated.dataSchema.korelasiRingkas) : '');
         const narration =
           `Bagus sekali! Matriks hak akses (RBAC) telah disetujui.\n\n` +
-          `Sekarang, mari kita tentukan struktur skema tabel dan relasi data untuk aplikasi Anda:`;
+          `Berikut rancangan skema tabel data & relasi yang dibutuhkan aplikasi Anda berdasarkan alur dan wewenang yang telah disepakati:\n\n` +
+          `${schemaMarkdown}\n\n` +
+          `Silakan periksa struktur tabel dan relasinya di atas. Jika sudah pas, klik "Sudah pas" untuk lanjut ke Simulasi Database.`;
 
         return NextResponse.json({
           success: true,
@@ -3439,7 +3867,72 @@ export async function POST(req: Request) {
         });
       }
 
-      // Default applyGuidedAnswer untuk langkah berikutnya (SKEMA_DATA, dst)
+      // Penanganan khusus untuk step SKEMA_DATA
+      if (stepId === 'SKEMA_DATA') {
+        const isCorrection = body.selected?.includes('koreksi_schema') || (body.other && body.other.trim().length > 0);
+
+        if (isCorrection) {
+          const userCorrection = body.other || (body.selected && body.selected.join(', ')) || '';
+          const currentCount = session.dataSchema?.revisiCount || 0;
+
+          const revisedResult = await reviseDataSchemaWithAI(
+            session,
+            userCorrection,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'SKEMA_DATA',
+            dataSchema: {
+              tabel: revisedResult.tabel,
+              korelasiRingkas: revisedResult.korelasiRingkas,
+              markdownTable: revisedResult.markdownTable,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: currentCount + 1
+            }
+          };
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          const schemaMarkdown = revisedResult.markdownTable || renderDataSchemaMarkdown(revisedResult.tabel, revisedResult.korelasiRingkas);
+          const narration =
+            `Siap, skema tabel data telah saya perbarui sesuai masukanmu:\n\n` +
+            `${schemaMarkdown}\n\n` +
+            `Silakan tinjau kembali perubahan di atas. Jika sudah sesuai, pilih "Sudah pas, lanjut ke Simulasi Database".`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
+
+        // User memilih confirm_schema ("Sudah pas, lanjut ke Simulasi Database")
+        let updated = applyGuidedAnswer(session, 'SKEMA_DATA', body.selected || [], body.other);
+        const guidedStep = buildGuidedStep(updated);
+        const narration = await generateNarration(
+          updated,
+          'NEXT',
+          guidedStep?.title,
+          provider,
+          userApiKey,
+          userModel
+        );
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Default applyGuidedAnswer untuk langkah lainnya
       let updated = applyGuidedAnswer(session, stepId, body.selected || [], body.other);
 
       const guidedStep = buildGuidedStep(updated);

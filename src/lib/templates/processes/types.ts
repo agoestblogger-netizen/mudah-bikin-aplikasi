@@ -294,7 +294,15 @@ export interface MockupSessionState {
     revisiCount?: number;
   };
   dataSchema?: {
-    tabel: { nama: string; field: { nama: string; tipe: string; keterangan: string }[] }[];
+    tabel: {
+      nama: string;
+      keterangan?: string;
+      field: { nama: string; tipe: string; keterangan: string }[];
+    }[];
+    korelasiRingkas?: string;
+    markdownTable?: string;
+    statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+    revisiCount?: number;
   };
   painPoints: { selected: string[]; other?: string };
   features: {

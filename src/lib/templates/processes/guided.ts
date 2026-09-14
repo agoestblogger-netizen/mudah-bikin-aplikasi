@@ -46,8 +46,8 @@ interface FeatureInfo {
 export type { FeatureInfo };
 
 function collectFeatures(session: MockupSessionState): FeatureInfo[] {
-  const patterns = getProcessPatternsByIds(session.match.patternIds);
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
+  const patterns = getProcessPatternsByIds(session.match?.patternIds || []);
+  const overlays = getIndustryOverlaysByIds(session.match?.overlayIds || []);
   const byId = new Map<string, FeatureInfo>();
   const byLabel = new Set<string>();
 
@@ -2092,7 +2092,7 @@ function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
 
 export function renderRbacMarkdownTable(
   roles: string[],
-  modulList: { nama: string; deskripsiFungsional?: string; izinPerRole: { role: string; level: string; keterangan?: string }[] }[],
+  modulList: any[],
   catatanPelimpahan?: string[]
 ): string {
   if (!roles || roles.length === 0 || !modulList || modulList.length === 0) return '';
@@ -2101,23 +2101,34 @@ export function renderRbacMarkdownTable(
   const divider = `| :--- | ${roles.map(() => ':---').join(' | ')} |`;
 
   const rows = modulList.map((m) => {
+    const modulName = m.nama || m.namaModul || '';
     const cells = roles.map((r) => {
-      const match = m.izinPerRole.find(
-        (ip) => ip.role.trim().toLowerCase() === r.trim().toLowerCase()
-      );
-      if (!match || !match.level || match.level.trim() === '-' || /tidak ada|tidak memiliki/i.test(match.level)) {
-        return '-';
+      if (m.wewenangPeran && typeof m.wewenangPeran === 'object' && m.wewenangPeran[r]) {
+        return m.wewenangPeran[r].trim();
       }
-      return match.level.trim();
+      if (Array.isArray(m.izinPerRole)) {
+        const match = m.izinPerRole.find(
+          (ip: any) => ip.role?.trim().toLowerCase() === r.trim().toLowerCase()
+        );
+        if (!match || !match.level || match.level.trim() === '-' || /tidak ada|tidak memiliki/i.test(match.level)) {
+          return '-';
+        }
+        return match.level.trim();
+      }
+      return '-';
     });
-    return `| **${m.nama}** | ${cells.join(' | ')} |`;
+    return `| **${modulName}** | ${cells.join(' | ')} |`;
   });
 
   let table = `${header}\n${divider}\n${rows.join('\n')}`;
 
   const deskripsiItems = modulList
-    .filter((m) => m.deskripsiFungsional && m.deskripsiFungsional.trim())
-    .map((m) => `> - **${m.nama}**: ${m.deskripsiFungsional!.trim()}`);
+    .map((m) => {
+      const name = m.nama || m.namaModul || '';
+      const desc = m.deskripsiFungsional || m.deskripsiModul || '';
+      return desc && desc.trim() ? `> - **${name}**: ${desc.trim()}` : null;
+    })
+    .filter(Boolean);
 
   if (deskripsiItems.length > 0) {
     table += `\n\n> 📋 **Keterangan Modul Fungsional:**\n` + deskripsiItems.join('\n');
@@ -2130,6 +2141,30 @@ export function renderRbacMarkdownTable(
   }
 
   return table;
+}
+
+export function renderDataSchemaMarkdown(
+  tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[],
+  korelasiRingkas?: string
+): string {
+  if (!tables || tables.length === 0) return '';
+
+  const tableBlocks = tables.map((t) => {
+    const desc = t.keterangan ? `*${t.keterangan.trim()}*\n\n` : '';
+    const header = `| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |`;
+    const rows = t.field.map((f) => {
+      return `| \`${f.nama}\` | ${f.tipe} | ${f.keterangan} |`;
+    });
+    return `### 📦 Tabel: \`${t.nama}\`\n${desc}${header}\n${rows.join('\n')}`;
+  });
+
+  let fullMarkdown = tableBlocks.join('\n\n');
+
+  if (korelasiRingkas && korelasiRingkas.trim()) {
+    fullMarkdown += `\n\n> 🔗 **Korelasi Antar-Tabel:**\n> ${korelasiRingkas.trim().replace(/\n+/g, '\n> ')}`;
+  }
+
+  return fullMarkdown;
 }
 
 function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
@@ -2162,6 +2197,8 @@ function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
 }
 
 function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
+  const isRevising = Boolean(session.dataSchema?.revisiCount && session.dataSchema.revisiCount > 0);
+  const totalTabel = session.dataSchema?.tabel?.length || 0;
   return {
     stepId: 'SKEMA_DATA',
     title: 'Skema Tabel & Relasi Data Aplikasi',
@@ -2170,16 +2207,19 @@ function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
     options: [
       {
         id: 'confirm_schema',
-        label: '✅ Setujui struktur tabel & relasi data',
+        label: '✅ Sudah pas, lanjut ke Simulasi Database',
         recommended: true,
-        description: 'Field, tipe data, dan relasi entitas utama'
+        description:
+          totalTabel > 0
+            ? `Struktur ${totalTabel} tabel data dan relasi sudah sesuai kebutuhan alur aplikasi.`
+            : 'Field dan relasi antar-tabel sudah tepat.'
       },
       {
         id: 'koreksi_schema',
-        label: '✏️ Ada koreksi skema tabel data',
-        description: 'Tulis tabel atau kolom yang perlu ditambah atau disesuaikan',
+        label: isRevising ? '✏️ Masih ada koreksi skema data' : '✏️ Ada koreksi skema data',
+        description: 'Tuliskan tabel atau kolom yang perlu ditambah, diubah, atau disesuaikan.',
         requiresInput: true,
-        inputPlaceholder: 'Contoh: Tambahkan kolom nomor WhatsApp pada tabel pelanggan...'
+        inputPlaceholder: 'Contoh: Tambahkan kolom nomor WhatsApp pada tabel pelanggan, atau buat tabel riwayat pembayaran...'
       }
     ]
   };
@@ -2386,8 +2426,9 @@ export function applyGuidedAnswer(
       delete next.flow.fiturPendukung;
       delete next.flow.kasusGanda;
     }
-    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC saat daftar role berubah
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC dan Skema Data saat daftar role berubah
     delete next.rbac;
+    delete next.dataSchema;
   } else if (stepId === 'ALUR') {
     const flowData = getDomainFlowDetails(session);
 
@@ -2444,14 +2485,17 @@ export function applyGuidedAnswer(
       ...(other ? { other } : {})
     };
 
-    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC saat alur kerja berubah
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC dan Skema Data saat alur kerja berubah
     delete next.rbac;
+    delete next.dataSchema;
   } else if (stepId === 'RBAC') {
     if (next.rbac) {
       next.rbac.statusKonfirmasi = 'disetujui';
     }
   } else if (stepId === 'SKEMA_DATA') {
-    // Diproses di Poin 6
+    if (next.dataSchema) {
+      next.dataSchema.statusKonfirmasi = 'disetujui';
+    }
   } else if (stepId === 'SIMULASI_DB') {
     // Diproses di Poin 7
   } else if (stepId === 'REVIEW_FINAL') {
@@ -2500,11 +2544,11 @@ export function compileBriefFromSession(
   session: MockupSessionState,
   meta: BriefMeta = {}
 ): string {
-  const patterns = getProcessPatternsByIds(session.match.patternIds);
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds);
+  const patterns = getProcessPatternsByIds(session.match.patternIds || []);
+  const overlays = getIndustryOverlaysByIds(session.match.overlayIds || []);
   const checklist = buildBusinessProcessChecklist(
-    session.match.patternIds,
-    session.match.overlayIds,
+    session.match.patternIds || [],
+    session.match.overlayIds || [],
     session.match.templateId
   );
   const features = collectFeatures(session);
@@ -2630,6 +2674,11 @@ export function compileBriefFromSession(
       const tableMd = session.rbac.markdownTable || renderRbacMarkdownTable(roles, session.rbac.modul, session.rbac.catatanPelimpahan);
       lines.push(tableMd);
     }
+    if (session.dataSchema?.tabel && session.dataSchema.tabel.length > 0) {
+      lines.push('- **Skema Tabel & Relasi Data**:');
+      const schemaMd = session.dataSchema.markdownTable || renderDataSchemaMarkdown(session.dataSchema.tabel, session.dataSchema.korelasiRingkas);
+      lines.push(schemaMd);
+    }
     lines.push('- **Job Description & Struktur Halaman per Role**:');
     for (const role of roles) {
       lines.push(`  * **${role}**:`);
@@ -2723,13 +2772,13 @@ export function compileBriefFromSession(
   }
 
   const notes: string[] = [];
-  if (session.painPoints.selected.length) {
+  if (session.painPoints?.selected?.length) {
     notes.push(`Masalah yang diselesaikan: ${session.painPoints.selected.length} poin terpilih`);
   }
-  if (session.painPoints.other) notes.push(`Catatan pain point: ${session.painPoints.other}`);
-  if (session.roles.other) notes.push(`Peran tambahan: ${session.roles.other}`);
-  if (session.flow.other) notes.push(`Alur tambahan: ${session.flow.other}`);
-  if (session.features.other) notes.push(`Fitur tambahan: ${session.features.other}`);
+  if (session.painPoints?.other) notes.push(`Catatan pain point: ${session.painPoints.other}`);
+  if (session.roles?.other) notes.push(`Peran tambahan: ${session.roles.other}`);
+  if (session.flow?.other) notes.push(`Alur tambahan: ${session.flow.other}`);
+  if (session.features?.other) notes.push(`Fitur tambahan: ${session.features.other}`);
   if (notes.length) {
     lines.push('- **Catatan Tambahan**:');
     notes.forEach((n) => lines.push(`  - ${n}`));
