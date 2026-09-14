@@ -360,6 +360,56 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
+  const resumeGuidedStep = async (targetStep?: string) => {
+    setIsGenerating(true);
+    setLoadingText('Membuka tahapan perencanaan...');
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/guided', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          action: 'RESUME',
+          session: projectState.sessionState,
+          targetStep: targetStep || projectState.sessionState?.step || 'STORYTELLING',
+          ...guidedApiPayload()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal melanjutkan tahapan terpandu.');
+      }
+
+      const aiMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: data.narration || 'Silakan lanjutkan tahapan berikut:',
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        guidedStep: data.guidedStep || undefined
+      };
+      const finalMessages = [...messages, aiMsg];
+      setMessages(finalMessages);
+      setSelectedMode('PLAN');
+      onUpdateState({
+        chatMessages: finalMessages,
+        sessionState: data.session as MockupSessionState
+      });
+    } catch (err: any) {
+      console.error('Error resuming guided step:', err);
+      const errorAiMsg: ChatMessage = {
+        id: 'msg-' + (Date.now() + 1),
+        sender: 'AI',
+        text: `⚠️ ${err.message || 'Gagal melanjutkan tahapan terpandu.'}`,
+        timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      };
+      const finalMessages = [...messages, errorAiMsg];
+      setMessages(finalMessages);
+      onUpdateState({ chatMessages: finalMessages });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const summarizeGuidedAnswer = (
     payload: GuidedStepPayload | undefined,
     selected: string[],
@@ -436,6 +486,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       // Tangani tombol "Setujui & Buat Prototipe" dari kartu REVIEW_FINAL
       if (data.action === 'APPROVE' || (stepId === 'REVIEW_FINAL' && selected.includes('approve_prototype'))) {
         const briefText = data.brief || nextSession.compiledBrief || '';
+        nextSession.reviewFinalApproved = true;
+        nextSession.statusKonfirmasi = 'disetujui';
+        if (!nextSession.review) {
+          nextSession.review = { statusKonfirmasi: 'disetujui' };
+        } else {
+          nextSession.review.statusKonfirmasi = 'disetujui';
+        }
         onUpdateState({ chatMessages: finalMessages, sessionState: nextSession });
         setSelectedMode('BUILD');
         setTimeout(() => {
@@ -602,6 +659,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
       if (!res.ok) {
         let errorMsg = 'Terjadi kesalahan pada server saat memproses permintaan.';
+        let suggestedOptions: string[] | undefined = undefined;
+        let metadata: Record<string, unknown> | undefined = undefined;
+
         if (res.status === 504) {
           errorMsg = '⏱️ Batas waktu server tercapai (Timeout 504). Silakan coba kembali atau sederhanakan instruksi.';
         } else if (res.status === 429) {
@@ -610,6 +670,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           try {
             const errData = await res.json();
             if (errData.error) errorMsg = `⚠️ ${errData.error}`;
+            if (errData.needsGuidedInterview) {
+              const activeStep = errData.currentStep || projectState.sessionState?.step || 'STORYTELLING';
+              const stepName = errData.stepName || activeStep;
+              suggestedOptions = [
+                `▶️ Lanjutkan dari Tahap ${stepName}`,
+                `🔄 Mulai dari Awal (Cerita Bisnis)`
+              ];
+              metadata = {
+                resumeStep: activeStep,
+                restartGuided: true
+              };
+            }
           } catch (_) {}
         }
 
@@ -617,7 +689,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           id: 'msg-' + (Date.now() + 1),
           sender: 'AI',
           text: errorMsg,
-          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          suggestedOptions,
+          metadata
         };
         const finalMessages = [...updatedMessages, errorAiMsg];
         setMessages(finalMessages);
@@ -1212,24 +1286,35 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                   >
                     <MarkdownMessage content={textToDisplay} isUser={m.sender === 'USER'} />
 
-                  {/* Quick Action Pills — untuk pesan pertama (welcome) ATAU pesan kegagalan generate (POIN D) */}
-                  {m.suggestedOptions && m.suggestedOptions.length > 0 && (messages.length <= 1 || m.metadata?.retryPrompt) && (
+                  {/* Quick Action Pills — untuk pesan pertama (welcome), pesan kegagalan generate (POIN D), atau pemulihan guided interview */}
+                  {m.suggestedOptions && m.suggestedOptions.length > 0 && Boolean(messages.length <= 1 || m.metadata?.retryPrompt || m.metadata?.resumeStep || m.metadata?.restartGuided) && (
                     <div className="pt-3 border-t border-white/10 flex flex-wrap gap-1.5">
                       {m.suggestedOptions.map((opt, i) => {
-                        // POIN D: Jika ada metadata, resolve prompt aktual dari metadata
-                        // (bukan label tombol seperti "🔄 Coba Generate Ulang")
-                        let actualPrompt = opt;
-                        if (m.metadata) {
-                          if (opt.startsWith('🔄') && m.metadata.retryPrompt) {
-                            actualPrompt = m.metadata.retryPrompt as string;
-                          } else if (opt.startsWith('📦') && m.metadata.simplifyPrompt) {
-                            actualPrompt = m.metadata.simplifyPrompt as string;
-                          }
-                        }
                         return (
                           <button
                             key={i}
-                            onClick={() => handleSendMessage(actualPrompt)}
+                            onClick={() => {
+                              if (m.metadata?.resumeStep && opt.startsWith('▶️')) {
+                                resumeGuidedStep(m.metadata.resumeStep as string);
+                                return;
+                              }
+                              if (m.metadata?.restartGuided && opt.startsWith('🔄 Mulai')) {
+                                const ideaTitle = projectState.title && projectState.title !== 'Proyek Baru' ? `buatkan aplikasi ${projectState.title}` : 'buatkan aplikasi baru';
+                                startGuidedSession(ideaTitle);
+                                return;
+                              }
+
+                              // POIN D: Jika ada metadata, resolve prompt aktual dari metadata
+                              let actualPrompt = opt;
+                              if (m.metadata) {
+                                if (opt.startsWith('🔄') && m.metadata.retryPrompt) {
+                                  actualPrompt = m.metadata.retryPrompt as string;
+                                } else if (opt.startsWith('📦') && m.metadata.simplifyPrompt) {
+                                  actualPrompt = m.metadata.simplifyPrompt as string;
+                                }
+                              }
+                              handleSendMessage(actualPrompt);
+                            }}
                             className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/35 text-[11px] font-medium text-zinc-300 hover:text-[#10f48e] transition-all text-left active:scale-[0.98]"
                           >
                             {opt}

@@ -560,15 +560,43 @@ export async function POST(req: Request) {
       const isGuidedApproved = Boolean(
         incomingSession &&
         incomingSession.step === 'REVIEW_FINAL' &&
-        (incomingSession.statusKonfirmasi === 'disetujui' || incomingSession.review?.statusKonfirmasi === 'disetujui')
+        (incomingSession.statusKonfirmasi === 'disetujui' ||
+         incomingSession.review?.statusKonfirmasi === 'disetujui' ||
+         incomingSession.reviewFinalApproved === true)
       );
 
       if (!isGuidedApproved) {
         console.warn(`[GUARD BLOCKED] Pembuatan prototipe baru ditolak: sesi belum melewati REVIEW_FINAL yang disetujui.`);
+        const activeStep = (incomingSession && incomingSession.step) ? incomingSession.step : 'STORYTELLING';
+        const stepNameMap: Record<string, string> = {
+          STORYTELLING: 'Cerita & Konsep Bisnis',
+          ROLE: 'Role & Tanggung Jawab',
+          ALUR: 'Alur Kerja Operasional',
+          RBAC: 'Hak Akses (RBAC)',
+          SKEMA_DATA: 'Skema Tabel & Data',
+          SIMULASI_DB: 'Simulasi Database & Akun Demo',
+          REVIEW_FINAL: 'Ringkasan Akhir (Review Final)'
+        };
+        const stepName = stepNameMap[activeStep] || activeStep;
+
         return NextResponse.json({
           success: false,
-          error: 'Pembuatan prototipe baru hanya dapat dilakukan setelah menyelesaikan seluruh tahapan perencanaan (Guided Interview) hingga Ringkasan Akhir (REVIEW_FINAL) disetujui.',
-          needsGuidedInterview: true
+          error: `Pembuatan prototipe baru hanya dapat dilakukan setelah menyelesaikan seluruh tahapan perencanaan (Guided Interview) hingga Ringkasan Akhir disetujui.\n\nSaat ini proses perencanaan Anda berada di tahap: **${stepName}**.\n\nSilakan selesaikan tahapan tersebut terlebih dahulu melalui tombol arahan di bawah:`,
+          needsGuidedInterview: true,
+          currentStep: activeStep,
+          stepName,
+          suggestedActions: [
+            {
+              id: 'resume_step',
+              label: `▶️ Lanjutkan dari Tahap ${stepName}`,
+              targetStep: activeStep
+            },
+            {
+              id: 'restart_guided',
+              label: '🔄 Mulai dari Awal (Cerita Bisnis)',
+              targetStep: 'STORYTELLING'
+            }
+          ]
         }, { status: 400 });
       }
     }

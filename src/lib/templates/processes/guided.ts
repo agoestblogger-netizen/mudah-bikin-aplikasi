@@ -3293,6 +3293,13 @@ export function applyGuidedAnswer(
     if (selected.includes('approve_prototype')) {
       next.compiledBrief = compileBriefFromSession(next);
       next.step = 'REVIEW_FINAL';
+      next.statusKonfirmasi = 'disetujui';
+      next.reviewFinalApproved = true;
+      if (!next.review) {
+        next.review = { statusKonfirmasi: 'disetujui' };
+      } else {
+        next.review.statusKonfirmasi = 'disetujui';
+      }
       return next;
     }
   }

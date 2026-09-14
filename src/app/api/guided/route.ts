@@ -66,7 +66,7 @@ import {
 
 export const maxDuration = 60;
 
-type GuidedAction = 'START' | 'NEXT' | 'COMPILE' | 'ANALYZE_CUSTOM_ROLE';
+type GuidedAction = 'START' | 'NEXT' | 'COMPILE' | 'ANALYZE_CUSTOM_ROLE' | 'RESUME';
 
 interface CustomRolePayloadItem {
   id: string;
@@ -87,6 +87,7 @@ interface GuidedBody {
   stepId?: GuidedStepId;
   selected?: string[];
   other?: string;
+  targetStep?: string;
   appName?: string;
   provider?: string;
   apiKey?: string;
@@ -3333,6 +3334,76 @@ export async function POST(req: Request) {
       });
     }
 
+    if (action === 'RESUME') {
+      let session = body.session as MockupSessionState | undefined;
+      const targetStep = (body.targetStep || session?.step || 'STORYTELLING') as SessionStep;
+      if (!session) {
+        session = {
+          step: targetStep,
+          match: {
+            templateId: 'MT-20',
+            patternIds: ['UP-06', 'UP-09'],
+            businessCategory: 'Bisnis',
+            contextualPainPoints: [],
+            contextualRoles: []
+          },
+          roles: { selected: ['Super Admin'] },
+          flow: { alurInti: [] },
+          painPoints: { selected: [] },
+          features: { selected: [] }
+        } as unknown as MockupSessionState;
+      } else {
+        session = {
+          ...session,
+          step: targetStep
+        };
+      }
+
+      const card = buildGuidedStep(session);
+      let narration = `Melanjutkan proses perencanaan dari tahap **${targetStep}**:`;
+      if (targetStep === 'STORYTELLING') {
+        narration = session.storyline?.narasi || 'Berikut cerita proses bisnis awal aplikasi:';
+      } else if (targetStep === 'ROLE') {
+        const roleTable = renderRoleSummaryTable(session.roles, session.match?.businessCategory, session.storyline);
+        narration = `Berikut ringkasan peran (roles) yang telah disusun:\n\n${roleTable}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan wewenang peran.`;
+      } else if (targetStep === 'ALUR') {
+        const flowData = getDomainFlowDetails(session);
+        const flowMd = renderFlowMarkdown(flowData);
+        narration = `Berikut alur kerja operasional yang telah disusun:\n\n${flowMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan alur.`;
+      } else if (targetStep === 'RBAC') {
+        const rbacMd =
+          session.rbac?.markdownTable ||
+          renderRbacMarkdownTable(
+            session.roles?.selected || [],
+            session.rbac?.modul || [],
+            session.rbac?.catatanPelimpahan
+          );
+        narration = `Berikut matriks hak akses (RBAC) yang telah disusun:\n\n${rbacMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi.`;
+      } else if (targetStep === 'SKEMA_DATA') {
+        const schemaMd =
+          session.dataSchema?.markdownTable ||
+          (session.dataSchema
+            ? renderDataSchemaMarkdown(session.dataSchema.tabel, session.dataSchema.korelasiRingkas)
+            : '');
+        narration = `Berikut struktur skema tabel data:\n\n${schemaMd}\n\nSilakan periksa dan lanjutkan jika sudah sesuai.`;
+      } else if (targetStep === 'SIMULASI_DB') {
+        const simMd =
+          session.simulasiDb?.markdownTable ||
+          (session.simulasiDb ? renderSimulasiDbMarkdown(session.simulasiDb) : '');
+        narration = `Berikut simulasi database dan akun demo:\n\n${simMd}\n\nSilakan periksa dan lanjutkan jika sudah sesuai.`;
+      } else if (targetStep === 'REVIEW_FINAL') {
+        narration = renderReviewFinalMarkdown(session);
+      }
+
+      return NextResponse.json({
+        success: true,
+        action: 'RESUME',
+        session,
+        guidedStep: card,
+        narration
+      });
+    }
+
     if (action === 'NEXT') {
       const session = body.session;
       const stepId = body.stepId || (session?.step as GuidedStepId | undefined);
@@ -4527,6 +4598,13 @@ export async function POST(req: Request) {
 
           let updated = applyGuidedAnswer(session, 'REVIEW_FINAL', ['approve_prototype']);
           updated.compiledBrief = compileBriefFromSession(updated);
+          updated.statusKonfirmasi = 'disetujui';
+          updated.reviewFinalApproved = true;
+          if (!updated.review) {
+            updated.review = { statusKonfirmasi: 'disetujui' };
+          } else {
+            updated.review.statusKonfirmasi = 'disetujui';
+          }
 
           return NextResponse.json({
             success: true,

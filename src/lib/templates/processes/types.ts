@@ -329,6 +329,8 @@ export interface MockupSessionState {
   };
   compiledBrief?: string;
   reviewFinalApproved?: boolean;
+  statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+  review?: { statusKonfirmasi?: 'disetujui' | 'dikoreksi' };
   changeSnapshots?: {
     lastModifiedStep?: SessionStep;
     prevRoles?: string[];
