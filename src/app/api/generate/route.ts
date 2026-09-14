@@ -1295,17 +1295,10 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       systemPrompt += `\n\n${pureAIGuidance}`;
 
       if (approvedBrief || officialRoles.length > 0) {
-        // Build DEMO_ACCOUNTS dengan landingTab per role (Poin 53)
-        // landingTab = ID tab default yang langsung ditampilkan saat role ini login
+        // Build DEMO_ACCOUNTS dengan landingTab per role (Poin 53 & Bagian A)
+        // landingTab = ID tab default yang langsung ditampilkan saat role ini login (SEMUA role wajib punya landingTab eksplisit)
         const credentialsList = officialRoles.map(r => {
           const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-          // Untuk role publik: tidak perlu landingTab (tidak butuh login)
-          // Untuk staf: sertakan landingTab slug dari Brief Kebutuhan
-          const isPublic = r === publicRole;
-          if (isPublic) {
-            return `{ role: '${r}', username: '${u}', password: '${u}123' }`;
-          }
-          // Gunakan slug dari roleLandingTabs jika tersedia, fallback ke slug role
           const landingTabHint = roleLandingTabs[r] || u;
           return `{ role: '${r}', username: '${u}', password: '${u}123', landingTab: '${landingTabHint}' }`;
         });
@@ -1398,9 +1391,9 @@ ${publicRole ? `     * Di bawah kotak Akun Demo Staf, sediakan link sekunder: "A
    const DEMO_ACCOUNTS = [
 ${credentialsList.map(c => `     ${c}`).join(',\n')}
    ];
-   ⚠️ KRITIS (POIN 53 — DEFAULT LANDING TAB): Setiap entry staf WAJIB punya field \`landingTab\` yang diisi dengan ID HTML (id="...") dari TAB PERTAMA/DEFAULT role tersebut sesuai Brief Kebutuhan:
+   ⚠️ KRITIS (POIN 53 & BAGIAN A — DEFAULT LANDING TAB): Setiap entry peran (baik staf maupun publik) WAJIB punya field \`landingTab\` yang diisi dengan ID HTML (id="...") dari TAB PERTAMA/DEFAULT role tersebut sesuai Brief Kebutuhan:
 ${staffLandingGuide}
-   PENTING: "landingTab" adalah ID tab HTML staf spesifik, BUKAN ID tab publik ("${publicRole || 'pelanggan'}"). Jika login sebagai Kasir, harus langsung ke tab Kasir; jika login sebagai Washer, harus langsung ke tab Washer — BUKAN tab Lacak/Pelanggan!
+   PENTING: "landingTab" adalah ID tab HTML peran spesifik. Jika login sebagai Kasir, harus langsung ke tab Kasir; jika login sebagai Barber, harus langsung ke tab Barber; jika login sebagai Pelanggan, ke tab Pelanggan/Antrean — BUKAN tab Super Admin!
    Jika gagal login, panggil showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error').
 8. SETIAP tombol tab (<button class="tab-btn">) WAJIB menggunakan atribut data-access-roles yang HANYA berisi nama peran resmi di atas.
 ================================================================================`;
