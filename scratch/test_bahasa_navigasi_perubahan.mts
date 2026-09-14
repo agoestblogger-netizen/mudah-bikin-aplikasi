@@ -36,7 +36,7 @@ async function runTests() {
   }
   console.log('Contoh greeting sample:', Array.from(greetings).slice(0, 3));
 
-  // Test 1.2: Sanitasi narasi dari sudut pandang "kami/kita/tim kami" dan istilah kaku
+  // Test 1.2: Sanitasi narasi aman (hanya kata ganti orang pertama jamak, tidak menyentuh kata kerja/benda lain)
   const testDirtyNarratives = [
     'Tim kami langsung menyambut pelanggan di gerbang. Kami kemudian menggosok bodi kendaraan sampai kinclong. Setelah itu kita memproses pembayaran di kasir.',
     'Pelanggan datang ke tempat cuci mobil. Tim kami segera menyemprotkan air dan menggosok bodi mobil. Lalu kami mencetak nota transaksi.'
@@ -45,20 +45,34 @@ async function runTests() {
   for (const dirty of testDirtyNarratives) {
     const cleaned = sanitizeStorylineNarrative(dirty, ['Super Admin', 'Washer', 'Pelanggan']);
     console.log('\n--- Sanitasi Contoh ---');
-    console.log('Kotor:', dirty);
+    console.log('Kotor :', dirty);
     console.log('Bersih:', cleaned);
 
-    const hasKami = /\b(kami|kita|tim kami|tim kita)\b/i.test(cleaned);
-    const hasGosokBodi = /menggosok\s+bodi/i.test(cleaned);
-
+    // 1. Pastikan kata ganti orang pertama jamak "kami/kita/tim kami" BERHASIL dibersihkan
+    const hasKami = /\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test(cleaned);
     if (hasKami) {
       throw new Error(`FAILED: Kata 'kami/kita' masih ditemukan di narasi: ${cleaned}`);
     }
-    if (hasGosokBodi) {
-      throw new Error(`FAILED: Istilah 'menggosok bodi' masih ditemukan di narasi: ${cleaned}`);
+
+    // 2. Pastikan TIDAK ADA kata dobel "kendaraan kendaraan" atau frasa aneh "kendaraan mobil"
+    const hasDoubleKendaraan = /kendaraan\s+kendaraan/i.test(cleaned);
+    const hasKendaraanMobil = /kendaraan\s+mobil/i.test(cleaned);
+    if (hasDoubleKendaraan || hasKendaraanMobil) {
+      throw new Error(`FAILED: Ditemukan kejanggalan kalimat/kata dobel akibat replace mekanis: ${cleaned}`);
     }
   }
-  console.log('\n✅ TEST 1 (Bagian A) LULUS: Sudut pandang pihak ketiga objektif & istilah membumi terverifikasi!');
+
+  // Test 1.3: Mekanisme deteksi kata ganti untuk pemicu RETRY AI
+  const needsRetryA = /\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test('Tim kami siap melayani pelanggan.');
+  const needsRetryB = /\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test('Pelanggan datang, Washer mencuci mobil sampai bersih.');
+  if (!needsRetryA || needsRetryB) {
+    throw new Error('FAILED: Logika deteksi retry AI tidak akurat!');
+  }
+  console.log('\nLogika deteksi retry AI:');
+  console.log('- "Tim kami siap melayani pelanggan" -> Trigger Retry AI: YES');
+  console.log('- "Pelanggan datang, Washer mencuci mobil" -> Trigger Retry AI: NO (Lolos)');
+
+  console.log('\n✅ TEST 1 (Bagian A) LULUS: Sanitasi aman bebas kalimat janggal & mekanisme retry AI terverifikasi!');
 
   console.log('\n====================================================');
   console.log('🧪 TEST 2: BAGIAN B - NAVIGASI MUNDUR ("ADA YANG TERLEWAT")');

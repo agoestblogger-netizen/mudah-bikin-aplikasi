@@ -295,9 +295,9 @@ export function getRandomGreeting(): string {
 }
 
 /**
- * Memastikan narasi storytelling murni dari sudut pandang pihak ketiga objektif:
- * - Menghilangkan kata "kami", "kita", atau "tim kami" dan menggantinya dengan peran operasional nyata.
- * - Mengganti istilah kaku/berlebihan dengan bahasa sehari-hari yang membumi.
+ * Memastikan narasi storytelling murni dari sudut pandang pihak ketiga objektif sebagai jaring pengaman terakhir:
+ * - HANYA menangani penggantian kata ganti orang pertama jamak ("kami", "kita", "tim kami", "tim kita") menjadi peran operasional nyata.
+ * - DILARANG melakukan replace mekanis terhadap kata benda/kerja (seperti istilah membumi) agar tidak merusak tata bahasa kalimat.
  */
 export function sanitizeStorylineNarrative(narrative: string, actors: string[] = []): string {
   if (!narrative) return narrative;
@@ -309,7 +309,6 @@ export function sanitizeStorylineNarrative(narrative: string, actors: string[] =
 
   cleaned = cleaned.replace(/\b(tim\s+kami|tim\s+kita)\b/gi, defaultActor);
   cleaned = cleaned.replace(/\b(kami|kita)\b/gi, defaultActor);
-  cleaned = cleaned.replace(/menggosok\s+bodi/gi, 'mencuci kendaraan');
   return cleaned;
 }
 
@@ -693,6 +692,41 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
             }
           }
         }
+
+        // RETRY AI jika narasi masih mengandung kata ganti orang pertama jamak ("kami/kita/tim kami")
+        if (/\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test(narasi)) {
+          try {
+            console.info('[generateStorylineWithAI] Narasi memuat kata ganti orang pertama jamak, melakukan RETRY AI dengan penegasan...');
+            const retryRaw = await invokeAIChat({
+              systemInstruction: `${systemInstruction}\n\n[PERINGATAN KRITIS RETRY]:\nOutput narasi sebelumnya melanggar aturan sudut pandang karena menggunakan kata ganti orang pertama jamak ('kami/kita/tim kami'). DILARANG KERAS menggunakan kata 'kami', 'kita', atau 'tim kami' sama sekali! Tulis ulang narasi cerita murni dari sudut pandang PIHAK KETIGA OBJEKTIF secara netral. Sebut nama peran secara eksplisit (seperti: ${asumsiAktor.join(', ')}). Gunakan bahasa sehari-hari orang awam yang wajar dan membumi.`,
+              userPrompt: `Permintaan Pengguna: "${prompt}"\nTulis ulang output JSON dengan narasi yang 100% dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami' atau 'kita'):`,
+              temperature: 0.5,
+              maxTokens: 4000,
+              provider,
+              userApiKey: apiKey,
+              userModel: model
+            });
+
+            if (retryRaw) {
+              const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
+              if (retryMatch) {
+                const retryParsed = JSON.parse(retryMatch[0]);
+                if (retryParsed.narasi && typeof retryParsed.narasi === 'string' && retryParsed.narasi.trim()) {
+                  narasi = retryParsed.narasi.trim();
+                  if (!narasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
+                    narasi = `${narasi} ${CONFIRMATION_CLOSING}`;
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Gagal retry storyline AI:', err);
+          }
+        }
+
+        // Lapis pengaman terakhir: jika setelah retry AI masih ada kata ganti yang lolos,
+        // jalankan sanitasi khusus kata ganti saja (tanpa menyentuh kata benda/kerja di sekitarnya)
+        narasi = sanitizeStorylineNarrative(narasi, asumsiAktor);
 
         return {
           appName,
