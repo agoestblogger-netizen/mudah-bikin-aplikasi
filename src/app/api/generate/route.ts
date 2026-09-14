@@ -440,7 +440,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { prompt, chatHistory, stage, currentCode, userProvider, userApiKey, userModel, mode } = await req.json();
+    const { prompt, chatHistory, stage, currentCode, userProvider, userApiKey, userModel, mode, sessionState: incomingSession } = await req.json();
 
     // Deteksi Mode Dropdown Chat ('BUILD' | 'PLAN' | 'SYNC_GAS')
     const activeChatMode = (mode || (stage === 'TAHAP_4_BACKEND' ? 'SYNC_GAS' : (stage === 'TAHAP_2_MOCKUP' || stage === 'TAHAP_5_PATCH' || currentCode) ? 'BUILD' : 'PLAN')).toUpperCase();
@@ -449,7 +449,55 @@ export async function POST(req: Request) {
     // Analisis Riwayat & Konteks Percakapan Tahap 1
     const allHistoryText = (chatHistory || []).map((m: any) => m.text).join('\n');
     const hasBriefPresented = allHistoryText.includes('Brief Kebutuhan') || (allHistoryText.includes('Nama App:') && allHistoryText.includes('Fitur Utama (V1)'));
-    const { rawBrief: approvedBrief, roles: officialRoles, publicRole, staffRoles, roleLandingTabs } = extractBriefAndRolesFromHistory(chatHistory);
+
+    // POIN C: Prioritaskan data terstruktur dari session guided interview jika tersedia.
+    // Session sudah terbentuk oleh /api/guided yang kaya konteks (roles.selected, compiledBrief, flow, rbac, dll).
+    // Fallback ke re-parsing chat history hanya jika session belum ada (user lama / belum selesai guided).
+    let approvedBrief: string;
+    let officialRoles: string[];
+    let publicRole: string | null;
+    let staffRoles: string[];
+    let roleLandingTabs: Record<string, string>;
+
+    const hasStructuredSession = Boolean(
+      incomingSession &&
+      incomingSession.roles?.selected &&
+      incomingSession.roles.selected.length > 0
+    );
+
+    if (hasStructuredSession) {
+      // Jalur POIN C: Gunakan data terstruktur dari session — lebih akurat, tidak perlu regex
+      officialRoles = incomingSession.roles.selected as string[];
+      approvedBrief = incomingSession.compiledBrief || '';
+      console.log(`[POIN C] Menggunakan session terstruktur: ${officialRoles.length} roles, compiledBrief: ${approvedBrief.length} chars`);
+
+      // Tentukan publicRole & staffRoles dari officialRoles
+      publicRole = officialRoles.find(r => /^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(r)) || null;
+      staffRoles = officialRoles.filter(r => r !== publicRole);
+
+      // Bangun roleLandingTabs dari session atau fallback ke slug sederhana
+      roleLandingTabs = {};
+      for (const role of officialRoles) {
+        roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+      }
+
+      // Jika compiledBrief kosong tapi ada chatHistory yang punya brief, pakai fallback parsing sebagai supplement
+      if (!approvedBrief && hasBriefPresented) {
+        const parsed = extractBriefAndRolesFromHistory(chatHistory);
+        approvedBrief = parsed.rawBrief;
+      }
+    } else {
+      // Jalur fallback lama: parse ulang teks chat history
+      const parsed = extractBriefAndRolesFromHistory(chatHistory);
+      approvedBrief = parsed.rawBrief;
+      officialRoles = parsed.roles;
+      publicRole = parsed.publicRole;
+      staffRoles = parsed.staffRoles;
+      roleLandingTabs = parsed.roleLandingTabs;
+      if (officialRoles.length > 0) {
+        console.log(`[Fallback] Menggunakan ekstraksi chat history: ${officialRoles.length} roles`);
+      }
+    }
     
     // Deteksi Permintaan Penyesuaian Skenario / Update Brief oleh Pengguna
     const isAdjustScenarioRequest = /(sesuaikan\s+skenario|penyesuaian\s+skenario|update\s+brief|perbarui\s+brief|simpan\s+catatan|sesuaikan\s+alur|saya\s+telah\s+(?:menyesuaikan|mengubah)\s+rincian\s+brief)/i.test(prompt);

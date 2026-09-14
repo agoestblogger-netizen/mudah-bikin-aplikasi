@@ -548,7 +548,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         chatHistory: updatedMessages,
         stage: currentStage,
         currentCode: projectState.canvasCode.html,
-        mode: activeMode
+        mode: activeMode,
+        // POIN C: Kirim sessionState terstruktur dari guided interview supaya
+        // backend bisa membaca roles & compiledBrief langsung — tidak perlu parse regex chat history
+        sessionState: projectState.sessionState || null
       };
       if (!useServerDefault) {
         payload.userProvider = activeSettings.provider;
