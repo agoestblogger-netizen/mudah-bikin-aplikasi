@@ -68,6 +68,7 @@ async function runLiveVerification() {
     const isCliche = isClicheStorylineOpening(sanitized);
     const hasGreeting = !lacksGreetingOpening(sanitized);
     const hasKamiKita = /\b(tim\s+kami|tim\s+kita)\b|(?<!\b(?:mari|ayo|silakan|yuk)\s+)\b(kami|kita)\b/i.test(sanitized);
+    const hasMenarik = /\bmenarik\b/i.test(firstSentence);
 
     // Analisis struktur tata bahasa pembuka
     let strukturGramatikal = 'Lainnya';
@@ -122,39 +123,53 @@ async function runLiveVerification() {
     console.log(`   📐 Struktur: ${r.strukturGramatikal}\n`);
   });
 
-  // Uji Khusus: Cuci Mobil vs Bengkel Motor (tidak boleh menghasilkan kalimat yang sama persis)
+  // Evaluasi Keunikan Kerangka: pastikan tidak ada 2 domain yang menghasilkan kerangka kalimat identik (misal: "Mari kita lihat bagaimana alur operasional di...")
+  const openingSentences = results.map(r => r.openingSentence.toLowerCase());
+  const normalizedSkeletons = openingSentences.map(s =>
+    s.replace(/(cuci mobil|klinik dokter gigi|klinik gigi|laundry|kafe|kedai kopi|bengkel motor|toko emas|koperasi simpan pinjam|koperasi)/gi, '[BISNIS]')
+     .replace(/(kendaraan|motor|mobil|pakaian|kopi|perhiasan|simpanan|pinjaman)/gi, '[OBJEK]')
+  );
+
+  for (let i = 0; i < normalizedSkeletons.length; i++) {
+    for (let j = i + 1; j < normalizedSkeletons.length; j++) {
+      if (normalizedSkeletons[i] === normalizedSkeletons[j]) {
+        throw new Error(`FAILED: Domain [${results[i].domain}] dan [${results[j].domain}] memiliki kerangka kalimat pembuka yang identik!\n- ${results[i].openingSentence}\n- ${results[j].openingSentence}`);
+      }
+    }
+  }
+  console.log('✅ Verifikasi Keunikan: Tidak ada satupun domain dari 7 domain yang memiliki kerangka pembuka identik!');
+
+  // Uji Khusus: Jalankan 3 domain yang sebelumnya terjangkit "Mari kita lihat..." (Cuci Mobil, Toko Emas, Koperasi) secara berulang
   console.log('\n================================================================');
-  console.log('🔬 UJI KHUSUS: PENGUJIAN BERULANG CUCI MOBIL VS BENGKEL MOTOR');
+  console.log('🔬 UJI KHUSUS: PENGUJIAN BERULANG 3 DOMAIN TERDAMPAK (CUCI, EMAS, KOPERASI)');
   console.log('================================================================');
-  console.log('Menjalankan kembali pemanggilan untuk Cuci Mobil & Bengkel Motor...');
+  const affectedDomains = [
+    { name: 'Cuci Mobil & Motor', prompt: 'buatkan aplikasi cuci mobil dan motor' },
+    { name: 'Toko Emas Jual Beli', prompt: 'aplikasi jual beli dan penaksiran toko emas' },
+    { name: 'Koperasi Simpan Pinjam', prompt: 'aplikasi simpan pinjam dan catatan setoran anggota koperasi' }
+  ];
 
-  const repeatCuci = await generateStorylineWithAI(
-    'buatkan aplikasi cuci mobil dan motor',
-    'openai',
-    process.env.OPENAI_API_KEY,
-    process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  );
-  const repeatBengkel = await generateStorylineWithAI(
-    'aplikasi servis berkala dan riwayat kendaraan bengkel motor',
-    'openai',
-    process.env.OPENAI_API_KEY,
-    process.env.OPENAI_MODEL || 'gpt-4o-mini'
-  );
-
-  const firstCuci = repeatCuci.narasi.split(/[\.\n\?\!]/)[0].trim();
-  const firstBengkel = repeatBengkel.narasi.split(/[\.\n\?\!]/)[0].trim();
-
-  console.log(`🚗 Cuci Mobil (Run 2): "${firstCuci}."`);
-  console.log(`🏍️ Bengkel Motor (Run 2): "${firstBengkel}."`);
-
-  if (firstCuci.toLowerCase() === firstBengkel.toLowerCase()) {
-    throw new Error('FAILED: Cuci Mobil dan Bengkel Motor menghasilkan kalimat yang sama persis!');
-  }
-  if (isClicheStorylineOpening(firstCuci) || isClicheStorylineOpening(firstBengkel)) {
-    throw new Error('FAILED: Pengujian berulang Cuci Mobil / Bengkel Motor masih mengandung kerangka klise!');
+  for (const domain of affectedDomains) {
+    console.log(`\n🔄 Menguji ulang 2x untuk domain: ${domain.name}...`);
+    for (let run = 1; run <= 2; run++) {
+      const res = await generateStorylineWithAI(
+        domain.prompt,
+        'openai',
+        process.env.OPENAI_API_KEY,
+        process.env.OPENAI_MODEL || 'gpt-4o-mini'
+      );
+      const firstS = res.narasi.split(/[\.\n\?\!]/)[0].trim();
+      console.log(`   [Run ${run}] 👉 "${firstS}."`);
+      if (isClicheStorylineOpening(firstS)) {
+        throw new Error(`FAILED: [${domain.name} Run ${run}] Masih menghasilkan pola klise/boilerplate: "${firstS}"`);
+      }
+      if (/^mari\s+kita\s+lihat\s+bagaimana\s+alur\s+operasional/i.test(firstS)) {
+        throw new Error(`FAILED: [${domain.name} Run ${run}] Masih meniru boilerplate anchor kaku: "${firstS}"`);
+      }
+    }
   }
 
-  console.log('\n🎉 SELURUH VERIFIKASI LIVE 7 DOMAIN & UJI KHUSUS BERHASIL 100%!');
+  console.log('\n🎉 SELURUH VERIFIKASI LIVE 7 DOMAIN, UJI KEUNIKAN, & UJI BERULANG BERHASIL 100%!');
 }
 
 runLiveVerification().catch((err) => {

@@ -34,12 +34,15 @@ async function runTests() {
     'Inisiatif yang luar biasa untuk meningkatkan manajemen klinik gigi dan pelayanan pasien.',
     'Sebuah langkah yang cerdas untuk menyederhanakan pengalaman pelanggan saat memesan.',
     'Sebuah ide yang cemerlang untuk mempermudah transaksi jual beli perhiasan.',
-    'Sebuah langkah cerdas untuk mengelola simpanan dan pinjaman anggota koperasi.'
+    'Sebuah langkah cerdas untuk mengelola simpanan dan pinjaman anggota koperasi.',
+    'Mari kita lihat bagaimana alur operasional di tempat ini biasanya berjalan.',
+    'Mari kita lihat bagaimana proses servis kendaraan ini biasanya berjalan.'
   ];
   const freshSamples = [
     'Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba. Pelanggan datang...',
     'Bagaimana kalau proses antrean cuci mobil bisa lebih rapi dari sekarang? Pelanggan datang...',
-    'Mari kita lihat bagaimana proses cuci kendaraan ini biasanya berjalan di lapangan. Pelanggan datang...',
+    'Mari kita amati bagaimana alur pelayanan cuci kendaraan ini berjalan di lapangan. Pelanggan datang...',
+    'Coba kita telusuri pergerakan transaksi dan pesanan kopi di meja kasir. Pelanggan datang...',
     'Usaha laundry kiloan menuntut ketelitian tinggi sejak awal penerimaan pakaian. Pelanggan menyerahkan pakaian kotor...',
     'Di klinik gigi, ketepatan rekam medis dan antrean pasien adalah kunci kelancaran pelayanan. Pasien datang...',
     'Pengelolaan simpan pinjam di koperasi sangat terbantu jika setiap setoran tercatat transparan. Anggota datang...'

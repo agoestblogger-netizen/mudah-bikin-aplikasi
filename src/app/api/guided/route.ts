@@ -300,7 +300,10 @@ export function isClicheStorylineOpening(text: string): boolean {
   // 3. Pola klise umum ide/aplikasi ... menarik
   const isGenericMenarik = /\b(ide|aplikasi|konsep)\b/i.test(firstSentence) && /\bmenarik\b/i.test(firstSentence);
 
-  return isPraiseFormula || isSebuahPraise || isGenericMenarik;
+  // 4. Boilerplate kaku ajakan hasil anchoring: "Mari kita lihat bagaimana alur/proses..."
+  const isBoilerplateAjakan = /^(mari|ayo|yuk)\s+kita\s+lihat\s+bagaimana\s+(alur|proses)\b/i.test(firstSentence);
+
+  return isPraiseFormula || isSebuahPraise || isGenericMenarik || isBoilerplateAjakan;
 }
 
 /**
@@ -310,7 +313,12 @@ export function isClicheStorylineOpening(text: string): boolean {
 export function lacksGreetingOpening(text: string): boolean {
   if (!text) return true;
   const firstSentence = text.split(/[\.\n\?\!]/)[0].toLowerCase();
-  return /^(ketika|saat|setiap\s+pagi|setiap\s+hari|pelanggan\s+(datang|tiba|masuk|membawa)|pasien\s+(datang|tiba|masuk)|anggota\s+(datang|tiba|masuk)|warga\s+(datang|tiba)|di\s+(toko|klinik|bengkel|koperasi|kafe))\b/i.test(firstSentence);
+  const directOperationalArrival =
+    /^(ketika|saat)\s+(pelanggan|pasien|anggota|pengunjung|konsumen|warga|petugas|staf|karyawan|mekanik|kasir|pembeli|dokter)\b/i.test(firstSentence) ||
+    /^(pelanggan|pasien|anggota|warga|pengunjung|konsumen)\s+(datang|tiba|masuk|membawa|menyerahkan|mengantre)\b/i.test(firstSentence) ||
+    /^setiap\s+(pagi|hari)\s+(petugas|staf|karyawan|mekanik|kasir|pelanggan)\b/i.test(firstSentence) ||
+    /^di\s+(toko|klinik|bengkel|koperasi|kafe|tempat\s+cuci)\s+(ini\s+)?(pelanggan|pasien|anggota)\b/i.test(firstSentence);
+  return directOperationalArrival;
 }
 
 /**
@@ -506,22 +514,19 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    Narasi pada field "narasi" WAJIB berstruktur:
    [Kalimat 1: Sapaan / Pengakuan Singkat terhadap Ide Pengguna] [Kalimat 2-4: Alur Cerita Nyata di Lapangan] [Kalimat Penutup Konfirmasi].
 
-   ATURAN KALIMAT 1 (SAPAAN / PENGAKUAN IDE SINGKAT - STRUKTUR TATA BAHASA HARUS BERBEDA):
+   ATURAN KALIMAT 1 (SAPAAN / PENGAKUAN IDE SINGKAT - STRUKTUR TATA BAHASA HARUS BERBEDA & DILARANG MENIRU TEMPLATE):
    - Wajib berupa satu kalimat pendek di depan sebelum bercerita operasional.
    - PENTING: Yang membedakan BUKAN cuma kata sifat pujian, melainkan STRUKTUR BENTUK KALIMATNYA. Jangan melulu memuji! Seringkali tidak butuh kata sifat pujian sama sekali.
-   - PILIHAN STRUKTUR BENTUK KALIMAT (PILIH SALAH SATU YANG PALING ALAMI & BERAGAM TIAP SESI):
-     a) Bentuk Observasi / Fakta Nyata Bisnis (Tanpa Pujian):
-        Menyoroti dinamika nyata yang biasa terjadi di lapangan.
-        Contoh: "Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba." / "Usaha laundry kiloan mengandalkan kedisiplinan pemilahan pakaian sejak awal diterima kasir." / "Di klinik dokter gigi, ketepatan rekam medis dan antrean pasien adalah kunci kelancaran pelayanan."
-     b) Bentuk Pertanyaan Retoris Singkat:
-        Mengajak berpikir tentang perbaikan alur operasional.
-        Contoh: "Bagaimana kalau proses antrean dan pencatatan servis motor bisa lebih teratur dari sekarang?" / "Bagaimana jika seluruh alur pesanan menu kopi di meja kasir bisa tercatat serba rapi?"
-     c) Bentuk Ajakan Langsung Tanpa Basa-Basi Pujian:
-        Langsung mengarahkan fokus ke operasional nyata.
-        Contoh: "Mari kita lihat bagaimana alur operasional servis kendaraan di bengkel ini biasanya berjalan." / "Mari kita bedah aktivitas penaksiran dan penjualan di toko perhiasan ini."
-     d) Bentuk Konfirmasi & Refleksi Praktis:
-        Menyapa dengan merangkum fokus utama usaha.
-        Contoh: "Jadi fokus utamanya adalah merapikan pencatatan setoran dan pengajuan pinjaman anggota koperasi, ya." / "Menata operasional bengkel motor memang sering berhadapan dengan riwayat servis yang tercecer."
+   - DILARANG KERAS menggunakan template/boilerplate kaku yang sama antardomain (seperti: "Mari kita lihat bagaimana alur operasional di [nama bisnis] ini biasanya berjalan"). AI WAJIB merangkai kalimat sendiri secara orisinal, luwes, dan kontekstual!
+   - PILIHAN POLA STRUKTUR (PILIH SALAH SATU YANG PALING ALAMI & BERAGAM TIAP SESI):
+     a) Pola Observasi / Fakta Nyata Bisnis:
+        Soroti atmosfer, jam sibuk, ketelitian penanganan barang fisik, atau karakteristik unik lapangan di bidang usaha tersebut secara objektif.
+     b) Pola Pertanyaan Retoris / Pemantik Kerapian:
+        Buka dengan pertanyaan pemantik singkat yang mengajak membayangkan kelancaran pelayanan atau keteraturan alur kerja (gunakan kata pemantik dinamis seperti: "Bagaimana kalau...", "Pernahkah membayangkan...", "Apa jadinya bila...").
+     c) Pola Ajakan Langsung Tanpa Basa-Basi Pujian:
+        Ajak langsung masuk ke dinamika proses kerja dengan kata kerja aktif yang bervariasi (eksplorasi kata kerja dinamis seperti: amati pergerakan pesanan, telusuri langkah penanganan, perhatikan bagaimana transaksi berpindah tangan, cermati alur kerja staf; DILARANG memakai formula kaku "Mari kita lihat bagaimana alur...").
+     d) Pola Refleksi / Konfirmasi Praktis:
+        Sapa dengan merangkum titik fokus atau tantangan nyata yang ingin ditata rapi dari kacamata praktisi lapangan (misal menyapa penataan riwayat transaksi, tertibnya antrean layanan, atau pengelolaan alur pencatatan).
 
    ATURAN KALIMAT 2-4 (ALUR CERITA BISNIS NYATA 3 FASE):
    - Baru setelah kalimat sapaan di atas selesai, lanjutkan dengan alur cerita operasional konkret (Fase awal kedatangan pelanggan -> Fase penanganan fisik/layanan oleh staf dengan alat konkret -> Fase pembayaran/tanda terima).
@@ -752,7 +757,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         // Jika pembuka masih terdeteksi pola klise/formulaik ("[ide/langkah] ... [sifat] untuk ...") ATAU kehilangan sapaan:
         if (isClicheStorylineOpening(narasi) || lacksGreetingOpening(narasi)) {
           try {
-            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Kalimat pembuka narasi di atas masih mengikuti kerangka formulaik klise (seperti "[Ide/Langkah/Inisiatif] ... [sifat pujian] untuk ...") atau belum menyapa ide pengguna.\n\nTolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan aturan:\n1. Awali dengan 1 kalimat singkat pembuka yang menggunakan STRUKTUR BERBEDA (DILARANG pola pujian '[ide/langkah] ... untuk ...'):\n   - Gunakan bentuk observasi fakta lapangan (misal: "Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba.")\n   - ATAU bentuk pertanyaan retoris (misal: "Bagaimana kalau antrean dan pencatatan di tempat ini bisa berjalan lebih rapi?")\n   - ATAU bentuk ajakan langsung tanpa pujian (misal: "Mari kita lihat bagaimana alur operasional di tempat ini biasanya berjalan.")\n   - ATAU bentuk konfirmasi praktis (misal: "Jadi fokus utamanya adalah merapikan alur pencatatan dan pelayanan harian, ya.")\n2. Lanjutkan dengan 2-3 kalimat cerita operasional konkret 3 fase (kedatangan -> penanganan fisik & alat presisi -> pembayaran/struk) dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami/kita/tim kami').\n3. Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
+            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Kalimat pembuka narasi di atas masih mengikuti kerangka formulaik klise (seperti "[Ide/Langkah/Inisiatif] ... [sifat pujian] untuk ...", atau boilerplate kaku "Mari kita lihat bagaimana alur operasional...") atau belum menyapa ide pengguna.\n\nTolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan aturan:\n1. Awali dengan 1 kalimat singkat pembuka yang orisinal, segar, dan kontekstual (DILARANG pola pujian '[ide/langkah] ... untuk ...' dan DILARANG KERAS boilerplate kaku 'Mari kita lihat bagaimana alur/proses...'):\n   - Gunakan observasi fakta lapangan spesifik yang menyoroti kesibukan atau tantangan bisnis ini\n   - ATAU pertanyaan retoris pemantik rasa ingin tahu terkait kelancaran pelayanan\n   - ATAU ajakan aktif dengan kata kerja dinamis bervariasi (amati alur pesanan, telusuri langkah demi langkah, cermati perpindahan barang)\n   - ATAU refleksi praktis mengenai titik fokus penataan proses\n2. Lanjutkan dengan 2-3 kalimat cerita operasional konkret 3 fase (kedatangan -> penanganan fisik & alat presisi -> pembayaran/struk) dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami/kita/tim kami').\n3. Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
 
             const retryRaw = await invokeAIChat({
               systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda memastikan narasi diawali 1 kalimat sapaan/pengakuan ide yang ramah dan segar tanpa kerangka pujian klise, diikuti cerita proses bisnis yang membumi dari sudut pandang pihak ketiga objektif. Balas HANYA dengan teks narasi murni.',
