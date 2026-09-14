@@ -557,12 +557,19 @@ export async function POST(req: Request) {
     );
 
     if (isAttemptingNewPrototype) {
+      const isApprovalMessage =
+        prompt.includes('Saya menyetujui Brief Kebutuhan') ||
+        prompt.includes('menyetujui Brief Kebutuhan') ||
+        prompt.includes('menyetujui skenario');
+
       const isGuidedApproved = Boolean(
         incomingSession &&
         incomingSession.step === 'REVIEW_FINAL' &&
         (incomingSession.statusKonfirmasi === 'disetujui' ||
          incomingSession.review?.statusKonfirmasi === 'disetujui' ||
-         incomingSession.reviewFinalApproved === true)
+         incomingSession.reviewFinalApproved === true ||
+         Boolean(incomingSession.compiledBrief) ||
+         isApprovalMessage)
       );
 
       if (!isGuidedApproved) {

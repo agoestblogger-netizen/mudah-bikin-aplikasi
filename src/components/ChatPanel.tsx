@@ -498,7 +498,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         setTimeout(() => {
           handleSendMessage(
             `Saya menyetujui Brief Kebutuhan ini. Silakan buatkan prototipe aplikasinya sekarang.\n\n${briefText}`,
-            'BUILD'
+            'BUILD',
+            nextSession
           );
         }, 100);
         return;
@@ -520,12 +521,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
-  const handleSendMessage = async (textToSend?: string, modeOverride?: ChatMode) => {
+  const handleSendMessage = async (
+    textToSend?: string,
+    modeOverride?: ChatMode,
+    sessionOverride?: MockupSessionState
+  ) => {
     const query = textToSend || input;
     if (!query.trim() || isGenerating) return;
 
+    const effectiveSession = sessionOverride || projectState.sessionState || null;
     const isCanvasEmpty = !projectState.canvasCode?.html;
-    const isApprovedOrBuild = modeOverride === 'BUILD' || Boolean(projectState.sessionState?.reviewFinalApproved);
+    const isApprovedOrBuild = modeOverride === 'BUILD' || Boolean(effectiveSession?.reviewFinalApproved);
     // Jika kanvas kosong dan belum disetujui di REVIEW_FINAL, mode efektif dipaksa selalu PLAN
     const activeMode = (isCanvasEmpty && !isApprovedOrBuild) ? 'PLAN' : (modeOverride || selectedMode);
 
@@ -557,24 +563,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     if (
       isCanvasEmpty &&
       !isApprovedOrBuild &&
-      (!projectState.sessionState || projectState.sessionState.step === 'REVIEW_FINAL' || !projectState.sessionState.step || looksLikeIdea)
+      (!effectiveSession || !effectiveSession.step || looksLikeIdea)
     ) {
-      // Jika belum ada sessionState, atau sesi sebelumnya sudah REVIEW_FINAL (selesai), mulai sesi terpandu baru
-      if (!projectState.sessionState || projectState.sessionState.step === 'REVIEW_FINAL' || !projectState.sessionState.step) {
+      // Jika belum ada sessionState, mulai sesi terpandu baru
+      if (!effectiveSession || !effectiveSession.step) {
         await startGuidedSession(query);
         return;
       }
     }
 
-    // Jika sesi terpandu sedang aktif di PLAN mode, teruskan input teks sebagai jawaban/koreksi langkah aktif
+    // Jika sesi terpandu sedang aktif di PLAN mode, teruskan input teks sebagai jawaban/koreksi langkah aktif (termasuk REVIEW_FINAL)
     if (
       activeMode === 'PLAN' &&
       isCanvasEmpty &&
-      projectState.sessionState &&
-      projectState.sessionState.step &&
-      projectState.sessionState.step !== 'REVIEW_FINAL'
+      effectiveSession &&
+      effectiveSession.step
     ) {
-      const currentStep = projectState.sessionState.step;
+      const currentStep = effectiveSession.step;
       const lastGuidedMsg = [...messages].reverse().find((m) => m.guidedStep);
       setInput('');
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -642,7 +647,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         mode: activeMode,
         // POIN C: Kirim sessionState terstruktur dari guided interview supaya
         // backend bisa membaca roles & compiledBrief langsung — tidak perlu parse regex chat history
-        sessionState: projectState.sessionState || null
+        sessionState: effectiveSession || null
       };
       if (!useServerDefault) {
         payload.userProvider = activeSettings.provider;

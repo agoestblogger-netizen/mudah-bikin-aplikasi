@@ -3868,30 +3868,19 @@ export function compileBriefFromSession(
   session: MockupSessionState,
   meta: BriefMeta = {}
 ): string {
-  const patterns = getProcessPatternsByIds(session.match.patternIds || []);
-  const overlays = getIndustryOverlaysByIds(session.match.overlayIds || []);
-  const checklist = buildBusinessProcessChecklist(
-    session.match.patternIds || [],
-    session.match.overlayIds || [],
-    session.match.templateId
-  );
   const features = collectFeatures(session);
   const wajib = session.features?.selected?.filter((f) => f.priority === 'WAJIB') || [];
   const nyusul = session.features?.selected?.filter((f) => f.priority === 'NYUSUL') || [];
 
   const appName =
     (meta.appName && meta.appName.trim()) ||
-    (session.match.businessCategory
+    (session.match?.businessCategory
       ? (session.match.businessCategory.toLowerCase().startsWith('aplikasi')
           ? session.match.businessCategory
           : `Aplikasi ${session.match.businessCategory}`)
-      : (overlays[0] ? `Aplikasi ${overlays[0].nama}` : meta.templateName ? `Aplikasi ${meta.templateName}` : 'Aplikasi Baru'));
+      : (meta.templateName ? `Aplikasi ${meta.templateName}` : 'Aplikasi Baru'));
 
-  const tierLabel = session.match.tier === 'ADVANCE' ? 'ADVANCE' : 'BASIC';
-
-  const stateLabels: string[] = [];
-  patterns.forEach((p) => p.stages.slice(0, 6).forEach((s) => stateLabels.push(s.label)));
-  const uniqueStates = Array.from(new Set(stateLabels));
+  const tierLabel = session.match?.tier === 'ADVANCE' ? 'ADVANCE' : 'BASIC';
 
   const lines: string[] = [];
   lines.push('📋 **Brief Kebutuhan**');
@@ -3912,43 +3901,6 @@ export function compileBriefFromSession(
   }
   lines.push('- **Orientasi UI**: Responsif, mobile-friendly');
   lines.push(`- **Tier Aplikasi**: ${tierLabel}`);
-  if (patterns.length) {
-    lines.push(`- **Pola Proses Bisnis**: ${patterns.map((p) => `${p.id} ${p.nama}`).join(', ')}`);
-  }
-  if (overlays.length) {
-    lines.push(`- **Kekhasan Industri**: ${overlays.map((o) => o.nama).join(', ')}`);
-  }
-
-  const entityNames = Array.from(
-    new Set([
-      ...patterns.flatMap((p) => p.entities.map((e) => e.name)),
-      ...overlays.flatMap((o) => o.extraEntities.map((e) => e.name))
-    ])
-  );
-  if (entityNames.length) {
-    lines.push(`- **Entitas Data**: ${entityNames.join(', ')}`);
-  }
-  if (uniqueStates.length) {
-    lines.push(`- **State Utama**: ${uniqueStates.join(' -> ')}`);
-  }
-
-  if (checklist.coreTransitions.length) {
-    lines.push('- **Transisi Inti (WAJIB)**:');
-    checklist.coreTransitions.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`));
-  }
-  if (checklist.coreRules.length) {
-    lines.push('- **Aturan Bisnis Inti (WAJIB)**:');
-    checklist.coreRules.forEach((r) => lines.push(`  - ${r}`));
-  }
-  if (checklist.coreEdgeCases.length) {
-    lines.push(`- **Edge Case Inti**: ${checklist.coreEdgeCases.join('; ')}`);
-  }
-  if (checklist.coreItems.length) {
-    lines.push(`- **Komponen Wajib Industri**: ${checklist.coreItems.join('; ')}`);
-  }
-  if (checklist.advisoryItems.length) {
-    lines.push(`- **Saran (opsional)**: ${checklist.advisoryItems.join('; ')}`);
-  }
 
   if (session.flow?.alurInti && session.flow.alurInti.length > 0) {
     lines.push('- **Alur Inti (Aktivitas Utama)**:');

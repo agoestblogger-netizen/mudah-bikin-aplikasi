@@ -765,7 +765,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
               businessCategory: '',
               templateId: 'MT-20',
               overlayIds: [],
-              patternIds: ['UP-06', 'UP-09'],
+              patternIds: [],
               narasi: '',
               asumsiMasalah: '',
               asumsiAktor: [],
@@ -845,7 +845,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           businessCategory,
           templateId: 'MT-20',
           overlayIds: [],
-          patternIds: ['UP-06', 'UP-09'],
+          patternIds: [],
           narasi,
           asumsiMasalah:
             String(parsed.asumsiMasalah || '').trim() ||
@@ -884,7 +884,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     businessCategory: fallbackCategory,
     templateId: 'MT-20',
     overlayIds: [],
-    patternIds: ['UP-06', 'UP-09'],
+    patternIds: [],
     narasi: fallbackNarasi,
     asumsiMasalah: `Pencatatan antrean dan alur kerja di ${fallbackCategory} membutuhkan koordinasi yang rapi agar tidak ada yang terlewat.`,
     asumsiAktor: fallbackAktor,
@@ -3284,7 +3284,7 @@ export async function POST(req: Request) {
           match: {
             templateId: storylineResult.templateId || 'MT-20',
             overlayIds: storylineResult.overlayIds || [],
-            patternIds: storylineResult.patternIds || ['UP-06', 'UP-09'],
+            patternIds: storylineResult.patternIds || [],
             tier: 'BASIC',
             businessCategory: '',
             contextualPainPoints: [],
@@ -3332,7 +3332,7 @@ export async function POST(req: Request) {
           match: {
             templateId: storylineResult.templateId || 'MT-20',
             overlayIds: storylineResult.overlayIds || [],
-            patternIds: storylineResult.patternIds || ['UP-06', 'UP-09'],
+            patternIds: storylineResult.patternIds || [],
             tier: 'BASIC',
             businessCategory: storylineResult.businessCategory,
             contextualPainPoints: [storylineResult.asumsiMasalah],
@@ -3412,7 +3412,7 @@ export async function POST(req: Request) {
 
       const templateId = storylineResult.templateId || 'MT-20';
       const overlayIds = storylineResult.overlayIds || [];
-      const patternIds = storylineResult.patternIds || ['UP-06', 'UP-09'];
+      const patternIds = storylineResult.patternIds || [];
       const tier = detectTier({ patternIds });
 
       const isDual = analisis?.kondisi === 'DUA_ARAH' && Boolean(analisis.duaArah);
@@ -3498,7 +3498,7 @@ export async function POST(req: Request) {
           step: targetStep,
           match: {
             templateId: 'MT-20',
-            patternIds: ['UP-06', 'UP-09'],
+            patternIds: [],
             businessCategory: 'Bisnis',
             contextualPainPoints: [],
             contextualRoles: []
@@ -3771,7 +3771,7 @@ export async function POST(req: Request) {
           const isDual = analisis?.kondisi === 'DUA_ARAH' && Boolean(analisis.duaArah);
           const templateId = storylineResult.templateId || 'MT-20';
           const overlayIds = storylineResult.overlayIds || [];
-          const patternIds = storylineResult.patternIds || ['UP-06', 'UP-09'];
+          const patternIds = storylineResult.patternIds || [];
           const tier = detectTier({ patternIds });
 
           const updatedSession: MockupSessionState = {
@@ -3879,7 +3879,7 @@ export async function POST(req: Request) {
 
           const templateId = storylineResult.templateId || 'MT-20';
           const overlayIds = storylineResult.overlayIds || [];
-          const patternIds = storylineResult.patternIds || ['UP-06', 'UP-09'];
+          const patternIds = storylineResult.patternIds || [];
           const tier = detectTier({ patternIds });
 
           const updatedStorylineSession: MockupSessionState = {
