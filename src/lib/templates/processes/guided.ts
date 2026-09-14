@@ -845,38 +845,75 @@ export function resolveActorForStep(
 ): string {
   if (!rolesState) return targetRole;
 
-  const targetKey = canonicalRoleKey(targetRole);
-
-  // Jika role pelanggan/tamu/eksternal, tetap apa adanya
-  if (
-    targetKey === 'customer' ||
-    targetKey === 'guest' ||
-    /^(pelanggan|pembeli|tamu|pasien|siswa|murid|wali|penyewa|klien)\b/i.test(targetRole)
-  ) {
+  const selected = rolesState.selected || [];
+  if (selected.includes(targetRole)) {
     return targetRole;
   }
 
-  // 1. Cek apakah ada tugas yang dilimpahkan dari role ini
+  const targetKey = canonicalRoleKey(targetRole);
+
+  // 1. Jika role target adalah eksternal (customer/guest/warga/penyewa/dst)
+  if (
+    targetKey === 'customer' ||
+    targetKey === 'guest' ||
+    isExternalRole(targetRole) ||
+    /^(pelanggan|pembeli|tamu|pasien|siswa|murid|wali|penyewa|klien|warga|anggota|nasabah)\b/i.test(targetRole)
+  ) {
+    // Cari peran eksternal yang nyata-nyata ada di selected roles
+    const externalInSelected = selected.find((r) => isExternalRole(r));
+    if (externalInSelected) {
+      return externalInSelected;
+    }
+  }
+
+  // 2. Cek apakah ada tugas yang dilimpahkan dari role ini
   const delegation = rolesState.tugasDilimpahkan?.find(
     (d) =>
       canonicalRoleKey(d.dariRole) === targetKey ||
-      d.dariRole.trim().toLowerCase() === targetRole.trim().toLowerCase()
+      d.dariRole.trim().toLowerCase() === targetRole.trim().toLowerCase() ||
+      targetRole.trim().toLowerCase().includes(d.dariRole.trim().toLowerCase())
   );
-  if (delegation) {
+  if (delegation && selected.includes(delegation.keRole)) {
     return delegation.keRole;
   }
 
-  // 2. Cek apakah role target ada di selected roles
-  const isSelected = rolesState.selected?.some(
+  // 3. Cek apakah role target cocok dengan salah satu di selected roles
+  const matchedSelected = selected.find(
     (r) =>
       canonicalRoleKey(r) === targetKey ||
-      r.trim().toLowerCase() === targetRole.trim().toLowerCase()
+      r.trim().toLowerCase() === targetRole.trim().toLowerCase() ||
+      r.trim().toLowerCase().includes(targetRole.trim().toLowerCase()) ||
+      targetRole.trim().toLowerCase().includes(r.trim().toLowerCase())
   );
-  if (!isSelected) {
-    return REQUIRED_ROLE; // 'Super Admin'
+  if (matchedSelected) {
+    return matchedSelected;
   }
 
-  return targetRole;
+  // 4. Jika peran operasional internal dihapus (misal Petugas Timbangan dihapus dan tersisa Pengumpul & Super Admin):
+  // Coba cari peran operasional internal terdekat yang tersisa di selected (selain Super Admin dan selain eksternal)
+  const remainingStaff = selected.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r));
+  if (remainingStaff.length === 1) {
+    return remainingStaff[0];
+  } else if (remainingStaff.length > 1) {
+    let bestStaff = remainingStaff[0];
+    let maxSim = 0;
+    for (const staff of remainingStaff) {
+      const sim = calculateConceptualSimilarity(
+        { id: '', label: staff, description: '', responsibilities: [staff] },
+        { id: '', label: targetRole, description: '', responsibilities: [targetRole] }
+      );
+      if (sim > maxSim) {
+        maxSim = sim;
+        bestStaff = staff;
+      }
+    }
+    if (maxSim >= 0.25) {
+      return bestStaff;
+    }
+  }
+
+  // 5. Default aman jika tidak ada peran staf operasional yang cocok: Super Admin (Owner)
+  return REQUIRED_ROLE;
 }
 
 function deduplicateFlowSteps(steps: FlowStepItem[]): FlowStepItem[] {
@@ -1080,6 +1117,48 @@ export interface GetDomainFlowDetailsOptions {
   supportingFeatures?: SupportingFeatureItem[];
 }
 
+export function extractFlowPhasesFromStoryline(session: MockupSessionState): string[] {
+  const alur = (session.storyline?.asumsiAlurUtama || '').trim();
+  const narasi = (session.storyline?.narasi || '').trim();
+
+  // 1. Coba pemecahan standar tanda panah (->, →), baris baru (\n), atau penomoran (1. / 1))
+  let phases = alur
+    .split(/\s*(?:->|→|\n|\d+[\.\)]\s*)\s*/)
+    .map((p) => p.trim().replace(/^[-*•\s]+/, ''))
+    .filter((p) => p.length > 3 && !/^\d+$/.test(p));
+
+  if (phases.length >= 2) {
+    return phases;
+  }
+
+  // 2. Jika belum >= 2, coba pemecahan kata hubung alur kronologis:
+  // "lalu", "kemudian", "setelah itu", "selanjutnya", "berikutnya", titik koma (;), titik (.)
+  if (alur) {
+    const splitByConjunction = alur
+      .split(/\s*(?:;|\blalu\b|\bkemudian\b|\bsetelah itu\b|\bselanjutnya\b|\bberikutnya\b|\.\s+)\s*/i)
+      .map((p) => p.trim().replace(/^[-*•\s]+/, ''))
+      .filter((p) => p.length > 5);
+
+    if (splitByConjunction.length >= 2) {
+      return splitByConjunction;
+    }
+  }
+
+  // 3. Jika asumsiAlurUtama tetap tidak bisa dipecah atau kosong, ekstrak langsung dari NARASI!
+  if (narasi) {
+    const narasiSentences = narasi
+      .split(/\s*(?:\.\s+|\n|;\s*)\s*/)
+      .map((s) => s.trim().replace(/^[-*•\s]+/, ''))
+      .filter((s) => s.length > 8 && !/^(aplikasi|sistem|platform|software)\s+(ini|tersebut)\b/i.test(s));
+
+    if (narasiSentences.length >= 2) {
+      return narasiSentences;
+    }
+  }
+
+  return phases;
+}
+
 /**
  * Menghasilkan Alur Inti, Alur Pendukung, dan Fitur Pendukung yang MURNI DIGROUNDING
  * dari session storyline (narasi & alur utama) tanpa mengandalkan template statis per-kategori.
@@ -1098,8 +1177,26 @@ export function getDomainFlowDetails(
 
   // Helper untuk mencari aktor yang ada di session roles atau storyline
   const findActor = (pattern: RegExp, defaultName: string): string => {
+    const selected = session.roles?.selected || [];
+
+    // 1. Cari dulu dari peran terpilih di session.roles.selected yang cocok pattern
+    for (const s of selected) {
+      if (pattern.test(s)) {
+        return s;
+      }
+    }
+
+    // 2. Jika mencari peran eksternal/pelanggan, cari peran eksternal apa pun yang ada di selected
+    if (/pelanggan|customer|warga|pasien|penyewa|klien|member/i.test(pattern.source)) {
+      const extInSelected = selected.find((r) => isExternalRole(r));
+      if (extInSelected) {
+        return extInSelected;
+      }
+    }
+
+    // 3. Cari dari kandidat storyline
     const candidates = [
-      ...(session.roles?.selected || []),
+      ...selected,
       ...(session.storyline?.asumsiAktor || [])
     ];
     for (const c of candidates) {
@@ -1115,12 +1212,8 @@ export function getDomainFlowDetails(
   const fiturPendukung: SupportingFeatureItem[] = [];
 
   // PURE STORYLINE-DRIVEN FLOW SYNTHESIS
-  // Blok template statik per-kategori (regex servis|bengkel, resto|kafe, laundry|cuci, kos|sewa, dst)
-  // telah DIHAPUS TOTAL sesuai POIN 4 & Ketentuan Tambahan 1.
-  const phases = (session.storyline?.asumsiAlurUtama || '')
-    .split(/\s*(?:->|→|\n|\d+\.\s*)\s*/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0 && !/^\d+$/.test(p));
+  // Menggunakan ekstraksi fase multi-layer dari asumsiAlurUtama dan narasi
+  const phases = extractFlowPhasesFromStoryline(session);
 
   const knownActors = [
     ...(session.roles?.selected || []),
@@ -1133,109 +1226,123 @@ export function getDomainFlowDetails(
     phases.forEach((phase, idx) => {
       let assignedActor = activeCore;
       const lowerPhase = phase.toLowerCase();
+      let matchedRole: string | undefined;
 
-      // 1. Cek apakah menyebut Pemilik / Owner / Super Admin
-      if (/\b(pemilik|owner|bos|admin|pimpinan|manajer|direktur)\b/i.test(lowerPhase)) {
-        assignedActor = activeOwner;
-      }
-      // 2. Cek apakah menyebut Pelanggan / Penyewa / Pasien / Tamu / Klien / Anggota / Nasabah
-      else if (/\b(pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah)\b/i.test(lowerPhase)) {
-        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah/i, 'Pelanggan');
-      }
-      // 3. Cek pencocokan dengan daftar peran yang dikenal di sesi
-      else {
-        let matchedRole: string | undefined;
+      // 1. PRIORITAS TERTINGGI: Cek apakah kalimat fase diawali oleh sebutan aktor / kata pertama aktor (Subjek Kalimat)
+      // Diurutkan berdasarkan panjang string descending agar nama peran lengkap (misal "Warga Penjual") dicocokkan sebelum parsial
+      const sortedKnownActors = Array.from(new Set(knownActors)).sort((a, b) => b.length - a.length);
 
-        // 3a. Prioritaskan jika kalimat fase diawali oleh sebutan aktor / kata pertama aktor
-        for (const actor of knownActors) {
-          const cleanActor = actor.trim();
-          if (!cleanActor || cleanActor === REQUIRED_ROLE) continue;
-          const firstWord = cleanActor.toLowerCase().split(/\s+/)[0];
-          if (firstWord.length >= 3 && new RegExp(`^${firstWord}\\b`, 'i').test(lowerPhase)) {
+      for (const actor of sortedKnownActors) {
+        const cleanActor = actor.trim();
+        if (!cleanActor) continue;
+        const cleanLower = cleanActor.toLowerCase();
+
+        // Cocokkan nama peran utuh di awal kalimat
+        if (new RegExp(`^${cleanLower}\\b`, 'i').test(lowerPhase)) {
+          matchedRole = cleanActor;
+          break;
+        }
+
+        // Cocokkan kata pertama peran (minimal 3 huruf, bukan stopword umum)
+        const firstWord = cleanLower.split(/\s+/)[0];
+        if (firstWord.length >= 3 && !/^(dan|atau|yang|untuk|dari|pada|oleh|dengan)$/i.test(firstWord)) {
+          if (new RegExp(`^${firstWord}\\b`, 'i').test(lowerPhase)) {
             matchedRole = cleanActor;
             break;
           }
         }
+      }
 
-        // 3b. Jika tidak diawali nama aktor, cari aktor dengan kecocokan kata utuh terbaik
-        if (!matchedRole) {
-          const OBJECT_NOUNS = new Set([
-            'armada',
-            'kendaraan',
-            'mobil',
-            'motor',
-            'barang',
-            'pesanan',
-            'meja',
-            'ruangan',
-            'kamar',
-            'toko',
-            'cucian',
-            'pakaian',
-            'makanan',
-            'kopi',
-            'alat',
-            'obat',
-            'unit',
-            'gigi',
-            'data',
-            'nota',
-            'kuitansi',
-            'struk'
-          ]);
+      // 2. Cek apakah menyebut Pemilik / Owner / Super Admin di awal kalimat atau aksi manajerial
+      if (!matchedRole && /\b(pemilik|owner|bos|admin|pimpinan|manajer|direktur)\b/i.test(lowerPhase)) {
+        matchedRole = activeOwner;
+      }
 
-          let maxScore = 0;
-          for (const actor of knownActors) {
-            const cleanActor = actor.trim();
-            if (!cleanActor || cleanActor === REQUIRED_ROLE) continue;
+      // 3. Jika tidak diawali nama aktor, cari aktor dengan kecocokan kata utuh terbaik (Skoring Semantik)
+      if (!matchedRole) {
+        const OBJECT_NOUNS = new Set([
+          'armada',
+          'kendaraan',
+          'mobil',
+          'motor',
+          'barang',
+          'pesanan',
+          'meja',
+          'ruangan',
+          'kamar',
+          'toko',
+          'cucian',
+          'pakaian',
+          'makanan',
+          'kopi',
+          'alat',
+          'obat',
+          'unit',
+          'gigi',
+          'data',
+          'nota',
+          'kuitansi',
+          'struk'
+        ]);
 
-            const tokens = cleanActor
-              .toLowerCase()
-              .split(/[\s+&/]+/)
-              .filter((t) => t.length > 2 && !OBJECT_NOUNS.has(t));
+        let maxScore = 0;
+        for (const actor of sortedKnownActors) {
+          const cleanActor = actor.trim();
+          if (!cleanActor || cleanActor === REQUIRED_ROLE) continue;
 
-            let score = 0;
-            for (const tok of tokens) {
-              if (new RegExp(`\\b${tok}`, 'i').test(lowerPhase)) {
-                score += tok.length;
-              }
-            }
+          const tokens = cleanActor
+            .toLowerCase()
+            .split(/[\s+&/]+/)
+            .filter((t) => t.length > 2 && !OBJECT_NOUNS.has(t));
 
-            if (score > maxScore) {
-              maxScore = score;
-              matchedRole = cleanActor;
+          let score = 0;
+          for (const tok of tokens) {
+            if (new RegExp(`\\b${tok}`, 'i').test(lowerPhase)) {
+              score += tok.length;
             }
           }
-        }
 
-        // 3c. Deteksi semantik aktivitas pembayaran/kasir jika peran kasir/resepsionis tersedia
-        if (!matchedRole && /\b(pembayaran|bayar|tagihan|kuitansi|kasir)\b/i.test(lowerPhase)) {
-          const cashierActor = knownActors.find((a) => /kasir|resepsionis|keuangan|loket/i.test(a));
-          if (cashierActor) {
-            matchedRole = cashierActor;
+          if (score > maxScore) {
+            maxScore = score;
+            matchedRole = cleanActor;
           }
         }
+      }
 
-        if (matchedRole) {
-          assignedActor = resolveActorForStep(matchedRole, session.roles);
-        } else if (idx === 0) {
-          assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien/i, 'Pelanggan');
-        } else if (idx === phases.length - 1) {
-          assignedActor = activeOwner;
-        } else {
-          assignedActor = activeCore;
+      // 4. Deteksi semantik aktivitas pembayaran/kasir jika peran kasir/resepsionis tersedia
+      if (!matchedRole && /\b(pembayaran|bayar|tagihan|kuitansi|kasir)\b/i.test(lowerPhase)) {
+        const cashierActor = knownActors.find((a) => /kasir|resepsionis|keuangan|loket/i.test(a));
+        if (cashierActor) {
+          matchedRole = cashierActor;
         }
+      }
+
+      // 5. Cek apakah menyebut pihak eksternal (Pelanggan / Warga / Konsumen)
+      if (!matchedRole && /\b(pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah|warga)\b/i.test(lowerPhase)) {
+        matchedRole = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah|warga/i, 'Pelanggan');
+      }
+
+      if (matchedRole) {
+        assignedActor = resolveActorForStep(matchedRole, session.roles);
+      } else if (idx === 0) {
+        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|warga|anggota/i, 'Pelanggan');
+      } else if (idx === phases.length - 1) {
+        assignedActor = activeOwner;
+      } else {
+        assignedActor = activeCore;
       }
 
       // Bersihkan teks aksi: rapikan huruf kapital pertama
       let actionText = phase;
-      // Jika fase diawali nama aktor, bersihkan prefiks agar lebih luwes dibaca
+      // Jika fase diawali nama aktor, bersihkan prefiks nama lengkap terlebih dahulu agar tidak memotong frasa janggal
       const rawPrefixes = [
         assignedActor,
+        ...knownActors,
         ...assignedActor.split(/&|\//).map((s) => s.trim()),
         'Pelanggan',
         'Penyewa',
         'Pasien',
+        'Warga',
         'Kasir Penerima',
         'Kasir',
         'Petugas Rental',
@@ -1272,10 +1379,11 @@ export function getDomainFlowDetails(
       });
     });
   } else {
-    // Fallback minimal jika asumsiAlurUtama tidak memiliki pemisah fase yang jelas
+    // Fallback darurat minimal HANYA JIKA narasi dan alur sama-sama kosong melompong
+    const initialActor = findActor(/pelanggan|penyewa|pasien|pembeli|warga|member/i, 'Pelanggan');
     rawSteps.push({
-      pelaku: findActor(/pelanggan|penyewa|pasien|pembeli/i, 'Pelanggan'),
-      aksi: 'Mengajukan kebutuhan pesanan atau layanan di sistem'
+      pelaku: initialActor,
+      aksi: 'Mengajukan kebutuhan transaksi atau layanan di sistem'
     });
     rawSteps.push({
       pelaku: activeCore,
@@ -1283,7 +1391,7 @@ export function getDomainFlowDetails(
     });
     rawSteps.push({
       pelaku: activeCore,
-      aksi: 'Menyelesaikan pengerjaan dan menyerahkan hasil layanan kepada pelanggan'
+      aksi: 'Menyelesaikan pengerjaan dan menyerahkan hasil layanan'
     });
     rawSteps.push({
       pelaku: activeOwner,
@@ -1331,10 +1439,36 @@ export function getDomainFlowDetails(
     }))
   );
 
+  // VALIDASI KONSISTENSI AKTOR ALUR INTI (Poin 3)
+  // Memastikan 100% pelaku langkah alur inti terdaftar di session.roles.selected!
+  const validSelectedRoles = session.roles?.selected && session.roles.selected.length > 0
+    ? session.roles.selected
+    : [REQUIRED_ROLE];
+
+  const validatedSteps = deduplicatedSteps.map((s) => {
+    let actor = s.pelaku;
+    if (!validSelectedRoles.includes(actor)) {
+      actor = resolveActorForStep(actor, session.roles);
+    }
+    if (!validSelectedRoles.includes(actor)) {
+      if (isExternalRole(actor)) {
+        const ext = validSelectedRoles.find((r) => isExternalRole(r));
+        actor = ext || REQUIRED_ROLE;
+      } else {
+        const staff = validSelectedRoles.find((r) => !isSuperAdminRole(r) && !isExternalRole(r));
+        actor = staff || REQUIRED_ROLE;
+      }
+    }
+    return {
+      ...s,
+      pelaku: actor
+    };
+  });
+
   const alurIntiResult =
     !options?.forceFresh && session.flow?.alurInti && session.flow.alurInti.length > 0
       ? session.flow.alurInti
-      : deduplicatedSteps;
+      : validatedSteps;
 
   return {
     alurInti: alurIntiResult,
@@ -1902,8 +2036,12 @@ export function buildKasusGandaFromSession(
   };
 
   const findCustomerActor = (): string => {
+    const selected = session.roles?.selected || [];
+    const extInSelected = selected.find((c) => isExternalRole(c));
+    if (extInSelected) return extInSelected;
+
     const candidates = [
-      ...(session.roles?.selected || []),
+      ...selected,
       ...(session.storyline?.asumsiAktor || [])
     ];
     for (const c of candidates) {
@@ -1912,7 +2050,7 @@ export function buildKasusGandaFromSession(
         return resolveActorForStep(c, session.roles);
       }
     }
-    return 'Pelanggan';
+    return selected.find((r) => !isSuperAdminRole(r)) || REQUIRED_ROLE;
   };
 
   const customerActor = findCustomerActor();
