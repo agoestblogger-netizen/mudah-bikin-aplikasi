@@ -543,6 +543,35 @@ export async function POST(req: Request) {
     // Jika brief sudah selesai disepakati/dikonfirmasi tetapi user MASIH berada di mode PLAN:
     // Prototipe TIDAK BOLEH dibuat. AI wajib meminta user mengganti mode ke BUILD di dropdown.
     const isBriefApprovedWhileInPlanMode = Boolean(hasBriefPresented && isConfirmationApproval && isPlanMode);
+
+    // =============================================================================
+    // HARD ARCHITECTURAL GUARD: DILARANG MEMBUAT PROTOTIPE BARU SEBELUM GUIDED INTERVIEW SELESAI
+    // =============================================================================
+    // Prototipe baru (currentCode kosong) HANYA boleh dibuat jika user telah menyelesaikan
+    // seluruh Guided Interview hingga REVIEW_FINAL dengan statusKonfirmasi: 'disetujui'.
+    // Sesi baru yang langsung meminta 'buatkan aplikasi X' tanpa alur interview WAJIB DITOLAK.
+    const isAttemptingNewPrototype = !currentCode && (
+      stage === 'TAHAP_2_MOCKUP' ||
+      activeChatMode === 'BUILD' ||
+      isConfirmationApproval
+    );
+
+    if (isAttemptingNewPrototype) {
+      const isGuidedApproved = Boolean(
+        incomingSession &&
+        incomingSession.step === 'REVIEW_FINAL' &&
+        (incomingSession.statusKonfirmasi === 'disetujui' || incomingSession.review?.statusKonfirmasi === 'disetujui')
+      );
+
+      if (!isGuidedApproved) {
+        console.warn(`[GUARD BLOCKED] Pembuatan prototipe baru ditolak: sesi belum melewati REVIEW_FINAL yang disetujui.`);
+        return NextResponse.json({
+          success: false,
+          error: 'Pembuatan prototipe baru hanya dapat dilakukan setelah menyelesaikan seluruh tahapan perencanaan (Guided Interview) hingga Ringkasan Akhir (REVIEW_FINAL) disetujui.',
+          needsGuidedInterview: true
+        }, { status: 400 });
+      }
+    }
     
     // Deteksi Pertanyaan Eksplisit dari Pengguna (Wajib dijawab dalam dialog, dilarang langsung lompat ke eksekusi - Poin 38)
     const hasExplicitQuestion = prompt.includes('?') || /(^|\b)(apakah|apa\s+kamu\s+paham|paham\s+kah|paham\s+gak|paham\s+kan|ngerti\s+gak|ngerti\s+kan|bisa\s+kah|gimana\s+menurutmu|bagaimana\s+menurutmu|menurut\s+kamu|kenapa|mengapa|bagaimana\s+cara|tolong\s+jelaskan|apa\s+maksud|apakah\s+bisa|jelaskan)($|\b)/i.test(prompt.trim());

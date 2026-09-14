@@ -212,6 +212,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setMessages(projectState.chatMessages);
   }, [projectState.chatMessages]);
 
+  // Sinkronisasi mode: jika kanvas kosong (proyek baru atau reset), WAJIB kembali ke mode PLAN
+  useEffect(() => {
+    if (!projectState.canvasCode?.html) {
+      setSelectedMode('PLAN');
+    }
+  }, [projectState.id, projectState.canvasCode?.html]);
+
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -458,27 +465,51 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const handleSendMessage = async (textToSend?: string, modeOverride?: ChatMode) => {
     const query = textToSend || input;
     if (!query.trim() || isGenerating) return;
-    const activeMode = modeOverride || selectedMode;
 
-    // Sesi terpandu (Multiple-Choice Flow): mulai otomatis pada pesan ide pertama
-    const looksLikeIdea =
-      query.trim().length > 12 &&
-      !/^(apa|apakah|bagaimana|kenapa|mengapa|bisa|boleh|hallo|halo|hai|selamat)\b/i.test(query.trim()) &&
-      !query.trim().endsWith('?');
-    if (
-      activeMode === 'PLAN' &&
-      !projectState.canvasCode?.html &&
-      !projectState.sessionState &&
-      looksLikeIdea
-    ) {
+    const isCanvasEmpty = !projectState.canvasCode?.html;
+    // Jika kanvas kosong, mode efektif dipaksa selalu PLAN (tidak boleh BUILD sebelum ada kode)
+    const activeMode = isCanvasEmpty ? 'PLAN' : (modeOverride || selectedMode);
+
+    // Deteksi eksplisit permintaan pembuatan ide aplikasi baru
+    const isExplicitNewAppIdea =
+      /(?:buatkan|bikin|buat|buatkan\s+saya|kembangkan|rancang)\s+(?:aplikasi|sistem|app|web\s+app)\b/i.test(query.trim()) ||
+      /(?:aplikasi|sistem)\s+(?:cuci\s+mobil|laundry|posyandu|kasir|klinik|rental|bengkel|toko|keuangan|booking|antrean|sekolah|koperasi|restoran|cafe)/i.test(query.trim());
+
+    // SKENARIO NYATA: Habis testing proyek lama (canvas masih ada kode),
+    // tanpa refresh browser langsung mengetik ide aplikasi baru ("buatkan aplikasi cuci mobil")
+    if (!isCanvasEmpty && isExplicitNewAppIdea) {
+      onUpdateState({
+        title: 'Proyek Aplikasi Baru',
+        canvasCode: { html: '', css: '', js: '' },
+        sessionState: null,
+        annotations: { marks: [], notes: [], patches: [] }
+      });
+      setSelectedMode('PLAN');
       await startGuidedSession(query);
       return;
+    }
+
+    // Sesi terpandu (Multiple-Choice Flow): mulai otomatis pada pesan ide pertama saat kanvas kosong
+    const isQuestionOrGreeting =
+      /^(apa|apakah|bagaimana|kenapa|mengapa|bisa|boleh|hallo|halo|hai|selamat|pagi|siang|sore|malam)\b/i.test(query.trim()) ||
+      query.trim().endsWith('?');
+    const looksLikeIdea = (query.trim().length > 8 && !isQuestionOrGreeting) || isExplicitNewAppIdea;
+
+    if (
+      isCanvasEmpty &&
+      (!projectState.sessionState || projectState.sessionState.step === 'REVIEW_FINAL' || !projectState.sessionState.step || looksLikeIdea)
+    ) {
+      // Jika belum ada sessionState, atau sesi sebelumnya sudah REVIEW_FINAL (selesai), mulai sesi terpandu baru
+      if (!projectState.sessionState || projectState.sessionState.step === 'REVIEW_FINAL' || !projectState.sessionState.step) {
+        await startGuidedSession(query);
+        return;
+      }
     }
 
     // Jika sesi terpandu sedang aktif di PLAN mode, teruskan input teks sebagai jawaban/koreksi langkah aktif
     if (
       activeMode === 'PLAN' &&
-      !projectState.canvasCode?.html &&
+      isCanvasEmpty &&
       projectState.sessionState &&
       projectState.sessionState.step &&
       projectState.sessionState.step !== 'REVIEW_FINAL'
