@@ -363,17 +363,20 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
                       </span>
                     )}
 
-                    {/* Tombol Edit Deskripsi (Bagian D - Berlaku untuk semua peran di step ROLE) */}
-                    {payload.stepId === 'ROLE' && !isEditing && (
-                      <button
-                        type="button"
-                        onClick={(e) => startEditingRole(opt, e)}
-                        className="ml-auto inline-flex items-center gap-1 text-[9.5px] text-zinc-400 hover:text-[#10f48e] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded transition-colors"
-                        title="Edit deskripsi & tanggung jawab peran ini"
-                      >
-                        <Pencil className="w-2.5 h-2.5" />
-                        <span>Edit</span>
-                      </button>
+                    {/* Tombol Edit Deskripsi (Bagian D - Berlaku HANYA untuk peran nyata di step ROLE, bukan tombol navigasi) */}
+                    {payload.stepId === 'ROLE' &&
+                      !isEditing &&
+                      !/^(jump_step_|cancel_back|back_to_previous)/i.test(opt.id) &&
+                      Boolean(opt.roleStatus || (opt.responsibilities && opt.responsibilities.length > 0)) && (
+                        <button
+                          type="button"
+                          onClick={(e) => startEditingRole(opt, e)}
+                          className="ml-auto inline-flex items-center gap-1 text-[9.5px] text-zinc-400 hover:text-[#10f48e] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded transition-colors"
+                          title="Edit deskripsi & tanggung jawab peran ini"
+                        >
+                          <Pencil className="w-2.5 h-2.5" />
+                          <span>Edit</span>
+                        </button>
                     )}
                   </span>
 
