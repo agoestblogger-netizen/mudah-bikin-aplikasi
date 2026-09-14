@@ -32,6 +32,7 @@ import {
   detectCoreOperationalRole,
   type DomainFlowData,
   type GuidedStepId,
+  type SessionStep,
   type MockupSessionState,
   type AnalisisArahResult,
   type KondisiArahBisnis,
@@ -42,7 +43,9 @@ import {
   renderDataSchemaMarkdown,
   generateDeterministicSimulasiDb,
   renderSimulasiDbMarkdown,
-  renderReviewFinalMarkdown
+  renderReviewFinalMarkdown,
+  buildBackNavigationStep,
+  generateChangeNote
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -278,6 +281,38 @@ async function invokeAIChat(options: {
   return null;
 }
 
+export const DYNAMIC_GREETINGS = [
+  'Senang sekali bisa mendiskusikan ide aplikasi ini bersama kamu.',
+  'Ide aplikasi yang sangat prospektif, mari kita bedah alur kerjanya.',
+  'Terima kasih telah berbagi ide aplikasi ini, mari kita petakan prosesnya.',
+  'Menarik sekali konsep aplikasi ini, mari kita susun gambaran operasionalnya.',
+  'Langkah awal yang bagus, mari kita uraikan aktivitas bisnis aplikasi ini.'
+];
+
+export function getRandomGreeting(): string {
+  const idx = Math.floor(Math.random() * DYNAMIC_GREETINGS.length);
+  return DYNAMIC_GREETINGS[idx];
+}
+
+/**
+ * Memastikan narasi storytelling murni dari sudut pandang pihak ketiga objektif:
+ * - Menghilangkan kata "kami", "kita", atau "tim kami" dan menggantinya dengan peran operasional nyata.
+ * - Mengganti istilah kaku/berlebihan dengan bahasa sehari-hari yang membumi.
+ */
+export function sanitizeStorylineNarrative(narrative: string, actors: string[] = []): string {
+  if (!narrative) return narrative;
+  let cleaned = narrative;
+
+  const defaultActor =
+    actors.find((a) => !isSuperAdminRole(a) && !isExternalRole(a)) ||
+    (actors.length > 1 ? actors[1] : 'Petugas');
+
+  cleaned = cleaned.replace(/\b(tim\s+kami|tim\s+kita)\b/gi, defaultActor);
+  cleaned = cleaned.replace(/\b(kami|kita)\b/gi, defaultActor);
+  cleaned = cleaned.replace(/menggosok\s+bodi/gi, 'mencuci kendaraan');
+  return cleaned;
+}
+
 interface AIStorylineResult {
   appName: string;
   businessCategory: string;
@@ -439,13 +474,18 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 5. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
    "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
 
-6. NADA HANGAT, BERSAHABAT, & TANPA ISTILAH TEKNIS:
-   - Gunakan bahasa Indonesia percakapan yang santun, luwes, dan akrab layaknya rekan diskusi bisnis yang suportif.
-   - Awali narasi cerita dengan kalimat apresiasi dan pembuka yang ramah dan hangat.
-     Contoh: "Aplikasi yang ingin kamu buat sangat menarik, mari kita bahas alurnya lebih dalam." atau variasi apresiasi senada yang bersahabat dan positif.
+6. NADA HANGAT, VARIASI PEMBUKA BEBAS, & BAHASA SEHARI-HARI MEMBUMI:
+   - Gunakan bahasa Indonesia percakapan yang santun, luwes, wajar, dan membumi (bahasa sehari-hari orang awam menjelaskan bisnisnya, misal sebut "mencuci kendaraan" bukan "menggosok bodi"; sebut "menimbang barang" bukan "melakukan pengukuran massa").
+   - Awali narasi cerita dengan kalimat apresiasi/pembuka yang ramah, hangat, dan BERVARIASI BEBAS setiap sesi. DILARANG KERAS menggunakan satu kalimat template yang sama persis (seperti "Aplikasi yang ingin kamu buat sangat menarik..."). Buatlah sapaan segar dan kontekstual dengan ide pengguna.
    - DILARANG KERAS menggunakan kata teknis IT/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni interaksi manusia dan barang nyata!
 
-7. KALIMAT PENUTUP WAJIB:
+7. SUDUT PANDANG (WAJIB PIHAK KETIGA OBJEKTIF):
+   - Narasi cerita WAJIB ditulis dari sudut pandang PIHAK KETIGA OBJEKTIF yang mendeskripsikan bagaimana bisnis ini berjalan pada umumnya secara netral.
+   - DILARANG KERAS menggunakan kata ganti orang pertama jamak seperti "kami", "kita", atau "tim kami" untuk merujuk pelaku bisnis (contoh SALAH: "Tim kami langsung mencuci kendaraan...", "Setelah itu kami mencatat pembayaran...").
+   - Sebut nama peran/aktor secara eksplisit pihak ketiga (contoh BENAR: "Pelanggan datang membawa kendaraan...", "Washer menerima dan mencuci kendaraan...", "Kasir memproses pembayaran...").
+   - Peran yang disebut dalam narasi HARUS KONSISTEN dan PERSIS SAMA dengan yang dicantumkan di asumsiAktor (bukan istilah generik).
+
+8. KALIMAT PENUTUP WAJIB:
    Akhiri narasi cerita DENGAN PERSIS KALIMAT INI:
    "${CONFIRMATION_CLOSING}"
 
@@ -2994,7 +3034,7 @@ export async function POST(req: Request) {
         });
 
         const clarificationNarration =
-          `Aplikasi yang ingin kamu buat sangat menarik, mari kita bahas lebih dalam.\n\n` +
+          `${getRandomGreeting()}\n\n` +
           `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan terlebih dahulu:\n\n` +
           `> ❓ **${amb.pertanyaan}**\n\n` +
           `Silakan pilih arah bisnis di kartu bawah agar alur yang saya siapkan langsung tepat sasaran.`;
@@ -3076,15 +3116,19 @@ export async function POST(req: Request) {
       };
 
       const guidedStep = buildGuidedStep(session);
-      // Narasi chat awal: pastikan SELALU diawali kalimat pembuka ramah standar sebelum cerita alur (Bagian B)
-      let initialNarration = (session.storyline?.narasi || storylineResult.narasi || '').trim();
-      const hasGreetingPrefix = /^(aplikasi\s+yang\s+ingin|ide\s+aplikasi|halo|wah|senang|terima\s*kasih|keren|luar\s*biasa)/i.test(initialNarration);
+      // Narasi chat awal: sanitasi sudut pandang pihak ketiga objektif dan biarkan AI bervariasi bebas
+      let rawNarasi = (session.storyline?.narasi || storylineResult.narasi || '').trim();
+      let sanitized = sanitizeStorylineNarrative(rawNarasi, session.storyline?.asumsiAktor || storylineResult.asumsiAktor);
+
+      // Pastikan ada pembuka ramah, jika belum ada tambahkan greeting acak yang bervariasi
+      const hasGreetingPrefix = /^(aplikasi|ide\s+aplikasi|halo|hai|senang|terima\s*kasih|menarik|langkah\s+awal|konsep|wah|keren|luar\s*biasa)/i.test(sanitized);
       if (!hasGreetingPrefix) {
-        initialNarration = `Aplikasi yang ingin kamu buat sangat menarik, mari kita bahas alurnya lebih dalam.\n\n${initialNarration}`;
+        sanitized = `${getRandomGreeting()}\n\n${sanitized}`;
       }
-      const narration = initialNarration;
+
+      const narration = sanitized;
       if (session.storyline) {
-        session.storyline.narasi = initialNarration;
+        session.storyline.narasi = sanitized;
       }
 
       const matchedTemplate = getMasterTemplateById(templateId);
@@ -3118,6 +3162,88 @@ export async function POST(req: Request) {
       const stepId = body.stepId || (session?.step as GuidedStepId | undefined);
       if (!session || !stepId) {
         return NextResponse.json({ success: false, error: 'session dan stepId wajib untuk NEXT.' }, { status: 400 });
+      }
+
+      const selected = body.selected || [];
+
+      // 1. Opsi Navigasi Mundur: "Ada yang terlewat di langkah sebelumnya" (Bagian B)
+      if (selected.includes('back_to_previous')) {
+        const backCard = buildBackNavigationStep(session.step);
+        return NextResponse.json({
+          success: true,
+          action,
+          session,
+          guidedStep: backCard,
+          narration: 'Kamu bisa kembali ke langkah sebelumnya yang sudah pernah dilewati untuk memeriksa atau melakukan perbaikan:'
+        });
+      }
+
+      // 2. Pembatalan Navigasi Mundur: "Batal (Tetap di langkah saat ini)"
+      if (selected.includes('cancel_back')) {
+        const normalCard = buildGuidedStep(session);
+        return NextResponse.json({
+          success: true,
+          action,
+          session,
+          guidedStep: normalCard,
+          narration: 'Kembali ke peninjauan langkah saat ini.'
+        });
+      }
+
+      // 3. User memilih langkah tujuan lompatan mundur (jump_step_*)
+      const jumpSelection = selected.find((s: string) => s.startsWith('jump_step_'));
+      if (jumpSelection) {
+        const targetStep = jumpSelection.replace('jump_step_', '') as SessionStep;
+        const jumpedSession: MockupSessionState = {
+          ...session,
+          step: targetStep
+        };
+        const targetCard = buildGuidedStep(jumpedSession);
+        let narration = 'Silakan tinjau dan sesuaikan bagian ini:';
+
+        if (targetStep === 'STORYTELLING') {
+          narration = jumpedSession.storyline?.narasi || 'Berikut cerita proses bisnis awal aplikasi:';
+        } else if (targetStep === 'ROLE') {
+          const roleTable = renderRoleSummaryTable(
+            jumpedSession.roles,
+            jumpedSession.match?.businessCategory,
+            jumpedSession.storyline
+          );
+          narration = `Berikut ringkasan peran (roles) yang telah disusun sebelumnya:\n\n${roleTable}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan wewenang peran.`;
+        } else if (targetStep === 'ALUR') {
+          const flowData = getDomainFlowDetails(jumpedSession);
+          const flowMd = renderFlowMarkdown(flowData);
+          narration = `Berikut alur kerja operasional yang telah disusun sebelumnya:\n\n${flowMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan alur.`;
+        } else if (targetStep === 'RBAC') {
+          const rbacMd =
+            jumpedSession.rbac?.markdownTable ||
+            renderRbacMarkdownTable(
+              jumpedSession.roles?.selected || [],
+              jumpedSession.rbac?.modul || [],
+              jumpedSession.rbac?.catatanPelimpahan
+            );
+          narration = `Berikut matriks hak akses (RBAC) sebelumnya:\n\n${rbacMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan hak akses.`;
+        } else if (targetStep === 'SKEMA_DATA') {
+          const schemaMd =
+            jumpedSession.dataSchema?.markdownTable ||
+            (jumpedSession.dataSchema
+              ? renderDataSchemaMarkdown(jumpedSession.dataSchema.tabel, jumpedSession.dataSchema.korelasiRingkas)
+              : '');
+          narration = `Berikut skema basis data sebelumnya:\n\n${schemaMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan struktur tabel.`;
+        } else if (targetStep === 'SIMULASI_DB') {
+          const simMd =
+            jumpedSession.simulasiDb?.markdownTable ||
+            (jumpedSession.simulasiDb ? renderSimulasiDbMarkdown(jumpedSession.simulasiDb) : '');
+          narration = `Berikut simulasi database & akun demo login sebelumnya:\n\n${simMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan data contoh.`;
+        }
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: jumpedSession,
+          guidedStep: targetCard,
+          narration
+        });
       }
 
       // Khusus step STORYTELLING: proses klarifikasi arah bisnis, konfirmasi, koreksi kecil, atau meleset jauh (POIN 2)
@@ -3616,7 +3742,11 @@ export async function POST(req: Request) {
             finalSession.storyline
           );
 
+          const changeNoteDual = generateChangeNote('ALUR', finalSession);
           let dualNarration = '';
+          if (changeNoteDual) {
+            dualNarration += `${changeNoteDual}\n\n`;
+          }
           if (removalMessages.length > 0) {
             dualNarration += removalMessages.join('\n\n') + '\n\n';
           }
@@ -3665,7 +3795,11 @@ export async function POST(req: Request) {
         // Penutup wajib: tabel ringkasan final dengan tugas dilimpahkan miring (POIN 3)
         const summaryTable = renderRoleSummaryTable(updated.roles, updated.match.businessCategory, updated.storyline);
 
+        const changeNote = generateChangeNote('ALUR', updated);
         let narration = '';
+        if (changeNote) {
+          narration += `${changeNote}\n\n`;
+        }
         if (removalMessages.length > 0) {
           narration += removalMessages.join('\n\n') + '\n\n';
         }
@@ -3912,7 +4046,9 @@ export async function POST(req: Request) {
             updated.rbac.catatanPelimpahan
           );
 
+        const changeNoteRbac = generateChangeNote('RBAC', updated);
         const narration =
+          (changeNoteRbac ? `${changeNoteRbac}\n\n` : '') +
           `Mantap! Alur kerja dan fitur pendukung sudah tersimpan.\n\n` +
           `Berikut adalah rancangan matriks pembagian hak akses (RBAC) per modul fungsional untuk setiap peran di aplikasi Anda:\n\n` +
           `${tableMarkdown}\n\n` +
@@ -4011,7 +4147,9 @@ export async function POST(req: Request) {
 
         const guidedStep = buildGuidedStep(updated);
         const schemaMarkdown = updated.dataSchema?.markdownTable || (updated.dataSchema ? renderDataSchemaMarkdown(updated.dataSchema.tabel, updated.dataSchema.korelasiRingkas) : '');
+        const changeNoteSchema = generateChangeNote('SKEMA_DATA', updated);
         const narration =
+          (changeNoteSchema ? `${changeNoteSchema}\n\n` : '') +
           `Bagus sekali! Matriks hak akses (RBAC) telah disetujui.\n\n` +
           `Berikut rancangan skema tabel data & relasi yang dibutuhkan aplikasi Anda berdasarkan alur dan wewenang yang telah disepakati:\n\n` +
           `${schemaMarkdown}\n\n` +
@@ -4089,7 +4227,9 @@ export async function POST(req: Request) {
         const simulasiMarkdown =
           updated.simulasiDb?.markdownTable ||
           (updated.simulasiDb ? renderSimulasiDbMarkdown(updated.simulasiDb) : '');
+        const changeNoteSimulasi = generateChangeNote('SIMULASI_DB', updated);
         const narration =
+          (changeNoteSimulasi ? `${changeNoteSimulasi}\n\n` : '') +
           `Bagus sekali! Skema data telah disepakati.\n\n` +
           `Berikut simulasi database singkat (data contoh) dan akun demo untuk login uji coba prototipe Anda:\n\n` +
           `${simulasiMarkdown}\n\n` +

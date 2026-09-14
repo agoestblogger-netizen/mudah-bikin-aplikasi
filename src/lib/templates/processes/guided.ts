@@ -36,6 +36,124 @@ export function nextSessionStep(step: GuidedStepId | SessionStep): SessionStep {
   return SESSION_STEP_ORDER[Math.min(idx + 1, SESSION_STEP_ORDER.length - 1)];
 }
 
+export const GUIDED_STEP_METADATA: { step: SessionStep; label: string; description: string }[] = [
+  { step: 'STORYTELLING', label: 'Cerita Awal', description: 'Gambaran proses bisnis & masalah utama' },
+  { step: 'ROLE', label: 'Role & Tanggung Jawab', description: 'Penetapan pelaku & hak wewenang' },
+  { step: 'ALUR', label: 'Alur Sistem & Fitur', description: 'Urutan aktivitas utama & fitur MVP' },
+  { step: 'RBAC', label: 'Matriks Hak Akses (RBAC)', description: 'Izin akses tiap peran per modul' },
+  { step: 'SKEMA_DATA', label: 'Skema Database & Relasi', description: 'Struktur tabel, kolom, & relasi' },
+  { step: 'SIMULASI_DB', label: 'Simulasi Database & Akun Demo', description: 'Data contoh & akun login' },
+  { step: 'REVIEW_FINAL', label: 'Ringkasan Akhir', description: 'Gate akhir sebelum buat prototipe' }
+];
+
+export function buildBackNavigationStep(currentStep: SessionStep): GuidedStepPayload {
+  const currentIndex = SESSION_STEP_ORDER.indexOf(currentStep);
+  const previousSteps = SESSION_STEP_ORDER.slice(0, currentIndex);
+
+  const options: GuidedStepOption[] = previousSteps.map((s) => {
+    const meta = GUIDED_STEP_METADATA.find((m) => m.step === s);
+    return {
+      id: `jump_step_${s}`,
+      label: `↩️ ${meta?.label || s}`,
+      description: meta?.description || `Kembali ke langkah ${s}`
+    };
+  });
+
+  options.push({
+    id: 'cancel_back',
+    label: '❌ Batal (Tetap di langkah saat ini)',
+    description: 'Kembali ke peninjauan langkah sekarang'
+  });
+
+  return {
+    stepId: currentStep,
+    title: 'Pilih langkah yang ingin kamu tinjau atau perbaiki:',
+    multi: false,
+    allowOther: false,
+    options
+  };
+}
+
+/**
+ * Menghasilkan catatan perubahan singkat jika terjadi regenerasi berantai akibat koreksi di langkah sebelumnya (Bagian C).
+ * Menghasilkan null jika tidak ada perubahan berarti.
+ */
+export function generateChangeNote(targetStep: SessionStep, session: MockupSessionState): string | null {
+  const snapshot = session.changeSnapshots;
+  if (!snapshot) return null;
+
+  if (targetStep === 'ALUR') {
+    const prev = snapshot.prevAlurInti || [];
+    const current = session.flow?.alurInti || [];
+    const changes: string[] = [];
+
+    for (let i = 0; i < Math.min(prev.length, current.length); i++) {
+      if (prev[i].pelaku !== current[i].pelaku) {
+        changes.push(`langkah ke-${i + 1} berubah pelakunya dari [${prev[i].pelaku}] menjadi [${current[i].pelaku}]`);
+      }
+    }
+    if (current.length > 0 && prev.length > 0 && current.length !== prev.length) {
+      changes.push(`jumlah langkah disesuaikan dari ${prev.length} menjadi ${current.length} langkah`);
+    }
+
+    const prevRoles = snapshot.prevRoles || [];
+    const currentRoles = session.roles?.selected || [];
+    const addedRoles = currentRoles.filter((r) => !prevRoles.includes(r));
+    const removedRoles = prevRoles.filter((r) => !currentRoles.includes(r));
+
+    if (changes.length > 0) {
+      return `> 💡 **Catatan Penyesuaian:** Karena ada penyesuaian di Role, ${changes.join(', ')}.`;
+    } else if (addedRoles.length > 0 || removedRoles.length > 0) {
+      return `> 💡 **Catatan Penyesuaian:** Alur Inti telah diselaraskan dengan susunan peran aktif terbaru.`;
+    }
+    return null;
+  }
+
+  if (targetStep === 'RBAC') {
+    const prevModul = snapshot.prevRbacModul || [];
+    const currentModul = session.rbac?.modul?.map((m) => m.nama) || [];
+    const addedModul = currentModul.filter((m) => !prevModul.includes(m));
+    const removedModul = prevModul.filter((m) => !currentModul.includes(m));
+
+    if (addedModul.length > 0) {
+      return `> 💡 **Catatan Penyesuaian:** Modul **${addedModul.join(', ')}** di RBAC ini baru ditambahkan karena Alur Inti sekarang mencakup proses terkait.`;
+    } else if (removedModul.length > 0) {
+      return `> 💡 **Catatan Penyesuaian:** Modul RBAC diselaraskan dengan cakupan alur kerja terbaru.`;
+    } else if (snapshot.lastModifiedStep === 'ROLE' || snapshot.lastModifiedStep === 'ALUR') {
+      return `> 💡 **Catatan Penyesuaian:** Matriks hak akses (RBAC) telah diselaraskan dengan daftar peran dan alur kerja terbaru.`;
+    }
+    return null;
+  }
+
+  if (targetStep === 'SKEMA_DATA') {
+    const prevTables = snapshot.prevDataSchemaTabel || [];
+    const currentTables = session.dataSchema?.tabel?.map((t) => t.nama) || [];
+    const addedTables = currentTables.filter((t) => !prevTables.includes(t));
+
+    if (addedTables.length > 0) {
+      return `> 💡 **Catatan Penyesuaian:** Tabel **${addedTables.join(', ')}** ditambahkan ke skema data untuk menampung entitas dari proses terbaru.`;
+    } else if (snapshot.lastModifiedStep) {
+      return `> 💡 **Catatan Penyesuaian:** Skema basis data diselaraskan dengan struktur modul RBAC dan peran aktif terbaru.`;
+    }
+    return null;
+  }
+
+  if (targetStep === 'SIMULASI_DB') {
+    const prevSimRoles = snapshot.prevSimulasiDbRoles || [];
+    const currentSimRoles = session.simulasiDb?.akunLogin?.map((a) => a.role) || [];
+    const diffRoles = currentSimRoles.filter((r) => !prevSimRoles.includes(r));
+
+    if (diffRoles.length > 0) {
+      return `> 💡 **Catatan Penyesuaian:** Akun demo login untuk peran **${diffRoles.join(', ')}** telah disiapkan mengikuti pembaruan peran.`;
+    } else if (snapshot.lastModifiedStep) {
+      return `> 💡 **Catatan Penyesuaian:** Simulasi database dan data contoh diselaraskan dengan skema tabel terbaru.`;
+    }
+    return null;
+  }
+
+  return null;
+}
+
 interface FeatureInfo {
   id: string;
   label: string;
@@ -795,14 +913,21 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   }
 
   // POIN REVISI 4: Deduplikasi semantik lapis kedua (mengecek kesamaan tanggung jawab antar role)
-  const finalOptions = deduplicateRoleOptionsSemantically(options);
+  const finalOptions = deduplicateRoleOptionsSemantically(options).slice(0, 10);
+
+  finalOptions.push({
+    id: 'back_to_previous',
+    label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+    description: 'Kembali ke langkah cerita alur bisnis awal untuk memeriksa atau memperbaiki narasi.',
+    locked: false
+  });
 
   return {
     stepId: 'ROLE',
     title: 'Pilih peran pengguna & pembagian tanggung jawab aplikasi',
     multi: true,
     allowOther: true,
-    options: finalOptions.slice(0, 10)
+    options: finalOptions
   };
 }
 
@@ -2223,6 +2348,11 @@ function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan perbaikan langkah alur inti, alur pendukung, atau fitur pendukung di bawah.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Di langkah 2 alur inti ganti kasir jadi resepsionis, atau tambahkan alur komplain...'
+      },
+      {
+        id: 'back_to_previous',
+        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
     ]
   };
@@ -2547,6 +2677,11 @@ function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan modul atau peran mana yang hak akses/wewenangnya perlu disesuaikan.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Kasir jangan diberi akses hapus data, atau Penyewa boleh batalkan booking sendiri...'
+      },
+      {
+        id: 'back_to_previous',
+        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
     ]
   };
@@ -2576,6 +2711,11 @@ function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan tabel atau kolom yang perlu ditambah, diubah, atau disesuaikan.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Tambahkan kolom nomor WhatsApp pada tabel pelanggan, atau buat tabel riwayat pembayaran...'
+      },
+      {
+        id: 'back_to_previous',
+        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
     ]
   };
@@ -2601,6 +2741,11 @@ function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan data contoh atau akun login yang ingin disesuaikan nilainya.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Ubah data armada jadi Avanza & Innova, atau ubah nama akun kasir...'
+      },
+      {
+        id: 'back_to_previous',
+        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
     ]
   };
@@ -2767,6 +2912,16 @@ export function applyGuidedAnswer(
 ): MockupSessionState {
   const next: MockupSessionState = JSON.parse(JSON.stringify(session));
 
+  // Tangani tombol navigasi mundur dan pembatalan
+  if (selected.some((s) => s.startsWith('jump_step_'))) {
+    const targetStep = selected.find((s) => s.startsWith('jump_step_'))!.replace('jump_step_', '') as SessionStep;
+    next.step = targetStep;
+    return next;
+  }
+  if (selected.includes('cancel_back')) {
+    return next;
+  }
+
   if (stepId === 'STORYTELLING') {
     const feedbackText = (other || '').trim();
     const hasSpecificDetails =
@@ -2900,6 +3055,18 @@ export function applyGuidedAnswer(
       ...(other ? { other } : {})
     };
 
+    // Simpan snapshot perubahan sebelum membersihkan cache alur, rbac, skema, dan simulasi
+    next.changeSnapshots = {
+      ...next.changeSnapshots,
+      lastModifiedStep: 'ROLE',
+      prevRoles: session.roles?.selected || [],
+      prevAlurInti: session.flow?.alurInti || [],
+      prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
+      prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
+      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
+    };
+
     // Bersihkan seluruh cache alur lama agar saat masuk ke ALUR, alur kerja
     // dan atribusi pelaku di-generate ulang secara menyeluruh dari peran terkini
     if (next.flow) {
@@ -2968,6 +3135,17 @@ export function applyGuidedAnswer(
       ...(other ? { other } : {})
     };
 
+    // Simpan snapshot perubahan sebelum membersihkan cache rbac, skema, dan simulasi
+    next.changeSnapshots = {
+      ...next.changeSnapshots,
+      lastModifiedStep: 'ALUR',
+      prevAlurInti: session.flow?.alurInti || [],
+      prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
+      prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
+      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
+    };
+
     // SYARAT TAMBAHAN 1: Bersihkan cache RBAC, Skema Data, dan Simulasi DB saat alur kerja berubah
     delete next.rbac;
     delete next.dataSchema;
@@ -2976,14 +3154,35 @@ export function applyGuidedAnswer(
     if (next.rbac) {
       next.rbac.statusKonfirmasi = 'disetujui';
     }
+    next.changeSnapshots = {
+      ...next.changeSnapshots,
+      lastModifiedStep: 'RBAC',
+      prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
+      prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
+      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
+    };
   } else if (stepId === 'SKEMA_DATA') {
     if (next.dataSchema) {
       next.dataSchema.statusKonfirmasi = 'disetujui';
     }
+    next.changeSnapshots = {
+      ...next.changeSnapshots,
+      lastModifiedStep: 'SKEMA_DATA',
+      prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
+      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
+    };
   } else if (stepId === 'SIMULASI_DB') {
     if (next.simulasiDb) {
       next.simulasiDb.statusKonfirmasi = 'disetujui';
     }
+    next.changeSnapshots = {
+      ...next.changeSnapshots,
+      lastModifiedStep: 'SIMULASI_DB',
+      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
+    };
   } else if (stepId === 'REVIEW_FINAL') {
     if (selected.includes('edit_role')) {
       next.step = 'ROLE';

@@ -326,6 +326,16 @@ export interface MockupSessionState {
     other?: string;
   };
   compiledBrief?: string;
+  changeSnapshots?: {
+    lastModifiedStep?: SessionStep;
+    prevRoles?: string[];
+    prevAlurInti?: { step: number; pelaku: string; aksi: string }[];
+    prevRbacModul?: string[];
+    prevDataSchemaTabel?: string[];
+    prevSimulasiDbTabel?: string;
+    prevSimulasiDbRoles?: string[];
+    changeNote?: string;
+  };
 }
 
 export const BASIC_FEATURE_TIER_THRESHOLD = 6;
