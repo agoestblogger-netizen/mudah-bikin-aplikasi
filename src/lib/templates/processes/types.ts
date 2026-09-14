@@ -159,6 +159,7 @@ export interface GuidedStepPayload {
   multi: boolean;
   allowOther: boolean;
   options: GuidedStepOption[];
+  backNavOption?: GuidedStepOption;
 }
 
 export type SessionStep =

@@ -19,7 +19,8 @@ import {
   renderDataSchemaMarkdown,
   renderSimulasiDbMarkdown,
   renderReviewFinalMarkdown,
-  generateDeterministicSimulasiDb
+  generateDeterministicSimulasiDb,
+  isNavigationActionId
 } from '../src/lib/templates/processes/guided';
 import type { MockupSessionState } from '../src/lib/templates/processes/types';
 
@@ -207,6 +208,16 @@ async function runTests() {
       asumsiMasalah: 'Antrean cuci mobil sering tidak tercatat rapi dan pembayaran lambat',
       asumsiAktor: ['Super Admin', 'Kasir', 'Washer', 'Pelanggan'],
       asumsiAlurUtama: 'Pelanggan datang -> Kasir mencatat pesanan -> Washer mencuci kendaraan -> Kasir menerima pembayaran',
+      detailAktor: {
+        Washer: {
+          narasi: 'Petugas cuci mobil di lapangan',
+          tanggungJawab: ['Mencuci kendaraan dengan sampo salju', 'Mengeringkan bodi kendaraan dengan lap chamois']
+        },
+        Kasir: {
+          narasi: 'Petugas meja kasir dan administrasi',
+          tanggungJawab: ['Mencatat pesanan paket cuci dan plat nomor', 'Menerima pembayaran tunai/QRIS']
+        }
+      },
       statusKonfirmasi: 'disetujui',
       revisiCount: 0
     },
@@ -228,13 +239,25 @@ async function runTests() {
     features: { selected: [] }
   };
 
-  // Test 2.1: Kartu ALUR harus memiliki opsi 'back_to_previous'
-  const alurCard = buildGuidedStep(session)!;
-  const backOptionInAlur = alurCard.options.find((o) => o.id === 'back_to_previous');
-  if (!backOptionInAlur) {
-    throw new Error('FAILED: Opsi back_to_previous tidak ditemukan di buildGuidedStep untuk step ALUR!');
+  // Test 2.1: Audit seluruh 5 step (ROLE, ALUR, RBAC, SKEMA_DATA, SIMULASI_DB)
+  // Pastikan options murni berisi item domain (TANPA back_to_previous), dan backNavOption terpisah rapi
+  const stepChecks = ['ROLE', 'ALUR', 'RBAC', 'SKEMA_DATA', 'SIMULASI_DB'] as const;
+  for (const stepName of stepChecks) {
+    const testSession: MockupSessionState = { ...session, step: stepName };
+    const card = buildGuidedStep(testSession)!;
+    
+    // 1. Array options TIDAK BOLEH memuat back_to_previous
+    const hasBackInOptions = card.options.some((o) => o.id === 'back_to_previous');
+    if (hasBackInOptions) {
+      throw new Error(`FAILED: ID 'back_to_previous' masih bocor di array options untuk step ${stepName}!`);
+    }
+
+    // 2. backNavOption harus ada dan valid
+    if (!card.backNavOption || card.backNavOption.id !== 'back_to_previous') {
+      throw new Error(`FAILED: backNavOption tidak terdefinisi dengan benar untuk step ${stepName}!`);
+    }
+    console.log(`[Step Audit OK] Step ${stepName}: options bersih (${card.options.length} item), backNavOption terpisah.`);
   }
-  console.log('Opsi back_to_previous di Alur:', backOptionInAlur.label);
 
   // Test 2.2: Saat diklik back_to_previous, hasilkan daftar step sebelumnya
   const backNavigationCard = buildBackNavigationStep(session.step);
@@ -255,7 +278,7 @@ async function runTests() {
   }
   console.log(`Berhasil melompat mundur! Sesi sekarang di step: ${jumpedSession.step}`);
 
-  // Test 2.4: User mengoreksi role di ROLE (misal menghapus Washer, dilimpahkan ke Owner)
+  // Test 2.4: User mengonfirmasi role di ROLE (Washer dihapus, diserahkan ke Super Admin)
   // Peran terpilih: Super Admin, Kasir, Pelanggan (tanpa Washer)
   let updatedRoleSession = applyGuidedAnswer(
     jumpedSession,
@@ -269,7 +292,43 @@ async function runTests() {
   }
   console.log(`Setelah konfirmasi koreksi ROLE, alur maju normal ke: ${updatedRoleSession.step} (bukan auto-skip!)`);
 
-  console.log('\n✅ TEST 2 (Bagian B) LULUS: Navigasi mundur dan alur maju bertahap terverifikasi!');
+  // Test 2.5: Verifikasi mutlak bahwa 'back_to_previous' TIDAK bocor ke pelimpahan tugas role
+  const delegations = updatedRoleSession.roles?.tugasDilimpahkan || [];
+  const hasBackInDelegations = delegations.some((d) => d.dariRole === 'back_to_previous' || d.keRole === 'back_to_previous');
+  if (hasBackInDelegations) {
+    throw new Error("FAILED: 'back_to_previous' bocor ke tugasDilimpahkan!");
+  }
+
+  const selectedRoles = updatedRoleSession.roles?.selected || [];
+  if (selectedRoles.includes('back_to_previous')) {
+    throw new Error("FAILED: 'back_to_previous' bocor ke roles.selected!");
+  }
+
+  const removedExt = updatedRoleSession.roles?.removedExternalRoles || [];
+  if (removedExt.includes('back_to_previous')) {
+    throw new Error("FAILED: 'back_to_previous' bocor ke roles.removedExternalRoles!");
+  }
+
+  // Pastikan peran yang benar-benar dihapus (Washer) tetap dilimpahkan secara akurat
+  const washerDelegation = delegations.find((d) => d.dariRole === 'Washer');
+  if (!washerDelegation || washerDelegation.keRole !== 'Super Admin') {
+    throw new Error('FAILED: Role Washer yang benar-benar dihapus gagal dilimpahkan ke Super Admin!');
+  }
+  console.log('✅ Verifikasi pelimpahan tugas: Role asli (Washer) terlaksana, back_to_previous 100% steril!');
+
+  // Test 2.6: Verifikasi sanitasi step ALUR jika ada input yang mengandung ID navigasi
+  let sanitizedAlurSession = applyGuidedAnswer(
+    updatedRoleSession,
+    'ALUR',
+    ['confirm_alur', 'back_to_previous'],
+    'back_to_previous'
+  );
+  if (sanitizedAlurSession.flow?.fiturPendukung?.includes('back_to_previous')) {
+    throw new Error("FAILED: 'back_to_previous' bocor ke flow.fiturPendukung!");
+  }
+  console.log('✅ Verifikasi sanitasi step ALUR: Tidak ada kebocoran ID navigasi ke fitur pendukung!');
+
+  console.log('\n✅ TEST 2 (Bagian B) LULUS: Navigasi mundur dan pemisahan data 5 step terverifikasi 100%!');
 
   console.log('\n====================================================');
   console.log('🧪 TEST 3: BAGIAN C - INDIKATOR PERUBAHAN REGENERASI BERANTAI');

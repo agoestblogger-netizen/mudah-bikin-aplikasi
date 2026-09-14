@@ -279,8 +279,10 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
   }
 
   // Pisahkan opsi biasa dari opsi navigasi mundur ("Ada yang terlewat di langkah sebelumnya")
-  const regularOptions = allDisplayOptions.filter((o) => o.id !== 'back_to_previous');
-  const backNavOption = allDisplayOptions.find((o) => o.id === 'back_to_previous');
+  const backNavOption = payload.backNavOption || allDisplayOptions.find((o) => o.id === 'back_to_previous');
+  const regularOptions = allDisplayOptions.filter(
+    (o) => o.id !== 'back_to_previous' && !o.id.startsWith('jump_step_') && o.id !== 'cancel_back'
+  );
 
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0c0c11] p-3.5 space-y-3 shadow-inner">

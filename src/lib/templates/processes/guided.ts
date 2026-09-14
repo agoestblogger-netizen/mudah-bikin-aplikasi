@@ -915,19 +915,18 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   // POIN REVISI 4: Deduplikasi semantik lapis kedua (mengecek kesamaan tanggung jawab antar role)
   const finalOptions = deduplicateRoleOptionsSemantically(options).slice(0, 10);
 
-  finalOptions.push({
-    id: 'back_to_previous',
-    label: '⬅️ Ada yang terlewat di langkah sebelumnya',
-    description: 'Kembali ke langkah cerita alur bisnis awal untuk memeriksa atau memperbaiki narasi.',
-    locked: false
-  });
-
   return {
     stepId: 'ROLE',
     title: 'Pilih peran pengguna & pembagian tanggung jawab aplikasi',
     multi: true,
     allowOther: true,
-    options: finalOptions
+    options: finalOptions,
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+      description: 'Kembali ke langkah cerita alur bisnis awal untuk memeriksa atau memperbaiki narasi.',
+      locked: false
+    }
   };
 }
 
@@ -2348,13 +2347,13 @@ function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan perbaikan langkah alur inti, alur pendukung, atau fitur pendukung di bawah.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Di langkah 2 alur inti ganti kasir jadi resepsionis, atau tambahkan alur komplain...'
-      },
-      {
-        id: 'back_to_previous',
-        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
-        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
-    ]
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+      description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
+    }
   };
 }
 
@@ -2677,13 +2676,13 @@ function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan modul atau peran mana yang hak akses/wewenangnya perlu disesuaikan.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Kasir jangan diberi akses hapus data, atau Penyewa boleh batalkan booking sendiri...'
-      },
-      {
-        id: 'back_to_previous',
-        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
-        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
-    ]
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+      description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
+    }
   };
 }
 
@@ -2711,13 +2710,13 @@ function buildSkemaDataStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan tabel atau kolom yang perlu ditambah, diubah, atau disesuaikan.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Tambahkan kolom nomor WhatsApp pada tabel pelanggan, atau buat tabel riwayat pembayaran...'
-      },
-      {
-        id: 'back_to_previous',
-        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
-        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
-    ]
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+      description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
+    }
   };
 }
 
@@ -2741,13 +2740,13 @@ function buildSimulasiDbStep(session: MockupSessionState): GuidedStepPayload {
         description: 'Tuliskan data contoh atau akun login yang ingin disesuaikan nilainya.',
         requiresInput: true,
         inputPlaceholder: 'Contoh: Ubah data armada jadi Avanza & Innova, atau ubah nama akun kasir...'
-      },
-      {
-        id: 'back_to_previous',
-        label: '⬅️ Ada yang terlewat di langkah sebelumnya',
-        description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
       }
-    ]
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+      description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
+    }
   };
 }
 
@@ -2902,6 +2901,14 @@ export function buildGuidedStep(session: MockupSessionState): GuidedStepPayload 
 }
 
 /**
+ * Memeriksa apakah suatu ID merupakan aksi navigasi internal (bukan data domain role/alur/modul/tabel).
+ */
+export function isNavigationActionId(id: string): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return id === 'back_to_previous' || id === 'cancel_back' || id.startsWith('jump_step_');
+}
+
+/**
  * Gabungkan jawaban user ke session dan majukan langkah.
  */
 export function applyGuidedAnswer(
@@ -2918,9 +2925,12 @@ export function applyGuidedAnswer(
     next.step = targetStep;
     return next;
   }
-  if (selected.includes('cancel_back')) {
+  if (selected.includes('cancel_back') || selected.includes('back_to_previous')) {
     return next;
   }
+
+  // Sanitasi selected dari aksi navigasi internal agar tidak mencemari data domain
+  const cleanSelected = selected.filter((s) => !isNavigationActionId(s));
 
   if (stepId === 'STORYTELLING') {
     const feedbackText = (other || '').trim();
@@ -2931,7 +2941,7 @@ export function applyGuidedAnswer(
       );
 
     const isExplicitMismatchWithoutDetails =
-      selected.includes('mismatch_story') && !hasSpecificDetails;
+      cleanSelected.includes('mismatch_story') && !hasSpecificDetails;
     const isTextMismatchWithoutDetails =
       Boolean(feedbackText) &&
       !hasSpecificDetails &&
@@ -2940,16 +2950,16 @@ export function applyGuidedAnswer(
     const isMismatch = isExplicitMismatchWithoutDetails || isTextMismatchWithoutDetails;
 
     const isConfirm =
-      selected.includes('confirm_story') ||
-      (!feedbackText && selected.length === 0 && !selected.includes('minor_adjust') && !isMismatch) ||
+      cleanSelected.includes('confirm_story') ||
+      (!feedbackText && cleanSelected.length === 0 && !cleanSelected.includes('minor_adjust') && !isMismatch) ||
       (Boolean(feedbackText) &&
-        !selected.includes('minor_adjust') &&
+        !cleanSelected.includes('minor_adjust') &&
         !isMismatch &&
         !hasSpecificDetails &&
         /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(feedbackText));
 
     const existingStory = next.storyline || {
-      narasi: other || selected.join(' '),
+      narasi: other || cleanSelected.join(' '),
       asumsiMasalah: '',
       asumsiAktor: next.match.contextualRoles || ['Super Admin', 'Staf', 'Pelanggan'],
       asumsiAlurUtama: '',
@@ -3001,14 +3011,15 @@ export function applyGuidedAnswer(
     return next;
   } else if (stepId === 'ROLE') {
     const offeredStep = buildRoleStep(session);
-    const coreOptions = offeredStep.options.filter((o) => o.roleStatus === 'WAJIB_INTI');
+    const coreOptions = offeredStep.options.filter((o) => o.roleStatus === 'WAJIB_INTI' && !isNavigationActionId(o.id));
     const coreRoles =
       coreOptions.length > 0 ? coreOptions.map((o) => o.id) : [detectCoreOperationalRole(session)];
-    let selectedRoles = dedupeRoleLabels(selected.length > 0 ? selected : [REQUIRED_ROLE, ...coreRoles]);
+    let selectedRoles = dedupeRoleLabels(cleanSelected.length > 0 ? cleanSelected : [REQUIRED_ROLE, ...coreRoles])
+      .filter((r) => !isNavigationActionId(r));
     if (!selectedRoles.includes(REQUIRED_ROLE)) {
       selectedRoles = [REQUIRED_ROLE, ...selectedRoles];
     }
-    if (other && other.trim() && !selectedRoles.includes(other.trim())) {
+    if (other && other.trim() && !selectedRoles.includes(other.trim()) && !isNavigationActionId(other.trim())) {
       selectedRoles.push(other.trim());
     }
 
@@ -3022,13 +3033,15 @@ export function applyGuidedAnswer(
     const tambahan = selectedRoles.filter((r) => !wajib.includes(r));
 
     // Cek role yang ditawarkan tapi tidak dipilih (dihapus/dideselect oleh user)
-    const offeredRoles = offeredStep.options.map((o) => o.id);
-    const removedRoles = offeredRoles.filter((r) => !selectedRoles.includes(r) && r !== REQUIRED_ROLE);
+    // WAJIB KECUALIKAN aksi navigasi (back_to_previous dan sejenisnya)
+    const offeredRoles = offeredStep.options.map((o) => o.id).filter((id) => !isNavigationActionId(id));
+    const removedRoles = offeredRoles.filter((r) => !selectedRoles.includes(r) && r !== REQUIRED_ROLE && !isNavigationActionId(r));
 
     const tugasDilimpahkan: { dariRole: string; keRole: string; daftarTugas: string[] }[] = [];
     const removedExternalRoles: string[] = [];
 
     for (const r of removedRoles) {
+      if (isNavigationActionId(r)) continue;
       if (isExternalRole(r)) {
         // Peran eksternal (Pelanggan, Warga, Penyewa, Pasien, dll) adalah pihak yang dilayani
         // Tindakan transaksi mereka TIDAK dilimpahkan ke Owner/Admin
@@ -3052,7 +3065,7 @@ export function applyGuidedAnswer(
       tambahan,
       tugasDilimpahkan,
       removedExternalRoles,
-      ...(other ? { other } : {})
+      ...(other && !isNavigationActionId(other.trim()) ? { other } : {})
     };
 
     // Simpan snapshot perubahan sebelum membersihkan cache alur, rbac, skema, dan simulasi
@@ -3090,11 +3103,11 @@ export function applyGuidedAnswer(
 
     // Alur pendukung yang dipilih (jika confirm_alur, sertakan semua alur pendukung yang ada)
     let selectedPendukung = flowData.alurPendukung;
-    if (selected.length > 0 && !selected.includes('confirm_alur')) {
+    if (cleanSelected.length > 0 && !cleanSelected.includes('confirm_alur')) {
       const filtered = flowData.alurPendukung.filter(
         (ap) =>
-          selected.includes(ap.id) ||
-          selected.some((s) => s.includes(ap.id) || s.includes(ap.nama))
+          cleanSelected.includes(ap.id) ||
+          cleanSelected.some((s) => s.includes(ap.id) || s.includes(ap.nama))
       );
       if (filtered.length > 0) {
         selectedPendukung = filtered;
@@ -3103,9 +3116,9 @@ export function applyGuidedAnswer(
 
     // Fitur pendukung yang dipilih (jika confirm_alur, sertakan semua fitur pendukung yang ada)
     let selectedFitur = flowData.fiturPendukung.map((fp) => fp.label);
-    if (selected.length > 0 && !selected.includes('confirm_alur')) {
+    if (cleanSelected.length > 0 && !cleanSelected.includes('confirm_alur')) {
       const filtered = flowData.fiturPendukung
-        .filter((fp) => selected.includes(fp.id) || selected.some((s) => s.includes(fp.label)))
+        .filter((fp) => cleanSelected.includes(fp.id) || cleanSelected.some((s) => s.includes(fp.label)))
         .map((fp) => fp.label);
       if (filtered.length > 0) {
         selectedFitur = filtered;
@@ -3113,11 +3126,11 @@ export function applyGuidedAnswer(
     }
 
     // Jika user menambahkan item kustom melalui "other"
-    if (other && other.trim()) {
+    if (other && other.trim() && !isNavigationActionId(other.trim())) {
       const customItems = other
         .split(/[,;\n]+/)
         .map((x) => x.trim())
-        .filter((x) => x.length > 0 && !/^(ya|oke|ok|lanjut|setuju|mantap)\b/i.test(x));
+        .filter((x) => x.length > 0 && !/^(ya|oke|ok|lanjut|setuju|mantap)\b/i.test(x) && !isNavigationActionId(x));
       customItems.forEach((ci) => {
         if (!selectedFitur.includes(ci)) {
           selectedFitur.push(ci);
@@ -3132,7 +3145,7 @@ export function applyGuidedAnswer(
         steps: ap.steps
       })),
       fiturPendukung: selectedFitur,
-      ...(other ? { other } : {})
+      ...(other && !isNavigationActionId(other.trim()) ? { other } : {})
     };
 
     // Simpan snapshot perubahan sebelum membersihkan cache rbac, skema, dan simulasi

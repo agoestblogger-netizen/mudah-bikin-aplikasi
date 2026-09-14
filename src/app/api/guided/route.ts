@@ -27,6 +27,7 @@ import {
   REQUIRED_ROLE,
   isSuperAdminRole,
   isExternalRole,
+  isNavigationActionId,
   getRoleNarrativeAndResponsibilities,
   calculateConceptualSimilarity,
   detectCoreOperationalRole,
@@ -3839,6 +3840,7 @@ export async function POST(req: Request) {
         const removalMessages: string[] = [];
         if (updated.roles.removedExternalRoles && updated.roles.removedExternalRoles.length > 0) {
           for (const extRole of updated.roles.removedExternalRoles) {
+            if (isNavigationActionId(extRole)) continue;
             removalMessages.push(
               `Oke, role ${extRole} tidak dipakai sebagai akun terpisah — berarti aplikasi tidak perlu login khusus untuk ${extRole.toLowerCase()}. Interaksi dengan ${extRole.toLowerCase()} tetap berjalan lewat staf yang sudah tercatat di alur kerja.`
             );
@@ -3846,6 +3848,7 @@ export async function POST(req: Request) {
         }
         if (updated.roles.tugasDilimpahkan && updated.roles.tugasDilimpahkan.length > 0) {
           for (const d of updated.roles.tugasDilimpahkan) {
+            if (isNavigationActionId(d.dariRole) || isNavigationActionId(d.keRole)) continue;
             removalMessages.push(
               `Oke, role ${d.dariRole} dihapus. Berarti tugas (${d.daftarTugas.join(', ')}) otomatis jadi tanggung jawab Owner ya — kalau mau dilimpahkan ke role lain, tinggal bilang saja.`
             );
