@@ -2324,11 +2324,53 @@ INSTRUKSI PERBAIKAN WAJIB:
 
         if (missingHandlers.length > 0) {
           // --- OPSI 1: Targeted AI call — generate implementasi nyata hanya untuk fungsi yang hilang ---
+          const preRepairHtml = htmlCode;
           let targetedRepairSuccess = false;
           const targetedProvider = actualProviderUsed;
 
+          const officialRoleList = officialRoles.length > 0 ? officialRoles.join(', ') : 'Super Admin';
           const missingHandlerContext = missingHandlers.map(fn => `- function ${fn}(...args) { /* implementasikan sesuai konteks aplikasi */ }`).join('\n');
-          const targetedRepairInstruction = `PERINGATAN: Fungsi-fungsi berikut dipanggil di atribut onclick HTML tetapi BELUM DIDEFINISIKAN di dalam tag <script>:\n${missingHandlerContext}\n\nINSTRUKSI:\n1. Tulis HANYA definisi fungsi-fungsi di atas yang hilang tersebut — dengan implementasi NYATA sesuai konteks dan array data aplikasi ini (bukan stub kosong).\n2. Setiap fungsi WAJIB memiliki logika yang benar-benar berfungsi: manipulasi array state, buka/tutup modal yang ada, panggil render(), dan showToast().\n3. JANGAN mengulangi kode HTML/CSS — cukup tulis blok <script> berisi fungsi-fungsi yang hilang saja.\n4. Format output: hanya blok JavaScript murni (tanpa \\\`\\\`\\\`html atau tag HTML lain).`;
+          const targetedRepairInstruction = `PERINGATAN: Fungsi-fungsi berikut dipanggil di atribut onclick HTML tetapi BELUM DIDEFINISIKAN di dalam tag <script>:
+${missingHandlerContext}
+
+DAFTAR ROLE RESMI APLIKASI: [${officialRoleList}]
+
+INSTRUKSI MUTLAK:
+1. Tulis HANYA definisi fungsi-fungsi di atas yang hilang tersebut — dengan implementasi NYATA sesuai konteks dan array data aplikasi ini (bukan stub kosong).
+2. Setiap fungsi WAJIB memiliki logika yang benar-benar berfungsi: manipulasi array state data aplikasi, buka/tutup modal yang ada, panggil render(), dan showToast().
+3. DILARANG KERAS MENGARANG ROLE ASING! Jika fungsi berkaitan dengan pengguna, staf, atau role akun, HANYA gunakan role resmi dari daftar: [${officialRoleList}]. DILARANG menggunakan kata "Staff", "User", "Pegawai", atau peran lain di luar daftar resmi tersebut.
+4. FORMAT OUTPUT: HANYA KODE JAVASCRIPT MURNI (definisi fungsi saja).
+   - DILARANG menulis tag <script> atau </script>!
+   - DILARANG menulis tag HTML apa pun!
+   - DILARANG menggunakan markdown fence (\`\`\`)!`;
+
+          // Helper sanitasi output JS dari targeted repair agar bebas tag HTML / markdown fence
+          const sanitizeTargetedRepairJs = (rawText: string): string => {
+            if (!rawText) return '';
+            let js = rawText.trim();
+            const fenceMatch = js.match(/```(?:javascript|js|html)?([\s\S]*?)```/i);
+            if (fenceMatch) {
+              js = fenceMatch[1];
+            } else {
+              js = js.replace(/```[\s\S]*?```/g, '');
+            }
+            js = js.replace(/<\/?script[^>]*>/gi, '');
+            js = js.replace(/<!--[\s\S]*?-->/g, '');
+            const lines = js.split('\n');
+            const cleanLines = lines.filter(line => {
+              const trimmed = line.trim();
+              if (!trimmed) return true;
+              return !/^<\/?(?:html|head|body|div|section|button|input|form|p|span|table|tr|td|th)\b[^>]*>$/i.test(trimmed);
+            });
+            js = cleanLines.join('\n').trim();
+            try {
+              new Function(js);
+              return js;
+            } catch (err) {
+              console.warn('[Targeted Repair] Sintaks JS tidak valid sebelum injeksi:', err);
+              return '';
+            }
+          };
 
           try {
             if (targetedProvider === 'gemini' && geminiApiKey) {
@@ -2353,26 +2395,28 @@ INSTRUKSI PERBAIKAN WAJIB:
                 const tData = await tRes.json();
                 const tMsg: string = tData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
                 if (tMsg && tMsg.trim().length > 20) {
-                  // Ekstrak blok JS dari respons (bisa berupa ```javascript ... ``` atau kode polos)
-                  let injectedJs = tMsg;
-                  const jsBlockMatch = tMsg.match(/```(?:javascript|js)?([\s\S]*?)```/);
-                  if (jsBlockMatch) injectedJs = jsBlockMatch[1];
-                  else injectedJs = tMsg.replace(/```[\s\S]*?```/g, '').trim();
-
-                  if (injectedJs && !injectedJs.toLowerCase().includes('tidak dapat')) {
-                    // Suntikkan definisi fungsi nyata ke dalam kode HTML
+                  const sanitizedJs = sanitizeTargetedRepairJs(tMsg);
+                  if (sanitizedJs && !sanitizedJs.toLowerCase().includes('tidak dapat')) {
                     const insertPos = htmlCode.lastIndexOf('</script>');
                     if (insertPos !== -1) {
-                      htmlCode = htmlCode.slice(0, insertPos) + '\n' + injectedJs.trim() + '\n' + htmlCode.slice(insertPos);
-                    }
-                    // Re-validasi setelah targeted repair
-                    const reValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
-                    if (reValidated.isValid || extractMissingHandlers(reValidated.issues).length < missingHandlers.length) {
-                      validated = reValidated;
-                      // Catat sisa fungsi yang masih belum teratasi
-                      partialWarningFunctions = extractMissingHandlers(reValidated.issues);
-                      targetedRepairSuccess = true;
-                      console.log(`[Targeted Repair] Berhasil. Sisa handler hilang: ${partialWarningFunctions.length}`);
+                      const candidateHtml = htmlCode.slice(0, insertPos) + '\n' + sanitizedJs.trim() + '\n' + htmlCode.slice(insertPos);
+                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles);
+
+                      const hasNewSyntaxError = candidateValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
+                      const hasNewRoleContamination = candidateValidated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
+                      const hasNewCriticalSwap = candidateValidated.issues.some(i => i.startsWith('CRITICAL_ACTION_SWAP'));
+                      const remainingMissing = extractMissingHandlers(candidateValidated.issues).length;
+
+                      if (!hasNewSyntaxError && !hasNewRoleContamination && !hasNewCriticalSwap && (candidateValidated.isValid || remainingMissing < missingHandlers.length)) {
+                        htmlCode = candidateHtml;
+                        validated = candidateValidated;
+                        partialWarningFunctions = extractMissingHandlers(candidateValidated.issues);
+                        targetedRepairSuccess = true;
+                        console.log(`[Targeted Repair] Berhasil. Sisa handler hilang: ${partialWarningFunctions.length}`);
+                      } else {
+                        console.warn(`[Targeted Repair] Ditolak karena isu baru (Syntax: ${hasNewSyntaxError}, Role: ${hasNewRoleContamination}). Rollback ke kode asal.`);
+                        htmlCode = preRepairHtml;
+                      }
                     }
                   }
                 }
@@ -2386,8 +2430,7 @@ INSTRUKSI PERBAIKAN WAJIB:
                 { role: 'user', content: targetedRepairInstruction }
               ];
               const tReqBody: Record<string, any> = { model: activeOpenAIModel, messages: targetedMessages };
-              // Targeted repair hanya butuh kode fungsi saja, tapi tetap sesuaikan dengan batas model
-              const targetedRepairMaxTokens = Math.min(getMaxOutputTokens(activeOpenAIModel), 8192); // Cukup untuk implementasi fungsi
+              const targetedRepairMaxTokens = Math.min(getMaxOutputTokens(activeOpenAIModel), 8192);
               if (isOpenRouter) tReqBody.max_tokens = targetedRepairMaxTokens;
               else tReqBody.max_completion_tokens = targetedRepairMaxTokens;
               const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
@@ -2402,22 +2445,28 @@ INSTRUKSI PERBAIKAN WAJIB:
                 const tData = await tRes.json();
                 const tMsg: string = tData.choices?.[0]?.message?.content || '';
                 if (tMsg && tMsg.trim().length > 20) {
-                  let injectedJs = tMsg;
-                  const jsBlockMatch = tMsg.match(/```(?:javascript|js)?([\s\S]*?)```/);
-                  if (jsBlockMatch) injectedJs = jsBlockMatch[1];
-                  else injectedJs = tMsg.replace(/```[\s\S]*?```/g, '').trim();
-
-                  if (injectedJs && !injectedJs.toLowerCase().includes('tidak dapat')) {
+                  const sanitizedJs = sanitizeTargetedRepairJs(tMsg);
+                  if (sanitizedJs && !sanitizedJs.toLowerCase().includes('tidak dapat')) {
                     const insertPos = htmlCode.lastIndexOf('</script>');
                     if (insertPos !== -1) {
-                      htmlCode = htmlCode.slice(0, insertPos) + '\n' + injectedJs.trim() + '\n' + htmlCode.slice(insertPos);
-                    }
-                    const reValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
-                    if (reValidated.isValid || extractMissingHandlers(reValidated.issues).length < missingHandlers.length) {
-                      validated = reValidated;
-                      partialWarningFunctions = extractMissingHandlers(reValidated.issues);
-                      targetedRepairSuccess = true;
-                      console.log(`[Targeted Repair] Berhasil. Sisa handler hilang: ${partialWarningFunctions.length}`);
+                      const candidateHtml = htmlCode.slice(0, insertPos) + '\n' + sanitizedJs.trim() + '\n' + htmlCode.slice(insertPos);
+                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles);
+
+                      const hasNewSyntaxError = candidateValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
+                      const hasNewRoleContamination = candidateValidated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
+                      const hasNewCriticalSwap = candidateValidated.issues.some(i => i.startsWith('CRITICAL_ACTION_SWAP'));
+                      const remainingMissing = extractMissingHandlers(candidateValidated.issues).length;
+
+                      if (!hasNewSyntaxError && !hasNewRoleContamination && !hasNewCriticalSwap && (candidateValidated.isValid || remainingMissing < missingHandlers.length)) {
+                        htmlCode = candidateHtml;
+                        validated = candidateValidated;
+                        partialWarningFunctions = extractMissingHandlers(candidateValidated.issues);
+                        targetedRepairSuccess = true;
+                        console.log(`[Targeted Repair] Berhasil. Sisa handler hilang: ${partialWarningFunctions.length}`);
+                      } else {
+                        console.warn(`[Targeted Repair] Ditolak karena isu baru (Syntax: ${hasNewSyntaxError}, Role: ${hasNewRoleContamination}). Rollback ke kode asal.`);
+                        htmlCode = preRepairHtml;
+                      }
                     }
                   }
                 }
@@ -2427,17 +2476,17 @@ INSTRUKSI PERBAIKAN WAJIB:
             console.warn('[Targeted Repair] Error:', targetedErr);
           }
 
-          // --- OPSI 2: Jika Opsi 1 gagal total — catat semua handler yang masih hilang sebagai partial warning ---
+          // --- OPSI 2: Jika Opsi 1 gagal total atau di-rollback — catat semua handler yang masih hilang sebagai partial warning ---
           if (!targetedRepairSuccess) {
+            htmlCode = preRepairHtml;
             partialWarningFunctions = missingHandlers;
-            console.warn(`[Targeted Repair] Gagal. ${missingHandlers.length} handler masih hilang: ${missingHandlers.join(', ')}`);
-            // Re-validasi untuk mendapatkan verified.repairedCode yang paling mutakhir
+            console.warn(`[Targeted Repair] Rollback ke kode asal. ${missingHandlers.length} handler masih hilang: ${missingHandlers.join(', ')}`);
+            // Re-validasi untuk memastikan verified.repairedCode yang mutakhir dan bersih dari kontaminasi
             const finalValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
             validated = finalValidated;
           }
         } else {
           // Tidak ada MISMATCH_HANDLER — issue lain (ROLE_GATING, dsb.) tidak perlu targeted repair
-          // Catat isu non-handler untuk keperluan logging saja
           console.log('[Self-healing] Tidak ada MISMATCH_HANDLER yang tersisa, skip targeted repair.');
         }
       }
