@@ -2110,13 +2110,18 @@ export function renderRbacMarkdownTable(
       }
       return match.level.trim();
     });
-    const moduleName = m.deskripsiFungsional
-      ? `**${m.nama}**<br>*${m.deskripsiFungsional}*`
-      : `**${m.nama}**`;
-    return `| ${moduleName} | ${cells.join(' | ')} |`;
+    return `| **${m.nama}** | ${cells.join(' | ')} |`;
   });
 
   let table = `${header}\n${divider}\n${rows.join('\n')}`;
+
+  const deskripsiItems = modulList
+    .filter((m) => m.deskripsiFungsional && m.deskripsiFungsional.trim())
+    .map((m) => `> - **${m.nama}**: ${m.deskripsiFungsional!.trim()}`);
+
+  if (deskripsiItems.length > 0) {
+    table += `\n\n> 📋 **Keterangan Modul Fungsional:**\n` + deskripsiItems.join('\n');
+  }
 
   if (catatanPelimpahan && catatanPelimpahan.length > 0) {
     table +=

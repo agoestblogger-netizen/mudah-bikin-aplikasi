@@ -3,6 +3,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 interface MarkdownMessageProps {
   content: string;
@@ -23,6 +24,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
     <div className={`markdown-message text-xs leading-relaxed text-zinc-200 space-y-2 ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
         components={{
           h1: ({ node, ...props }) => (
             <h1 className="text-sm sm:text-base font-bold text-white mt-3 mb-1.5 flex items-center gap-1.5" {...props} />
@@ -63,8 +65,11 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             />
           ),
           table: ({ node, ...props }) => (
-            <div className="overflow-x-auto my-3 -mx-1 sm:mx-0 rounded-xl border border-white/15 bg-black/40 shadow-md">
-              <table className="min-w-full text-left border-collapse text-xs" {...props} />
+            <div className="relative group my-3 -mx-1 sm:mx-0">
+              <div className="overflow-x-auto rounded-xl border border-white/15 bg-black/40 shadow-md">
+                <table className="w-full text-left border-collapse text-[11px] sm:text-xs" {...props} />
+              </div>
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-black/60 to-transparent rounded-r-xl opacity-75 sm:hidden" />
             </div>
           ),
           thead: ({ node, ...props }) => (
@@ -74,14 +79,24 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
             <tbody className="divide-y divide-white/10" {...props} />
           ),
           tr: ({ node, ...props }) => (
-            <tr className="hover:bg-white/[0.04] transition-colors" {...props} />
+            <tr className="hover:bg-white/[0.04] transition-colors odd:bg-white/[0.01]" {...props} />
           ),
           th: ({ node, ...props }) => (
-            <th className="px-3 py-2 text-[11px] sm:text-xs font-bold text-zinc-100 uppercase tracking-wider whitespace-nowrap" {...props} />
+            <th className="px-2 py-2 sm:px-3 sm:py-2.5 text-[10px] sm:text-[11px] font-bold text-zinc-100 uppercase tracking-wider text-wrap break-words leading-tight align-bottom min-w-[70px] max-w-[130px] border-r border-white/10 last:border-r-0" {...props} />
           ),
-          td: ({ node, ...props }) => (
-            <td className="px-3 py-2 text-[11px] sm:text-xs text-zinc-300 align-top leading-relaxed" {...props} />
-          ),
+          td: ({ node, children, ...props }: any) => {
+            const isDash = children === '-' || (Array.isArray(children) && children.length === 1 && children[0] === '-');
+            return (
+              <td
+                className={`px-2 py-2 sm:px-3 sm:py-2 text-[10px] sm:text-[11px] align-top leading-snug text-wrap break-words min-w-[70px] max-w-[140px] border-r border-white/5 last:border-r-0 ${
+                  isDash ? 'text-zinc-600 text-center font-bold' : 'text-zinc-300'
+                }`}
+                {...props}
+              >
+                {children}
+              </td>
+            );
+          },
           code: ({ node, inline, className: codeClassName, children, ...props }: any) => {
             if (inline) {
               return (
