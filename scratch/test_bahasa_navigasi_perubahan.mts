@@ -1,8 +1,7 @@
 import {
   generateStorylineWithAI,
   sanitizeStorylineNarrative,
-  getRandomGreeting,
-  DYNAMIC_GREETINGS
+  isClicheStorylineOpening
 } from '../src/app/api/guided/route';
 import {
   applyGuidedAnswer,
@@ -25,16 +24,30 @@ async function runTests() {
   console.log('🧪 TEST 1: BAGIAN A - VARIASI BAHASA & SUDUT PANDANG');
   console.log('====================================================');
 
-  // Test 1.1: Variasi greeting
-  const greetings = new Set<string>();
-  for (let i = 0; i < 20; i++) {
-    greetings.add(getRandomGreeting());
+  // Test 1.1: Deteksi kerangka klise
+  const clicheSamples = [
+    'Ide aplikasi cuci mobil dan motormu sangat menarik untuk membantu pelanggan lebih tertib.',
+    'Aplikasi yang ingin kamu buat sangat menarik. Pelanggan membawa kendaraan...',
+    'Konsep aplikasi ini sangat menarik sekali untuk dicoba.',
+    'Ide aplikasi klinik gigi ini cukup menarik untuk meningkatkan efisiensi.'
+  ];
+  const freshSamples = [
+    'Mengelola antrean kendaraan saat jam sibuk di tempat cuci mobil memang memerlukan alur kerja yang rapi. Pelanggan datang...',
+    'Langkah tepat untuk menertibkan jadwal konsultasi dan rekam medis pasien di klinik gigi. Pasien mendaftar di resepsionis...',
+    'Aktivitas penimbangan cucian kiloan dan pemilahan pakaian membutuhkan pencatatan yang disiplin. Pelanggan menyerahkan pakaian kotor...'
+  ];
+
+  for (const s of clicheSamples) {
+    if (!isClicheStorylineOpening(s)) {
+      throw new Error(`FAILED: Gagal mendeteksi pembuka klise: "${s}"`);
+    }
   }
-  console.log(`Variasi greeting unik yang dihasilkan dari 20x panggilan: ${greetings.size} jenis.`);
-  if (greetings.size <= 1) {
-    throw new Error('FAILED: Greeting tidak bervariasi!');
+  for (const s of freshSamples) {
+    if (isClicheStorylineOpening(s)) {
+      throw new Error(`FAILED: Kalimat segar salah terdeteksi sebagai klise: "${s}"`);
+    }
   }
-  console.log('Contoh greeting sample:', Array.from(greetings).slice(0, 3));
+  console.log('✅ Deteksi kerangka klise vs segar berfungsi akurat 100%.');
 
   // Test 1.2: Sanitasi narasi aman (hanya kata ganti orang pertama jamak, tidak menyentuh kata kerja/benda lain)
   const testDirtyNarratives = [

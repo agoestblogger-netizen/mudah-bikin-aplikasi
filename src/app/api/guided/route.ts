@@ -281,17 +281,18 @@ async function invokeAIChat(options: {
   return null;
 }
 
-export const DYNAMIC_GREETINGS = [
-  'Senang sekali bisa mendiskusikan ide aplikasi ini bersama kamu.',
-  'Ide aplikasi yang sangat prospektif, mari kita bedah alur kerjanya.',
-  'Terima kasih telah berbagi ide aplikasi ini, mari kita petakan prosesnya.',
-  'Menarik sekali konsep aplikasi ini, mari kita susun gambaran operasionalnya.',
-  'Langkah awal yang bagus, mari kita uraikan aktivitas bisnis aplikasi ini.'
-];
-
-export function getRandomGreeting(): string {
-  const idx = Math.floor(Math.random() * DYNAMIC_GREETINGS.length);
-  return DYNAMIC_GREETINGS[idx];
+/**
+ * Mendeteksi apakah narasi cerita masih terpengaruh kerangka klise:
+ * misal: "Ide aplikasi [X] sangat menarik..." atau "Aplikasi yang ingin kamu buat sangat menarik..."
+ * Kalimat pertama tidak boleh menggabungkan kata ide/aplikasi/konsep dengan kata sifat klise 'menarik'.
+ */
+export function isClicheStorylineOpening(text: string): boolean {
+  if (!text) return false;
+  const firstSentence = text.split(/[\.\n\?\!]/)[0].toLowerCase();
+  return (
+    (/\b(ide|aplikasi|konsep)\b/i.test(firstSentence) && /\bmenarik\b/i.test(firstSentence)) ||
+    /^(ide\s+aplikasi|aplikasi|konsep\s+aplikasi)\b.*?\b(sangat|amat|cukup|paling)\b/i.test(firstSentence)
+  );
 }
 
 /**
@@ -470,18 +471,25 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - Jika kondisi DUA_ARAH, alur utama WAJIB merangkum kedua siklus transaksi secara nyata dan berimbang.
      Contoh nyata Koperasi Simpan Pinjam: "Anggota menyetor tabungan & kasir mencatat saldo buku -> Anggota mengajukan pinjaman dana -> Petugas memverifikasi kelayakan & mencairkan dana pinjaman -> Anggota membayar cicilan berkala -> Pengurus memantau rekap simpan pinjam".
 
-5. ATURAN SELF-CHECK EKSPLISIT (WAJIB):
-   "Sebelum menampilkan cerita, cek apakah kalimat ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
+5. ATURAN SELF-CHECK EKSPLISIT (WAJIB DIIKUTI):
+   a) Uji Konteks Domain:
+      "Sebelum menampilkan cerita, cek apakah alur ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
+   b) Uji Variasi Kerangka Kalimat Pembuka (DILARANG ANCHORING/TEMPLATE KAKU):
+      "Periksa kalimat pembuka narasi: Jika kerangka kalimat tersebut generik dan bisa ditempelkan ke hampir semua bisnis hanya dengan mengganti nama usahanya (contoh: berpola tentang ide/aplikasi lalu diikuti kata sifat pujian klise seperti 'sangat menarik' atau 'menarik sekali'), maka pembuka itu DINILAI GAGAL. Wajib susun ulang kalimat pembuka yang berpijak langsung pada observasi aktivitas operasional nyata atau apresiasi solusi praktis yang spesifik."
 
-6. NADA HANGAT, VARIASI PEMBUKA BEBAS, & BAHASA SEHARI-HARI MEMBUMI:
+6. NADA HANGAT, VARIASI KERANGKA PEMBUKA BEBAS, & BAHASA SEHARI-HARI MEMBUMI:
    - Gunakan bahasa Indonesia percakapan yang santun, luwes, wajar, dan membumi (bahasa sehari-hari orang awam menjelaskan bisnisnya, misal sebut "mencuci kendaraan" bukan "menggosok bodi"; sebut "menimbang barang" bukan "melakukan pengukuran massa").
-   - Awali narasi cerita dengan kalimat apresiasi/pembuka yang ramah, hangat, dan BERVARIASI BEBAS setiap sesi. DILARANG KERAS menggunakan satu kalimat template yang sama persis (seperti "Aplikasi yang ingin kamu buat sangat menarik..."). Buatlah sapaan segar dan kontekstual dengan ide pengguna.
+   - Awali narasi cerita dengan kalimat pembuka yang BERVARIASI BEBAS setiap sesi. DILARANG menggunakan kerangka kalimat yang monoton atau berulang antar sesi (DILARANG selalu menggunakan pola seragam seperti "Pelanggan datang membawa..." di semua domain!).
+   - PANDUAN GAYA KALIMAT PEMBUKA (BEBAS BERGANTI GAYA TIAP SESI):
+     1) Gaya Observasi Operasional Lapangan: Langsung menyoroti dinamika nyata di lapangan (contoh: kesibukan penataan antrean, persiapan peralatan layanan, suasana meja kasir/resepsionis, atau aktivitas awal penanganan fisik).
+     2) Gaya Apresiasi Praktis Non-Klise: Menyoroti fokus solusi atau efisiensi tanpa menggunakan kata klise "menarik" (contoh: langkah bagus untuk memperjelas alur kerja, solusi tepat untuk memangkas waktu tunggu, atau ide praktis untuk menata pencatatan harian).
+     3) Gaya Sapaan Langsung & Tantangan Bisnis: Sapaan santun yang langsung terhubung dengan titik kritis atau ketelitian yang dibutuhkan dalam operasional bisnis tersebut.
    - DILARANG KERAS menggunakan kata teknis IT/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni interaksi manusia dan barang nyata!
 
 7. SUDUT PANDANG (WAJIB PIHAK KETIGA OBJEKTIF):
    - Narasi cerita WAJIB ditulis dari sudut pandang PIHAK KETIGA OBJEKTIF yang mendeskripsikan bagaimana bisnis ini berjalan pada umumnya secara netral.
    - DILARANG KERAS menggunakan kata ganti orang pertama jamak seperti "kami", "kita", atau "tim kami" untuk merujuk pelaku bisnis (contoh SALAH: "Tim kami langsung mencuci kendaraan...", "Setelah itu kami mencatat pembayaran...").
-   - Sebut nama peran/aktor secara eksplisit pihak ketiga (contoh BENAR: "Pelanggan datang membawa kendaraan...", "Washer menerima dan mencuci kendaraan...", "Kasir memproses pembayaran...").
+   - Sebut nama peran/aktor spesifik secara langsung sebagai subjek kalimat (contoh: sebut nama peran nyata seperti Kasir, Washer, Dokter Gigi, Petugas Gudang, atau Pelanggan, bukan menggunakan 'tim kami').
    - Peran yang disebut dalam narasi HARUS KONSISTEN dan PERSIS SAMA dengan yang dicantumkan di asumsiAktor (bukan istilah generik).
 
 8. KALIMAT PENUTUP WAJIB:
@@ -505,6 +513,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
       }
     },
     "klarifikasiAmbigu": {
+      "sapaan": "Sapaan ramah dan pembuka kontekstual ke ide bisnis pengguna (tanpa kata klise)",
       "pertanyaan": "Pertanyaan ramah memastikan fokus arah bisnis (jika AMBIGU)",
       "opsiA": "Arah bisnis A",
       "opsiB": "Arah bisnis B",
@@ -549,6 +558,37 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           String(parsed.appName || '').trim() ||
           (businessCategory.toLowerCase().startsWith('aplikasi') ? businessCategory : `Aplikasi ${businessCategory}`);
         let narasi = String(parsed.narasi || '').trim();
+
+        // SAFETY NET BERBASIS AI RETRY (BUKAN TRANSFORMASI MEKANIS):
+        // Jika pembuka masih terdeteksi menggunakan pola template klise (misal "[ide aplikasi] ... sangat menarik"),
+        // lakukan retry 1x ke AI agar AI menulis ulang narasinya secara organik & alami tanpa merusak tata bahasa.
+        if (isClicheStorylineOpening(narasi)) {
+          try {
+            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Kalimat pembuka narasi di atas masih mengikuti pola klise generik tentang ide aplikasi. Tolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan kalimat pembuka yang benar-benar baru, luwes, dan segar:\n- Awali dengan observasi operasional di lapangan secara langsung atau apresiasi fokus efisiensi/solusi praktis tanpa kata "menarik".\n- Tetap ceritakan alur 3 fase (titik awal, inti layanan fisik, penyelesaian transaksi) dari sudut pandang pihak ketiga objektif.\n- Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA dengan teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
+
+            const retryRaw = await invokeAIChat({
+              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda menulis ulang narasi cerita bisnis dengan kalimat pembuka yang segar, hidup, dan membumi tanpa pola klise. Balas HANYA dengan teks narasi murni.',
+              userPrompt: retryUserPrompt,
+              temperature: 0.7,
+              maxTokens: 1000,
+              provider,
+              userApiKey: apiKey,
+              userModel: model
+            });
+
+            if (retryRaw && retryRaw.trim()) {
+              let cleanRetry = retryRaw.trim().replace(/^["']|["']$/g, '');
+              const jsonRetryMatch = cleanRetry.match(/"narasi"\s*:\s*"([^"]+)"/);
+              if (jsonRetryMatch) {
+                cleanRetry = jsonRetryMatch[1];
+              }
+              narasi = cleanRetry;
+            }
+          } catch (retryErr) {
+            console.warn('Storyline greeting retry failed:', retryErr);
+          }
+        }
+
         if (!narasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
           narasi = narasi ? `${narasi} ${CONFIRMATION_CLOSING}` : CONFIRMATION_CLOSING;
         }
@@ -642,6 +682,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
               pemisahanRole
             } : undefined,
             klarifikasiAmbigu: rawArah.klarifikasiAmbigu ? {
+              sapaan: rawArah.klarifikasiAmbigu.sapaan ? String(rawArah.klarifikasiAmbigu.sapaan).trim() : undefined,
               pertanyaan: String(rawArah.klarifikasiAmbigu.pertanyaan || '').trim(),
               opsiA: String(rawArah.klarifikasiAmbigu.opsiA || '').trim(),
               opsiB: String(rawArah.klarifikasiAmbigu.opsiB || '').trim(),
@@ -3067,8 +3108,12 @@ export async function POST(req: Request) {
           opsiBoth: amb.opsiBoth
         });
 
+        const sapaanAmbigu = amb.sapaan && amb.sapaan.trim()
+          ? amb.sapaan.trim()
+          : 'Halo! Senang bisa mendiskusikan alur bisnismu.';
+
         const clarificationNarration =
-          `${getRandomGreeting()}\n\n` +
+          `${sapaanAmbigu}\n\n` +
           `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan terlebih dahulu:\n\n` +
           `> ❓ **${amb.pertanyaan}**\n\n` +
           `Silakan pilih arah bisnis di kartu bawah agar alur yang saya siapkan langsung tepat sasaran.`;
@@ -3153,12 +3198,6 @@ export async function POST(req: Request) {
       // Narasi chat awal: sanitasi sudut pandang pihak ketiga objektif dan biarkan AI bervariasi bebas
       let rawNarasi = (session.storyline?.narasi || storylineResult.narasi || '').trim();
       let sanitized = sanitizeStorylineNarrative(rawNarasi, session.storyline?.asumsiAktor || storylineResult.asumsiAktor);
-
-      // Pastikan ada pembuka ramah, jika belum ada tambahkan greeting acak yang bervariasi
-      const hasGreetingPrefix = /^(aplikasi|ide\s+aplikasi|halo|hai|senang|terima\s*kasih|menarik|langkah\s+awal|konsep|wah|keren|luar\s*biasa)/i.test(sanitized);
-      if (!hasGreetingPrefix) {
-        sanitized = `${getRandomGreeting()}\n\n${sanitized}`;
-      }
 
       const narration = sanitized;
       if (session.storyline) {

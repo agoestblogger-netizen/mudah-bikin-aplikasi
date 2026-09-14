@@ -189,6 +189,7 @@ export interface AnalisisArahResult {
     pemisahanRole?: PemisahanRoleResult;
   };
   klarifikasiAmbigu?: {
+    sapaan?: string;
     pertanyaan: string;
     opsiA: string;
     opsiB: string;
