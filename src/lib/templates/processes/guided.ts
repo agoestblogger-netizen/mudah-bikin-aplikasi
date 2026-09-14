@@ -50,6 +50,22 @@ export function buildBackNavigationStep(currentStep: SessionStep): GuidedStepPay
   const currentIndex = SESSION_STEP_ORDER.indexOf(currentStep);
   const previousSteps = SESSION_STEP_ORDER.slice(0, currentIndex);
 
+  if (previousSteps.length === 0) {
+    return {
+      stepId: currentStep,
+      title: 'Tidak ada langkah sebelumnya untuk ditinjau.',
+      multi: false,
+      allowOther: false,
+      options: [
+        {
+          id: 'cancel_back',
+          label: '❌ Tetap di langkah saat ini',
+          description: 'Kembali ke peninjauan langkah sekarang'
+        }
+      ]
+    };
+  }
+
   const options: GuidedStepOption[] = previousSteps.map((s) => {
     const meta = GUIDED_STEP_METADATA.find((m) => m.step === s);
     return {
@@ -2909,6 +2925,47 @@ export function isNavigationActionId(id: string): boolean {
 }
 
 /**
+ * Memeriksa apakah teks pengguna MURNI merupakan sinyal konfirmasi lanjut ke langkah berikutnya
+ * tanpa ada teks tambahan/koreksi substantif.
+ *
+ * Mengikuti aturan ketat:
+ * - "Lanjut", "lanjut!", "oke lanjut", "sudah pas", "siap lanjut" -> MATCH (true)
+ * - "Ya, tapi ada beberapa tambahan...", "Lanjut tolong tambahkan kasir" -> BUKAN konfirmasi murni (false)
+ */
+export function isPureConfirmationText(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  const clean = text.trim().toLowerCase();
+  if (!clean) return false;
+
+  // Jika mengandung kata sanggahan, arahan koreksi, atau kata kerja revisi, BUKAN konfirmasi murni
+  if (
+    /\b(tapi|namun|kecuali|cuma|hanya|tolong|mohon|jangan|ubah|ganti|tambah|tambahkan|kurang|kurangi|hapus|hilangkan|revisi|edit|buatkan|bikin|perbaiki|masukkan|hilang|buang|tambahan|catatan)\b/i.test(
+      clean
+    )
+  ) {
+    return false;
+  }
+
+  // Normalisasi tanda baca ringan (koma, titik, seru, tanya, strip, kurung, dsb) menjadi spasi
+  const normalized = clean.replace(/[,.!?:;\-_/()[\]{}'"]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normalized) return false;
+
+  // Daftar kosakata konfirmasi murni bahasa Indonesia & padanannya
+  const confirmWords = new Set([
+    'ya', 'iya', 'oke', 'ok', 'sip', 'siap', 'sudah', 'pas', 'lanjut',
+    'lanjutkan', 'next', 'gas', 'gass', 'gaskeun', 'benar', 'betul', 'sesuai',
+    'setuju', 'mantap', 'cocok', 'clear', 'baik', 'aman', 'acc', 'deal', 'yes', 'yep', 'yup'
+  ]);
+
+  const words = normalized.split(' ');
+  // Maksimal 5 kata untuk konfirmasi murni (misal: "oke sudah pas ya lanjut")
+  if (words.length > 5) return false;
+
+  // Seluruh kata (100%) WAJIB ada di dalam kosakata konfirmasi murni
+  return words.every((w) => confirmWords.has(w));
+}
+
+/**
  * Gabungkan jawaban user ke session dan majukan langkah.
  */
 export function applyGuidedAnswer(
@@ -2925,12 +2982,11 @@ export function applyGuidedAnswer(
     next.step = targetStep;
     return next;
   }
-  if (selected.includes('cancel_back') || selected.includes('back_to_previous')) {
+  if (selected.includes('cancel_back')) {
     return next;
   }
 
-  // Sanitasi selected dari aksi navigasi internal agar tidak mencemari data domain
-  const cleanSelected = selected.filter((s) => !isNavigationActionId(s));
+  const cleanSelected = (selected || []).filter((s) => !isNavigationActionId(s));
 
   if (stepId === 'STORYTELLING') {
     const feedbackText = (other || '').trim();
@@ -3014,12 +3070,29 @@ export function applyGuidedAnswer(
     const coreOptions = offeredStep.options.filter((o) => o.roleStatus === 'WAJIB_INTI' && !isNavigationActionId(o.id));
     const coreRoles =
       coreOptions.length > 0 ? coreOptions.map((o) => o.id) : [detectCoreOperationalRole(session)];
-    let selectedRoles = dedupeRoleLabels(cleanSelected.length > 0 ? cleanSelected : [REQUIRED_ROLE, ...coreRoles])
+    const isConfirm = isPureConfirmationText(other || '');
+    const defaultRoles = [
+      REQUIRED_ROLE,
+      ...offeredStep.options.filter((o) => o.recommended && !isNavigationActionId(o.id)).map((o) => o.id),
+      ...coreRoles
+    ];
+    const fallbackRoles = session.roles?.selected && session.roles.selected.length > 0
+      ? session.roles.selected
+      : defaultRoles;
+
+    let selectedRoles = dedupeRoleLabels(cleanSelected.length > 0 ? cleanSelected : fallbackRoles)
       .filter((r) => !isNavigationActionId(r));
     if (!selectedRoles.includes(REQUIRED_ROLE)) {
       selectedRoles = [REQUIRED_ROLE, ...selectedRoles];
     }
-    if (other && other.trim() && !selectedRoles.includes(other.trim()) && !isNavigationActionId(other.trim())) {
+    // JANGAN tambahkan kata konfirmasi murni ("Lanjut", "Oke", dll) sebagai nama peran baru!
+    if (
+      other &&
+      other.trim() &&
+      !isConfirm &&
+      !selectedRoles.includes(other.trim()) &&
+      !isNavigationActionId(other.trim())
+    ) {
       selectedRoles.push(other.trim());
     }
 

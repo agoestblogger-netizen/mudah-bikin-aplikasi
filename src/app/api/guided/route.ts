@@ -46,7 +46,8 @@ import {
   renderSimulasiDbMarkdown,
   renderReviewFinalMarkdown,
   buildBackNavigationStep,
-  generateChangeNote
+  generateChangeNote,
+  isPureConfirmationText
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -3580,7 +3581,7 @@ export async function POST(req: Request) {
             !selected.includes('minor_adjust') &&
             !isMismatch &&
             !hasSpecificDetails &&
-            /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(feedbackText));
+            isPureConfirmationText(feedbackText));
 
         const isMinorAdjust =
           selected.includes('minor_adjust') ||
@@ -4142,7 +4143,7 @@ export async function POST(req: Request) {
         const isConfirm =
           selected.includes('confirm_alur') ||
           (!otherText && selected.length === 0) ||
-          (Boolean(otherText) && /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(otherText));
+          (Boolean(otherText) && isPureConfirmationText(otherText));
 
         const isCorrection =
           selected.includes('koreksi_alur') ||
@@ -4254,9 +4255,11 @@ export async function POST(req: Request) {
 
       // Khusus step RBAC: tangani koreksi hak akses atau persetujuan lanjut ke SKEMA_DATA
       if (stepId === 'RBAC') {
+        const otherText = (body.other || '').trim();
+        const isPureConfirm = isPureConfirmationText(otherText);
         const isCorrection =
           (body.selected && body.selected.includes('koreksi_rbac')) ||
-          Boolean(body.other && body.other.trim());
+          (Boolean(otherText) && !isPureConfirm);
 
         if (isCorrection) {
           const correctionText = (body.other || '').trim() || (body.selected || []).join(', ');
@@ -4355,7 +4358,11 @@ export async function POST(req: Request) {
 
       // Penanganan khusus untuk step SKEMA_DATA
       if (stepId === 'SKEMA_DATA') {
-        const isCorrection = body.selected?.includes('koreksi_schema') || (body.other && body.other.trim().length > 0);
+        const otherText = (body.other || '').trim();
+        const isPureConfirm = isPureConfirmationText(otherText);
+        const isCorrection =
+          Boolean(body.selected?.includes('koreksi_schema')) ||
+          (Boolean(otherText) && !isPureConfirm);
 
         if (isCorrection) {
           const userCorrection = body.other || (body.selected && body.selected.join(', ')) || '';
@@ -4435,9 +4442,11 @@ export async function POST(req: Request) {
 
       // Penanganan khusus untuk step SIMULASI_DB
       if (stepId === 'SIMULASI_DB') {
+        const otherText = (body.other || '').trim();
+        const isPureConfirm = isPureConfirmationText(otherText);
         const isCorrection =
-          body.selected?.includes('koreksi_simulasi') ||
-          Boolean(body.other && body.other.trim().length > 0);
+          Boolean(body.selected?.includes('koreksi_simulasi')) ||
+          (Boolean(otherText) && !isPureConfirm);
 
         if (isCorrection) {
           const userCorrection = (body.other || (body.selected && body.selected.join(', ')) || '').trim();
@@ -4498,7 +4507,10 @@ export async function POST(req: Request) {
 
       // Penanganan khusus untuk step REVIEW_FINAL (Gate Akhir)
       if (stepId === 'REVIEW_FINAL') {
-        const isApprove = body.selected?.includes('approve_prototype');
+        const otherText = (body.other || '').trim();
+        const isApprove =
+          Boolean(body.selected?.includes('approve_prototype')) ||
+          isPureConfirmationText(otherText);
 
         if (isApprove) {
           const completeness = isBriefBusinessComplete(session);

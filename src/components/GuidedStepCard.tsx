@@ -109,10 +109,19 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
     })
   ];
 
+  const isBackNavCard = allDisplayOptions.some((o) => o.id.startsWith('jump_step_') || o.id === 'cancel_back');
+
   const toggle = (id: string) => {
     if (disabled || submitted) return;
     const option = allDisplayOptions.find((o) => o.id === id);
     if (option?.locked) return;
+    if (isBackNavCard) {
+      // Pada kartu navigasi mundur, klik pada opsi step tujuan atau batal langsung mengeksekusi
+      setSelected([id]);
+      setSubmitted(true);
+      onSubmit([id]);
+      return;
+    }
     if (payload.multi) {
       setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
     } else {
@@ -279,10 +288,20 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
   }
 
   // Pisahkan opsi biasa dari opsi navigasi mundur ("Ada yang terlewat di langkah sebelumnya")
-  const backNavOption = payload.backNavOption || allDisplayOptions.find((o) => o.id === 'back_to_previous');
-  const regularOptions = allDisplayOptions.filter(
-    (o) => o.id !== 'back_to_previous' && !o.id.startsWith('jump_step_') && o.id !== 'cancel_back'
-  );
+  const backNavOption = isBackNavCard
+    ? undefined
+    : payload.backNavOption || allDisplayOptions.find((o) => o.id === 'back_to_previous');
+
+  const regularOptions = isBackNavCard
+    ? allDisplayOptions.filter((o) => o.id !== 'back_to_previous')
+    : allDisplayOptions.filter(
+        (o) => o.id !== 'back_to_previous' && !o.id.startsWith('jump_step_') && o.id !== 'cancel_back'
+      );
+
+  // Jika kartu navigasi mundur tidak memiliki opsi yang valid, jangan render kartu kosong yang rusak
+  if (isBackNavCard && regularOptions.length === 0) {
+    return null;
+  }
 
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0c0c11] p-3.5 space-y-3 shadow-inner">
@@ -792,7 +811,9 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
             : 'bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black active:scale-[0.99]'
         }`}
       >
-        {isInputRequired
+        {isBackNavCard
+          ? 'Pilih Langkah'
+          : isInputRequired
           ? 'Kirim Koreksi'
           : otherOpen && other.trim().length > 0
           ? 'Kirim Arahan'
