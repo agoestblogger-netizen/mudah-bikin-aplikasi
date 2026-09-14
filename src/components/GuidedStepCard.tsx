@@ -770,7 +770,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
               </div>
             </div>
             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400/90 group-hover:text-black bg-amber-400/10 group-hover:bg-amber-400 border border-amber-400/20 group-hover:border-transparent px-2.5 py-1 rounded-lg transition-all">
-              <span>Buka</span>
+              <span>Kembali</span>
               <ArrowLeft className="w-3 h-3" />
             </span>
           </button>
