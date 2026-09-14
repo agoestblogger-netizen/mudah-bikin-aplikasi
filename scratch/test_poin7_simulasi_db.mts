@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import {
   generateDeterministicSimulasiDb,
   renderSimulasiDbMarkdown,
+  validateContohDataVsSchema,
   applyGuidedAnswer,
   buildGuidedStep
 } from '../src/lib/templates/processes/guided.js';
@@ -78,6 +79,14 @@ const testDomains: { name: string; session: Partial<MockupSessionState> }[] = [
       dataSchema: {
         tabel: [
           {
+            nama: 'anggota',
+            keterangan: 'Data anggota koperasi',
+            field: [
+              { nama: 'id_anggota', tipe: 'text', keterangan: 'ID anggota' },
+              { nama: 'nama_anggota', tipe: 'text', keterangan: 'Nama lengkap anggota' }
+            ]
+          },
+          {
             nama: 'transaksi_pinjaman',
             keterangan: 'Pengajuan dan pencairan pinjaman anggota',
             field: [
@@ -137,25 +146,40 @@ const testDomains: { name: string; session: Partial<MockupSessionState> }[] = [
 for (const td of testDomains) {
   const sim = generateDeterministicSimulasiDb(td.session as MockupSessionState);
   console.log(`\nValidasi Domain: [${td.name}]`);
-  console.log(`- Tabel yang dipilih: "${sim.contohData.tabel}"`);
-  console.log(`- Jumlah baris contoh: ${sim.contohData.baris.length}`);
+  const contohTables = sim.contohData.tabel;
+  console.log(`- Tabel contoh: ${contohTables.map((t) => t.nama).join(', ') || '-'}`);
 
-  // 1. Cek bahwa tabel yang dipilih ada di dataSchema
-  const matchedTable = td.session.dataSchema!.tabel.find((t) => t.nama === sim.contohData.tabel);
-  assert(matchedTable, `Tabel ${sim.contohData.tabel} harus ada di dataSchema!`);
+  // 1a. SEMUA tabel di dataSchema harus tampil sebagai contoh data (POIN 8)
+  const schemaNames = td.session.dataSchema!.tabel.map((t) => t.nama);
+  const contohNames = contohTables.map((t) => t.nama);
+  assert.deepStrictEqual(
+    contohNames,
+    schemaNames,
+    `Semua tabel skema (${schemaNames.join(', ')}) harus tampil di contoh data, dapat: ${contohNames.join(', ')}`
+  );
+  console.log(`  ✓ Semua ${schemaNames.length} tabel skema tampil: ${schemaNames.join(', ')}`);
 
-  // 2. Cek nama field PERSIS SAMA 100%
-  const schemaFieldNames = matchedTable.field.map((f) => f.nama);
-  for (let i = 0; i < sim.contohData.baris.length; i++) {
-    const row = sim.contohData.baris[i];
-    const rowKeys = Object.keys(row);
-    assert.deepStrictEqual(
-      rowKeys,
-      schemaFieldNames,
-      `Field pada baris ${i + 1} (${rowKeys.join(', ')}) harus PERSIS SAMA dengan skema (${schemaFieldNames.join(', ')})!`
-    );
+  // 2. Cek nama field PERSIS SAMA 100% di SETIAP tabel
+  for (const t of contohTables) {
+    const matchedTable = td.session.dataSchema!.tabel.find((st) => st.nama === t.nama);
+    assert(matchedTable, `Tabel ${t.nama} harus ada di dataSchema!`);
+    const schemaFieldNames = matchedTable.field.map((f) => f.nama);
+    for (let i = 0; i < t.baris.length; i++) {
+      const row = t.baris[i];
+      const rowKeys = Object.keys(row);
+      assert.deepStrictEqual(
+        rowKeys,
+        schemaFieldNames,
+        `Field pada baris ${i + 1} tabel ${t.nama} (${rowKeys.join(', ')}) harus PERSIS SAMA dengan skema (${schemaFieldNames.join(', ')})!`
+      );
+    }
+    console.log(`  ✓ ${t.nama}: ${t.baris.length} baris, field PERSIS SAMA ${schemaFieldNames.join(', ')}`);
   }
-  console.log(`  ✓ Semua ${sim.contohData.baris.length} baris memiliki field PERSIS SAMA: ${schemaFieldNames.join(', ')}`);
+
+  // 2b. Validasi lengkap kontra skema (anti-placeholder, anti-kontaminasi, FK valid)
+  const masalah = validateContohDataVsSchema(sim.contohData, td.session.dataSchema!.tabel);
+  assert.strictEqual(masalah.length, 0, `Validasi kontra-skema: ${masalah.join('; ')}`);
+  console.log('  ✓ Validasi kontra-skema (anti-placeholder + FK valid): BERSIH');
 
   // 3. Cek akun login: HANYA role aktif, tidak ada role yang sudah dihapus
   const activeRoles = td.session.roles!.selected;

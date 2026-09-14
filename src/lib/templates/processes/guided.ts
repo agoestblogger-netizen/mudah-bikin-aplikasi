@@ -2484,50 +2484,228 @@ export function renderDataSchemaMarkdown(
   return fullMarkdown;
 }
 
+export interface SimulasiContohTabel {
+  nama: string;
+  keterangan?: string;
+  field?: { nama: string; tipe: string; keterangan?: string }[];
+  baris: Record<string, any>[];
+}
+
+export interface SimulasiContohData {
+  tabel: SimulasiContohTabel[];
+}
+
+function normalizeEntityKey(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .replace(/^(tb_|tbl_|table_|t_|data_)/, '')
+    .replace(/[_\-\s]+/g, '')
+    .replace(/s$/, '');
+}
+
+const SIMULASI_SINONIM: Record<string, string> = {
+  user: 'pengguna',
+  users: 'pengguna',
+  staf: 'pengguna',
+  staff: 'pengguna',
+  customer: 'pelanggan',
+  konsumen: 'pelanggan',
+  barang: 'produk',
+  item: 'produk',
+  product: 'produk',
+  member: 'anggota'
+};
+
+function resolveRelasiTarget(
+  contohTabel: SimulasiContohTabel[],
+  fType: string,
+  fName: string
+): { nama: string; idField: string } | null {
+  const match = fType.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
+  const raw = match ? match[1] : fName.replace(/_(id|fk)$/i, '').replace(/^id_/i, '');
+  const key = normalizeEntityKey(raw);
+  const findT = (k: string) => contohTabel.find((t) => normalizeEntityKey(t.nama) === k);
+  let t = findT(key);
+  if (!t) {
+    const syn = SIMULASI_SINONIM[key];
+    if (syn) t = findT(syn);
+  }
+  if (t === undefined) {
+    t = contohTabel.find((tb) => {
+      const tbKey = normalizeEntityKey(tb.nama);
+      return tbKey.startsWith(key) || key.startsWith(tbKey);
+    });
+  }
+  if (!t) return null;
+  const idField = (t.field || []).find((f) => f.nama === 'id' || /^id_/.test(f.nama))?.nama || 'id';
+  return { nama: t.nama, idField };
+}
+
+function normalizeContohTabel(contohData: unknown): SimulasiContohTabel[] {
+  const cd = contohData as { tabel?: unknown; baris?: unknown } | null;
+  if (!cd) return [];
+  const t = cd.tabel;
+  if (Array.isArray(t)) {
+    return t
+      .map((tb) => {
+        const o = tb as { nama?: unknown; keterangan?: unknown; field?: unknown; baris?: unknown };
+        return {
+          nama: typeof o?.nama === 'string' && o.nama ? o.nama : 'tabel',
+          keterangan: typeof o?.keterangan === 'string' ? o.keterangan : undefined,
+          field: Array.isArray(o?.field) ? (o.field as SimulasiContohTabel['field']) : undefined,
+          baris: Array.isArray(o?.baris) ? (o.baris as Record<string, any>[]) : []
+        };
+      })
+      .filter((x) => x.nama !== 'tabel' || x.baris.length > 0);
+  }
+  if (typeof t === 'string' && Array.isArray(cd.baris)) {
+    return [{ nama: t, baris: cd.baris as Record<string, any>[] }];
+  }
+  return [];
+}
+
+/**
+ * Memperbaiki deterministik nilai field relasi agar FK benar-benar merujuk ID yang ada
+ * di tabel tujuan (dipakai setelah revisi AI agar koreksi user tak memutus korelasi).
+ */
+export function repairRelasiSimulasiDb(contohTabel: SimulasiContohTabel[]): void {
+  for (const t of contohTabel) {
+    const relasiFields = (t.field || []).filter((f) => (f.tipe || '').toLowerCase().includes('relasi ke'));
+    for (const f of relasiFields) {
+      const tgt = resolveRelasiTarget(contohTabel, f.tipe, f.nama);
+      if (!tgt) continue;
+      const tgtTabel = contohTabel.find((x) => x.nama === tgt.nama);
+      if (!tgtTabel) continue;
+      const tgtIds = tgtTabel.baris.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean);
+      if (tgtIds.length === 0) continue;
+      t.baris.forEach((row, i) => {
+        const cur = String(row[f.nama] ?? '').trim();
+        if (cur && tgtIds.includes(cur)) return;
+        row[f.nama] = tgtIds[i % tgtIds.length];
+      });
+    }
+  }
+}
+
 /**
  * Menghasilkan simulasi database deterministik:
- * 1. Satu tabel utama dari session.dataSchema dengan 3 baris data contoh realistis.
- * 2. Akun demo login untuk seluruh role aktif di session.roles.selected.
- * 3. 5 instruksi internal untuk generator kode prototipe.
+ * 1. Semua tabel dari session.dataSchema, masing-masing dengan baris data contoh realistis.
+ * 2. Field bertipe "relasi ke [Entitas]" benar-benar merujuk ID yang ada di data contoh tabel tujuan.
+ * 3. Akun demo login untuk seluruh role aktif di session.roles.selected.
+ * 4. 5 instruksi internal untuk generator kode prototipe.
  */
 export function generateDeterministicSimulasiDb(
-  session: MockupSessionState
+  session: MockupSessionState,
+  opts?: { nilaiAI?: Record<string, Record<string, unknown[]>> }
 ): NonNullable<MockupSessionState['simulasiDb']> {
-  const tables = session.dataSchema?.tabel || [];
+  const schemaTables = session.dataSchema?.tabel || [];
+  const nilaiAI = opts?.nilaiAI || {};
 
-  // 1. Pilih entitas utama yang paling representatif dari alur inti
-  let mainTable = tables.find((t) =>
-    !/^(pengguna|users?|akun|roles?)$/i.test(t.nama) &&
-    /transaksi|penyewaan|sewa|rental|booking|order|pesanan|timbang|setor|servis|service|pinjam|bayar|katalog|armada|produk|barang|work_order/i.test(t.nama)
-  );
-
-  if (!mainTable) {
-    mainTable = tables.find((t) => !/^(pengguna|users?|akun|roles?)$/i.test(t.nama)) || tables[0];
+  interface TableGenMeta {
+    table: (typeof schemaTables)[number];
+    pkField: { nama: string; tipe: string; keterangan?: string } | null;
+    idPrefix: string;
   }
 
-  const tableName = mainTable ? mainTable.nama : 'transaksi_utama';
-  const fields = mainTable?.field || [
-    { nama: 'id', tipe: 'text', keterangan: 'ID unik transaksi' },
-    { nama: 'tanggal', tipe: 'tanggal', keterangan: 'Waktu transaksi' },
-    { nama: 'total_biaya', tipe: 'angka', keterangan: 'Nominal transaksi' }
-  ];
+  const isRelasiField = (f: { nama: string; tipe: string; keterangan?: string }): boolean =>
+    (f.tipe || '').toLowerCase().includes('relasi ke');
+
+  const cleanIdPrefix = (raw: string): string =>
+    (raw || 'ID').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 4) || 'ID';
+
+  const idValuesOf = (m: TableGenMeta): string[] =>
+    [0, 1, 2].map((i) => `${m.idPrefix}-${String(i + 1).padStart(3, '0')}`);
+
+  // PASS A: tentukan kolom primary key & prefiks ID per tabel
+  const metas: TableGenMeta[] = schemaTables.map((t) => {
+    const pkField =
+      t.field.find((f) => f.nama === 'id') ||
+      t.field.find((f) => /^id_/i.test(f.nama) && !isRelasiField(f)) ||
+      t.field.find((f) => /^kode/i.test(f.nama)) ||
+      t.field.find((f) => /^(nomor_nota|no_nota|no_)/i.test(f.nama)) ||
+      null;
+    const raw =
+      (pkField ? pkField.nama.replace(/^id_/i, '').replace(/_id$/i, '') : '') ||
+      t.nama.replace(/^data_|^tb_|^tabel_|^t_/i, '');
+    return { table: t, pkField, idPrefix: cleanIdPrefix(raw) };
+  });
+
+  // Pastikan prefiks ID antar tabel unik (ID master tidak boleh kembar lintas tabel)
+  {
+    const used = new Set<string>();
+    for (const m of metas) {
+      let p = m.idPrefix;
+      let k = 0;
+      const extra = normalizeEntityKey(m.table.nama);
+      while (used.has(p)) {
+        p = (m.idPrefix + extra.slice(k, k + 1)).slice(0, 4) || m.idPrefix;
+        k++;
+      }
+      used.add(p);
+      m.idPrefix = p;
+    }
+  }
+
+  const targetLookup = new Map<string, TableGenMeta>();
+  const idFieldLookup = new Map<string, TableGenMeta>();
+  for (const m of metas) {
+    targetLookup.set(normalizeEntityKey(m.table.nama), m);
+    const syn = SIMULASI_SINONIM[normalizeEntityKey(m.table.nama)];
+    if (syn) targetLookup.set(normalizeEntityKey(syn), m);
+    if (m.pkField) idFieldLookup.set(normalizeEntityKey(m.pkField.nama), m);
+    else idFieldLookup.set(normalizeEntityKey(m.table.nama), m);
+  }
+
+  const resolveTarget = (fType: string, fName: string): TableGenMeta | null => {
+    const match = fType.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
+    const raw = match ? match[1] : fName.replace(/_(id|fk)$/i, '').replace(/^id_/i, '');
+    const key = normalizeEntityKey(raw);
+    let tgt = targetLookup.get(key) || idFieldLookup.get(key);
+    if (tgt === undefined) {
+      const syn = SIMULASI_SINONIM[key];
+      if (syn) tgt = targetLookup.get(normalizeEntityKey(syn)) || idFieldLookup.get(normalizeEntityKey(syn));
+    }
+    if (tgt === undefined) {
+      tgt = metas.find(
+        (m) =>
+          normalizeEntityKey(m.table.nama).startsWith(key) || key.startsWith(normalizeEntityKey(m.table.nama))
+      );
+    }
+    return tgt || null;
+  };
 
   // Helper membuat nilai contoh realistis sesuai TIPE, NAMA FIELD, DAN KETERANGAN (semantik domain)
-  const generateFieldValue = (field: { nama: string; tipe: string; keterangan?: string }, rowIdx: number): any => {
+  const generateFieldValue = (
+    field: { nama: string; tipe: string; keterangan?: string },
+    rowIdx: number,
+    meta: TableGenMeta
+  ): any => {
     const fName = field.nama.toLowerCase();
     const fType = field.tipe.toLowerCase();
     const kata = (field.keterangan || '').toLowerCase();
 
     const pick = (list: string[]): string => list[rowIdx % list.length] || list[0];
 
+    // 0) PRIMARY KEY milik tabel ini (id sendiri, bukan relasi)
+    if (meta.pkField && fName === meta.pkField.nama.toLowerCase()) {
+      const ids = idValuesOf(meta);
+      return ids[rowIdx % ids.length];
+    }
+
     if (fType === 'tanggal' || fName.includes('tanggal') || fName.includes('tgl') || fName.includes('date')) {
       return ['2026-09-10', '2026-09-11', '2026-09-12'][rowIdx];
     }
 
+    // 0b) Field relasi ke entitas lain: merujuk ID yang benar-benar ada di tabel tujuan
     if (fType.includes('relasi ke') || fName.endsWith('_id') || (fName.startsWith('id_') && fName !== 'id')) {
-      const match = fType.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
+      const tgt = resolveTarget(fType, fName);
+      if (tgt) {
+        const ids = idValuesOf(tgt);
+        return ids[rowIdx % ids.length];
+      }
+      const match = field.tipe.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
       const targetEntity = match ? match[1] : fName.replace(/(_id|^id_)/g, '');
-      const prefix = (targetEntity || tableName).substring(0, 3).toUpperCase();
+      const prefix = (targetEntity || meta.table.nama).substring(0, 3).toUpperCase();
       return [`${prefix}-001`, `${prefix}-002`, `${prefix}-003`][rowIdx];
     }
 
@@ -2554,7 +2732,7 @@ export function generateDeterministicSimulasiDb(
     }
 
     if (/^id$|^kode|^nomor_nota|^no_nota|^id_nota/i.test(fName)) {
-      const pfx = tableName.substring(0, 3).toUpperCase();
+      const pfx = cleanIdPrefix(meta.table.nama.replace(/^data_|^tb_|^tabel_|^t_/i, ''));
       return [`${pfx}-001`, `${pfx}-002`, `${pfx}-003`][rowIdx];
     }
 
@@ -2646,12 +2824,30 @@ export function generateDeterministicSimulasiDb(
     return [`${stem} A`, `${stem} B`, `${stem} C`][rowIdx];
   };
 
-  const sampleRows: Record<string, any>[] = [0, 1, 2].map((idx) => {
-    const row: Record<string, any> = {};
-    for (const f of fields) {
-      row[f.nama] = generateFieldValue(f, idx);
-    }
-    return row;
+  // PASS B: bangun baris contoh untuk SEMUA tabel
+  // Prinsip HYBRID: struktur tabel, field, ID, dan relasi SELALU deterministik;
+  // AI hanya mengisi KONTEN di field non-ID/non-relasi bila nilaiAI disuntikkan.
+  const contohTabel: SimulasiContohTabel[] = metas.map((m) => {
+    const baris = [0, 1, 2].map((idx) => {
+      const row: Record<string, any> = {};
+      for (const f of m.table.field) {
+        const fLower = f.nama.toLowerCase();
+        const isPkField = m.pkField && fLower === m.pkField.nama.toLowerCase();
+        const isIdLike = /^(id|kode)/i.test(f.nama) || isPkField;
+        const aiCell = !isRelasiField(f) && !isIdLike ? nilaiAI[m.table.nama]?.[f.nama] : undefined;
+        row[f.nama] =
+          aiCell && Array.isArray(aiCell) && aiCell.length > 0
+            ? aiCell[idx % aiCell.length]
+            : generateFieldValue(f, idx, m);
+      }
+      return row;
+    });
+    return {
+      nama: m.table.nama,
+      keterangan: m.table.keterangan,
+      field: m.table.field.map((f) => ({ nama: f.nama, tipe: f.tipe, keterangan: f.keterangan })),
+      baris
+    };
   });
 
   // 2. Akun Demo Login (HANYA role aktif di session.roles.selected)
@@ -2706,8 +2902,7 @@ export function generateDeterministicSimulasiDb(
 
   const result = {
     contohData: {
-      tabel: tableName,
-      baris: sampleRows
+      tabel: contohTabel
     },
     akunLogin,
     instruksiGenerator,
@@ -2722,40 +2917,157 @@ export function generateDeterministicSimulasiDb(
   };
 }
 
+// Kosakata ringkas untuk mendeteksi konten yang "tertukar domain" (sering muncul saat hasil AI aneh):
+// nama orang tidak boleh diisi di field produk, dan nama produk tidak boleh diisi di field nama orang.
+const NAMA_ORANG_SIMULASI: string[] = [
+  'budi santoso',
+  'siti rahma',
+  'ahmad hidayat',
+  'joko purnomo',
+  'dwi kurniawan',
+  'sri wahyuni',
+  'agus mekanik',
+  'rian barista',
+  'pak bambang',
+  'ibu sri',
+  'dimas',
+  'akun demo'
+];
+const NAMA_PRODUK_SIMULASI: string[] = [
+  'indomie goreng',
+  'susu kotak',
+  'kopi sachet',
+  'kardus bekas',
+  'besi tua',
+  'tembaga super'
+];
+
 /**
- * Validasi ringan kesesuaian data contoh vs skema tabel (digunakan untuk regresi POIN 7):
+ * Memvalidasi hasil pengisian AI/KAMUS: nilai berupa placeholder, tipe salah (angka/tanggal),
+ * atau tertukar domain (nama orang dimasukkan ke field produk, dst) akan ditangkap di sini.
+ */
+function checkKontenSimulasi(
+  fld: { nama: string; tipe: string; keterangan?: string },
+  raw: unknown,
+  t: SimulasiContohTabel,
+  masalah: string[]
+): void {
+  const fLower = fld.nama.toLowerCase();
+  const fType = fld.tipe.toLowerCase();
+  const kata = (fld.keterangan || '').toLowerCase();
+  const v = String(raw ?? '').trim();
+
+  if (/^contoh\b|\bcontoh data/i.test(v) || /^(isi|tulis|masukkan|ganti|dummy)\b/i.test(v) || /^[-…x]{1,3}$/i.test(v)) {
+    masalah.push(`"${t.nama}.${fld.nama}" berisi nilai placeholder: "${v}"`);
+  }
+
+  // Field "angka" harus berisi angka
+  if (/angka|number|integer/i.test(fType) && v !== '') {
+    const numeric = typeof raw === 'number' || /^\d+(\.\d+)?$/.test(v) || /^-?\d+(\.\d+)?$/.test(v);
+    if (!numeric) {
+      masalah.push(`"${t.nama}.${fld.nama}" bertipe angka tapi nilainya bukan angka: "${v}"`);
+    }
+  }
+  // Field "tanggal" harus berformat tanggal
+  if (/tanggal|date/i.test(fType) && v !== '' && !/^(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}-\d{1,2}-\d{4})$/.test(v)) {
+    masalah.push(`"${t.nama}.${fld.nama}" bertipe tanggal tapi nilainya bukan tanggal: "${v}"`);
+  }
+
+  // Deteksi konten "tertukar domain" (umum dari hasil AI yang tidak mengikuti aturan)
+  const isProductField = /produk|barang|item|menu|varian|rasa|topping|sembako|katalog|sparepart|suku\s?cadang|stok|bahan|ukuran|warna/i.test(
+    `${fLower} ${kata}`
+  );
+  const isNameField =
+    !isProductField &&
+    /nama|lengkap|pelanggan|warga|penyewa|anggota|konsumen|pasien|pembeli|klien|staf|kasir|admin|petugas|pengumpul|pemilik|pengurus|mekanik|barista|bendahara|ketua|peminjam|penerima/i.test(
+      `${fLower} ${kata}`
+    );
+
+  const vLower = v.toLowerCase();
+  if (isProductField && NAMA_ORANG_SIMULASI.includes(vLower)) {
+    masalah.push(`"${t.nama}.${fld.nama}" (produk/barang) berisi nama orang: "${v}"`);
+  }
+  if (isNameField && NAMA_PRODUK_SIMULASI.includes(vLower)) {
+    masalah.push(`"${t.nama}.${fld.nama}" (nama orang) berisi nama produk: "${v}"`);
+  }
+}
+
+/**
+ * Validasi kesesuaian data contoh vs skema tabel (dipakai regresi POIN 7 / 7B / 8):
+ * - setiap tabel data contoh diverifikasi terhadap skema tabel dengan nama sama
  * - nama field harus sama persis
  * - tidak boleh ada placeholder "Contoh Data N"
  * - field ketersediaan (tersedia/aktif/nonaktif) tidak boleh bernilai status transaksi
+ * - field relasi ("relasi ke X", *_id, id_*) harus merujuk ID yang benar-benar ada di tabel tujuan
  */
 export function validateContohDataVsSchema(
-  contohData: { tabel: string; baris: Record<string, unknown>[] },
-  tabelSchema?: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] }
+  contohData: SimulasiContohData,
+  tabelSchemas?: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] }[]
 ): string[] {
   const masalah: string[] = [];
-  if (!contohData || !contohData.baris || contohData.baris.length === 0) {
-    return ['contohData kosong / tidak ada baris'];
+  const contohTabel = normalizeContohTabel(contohData);
+  if (contohTabel.length === 0) {
+    return ['contohData kosong / tidak ada tabel'];
   }
+  const schemas = tabelSchemas || [];
 
-  const keys = Object.keys(contohData.baris[0] || {});
-  if (tabelSchema && tabelSchema.field && tabelSchema.field.length > 0) {
-    const schemaNames = tabelSchema.field.map((f) => f.nama);
-    if (JSON.stringify(keys) !== JSON.stringify(schemaNames)) {
-      masalah.push(`nama field tidak sama: [${keys.join(', ')}] vs skema [${schemaNames.join(', ')}]`);
+  for (const t of contohTabel) {
+    const schema = schemas.find((s) => s.nama === t.nama);
+    if (!schema) continue;
+
+    if (!t.baris || t.baris.length === 0) {
+      masalah.push(`tabel "${t.nama}" tidak punya baris data`);
+      continue;
     }
 
+    const keys = Object.keys(t.baris[0]);
+    const schemaNames = schema.field.map((f) => f.nama);
+    if (JSON.stringify(keys) !== JSON.stringify(schemaNames)) {
+      masalah.push(`"${t.nama}": nama field tidak sama: [${keys.join(', ')}] vs skema [${schemaNames.join(', ')}]`);
+    }
+
+    // Placeholder & kontaminasi status transaksi pada field ketersediaan
     const statusTransaksi = /^(selesai|diproses|menunggu verifikasi|dibatalkan)$/i;
-    for (const fld of tabelSchema.field) {
+    for (const fld of schema.field) {
       const kata = (fld.keterangan || '').toLowerCase();
       const hintsAvail =
         /tersedia|ketersediaan|aktif|nonaktif/i.test(fld.nama.toLowerCase()) || /aktif|nonaktif|tersedia/i.test(kata);
-      for (const row of contohData.baris) {
+      for (const row of t.baris) {
         const v = String(row[fld.nama] ?? '').trim();
         if (/^contoh data/i.test(v)) {
-          masalah.push(`field "${fld.nama}" berisi placeholder "Contoh Data N": "${v}"`);
+          masalah.push(`"${t.nama}.${fld.nama}" berisi placeholder "Contoh Data N": "${v}"`);
         }
         if (hintsAvail && statusTransaksi.test(v.toLowerCase())) {
-          masalah.push(`field "${fld.nama}" (ketersediaan) berisi nilai status transaksi: "${v}"`);
+          masalah.push(`"${t.nama}.${fld.nama}" (ketersediaan) berisi nilai status transaksi: "${v}"`);
+        }
+        checkKontenSimulasi(fld, row[fld.nama], t, masalah);
+      }
+    }
+
+    // Integritas referensi FK → harus merujuk ID yang ada di tabel tujuan
+    const ownPk = schema.field.find((f) => f.nama === 'id' || /^id_/.test(f.nama))?.nama;
+    for (const fld of schema.field) {
+      const fType = (fld.tipe || '').toLowerCase();
+      const isRelasi =
+        fType.includes('relasi ke') || fld.nama.toLowerCase().endsWith('_id') || /^id_/.test(fld.nama);
+      if (!isRelasi || fld.nama === ownPk) continue;
+
+      const tgt = resolveRelasiTarget(contohTabel, fld.tipe, fld.nama);
+      if (!tgt) {
+        masalah.push(`"${t.nama}.${fld.nama}" relasi tidak menemukan tabel tujuan`);
+        continue;
+      }
+      const tgtTabel = contohTabel.find((x) => x.nama === tgt.nama);
+      if (!tgtTabel) continue;
+      const tgtIds = new Set(tgtTabel.baris.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean));
+      if (tgtIds.size === 0) {
+        masalah.push(`"${t.nama}.${fld.nama}" menunjuk tabel "${tgt.nama}" yang kolom ID-nya kosong`);
+        continue;
+      }
+      for (const row of t.baris) {
+        const v = String(row[fld.nama] ?? '').trim();
+        if (v && !tgtIds.has(v)) {
+          masalah.push(`"${t.nama}.${fld.nama}" = "${v}" tidak ada di "${tgt.nama}.${tgt.idField}"`);
         }
       }
     }
@@ -2765,36 +3077,63 @@ export function validateContohDataVsSchema(
 }
 
 /**
- * Merender representasi markdown dari simulasi database untuk ditampilkan di chat (versi pendek).
+ * Merender representasi markdown dari simulasi database (semua tabel + korelasi FK antar-tabel)
+ * untuk ditampilkan di chat.
  */
 export function renderSimulasiDbMarkdown(
   simulasiDb: NonNullable<MockupSessionState['simulasiDb']>
 ): string {
-  const { contohData, akunLogin } = simulasiDb;
+  const contohTabel = normalizeContohTabel(simulasiDb?.contohData);
+  const akunLogin = simulasiDb?.akunLogin || [];
 
   let md = `> 💡 *Catatan: Data yang muncul di prototipe nanti masih berupa data contoh, bukan data asli — Anda dapat mengubah atau menggantinya kapan saja nanti.*\n\n`;
 
-  // 1. Tabel Contoh Data
-  if (contohData && contohData.baris && contohData.baris.length > 0) {
-    const columns = Object.keys(contohData.baris[0]);
-    const header = `| ${columns.map((c) => `\`${c}\``).join(' | ')} |`;
-    const divider = `| ${columns.map(() => ':---').join(' | ')} |`;
-    const rows = contohData.baris.map((r) => {
-      const cells = columns.map((col) => {
-        const val = r[col];
-        if (typeof val === 'number') {
-          return val.toLocaleString('id-ID');
-        }
-        return String(val ?? '-');
-      });
-      return `| ${cells.join(' | ')} |`;
-    });
+  // 1. Semua Tabel Contoh Data (dengan catatan korelasi FK antar-tabel)
+  if (contohTabel.length > 0) {
+    for (const t of contohTabel) {
+      md += `### 📋 Contoh Data Awal: \`${t.nama}\`\n`;
+      if (t.keterangan && t.keterangan.trim()) {
+        md += `*${t.keterangan.trim()}*\n\n`;
+      }
 
-    md += `### 📋 Contoh Data Awal: \`${contohData.tabel}\`\n${header}\n${divider}\n${rows.join('\n')}\n\n`;
+      const firstRow = t.baris?.[0];
+      if (!t.baris || t.baris.length === 0 || !firstRow || Object.keys(firstRow).length === 0) {
+        md += `*(belum ada baris data)*\n\n`;
+        continue;
+      }
+
+      const columns = Object.keys(firstRow);
+      const header = `| ${columns.map((c) => `\`${c}\``).join(' | ')} |`;
+      const divider = `| ${columns.map(() => ':---').join(' | ')} |`;
+      const rows = t.baris.map((r) => {
+        const cells = columns.map((col) => {
+          const val = r[col];
+          if (typeof val === 'number') {
+            return val.toLocaleString('id-ID');
+          }
+          return String(val ?? '-');
+        });
+        return `| ${cells.join(' | ')} |`;
+      });
+      md += `${header}\n${divider}\n${rows.join('\n')}\n\n`;
+
+      // Catatan korelasi FK field relasi → tabel tujuan
+      const relasiNotes = (t.field || [])
+        .filter((f) => (f.tipe || '').toLowerCase().includes('relasi ke'))
+        .map((f) => {
+          const tgt = resolveRelasiTarget(contohTabel, f.tipe, f.nama);
+          const targetName = tgt ? tgt.nama : (f.tipe.match(/relasi ke\s+([a-zA-Z0-9_]+)/i)?.[1] || f.nama);
+          const targetPk = tgt ? tgt.idField : 'id';
+          return `\`${f.nama} → ${targetName}.${targetPk}\``;
+        });
+      if (relasiNotes.length > 0) {
+        md += `> 🔗 **Korelasi Antar-Tabel:** ${relasiNotes.join(' · ')}\n\n`;
+      }
+    }
   }
 
   // 2. Tabel Akun Demo Login
-  if (akunLogin && akunLogin.length > 0) {
+  if (akunLogin.length > 0) {
     const header = `| Nama Akun | Role | Username | Password |`;
     const divider = `| :--- | :--- | :--- | :--- |`;
     const rows = akunLogin.map((a) => {
@@ -2961,9 +3300,11 @@ export function renderReviewFinalMarkdown(session: MockupSessionState): string {
   lines.push(`- 🗄️ **Skema Basis Data:** ${tableNames.length} tabel entitas (${tableNames.join(', ') || '-'})`);
 
   // 6. Simulasi Data & Akun Demo
-  const simTabel = session.simulasiDb?.contohData?.tabel || '-';
+  const simTabelNama = normalizeContohTabel(session.simulasiDb?.contohData).map((t) => `\`${t.nama}\``);
   const akunDemoCount = session.simulasiDb?.akunLogin?.length || 0;
-  lines.push(`- 🔑 **Simulasi DB & Akun Demo:** Tabel contoh \`${simTabel}\` (3 baris) & ${akunDemoCount} akun demo login siap pakai`);
+  lines.push(
+    `- 🔑 **Simulasi DB & Akun Demo:** ${simTabelNama.length} tabel contoh (${simTabelNama.join(', ') || '-'}) dengan korelasi ID antar-tabel & ${akunDemoCount} akun demo login siap pakai`
+  );
 
   lines.push('');
 
@@ -3021,7 +3362,7 @@ export function buildReviewFinalStep(session: MockupSessionState): GuidedStepPay
     {
       id: 'edit_simulasi',
       label: '✏️ Lihat & Edit Simulasi DB & Akun Demo',
-      description: `Tabel contoh: ${session.simulasiDb?.contohData?.tabel || '-'}, Akun login: ${session.simulasiDb?.akunLogin?.length || 0} role`
+      description: `Tabel contoh: ${normalizeContohTabel(session.simulasiDb?.contohData).map((t) => t.nama).join(', ') || '-'}, Akun login: ${session.simulasiDb?.akunLogin?.length || 0} role`
     }
   );
 
@@ -3288,7 +3629,9 @@ export function applyGuidedAnswer(
       prevAlurInti: session.flow?.alurInti || [],
       prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
       prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
-      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
+        .map((t) => t.nama)
+        .join(', '),
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
 
@@ -3367,7 +3710,9 @@ export function applyGuidedAnswer(
       prevAlurInti: session.flow?.alurInti || [],
       prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
       prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
-      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
+        .map((t) => t.nama)
+        .join(', '),
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
 
@@ -3384,7 +3729,9 @@ export function applyGuidedAnswer(
       lastModifiedStep: 'RBAC',
       prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
       prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
-      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
+        .map((t) => t.nama)
+        .join(', '),
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
   } else if (stepId === 'SKEMA_DATA') {
@@ -3395,7 +3742,9 @@ export function applyGuidedAnswer(
       ...next.changeSnapshots,
       lastModifiedStep: 'SKEMA_DATA',
       prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
-      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
+        .map((t) => t.nama)
+        .join(', '),
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
   } else if (stepId === 'SIMULASI_DB') {
@@ -3405,7 +3754,9 @@ export function applyGuidedAnswer(
     next.changeSnapshots = {
       ...next.changeSnapshots,
       lastModifiedStep: 'SIMULASI_DB',
-      prevSimulasiDbTabel: session.simulasiDb?.contohData?.tabel,
+      prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
+        .map((t) => t.nama)
+        .join(', '),
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
   } else if (stepId === 'REVIEW_FINAL') {
@@ -3485,10 +3836,11 @@ export function isBriefBusinessComplete(session: MockupSessionState): BriefCompl
   }
 
   // 5. Validasi Simulasi DB (contohData dan akunLogin harus terisi)
+  const contohTabelValid = normalizeContohTabel(session.simulasiDb?.contohData).some(
+    (t) => Array.isArray(t.baris) && t.baris.length > 0
+  );
   if (
-    !session.simulasiDb?.contohData ||
-    !session.simulasiDb?.contohData?.baris ||
-    session.simulasiDb.contohData.baris.length === 0 ||
+    !contohTabelValid ||
     !session.simulasiDb?.akunLogin ||
     session.simulasiDb.akunLogin.length === 0
   ) {

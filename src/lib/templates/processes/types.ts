@@ -318,8 +318,12 @@ export interface MockupSessionState {
   };
   simulasiDb?: {
     contohData: {
-      tabel: string;
-      baris: Record<string, any>[];
+      tabel: {
+        nama: string;
+        keterangan?: string;
+        field?: { nama: string; tipe: string; keterangan?: string }[];
+        baris: Record<string, any>[];
+      }[];
     };
     akunLogin: {
       nama: string;

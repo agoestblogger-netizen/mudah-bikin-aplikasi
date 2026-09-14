@@ -45,6 +45,10 @@ import {
   renderDataSchemaMarkdown,
   generateDeterministicSimulasiDb,
   renderSimulasiDbMarkdown,
+  repairRelasiSimulasiDb,
+  validateContohDataVsSchema,
+  type SimulasiContohData,
+  type SimulasiContohTabel,
   renderReviewFinalMarkdown,
   buildBackNavigationStep,
   generateChangeNote,
@@ -2478,10 +2482,7 @@ Perbarui dan kembalikan JSON lengkap:`;
 }
 
 export interface SimulasiDbResult {
-  contohData: {
-    tabel: string;
-    baris: Record<string, any>[];
-  };
+  contohData: SimulasiContohData;
   akunLogin: {
     nama: string;
     role: string;
@@ -2501,29 +2502,69 @@ export async function reviseSimulasiDbWithAI(
 ): Promise<SimulasiDbResult> {
   const startTime = Date.now();
   const currentSimulasi = session.simulasiDb || generateDeterministicSimulasiDb(session);
+  const freshSimulasi = generateDeterministicSimulasiDb(session);
   const activeRoles =
     session.roles?.selected && session.roles.selected.length > 0
       ? session.roles.selected
       : [REQUIRED_ROLE];
   const tables = session.dataSchema?.tabel || [];
-  const targetTableName = currentSimulasi.contohData?.tabel || (tables[0]?.nama ?? 'transaksi');
-  const targetTable = tables.find((t) => t.nama === targetTableName) || tables[0];
-  const targetFields = targetTable?.field || [];
-  const targetFieldNames = targetFields.map((f) => f.nama);
+  const dRowsByTable = new Map<string, Record<string, any>[]>(
+    freshSimulasi.contohData.tabel.map((t) => [t.nama, t.baris])
+  );
+
+  // Bangun data contoh untuk setiap tabel dari skema: ambil nilai AI bila ada,
+  // sisanya isi ulang dari nilai deterministik (BUKAN placeholder).
+  const buildContohTabelRevisi = (
+    schemaTabel: typeof tables,
+    parsedTabel: any[],
+    fallbackMap: Map<string, Record<string, any>[]>
+  ): SimulasiContohTabel[] =>
+    schemaTabel.map((t) => {
+      const pc = parsedTabel.find((x) => x && String(x?.nama || '').toLowerCase() === t.nama.toLowerCase());
+      const aiRows: Record<string, any>[] = Array.isArray(pc?.baris) ? pc.baris : [];
+      const dRows = fallbackMap.get(t.nama) || [];
+      const rows: Record<string, any>[] = [0, 1, 2].map((i) => {
+        const src = aiRows[i] || {};
+        const row: Record<string, any> = {};
+        for (const f of t.field) {
+          const existingKey = Object.keys(src).find((k) => k.toLowerCase() === f.nama.toLowerCase());
+          if (existingKey !== undefined && src[existingKey] !== undefined) {
+            row[f.nama] = src[existingKey];
+          } else {
+            row[f.nama] = dRows[i]?.[f.nama] ?? '-';
+          }
+        }
+        return row;
+      });
+      return {
+        nama: t.nama,
+        keterangan: t.keterangan,
+        field: t.field.map((f) => ({ nama: f.nama, tipe: f.tipe, keterangan: f.keterangan })),
+        baris: rows
+      };
+    });
+
+  const schemaBrief = tables
+    .map((t) => {
+      const fields = t.field.map((f) => `${f.nama}${f.tipe ? ` (${f.tipe})` : ''}`).join(', ');
+      return `- ${t.nama}: ${fields}`;
+    })
+    .join('\n');
 
   const systemInstruction = `Anda adalah Spesialis Data Dummy & Akun Uji Coba Prototipe Aplikasi Bisnis.
-Tugas Anda: Memperbarui data contoh (3 baris) dan/atau akun demo login berdasarkan koreksi pengguna.
+Tugas Anda: Memperbarui data contoh (SEMUA tabel, 3 baris per tabel) dan/atau akun demo login berdasarkan koreksi pengguna.
 
 ATURAN REVISI KONSISTEN & KETAT:
-1. NAMA FIELD PADA DATA CONTOH HARUS PERSIS SAMA 100% dengan field skema: [${targetFieldNames.join(', ')}]. DILARANG mengubah atau menambah nama field lain!
-2. Kembalikan tepat 3 baris data contoh yang realistis sesuai koreksi pengguna.
-3. Akun login HARUS HANYA mencakup peran aktif: [${activeRoles.join(', ')}]. Format kredensial: username = lowercase(namaRole tanpa spasi), password = username + "123". Nama akun dapat disesuaikan jika pengguna memintanya.
-4. Format output JSON:
+1. Output JSON harus berisi SEMUA tabel berikut (tidak boleh ada yang terlewat):\n${schemaBrief}
+2. NAMA FIELD pada setiap baris HARUS PERSIS SAMA 100% dengan field skema tabel terkait. DILARANG mengubah atau menambah nama field lain!
+3. Setiap tabel dikembalikan tepat 3 baris data yang realistis sesuai koreksi pengguna.
+4. Field bertipe "relasi ke [Entitas]" WAJIB berisi ID yang benar-benar muncul pada kolom ID tabel entitas tersebut (misal "MOB-001" harus dicantumkan di tabel armada_mobil). Jangan menaruh angka acak.
+5. Akun login HARUS HANYA mencakup peran aktif: [${activeRoles.join(', ')}]. Format kredensial: username = lowercase(namaRole tanpa spasi), password = username + "123". Nama akun dapat disesuaikan jika pengguna memintanya.
+6. Format output JSON:
 {
   "contohData": {
-    "tabel": "${targetTableName}",
-    "baris": [
-      { ... 3 baris dengan key persis sesuai field skema ... }
+    "tabel": [
+      { "nama": "<nama tabel>", "baris": [ { ... 3 baris sesuai field skema ... } ] }
     ]
   },
   "akunLogin": [
@@ -2531,12 +2572,20 @@ ATURAN REVISI KONSISTEN & KETAT:
   ]
 }`;
 
-  const userPrompt = `Tabel Target: ${targetTableName}
-Field yang Tersedia:
-${JSON.stringify(targetFields, null, 2)}
+  const currentDataBrief =
+    currentSimulasi.contohData && Array.isArray(currentSimulasi.contohData.tabel)
+      ? JSON.stringify(
+          currentSimulasi.contohData.tabel.map((t) => ({ nama: t.nama, baris: t.baris })),
+          null,
+          2
+        )
+      : '[]';
+
+  const userPrompt = `Skema Tabel (Lengkap):
+${schemaBrief}
 
 Data Contoh Saat Ini:
-${JSON.stringify(currentSimulasi.contohData?.baris || [], null, 2)}
+${currentDataBrief}
 
 Daftar Akun Demo Saat Ini:
 ${JSON.stringify(currentSimulasi.akunLogin || [], null, 2)}
@@ -2544,13 +2593,13 @@ ${JSON.stringify(currentSimulasi.akunLogin || [], null, 2)}
 Koreksi / Masukan Pengguna:
 "${userCorrection}"
 
-Perbarui dan kembalikan JSON hasil revisi:`;
+Perbarui SEMUA tabel di atas dan kembalikan JSON hasil revisi:`;
 
   const raw = await invokeAIChat({
     systemInstruction,
     userPrompt,
     temperature: 0.3,
-    maxTokens: 3000,
+    maxTokens: 4000,
     provider,
     userApiKey: apiKey,
     userModel: model
@@ -2570,30 +2619,21 @@ Perbarui dan kembalikan JSON hasil revisi:`;
   if (raw) {
     try {
       const parsed = robustJsonParse<any>(raw);
-      if (parsed && parsed.contohData && Array.isArray(parsed.contohData.baris) && parsed.contohData.baris.length > 0) {
-        // Validasi dan paksa setiap baris data contoh HANYA dan PERSIS menggunakan nama field dari skema
-        const validatedRows: Record<string, any>[] = [];
-        for (let i = 0; i < Math.min(parsed.contohData.baris.length, 3); i++) {
-          const r = parsed.contohData.baris[i];
-          const validRow: Record<string, any> = {};
-          for (const f of targetFields) {
-            const existingKey = Object.keys(r).find((k) => k.toLowerCase() === f.nama.toLowerCase());
-            if (existingKey !== undefined && r[existingKey] !== undefined) {
-              validRow[f.nama] = r[existingKey];
-            } else {
-              validRow[f.nama] = currentSimulasi.contohData.baris[i]?.[f.nama] ?? `Contoh ${f.nama} ${i + 1}`;
-            }
-          }
-          validatedRows.push(validRow);
-        }
+      const parsedTables =
+        parsed?.contohData && Array.isArray(parsed.contohData.tabel) ? parsed.contohData.tabel : [];
+      const parsedAkun = parsed?.akunLogin;
+      if (parsedTables.length > 0 || Array.isArray(parsedAkun)) {
+        const contohTabel = buildContohTabelRevisi(tables, parsedTables, dRowsByTable);
+        // Pastikan FK pada semua tabel merujuk ID yang benar-benar ada setelah revisi AI
+        repairRelasiSimulasiDb(contohTabel);
 
         // Validasi akun login
         let validatedAkun = currentSimulasi.akunLogin;
-        if (Array.isArray(parsed.akunLogin) && parsed.akunLogin.length > 0) {
+        if (Array.isArray(parsedAkun) && parsedAkun.length > 0) {
           validatedAkun = activeRoles.map((role) => {
             const cleanUser = role.toLowerCase().replace(/[^a-z0-9]/g, '');
             const pass = `${cleanUser}123`;
-            const matched = parsed.akunLogin.find(
+            const matched = parsedAkun.find(
               (a: any) =>
                 a && (a.role?.toLowerCase() === role.toLowerCase() || a.username?.toLowerCase() === cleanUser)
             );
@@ -2607,10 +2647,7 @@ Perbarui dan kembalikan JSON hasil revisi:`;
         }
 
         const res: SimulasiDbResult = {
-          contohData: {
-            tabel: targetTableName,
-            baris: validatedRows.length > 0 ? validatedRows : currentSimulasi.contohData.baris
-          },
+          contohData: { tabel: contohTabel },
           akunLogin: validatedAkun,
           instruksiGenerator
         };
@@ -2622,13 +2659,225 @@ Perbarui dan kembalikan JSON hasil revisi:`;
     }
   }
 
-  // Fallback: kembalikan current simulasi
+  // Fallback: kembalikan current simulasi (tetap berisi semua tabel)
   const md = renderSimulasiDbMarkdown(currentSimulasi);
   return {
     contohData: currentSimulasi.contohData,
     akunLogin: currentSimulasi.akunLogin,
     instruksiGenerator,
     markdownTable: md
+  };
+}
+
+// Jenis panggilan AI ringan untuk mengisi KONTEN (bukan struktur/relasi) pada SIMULASI_DB.
+export type AiIsiNilaiSimulasiCaller = (
+  systemInstruction: string,
+  userPrompt: string
+) => Promise<string | null>;
+
+export type NilaiIsiSimulasi = Record<string, Record<string, unknown[]>>;
+
+function cariFieldPK(tabel: { field: { nama: string; tipe?: string }[] }): { nama: string } | null {
+  return (
+    tabel.field.find((f) => f.nama === 'id') ||
+    tabel.field.find((f) => /^id_/i.test(f.nama) && !/relasi ke/i.test(f.tipe || '')) ||
+    tabel.field.find((f) => /^kode/i.test(f.nama)) ||
+    tabel.field.find((f) => /^nomor_nota$|^no_nota$|^no_/i.test(f.nama)) ||
+    null
+  );
+}
+
+const fieldBolehDiisiAI = (f: { nama: string; tipe?: string }, pkField: { nama: string } | null): boolean =>
+  !/relasi ke/i.test(f.tipe || '') && !(pkField && f.nama === pkField.nama) && !/^(id|kode)/i.test(f.nama);
+
+const normKeyIsi = (s: string): string => s.toLowerCase().replace(/[\s_]+/g, '');
+
+/**
+ * SATU pemanggilan AI ringan untuk mengisi nilai KONTEN field non-ID/non-relasi pada
+ * SEMUA tabel sekaligus (prinsip satu-pemanggilan-terpadu). Nilai kembali berupa peta
+ * tabel -> field -> array 3 nilai. Struktur, ID, dan relasi TETAP deterministik di kode.
+ * Return null bila AI gagal / tak tersedia (proses lama):
+ */
+export async function aiIsiNilaiSimulasiDb(
+  session: MockupSessionState,
+  opts?: {
+    provider?: string;
+    apiKey?: string;
+    model?: string;
+    caller?: AiIsiNilaiSimulasiCaller;
+    maxTokens?: number;
+    masalahDariValidasi?: string[];
+  }
+): Promise<{ nilai: NilaiIsiSimulasi; latensiMs: number } | null> {
+  const start = Date.now();
+  const tables = session.dataSchema?.tabel || [];
+  if (tables.length === 0) return null;
+
+  const schemaBrief = tables
+    .map((t) => {
+      const pk = cariFieldPK(t);
+      const fields = t.field
+        .filter((f) => fieldBolehDiisiAI(f, pk))
+        .map((f) => `    - ${f.nama} (${f.tipe}) — ${f.keterangan || '-'}`)
+        .join('\n');
+      return `Tabel "${t.nama}"${t.keterangan ? ` (${t.keterangan})` : ''}:\n${fields}`;
+    })
+    .join('\n');
+
+  const systemInstruction = `Anda adalah penulis data contoh (dummy data) yang realistis untuk aplikasi bisnis.
+Anda HANYA mengisi NILAI KONTEN tiap field — Anda TIDAK membuat struktur, ID, maupun relasi.
+
+ATURAN KETAT:
+1. Output JSON valid tanpa komentar, tanpa markdown fence:
+{
+  "nilai": {
+    "<nama tabel persis>": {
+      "<nama field persis>": ["nilai baris 1", "nilai baris 2", "nilai baris 3"]
+    }
+  }
+}
+2. Sertakan SEMUA tabel dan SEMUA field yang terdaftar di bawah, masing-masing PERSIS 3 nilai (sesuai 3 baris data).
+3. Nilai harus kontektual dengan KETERANGAN field: bila keterangan menyebut pilihan (mis. "Tersedia / Disewa / Bengkel") gunakan nilai dari pilihan itu; bila field produk/barang/warna/ukuran, gunakan istilah nyata domain tersebut — JANGAN pakai nama orang.
+4. Untuk tipe "angka": nilai berupa angka (number) yang masuk akal (harga, jumlah, stok, durasi, dsb).
+5. Untuk tipe "tanggal": format "YYYY-MM-DD".
+6. DILARANG memakai placeholder seperti "Contoh Data", "Nama X", "...", "-", atau "dummy".`;
+
+  const userPrompt = `Bangun nilai contoh untuk seluruh tabel berikut (SEMUA tabel, setiap field PERSIS 3 nilai):
+
+${schemaBrief}`;
+
+  const retryNote =
+    opts?.masalahDariValidasi && opts.masalahDariValidasi.length > 0
+      ? `\n\nHasil sebelumnya DITOLAK validator dengan masalah berikut — perbaiki semua:
+${opts.masalahDariValidasi.map((m) => `- ${m}`).join('\n')}`
+      : '';
+
+  let raw: string | null = null;
+  try {
+    raw = opts?.caller
+      ? await opts.caller(systemInstruction, userPrompt + retryNote)
+      : await invokeAIChat({
+          systemInstruction,
+          userPrompt: userPrompt + retryNote,
+          temperature: 0.4,
+          maxTokens: opts?.maxTokens || 3000,
+          provider: opts?.provider,
+          userApiKey: opts?.apiKey,
+          userModel: opts?.model
+        });
+  } catch (e) {
+    console.warn('[AI-SIMULASI-ISI] AI call throw/error:', e);
+    return null;
+  }
+
+  const latensiMs = Date.now() - start;
+  if (!raw) return null;
+
+  try {
+    const parsed = robustJsonParse<{ nilai?: Record<string, Record<string, unknown>> }>(raw);
+    const parsedNilai = parsed?.nilai;
+    if (!parsedNilai || typeof parsedNilai !== 'object') {
+      console.warn('[AI-SIMULASI-ISI] JSON AI tidak memuat objek "nilai"');
+      return null;
+    }
+
+    const nilai: NilaiIsiSimulasi = {};
+    for (const t of tables) {
+      const pk = cariFieldPK(t);
+      const tKey = Object.keys(parsedNilai).find((k) => normKeyIsi(k) === normKeyIsi(t.nama));
+      const parsedFieldObj = tKey ? parsedNilai[tKey] : undefined;
+      if (!parsedFieldObj || typeof parsedFieldObj !== 'object') continue;
+
+      for (const f of t.field) {
+        if (!fieldBolehDiisiAI(f, pk)) continue;
+        const fKey = Object.keys(parsedFieldObj).find((k) => normKeyIsi(k) === normKeyIsi(f.nama));
+        const vals = fKey ? parsedFieldObj[fKey] : undefined;
+        const arr = Array.isArray(vals)
+          ? vals.filter((v: unknown) => v !== null && v !== undefined)
+          : [];
+        if (arr.length === 0) continue;
+        if (!nilai[t.nama]) nilai[t.nama] = {};
+        nilai[t.nama][f.nama] = arr;
+      }
+    }
+
+    const total = Object.values(nilai).reduce((n, m) => n + Object.keys(m).length, 0);
+    if (total === 0) {
+      console.warn('[AI-SIMULASI-ISI] Tidak ada field yang bisa diisi AI (semua ID/relasi), pakai kamus');
+      return null;
+    }
+    console.log(`[AI-SIMULASI-ISI] ${tables.length} tabel / ${total} field diisi AI dalam ${latensiMs}ms`);
+    return { nilai, latensiMs };
+  } catch (e) {
+    console.warn('[AI-SIMULASI-ISI] Gagal parse JSON nilai AI:', e);
+    return null;
+  }
+}
+
+export interface SimulasiDbHybridResult {
+  simulasiDb: NonNullable<MockupSessionState['simulasiDb']>;
+  sumber: 'ai' | 'kamus';
+  latensiAIMs: number;
+  masalahTerakhir?: string[];
+}
+
+/**
+ * Pengisi nilai SIMULASI_DB model HYBRID:
+ * - 1) coba isi konten lewat SATU panggilan AI ringan (aiIsiNilaiSimulasiDb)
+ * - 2) susun deterministik dengan nilai AI tsb (struktur/ID/relasi dari kode)
+ * - 3) validasi hasil dgn validateContohDataVsSchema; ada masalah -> retry AI 1x dgn feedback
+ * - 4) masih bermasalah / AI gagal -> fallback mulus ke kamus kata kunci (BERJAMIN lulus)
+ */
+export async function generateSimulasiDbHybrid(
+  session: MockupSessionState,
+  opts?: {
+    provider?: string;
+    apiKey?: string;
+    model?: string;
+    caller?: AiIsiNilaiSimulasiCaller;
+    maxTokens?: number;
+  }
+): Promise<SimulasiDbHybridResult> {
+  const start = Date.now();
+  const schemaTables = session.dataSchema?.tabel || [];
+
+  const buildDenganAI = (nilai: NilaiIsiSimulasi) => generateDeterministicSimulasiDb(session, { nilaiAI: nilai });
+
+  const cobaAI = async (masalah?: string[]) => {
+    try {
+      const aiRes = await aiIsiNilaiSimulasiDb(session, {
+        provider: opts?.provider,
+        apiKey: opts?.apiKey,
+        model: opts?.model,
+        caller: opts?.caller,
+        maxTokens: opts?.maxTokens,
+        masalahDariValidasi: masalah
+      });
+      if (!aiRes) return null;
+      const built = buildDenganAI(aiRes.nilai);
+      const validasi = validateContohDataVsSchema(built.contohData, schemaTables);
+      return { built, masalah: validasi };
+    } catch (e) {
+      console.warn('[AI-SIMULASI-ISI] kendala saat membangun hasil AI:', e);
+      return null;
+    }
+  };
+
+  let hasil = await cobaAI();
+  if (hasil && hasil.masalah.length > 0) {
+    console.log(`[AI-SIMULASI-ISI] Retry 1x (validator: ${hasil.masalah.length} masalah): ${hasil.masalah.slice(0, 3).join('; ')}`);
+    hasil = await cobaAI(hasil.masalah);
+  }
+  if (hasil && hasil.masalah.length === 0) {
+    return { simulasiDb: hasil.built, sumber: 'ai', latensiAIMs: Date.now() - start };
+  }
+
+  console.warn('[AI-SIMULASI-ISI] AI gagal / hasil tidak lolos validasi, fallback ke kamus kata kunci');
+  return {
+    simulasiDb: generateDeterministicSimulasiDb(session),
+    sumber: 'kamus',
+    latensiAIMs: Date.now() - start,
+    masalahTerakhir: hasil?.masalah
   };
 }
 
@@ -4561,13 +4810,14 @@ export async function POST(req: Request) {
         let updated = applyGuidedAnswer(session, 'SKEMA_DATA', body.selected || [], body.other);
 
         // Pastikan simulasi database digenerate saat transisi ke SIMULASI_DB
-        if (
-          !updated.simulasiDb ||
-          !updated.simulasiDb.contohData ||
-          !updated.simulasiDb.contohData.baris ||
-          updated.simulasiDb.contohData.baris.length === 0
-        ) {
-          updated.simulasiDb = generateDeterministicSimulasiDb(updated);
+        const contohTabelSiap =
+          updated.simulasiDb?.contohData &&
+          Array.isArray((updated.simulasiDb.contohData as SimulasiContohData).tabel) &&
+          (updated.simulasiDb.contohData as SimulasiContohData).tabel.some((t) => t.baris.length > 0);
+        if (!contohTabelSiap) {
+          const hybrid = await generateSimulasiDbHybrid(updated, { provider, apiKey: userApiKey, model: userModel });
+          updated.simulasiDb = hybrid.simulasiDb;
+          console.log(`[guided/route] SIMULASI_DB ${hybrid.sumber.toUpperCase()} dalam ${hybrid.latensiAIMs}ms (${session.dataSchema?.tabel?.length || 0} tabel)`);
         }
 
         const guidedStep = buildGuidedStep(updated);
