@@ -10,7 +10,9 @@ import {
   Plus,
   Pencil,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  History,
+  ArrowLeft
 } from 'lucide-react';
 import type { GuidedStepPayload, GuidedStepOption } from '@/lib/templates/processes/types';
 import { getAuthHeaders } from '@/lib/supabase/client';
@@ -276,6 +278,10 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
     );
   }
 
+  // Pisahkan opsi biasa dari opsi navigasi mundur ("Ada yang terlewat di langkah sebelumnya")
+  const regularOptions = allDisplayOptions.filter((o) => o.id !== 'back_to_previous');
+  const backNavOption = allDisplayOptions.find((o) => o.id === 'back_to_previous');
+
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0c0c11] p-3.5 space-y-3 shadow-inner">
       <div className="flex items-start gap-2">
@@ -284,7 +290,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
       </div>
 
       <div className="space-y-2 max-h-80 overflow-y-auto no-scrollbar pr-0.5">
-        {allDisplayOptions.map((opt) => {
+        {regularOptions.map((opt) => {
           const isSelected = selected.includes(opt.id);
           const needsInput = opt.requiresInput || /koreksi|adjust|clarify/i.test(opt.id);
           const isEditing = editingRoleId === opt.id;
@@ -729,6 +735,42 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tombol Navigasi Mundur ("Ada yang terlewat di langkah sebelumnya") - Terpisah secara visual & tanpa checkbox / tombol edit */}
+      {backNavOption && (
+        <div className="pt-2 border-t border-white/10">
+          <button
+            type="button"
+            onClick={() => {
+              if (disabled || submitted) return;
+              setSubmitted(true);
+              onSubmit(['back_to_previous']);
+            }}
+            disabled={disabled}
+            className="w-full group flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-amber-500/25 hover:border-amber-400/50 bg-amber-500/[0.02] hover:bg-amber-500/[0.06] text-left transition-all active:scale-[0.99]"
+          >
+            <div className="flex items-start gap-2.5 min-w-0">
+              <span className="mt-0.5 p-1 rounded-md bg-amber-400/10 text-amber-400 group-hover:bg-amber-400/20 transition-colors shrink-0">
+                <History className="w-3.5 h-3.5" />
+              </span>
+              <div className="min-w-0">
+                <span className="block text-[11.5px] font-semibold text-zinc-200 group-hover:text-amber-300 transition-colors">
+                  {backNavOption.label.replace(/^[⬅️↩️\s]+/, '')}
+                </span>
+                {backNavOption.description && (
+                  <span className="block text-[10px] text-zinc-400 group-hover:text-zinc-300 transition-colors leading-relaxed mt-0.5">
+                    {backNavOption.description}
+                  </span>
+                )}
+              </div>
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400/90 group-hover:text-black bg-amber-400/10 group-hover:bg-amber-400 border border-amber-400/20 group-hover:border-transparent px-2.5 py-1 rounded-lg transition-all">
+              <span>Buka</span>
+              <ArrowLeft className="w-3 h-3" />
+            </span>
+          </button>
         </div>
       )}
 
