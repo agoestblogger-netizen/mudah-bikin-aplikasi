@@ -40,7 +40,11 @@ async function runTests() {
     // Kasus 1: Pola pujian dengan kata sifat "relevan" dan preposisi "dalam"
     'Ide untuk aplikasi ini sangat relevan dalam meningkatkan efisiensi klinik gigi.',
     // Kasus 2: Kata "menarik" muncul di akhir/tengah kalimat tanpa kata ide/aplikasi
-    'Membayangkan bagaimana transaksi di toko emas bisa berjalan lancar sangat menarik.'
+    'Membayangkan bagaimana transaksi di toko emas bisa berjalan lancar sangat menarik.',
+    // Kasus Baru: Pola pujian tanpa kata benda anchor di awal (subjek bebas)
+    'Sistem antrean dan rekam medis pasien di klinik dokter gigi ini sangat penting untuk kelancaran layanan.',
+    'Mengelola koperasi simpan pinjam adalah langkah cerdas untuk membantu anggota dalam pengelolaan keuangan.',
+    'Membangun sistem antrean dan rekam medis pasien adalah langkah penting untuk meningkatkan efisiensi layanan kesehatan.'
   ];
   const freshSamples = [
     'Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba. Pelanggan datang...',
@@ -51,7 +55,13 @@ async function runTests() {
     'Di klinik gigi, ketepatan rekam medis dan antrean pasien adalah kunci kelancaran pelayanan. Pasien datang...',
     'Pengelolaan simpan pinjam di koperasi sangat terbantu jika setiap setoran tercatat transparan. Anggota datang...',
     'Membayangkan kendaraan yang bersih dan mengkilap pasti sangat menyenangkan. Pelanggan datang...',
-    'Dalam hiruk-pikuk kegiatan koperasi simpan pinjam, setiap detik berharga untuk memastikan layanan berjalan lancar. Anggota datang...'
+    'Dalam hiruk-pikuk kegiatan koperasi simpan pinjam, setiap detik berharga untuk memastikan layanan berjalan lancar. Anggota datang...',
+    'Bisa dibayangkan betapa sibuknya area cuci kendaraan saat pelanggan membawa mobil atau motor mereka untuk mendapatkan perawatan.',
+    'Memiliki cucian yang menumpuk bisa jadi hal yang merepotkan.',
+    'Dalam kesibukan kafe, pelanggan melangkah masuk dan langsung disambut oleh aroma kopi yang menggoda.',
+    'Menjaga kendaraan agar selalu dalam kondisi terbaik adalah prioritas bagi setiap pemilik motor.',
+    'Dalam dunia perhiasan yang berkilau, pelayanan terbaik menjadi kunci utama.',
+    'Membangun sebuah koperasi simpan pinjam yang efisien memerlukan pengelolaan yang tepat.'
   ];
 
   for (const s of clicheSamples) {
