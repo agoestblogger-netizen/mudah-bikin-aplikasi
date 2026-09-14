@@ -71,17 +71,23 @@ async function runLiveVerification() {
     const hasMenarik = /\bmenarik\b/i.test(firstSentence);
 
     // Analisis struktur tata bahasa pembuka
-    let strukturGramatikal = 'Lainnya';
-    if (/^(bisnis|usaha|di\s+|pengelolaan|aktivitas|operasional|menata|setiap)\b/i.test(firstSentence) && !/\b(untuk|dalam)\s+(meningkatkan|mempermudah|menyederhanakan|mengelola)\b/i.test(firstSentence)) {
-      strukturGramatikal = 'Observasi / Fakta Nyata Bisnis';
+    let strukturGramatikal = 'Observasi / Fakta Nyata Bisnis';
+    if (isCliche) {
+      if (hasMenarik) {
+        strukturGramatikal = 'Klise (Mengandung kata menarik)';
+      } else if (/^(mari|ayo|yuk)\s+kita\s+lihat\s+bagaimana\s+(alur|proses)\b/i.test(firstSentence)) {
+        strukturGramatikal = 'Boilerplate Ajakan Kaku';
+      } else {
+        strukturGramatikal = 'Pujian Formulaik (Klise)';
+      }
     } else if (/\?$/.test(firstSentence) || /^(bagaimana|pernahkah|apakah)\b/i.test(firstSentence)) {
       strukturGramatikal = 'Pertanyaan Retoris';
-    } else if (/^(mari|ayo|silakan)\b/i.test(firstSentence)) {
-      strukturGramatikal = 'Ajakan Langsung Tanpa Basa-Basi';
-    } else if (/^(jadi|fokus|intinya)\b/i.test(firstSentence)) {
+    } else if (/^(mari|ayo|silakan|coba|yuk)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Ajakan Langsung Dinamis';
+    } else if (/^(jadi|fokus|intinya|menata)\b/i.test(firstSentence)) {
       strukturGramatikal = 'Konfirmasi & Refleksi Praktis';
-    } else if (/\b(untuk|dalam|guna|demi)\b/i.test(firstSentence) && /\b(tepat|cerdas|cemerlang|luar biasa|bagus)\b/i.test(firstSentence)) {
-      strukturGramatikal = 'Pujian Formulaik (Klise)';
+    } else if (/^(bisnis|usaha|di\s+|pengelolaan|aktivitas|operasional|setiap|dalam|saat|membayangkan|menyenangkan|mengelola|menyediakan)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Observasi / Fakta Nyata Bisnis';
     }
 
     console.log(`⏱️ Selesai dalam ${elapsed}s`);

@@ -36,7 +36,11 @@ async function runTests() {
     'Sebuah ide yang cemerlang untuk mempermudah transaksi jual beli perhiasan.',
     'Sebuah langkah cerdas untuk mengelola simpanan dan pinjaman anggota koperasi.',
     'Mari kita lihat bagaimana alur operasional di tempat ini biasanya berjalan.',
-    'Mari kita lihat bagaimana proses servis kendaraan ini biasanya berjalan.'
+    'Mari kita lihat bagaimana proses servis kendaraan ini biasanya berjalan.',
+    // Kasus 1: Pola pujian dengan kata sifat "relevan" dan preposisi "dalam"
+    'Ide untuk aplikasi ini sangat relevan dalam meningkatkan efisiensi klinik gigi.',
+    // Kasus 2: Kata "menarik" muncul di akhir/tengah kalimat tanpa kata ide/aplikasi
+    'Membayangkan bagaimana transaksi di toko emas bisa berjalan lancar sangat menarik.'
   ];
   const freshSamples = [
     'Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba. Pelanggan datang...',
@@ -45,7 +49,9 @@ async function runTests() {
     'Coba kita telusuri pergerakan transaksi dan pesanan kopi di meja kasir. Pelanggan datang...',
     'Usaha laundry kiloan menuntut ketelitian tinggi sejak awal penerimaan pakaian. Pelanggan menyerahkan pakaian kotor...',
     'Di klinik gigi, ketepatan rekam medis dan antrean pasien adalah kunci kelancaran pelayanan. Pasien datang...',
-    'Pengelolaan simpan pinjam di koperasi sangat terbantu jika setiap setoran tercatat transparan. Anggota datang...'
+    'Pengelolaan simpan pinjam di koperasi sangat terbantu jika setiap setoran tercatat transparan. Anggota datang...',
+    'Membayangkan kendaraan yang bersih dan mengkilap pasti sangat menyenangkan. Pelanggan datang...',
+    'Dalam hiruk-pikuk kegiatan koperasi simpan pinjam, setiap detik berharga untuk memastikan layanan berjalan lancar. Anggota datang...'
   ];
 
   for (const s of clicheSamples) {
