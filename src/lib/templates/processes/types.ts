@@ -328,6 +328,7 @@ export interface MockupSessionState {
     other?: string;
   };
   compiledBrief?: string;
+  reviewFinalApproved?: boolean;
   changeSnapshots?: {
     lastModifiedStep?: SessionStep;
     prevRoles?: string[];

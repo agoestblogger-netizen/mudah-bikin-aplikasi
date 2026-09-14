@@ -90,7 +90,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     if (projectState.canvasCode?.html) return 'BUILD';
     return 'PLAN';
   });
-  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [loadingText, setLoadingText] = useState('Sedang menganalisa ide Anda...');
@@ -167,7 +166,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const modeDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -212,12 +210,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setMessages(projectState.chatMessages);
   }, [projectState.chatMessages]);
 
-  // Sinkronisasi mode: jika kanvas kosong (proyek baru atau reset), WAJIB kembali ke mode PLAN
+  // Sinkronisasi mode otomatis (system-managed):
+  // - Mode PLAN: selama sesi wawancara terpandu (kanvas kosong dan belum disetujui di REVIEW_FINAL)
+  // - Mode BUILD: jika sesi sudah disetujui di REVIEW_FINAL atau kanvas sudah memiliki prototipe kode
   useEffect(() => {
-    if (!projectState.canvasCode?.html) {
+    const hasCode = Boolean(projectState.canvasCode?.html?.trim());
+    const isApproved = Boolean(projectState.sessionState?.reviewFinalApproved);
+    if (hasCode || isApproved) {
+      setSelectedMode('BUILD');
+    } else {
       setSelectedMode('PLAN');
     }
-  }, [projectState.id, projectState.canvasCode?.html]);
+  }, [projectState.id, projectState.canvasCode?.html, projectState.sessionState?.reviewFinalApproved]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -230,9 +234,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   // Menangani klik luar dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as Node)) {
-        setIsModeDropdownOpen(false);
-      }
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setIsModelDropdownOpen(false);
       }
@@ -467,8 +468,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     if (!query.trim() || isGenerating) return;
 
     const isCanvasEmpty = !projectState.canvasCode?.html;
-    // Jika kanvas kosong, mode efektif dipaksa selalu PLAN (tidak boleh BUILD sebelum ada kode)
-    const activeMode = isCanvasEmpty ? 'PLAN' : (modeOverride || selectedMode);
+    const isApprovedOrBuild = modeOverride === 'BUILD' || Boolean(projectState.sessionState?.reviewFinalApproved);
+    // Jika kanvas kosong dan belum disetujui di REVIEW_FINAL, mode efektif dipaksa selalu PLAN
+    const activeMode = (isCanvasEmpty && !isApprovedOrBuild) ? 'PLAN' : (modeOverride || selectedMode);
 
     // Deteksi eksplisit permintaan pembuatan ide aplikasi baru
     const isExplicitNewAppIdea =
@@ -497,6 +499,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
     if (
       isCanvasEmpty &&
+      !isApprovedOrBuild &&
       (!projectState.sessionState || projectState.sessionState.step === 'REVIEW_FINAL' || !projectState.sessionState.step || looksLikeIdea)
     ) {
       // Jika belum ada sessionState, atau sesi sebelumnya sudah REVIEW_FINAL (selesai), mulai sesi terpandu baru
@@ -1208,26 +1211,6 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     }`}
                   >
                     <MarkdownMessage content={textToDisplay} isUser={m.sender === 'USER'} />
-                  
-                  {/* Tombol Pintas: Beralih ke Mode Build jika AI meminta beralih ke Build */}
-                  {m.sender === 'AI' && selectedMode === 'PLAN' && (
-                    m.text.toLowerCase().includes('build (prototype)') || 
-                    m.text.toLowerCase().includes('mode ke build') || 
-                    m.text.toLowerCase().includes('ganti mode ke build') || 
-                    m.text.toLowerCase().includes('ubah mode ke build') ||
-                    m.text.toLowerCase().includes('mode build')
-                  ) && (
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedMode('BUILD')}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 to-[#10f48e] hover:from-emerald-500 hover:to-[#0df28a] text-black font-extrabold text-xs shadow-md shadow-[#10f48e]/25 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
-                      >
-                        <Wrench className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>🛠️ Beralih ke Mode Build Sekarang</span>
-                      </button>
-                    </div>
-                  )}
 
                   {/* Quick Action Pills — untuk pesan pertama (welcome) ATAU pesan kegagalan generate (POIN D) */}
                   {m.suggestedOptions && m.suggestedOptions.length > 0 && (messages.length <= 1 || m.metadata?.retryPrompt) && (
@@ -1326,20 +1309,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           }}
           className="relative bg-[#101016] border border-white/10 hover:border-white/20 focus-within:border-[#10f48e]/60 rounded-2xl p-2.5 transition-all shadow-xl flex flex-col gap-2"
         >
-          {/* Indikator Alur Plan vs Build: Jika Brief sudah siap & mode masih Plan */}
+          {/* Indikator Panduan Alur: Jika Brief sudah siap & masih di mode Plan */}
           {messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:')) && selectedMode === 'PLAN' && (
-            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-[#10f48e]/10 border border-[#10f48e]/25 text-[11px] text-[#10f48e] animate-in fade-in duration-200">
-              <div className="flex items-center gap-1.5 truncate">
-                <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                <span className="font-semibold truncate">Brief Kebutuhan siap! Beralih ke <b>Build</b> untuk membuat prototipe.</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedMode('BUILD')}
-                className="ml-2 shrink-0 px-2.5 py-0.5 rounded-lg bg-[#10f48e] hover:bg-emerald-400 text-black font-extrabold text-[10px] transition-all cursor-pointer shadow-sm active:scale-95"
-              >
-                Ganti ke Build
-              </button>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 animate-in fade-in duration-200">
+              <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span className="truncate">Tinjau lembar brief di atas, lalu klik <b>Setujui &amp; Buat Prototipe</b> untuk mulai membuat aplikasi.</span>
             </div>
           )}
 
@@ -1362,90 +1336,39 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               placeholder={
                 selectedMode === 'PLAN'
                   ? (messages.some(m => m.text.includes('Brief Kebutuhan') || m.text.includes('Nama App:'))
-                      ? 'Brief sudah siap. Ketik revisi brief, atau ganti mode ke Build untuk membuat prototipe...'
+                      ? 'Ketik masukan atau penyesuaian untuk brief kebutuhan...'
                       : 'Diskusikan ide & fitur yang ingin Anda rencanakan...')
-                  : selectedMode === 'SYNC_GAS'
-                  ? 'Ketik instruksi backend Google Apps Script / Sheet database...'
-                  : 'Ketik instruksi untuk membangun prototype web app Anda...'
+                  : 'Ketik instruksi untuk merevisi atau menambahkan fitur pada prototype...'
               }
               className="flex-1 bg-transparent px-1 py-1 text-xs text-white placeholder-zinc-500 focus:outline-none disabled:opacity-50 resize-none max-h-36 min-h-[32px] overflow-y-auto leading-relaxed scrollbar-thin"
             />
           </div>
 
-          {/* Baris Bawah Kapsul: Mode Dropdown, Mic, & Send Button */}
+          {/* Baris Bawah Kapsul: Status Badge Read-Only, Mic, & Send Button */}
           <div className="flex items-center justify-between pt-1 border-t border-white/5">
-            {/* Mode Dropdown (Plan / Build / Sync GAS) */}
-            <div className="relative" ref={modeDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setIsModeDropdownOpen(prev => !prev)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-semibold text-zinc-200 transition-all"
-                title="Pilih Mode Pengerjaan"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#10f48e] shrink-0 shadow-[0_0_6px_#10f48e]" />
-                <span>
-                  {selectedMode === 'PLAN' && 'Plan (Brief)'}
-                  {selectedMode === 'BUILD' && 'Build (Prototype)'}
-                  {selectedMode === 'SYNC_GAS' && 'Sync GAS'}
-                </span>
-                <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
-              </button>
-
-              {/* Dropdown Menu Popover Upward */}
-              {isModeDropdownOpen && (
-                <div className="absolute bottom-full mb-2 left-0 w-52 rounded-xl bg-[#14141c] border border-white/10 shadow-2xl backdrop-blur-xl p-1.5 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedMode('BUILD');
-                      setIsModeDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMode === 'BUILD' ? 'bg-[#10f48e]/15 text-[#10f48e] font-semibold' : 'text-zinc-300 hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Wrench className="w-3.5 h-3.5" />
-                      <span>Build (Prototype)</span>
-                    </div>
-                    {selectedMode === 'BUILD' && <Check className="w-3.5 h-3.5 text-[#10f48e]" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedMode('PLAN');
-                      setIsModeDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMode === 'PLAN' ? 'bg-[#10f48e]/15 text-[#10f48e] font-semibold' : 'text-zinc-300 hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>Plan (Brief Kebutuhan)</span>
-                    </div>
-                    {selectedMode === 'PLAN' && <Check className="w-3.5 h-3.5 text-[#10f48e]" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedMode('SYNC_GAS');
-                      setIsModeDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
-                      selectedMode === 'SYNC_GAS' ? 'bg-[#10f48e]/15 text-[#10f48e] font-semibold' : 'text-zinc-300 hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Database className="w-3.5 h-3.5" />
-                      <span>Sync GAS (Apps Script)</span>
-                    </div>
-                    {selectedMode === 'SYNC_GAS' && <Check className="w-3.5 h-3.5 text-[#10f48e]" />}
-                  </button>
-                </div>
-              )}
+            {/* Status Badge Read-Only: Mode Sistem (Perencanaan vs Pembuatan & Revisi) */}
+            <div
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-semibold select-none cursor-default transition-all ${
+                selectedMode === 'PLAN'
+                  ? 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+                  : 'bg-[#10f48e]/10 border-[#10f48e]/25 text-[#10f48e]'
+              }`}
+              title={
+                selectedMode === 'PLAN'
+                  ? 'Mode Perencanaan (Otomatis): AI memandu alur wawancara untuk menyusun brief kebutuhan aplikasi.'
+                  : 'Mode Pembuatan & Revisi (Otomatis): AI membuat dan merevisi prototipe aplikasi berdasarkan brief.'
+              }
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  selectedMode === 'PLAN'
+                    ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]'
+                    : 'bg-[#10f48e] shadow-[0_0_6px_#10f48e]'
+                }`}
+              />
+              <span>
+                {selectedMode === 'PLAN' ? '📝 Perencanaan' : '🛠️ Pembuatan & Revisi'}
+              </span>
             </div>
 
             {/* Sisi Kanan: Mic & Send Button */}
