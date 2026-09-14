@@ -16,6 +16,17 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   isUser = false,
   className = ''
 }) => {
+  const normalizedContent = React.useMemo(() => {
+    if (!content) return '';
+    // 1. Tangani jika ada <br> yang diletakkan di akhir baris tabel (| ... <br>) agar remark-gfm mengenalinya sebagai baris tabel terpisah
+    let text = content.replace(/\|\s*<br\s*\/?>\s*/gi, '|\n');
+    // 2. Tangani jika ada <br> sebelum delimiter tabel (:-| atau :---)
+    text = text.replace(/<br\s*\/?>\s*(:?-+:?)/gi, '\n$1');
+    // 3. Tangani jika baris tabel diawali dengan <br>
+    text = text.replace(/<br\s*\/?>\s*\|/gi, '\n|');
+    return text;
+  }, [content]);
+
   if (isUser) {
     return <p className={`whitespace-pre-wrap text-xs leading-relaxed ${className}`}>{content}</p>;
   }
@@ -129,7 +140,7 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
           )
         }}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );
