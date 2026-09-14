@@ -402,6 +402,12 @@ export function isExternalRole(label: string): boolean {
 }
 
 function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
+  // Jika sedang menunggu klarifikasi ide bisnis (input bukan ide bisnis)
+  if (session.storyline?.pendingNonBusinessClarification) {
+    const pend = session.storyline.pendingNonBusinessClarification;
+    return buildNonBusinessClarificationCard(pend.pesanKlarifikasi);
+  }
+
   // Jika sedang menunggu klarifikasi arah bisnis sebelum narasi dibuat
   if (session.storyline?.pendingDirectionClarification) {
     const pend = session.storyline.pendingDirectionClarification;
@@ -2032,6 +2038,34 @@ export function buildDirectionClarificationCard(
         label: `⚖️ ${opsiBoth}`,
         description: `Melayani kedua proses secara setara dan sama-sama rutin.`,
         recommended: true
+      }
+    ]
+  };
+}
+
+/**
+ * Menyusun GuidedStepPayload kartu klarifikasi ramah jika input awal BUKAN ide bisnis/aplikasi.
+ */
+export function buildNonBusinessClarificationCard(
+  pertanyaan?: string
+): GuidedStepPayload {
+  const promptQuestion = pertanyaan && pertanyaan.trim()
+    ? pertanyaan.trim()
+    : 'Boleh ceritakan lebih detail, aplikasi apa yang ingin kamu bangun?';
+
+  return {
+    stepId: 'STORYTELLING',
+    title: promptQuestion,
+    multi: false,
+    allowOther: true,
+    options: [
+      {
+        id: 'clarify_business_input',
+        label: '✏️ Tuliskan deskripsi ide aplikasi/bisnismu',
+        description: 'Jelaskan bidang usaha atau jenis aplikasi yang ingin dibuat',
+        recommended: true,
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Buatkan aplikasi kasir barbershop, laundry kiloan, atau toko buku...'
       }
     ]
   };

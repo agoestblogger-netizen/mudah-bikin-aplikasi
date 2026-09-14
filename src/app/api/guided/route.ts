@@ -23,6 +23,7 @@ import {
   buildKasusGandaFromSession,
   detectAmbiguousStorylineDomain,
   buildDirectionClarificationCard,
+  buildNonBusinessClarificationCard,
   DUAL_PROCESS_PATTERNS,
   REQUIRED_ROLE,
   isSuperAdminRole,
@@ -477,11 +478,21 @@ export async function generateStorylineWithAI(
   model?: string
 ): Promise<AIStorylineResult> {
   const systemInstruction = `Anda adalah Partner Diskusi & Konsultan Aplikasi AI dari platform "Aplikasi Generator".
-Tugas Anda: Menyambut ide pengguna dengan hangat, apresiatif, dan ramah, lalu merangkai cerita proses bisnis (2-4 kalimat) yang mengalir luwes, hidup, dan SANGAT SPESIFIK ke domain bisnis tersebut.
+Tugas Anda: Pertama-tama, nilai apakah input pengguna memang merupakan ide aplikasi/proses bisnis yang valid. Jika ya, rangkai cerita proses bisnis (2-4 kalimat) yang mengalir luwes, hidup, dan SANGAT SPESIFIK ke domain bisnis tersebut.
 
 PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 0. ANALISIS KONSEPTUAL ARAH BISNIS (analisisArah - WAJIB):
-   Analisis aktivitas frontliner / customer-facing dari permintaan pengguna untuk menyimpulkan salah satu dari tiga kondisi berikut:
+   Analisis permintaan pengguna secara holistik untuk menyimpulkan salah satu dari EMPAT kondisi berikut:
+
+   d) "BUKAN_IDE_BISNIS" (CEK INI PERTAMA KALI SEBELUM CEK LAINNYA):
+      Jika input pengguna SAMA SEKALI TIDAK dapat diinterpretasikan sebagai ide aplikasi atau proses bisnis:
+      - Kata navigasi/kontrol yang nyasar: "lanjut", "ok", "ya", "oke", "next", "yes", "back", "kembali", "stop", "cancel"
+      - Input tidak bermakna/typo parah: huruf acak, karakter spesial tanpa konteks, angka saja
+      - Kalimat bukan bisnis: pertanyaan umum, kalimat acak, atau teks yang tidak menyiratkan bisnis/aplikasi apapun
+      JIKA kondisi ini terpenuhi, isi field "klarifikasiBukanIde" dan JANGAN isi field narasi/asumsiAktor/asumsiAlurUtama.
+      Jika ada kemungkinan kecil sekalipun bahwa input merujuk ke domain bisnis (contoh: "salon", "bakso", "cuci"), JANGAN pilih BUKAN_IDE_BISNIS.
+
+   Jika bukan BUKAN_IDE_BISNIS, analisis aktivitas frontliner / customer-facing untuk menyimpulkan salah satu dari tiga kondisi berikut:
    a) "SATU_ARAH":
       Aliran transaksi hanya SEARAH dari bisnis ke pelanggan (pelanggan memesan/dilayani dan membayar bisnis).
       * Kafe, kedai kopi, restoran, bakery, rumah makan: Pelanggan memesan hidangan/minuman dan membayar ke kasir. Memiliki variasi menu kafe dan resto BUKAN dua arah transaksi! Ini MURNI "SATU_ARAH".
@@ -571,6 +582,12 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         "opsiBoth": "Dua-duanya (keterangan)"
       }
 
+   ATURAN PEMISAHAN ROLE (untuk kondisi DUA_ARAH):
+   Percayakan sepenuhnya analisis pemisahan role kepada penilaian konseptual AI. Gunakan "Diagnostic Litmus Test" secara mandiri:
+   - PISAH jika satu sisi membutuhkan kompetensi teknis/alat diagnostik SPESIALIS yang berbeda (HP bekas, motor, emas, kamera, laptop)
+   - GABUNG jika kedua sisi merupakan administrasi kasir simetris atau toko barang bekas campuran/generalis
+   Sistem TIDAK akan meng-override keputusan ini — tanggung jawab penuh ada pada analisis AI.
+
 1. STRUKTUR ALUR CERITA LENGKAP END-TO-END BERTAHAP (WAJIB 3 FASE - DILARANG MELOMPAT):
    Narasi cerita (2-4 kalimat) DILARANG melompat langsung ke tengah proses (seperti langsung menimbang barang di timbangan atau langsung cetak nota kasir). Cerita WAJIB merangkai alur lengkap berkesinambungan yang memuat 3 tahapan kronologis:
    a) Fase Pembuka (Titik Awal Interaksi):
@@ -632,15 +649,15 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 9. FORMAT OUTPUT HANYA JSON VALID:
 {
   "analisisArah": {
-    "kondisi": "SATU_ARAH" | "DUA_ARAH" | "AMBIGU",
-    "alasan": "Penjelasan konseptual mengapa dinilai satu arah, dua arah, atau ambigu",
+    "kondisi": "SATU_ARAH" | "DUA_ARAH" | "AMBIGU" | "BUKAN_IDE_BISNIS",
+    "alasan": "Penjelasan konseptual mengapa dinilai satu arah, dua arah, ambigu, atau bukan ide bisnis",
     "duaArah": {
       "prosesA": "Nama proses transaksi keluar/penjualan/setoran (jika DUA_ARAH)",
       "prosesB": "Nama proses transaksi masuk/pembelian/pinjaman (jika DUA_ARAH)",
       "entitasBersama": "Objek/barang/dana utama yang terlibat",
       "pemisahanRole": {
         "keputusan": "PISAH" | "GABUNG",
-        "alasan": "Alasan konseptual mengapa dipisah atau digabung",
+        "alasan": "Alasan konseptual mengapa dipisah atau digabung berdasarkan Diagnostic Litmus Test",
         "roleKasusA": "Nama role frontliner kasus A (jika PISAH)",
         "roleKasusB": "Nama role frontliner kasus B (jika PISAH)"
       }
@@ -651,11 +668,14 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
       "opsiA": "Arah bisnis A",
       "opsiB": "Arah bisnis B",
       "opsiBoth": "Dua-duanya (keterangan)"
+    },
+    "klarifikasiBukanIde": {
+      "pesanKlarifikasi": "Kalimat ramah dan singkat yang menjelaskan bahwa input tidak teridentifikasi sebagai ide bisnis, dan meminta pengguna untuk mendeskripsikan ide aplikasi/bisnis mereka. Contoh: 'Halo! Sepertinya input tadi bukan deskripsi ide bisnis. Boleh ceritakan aplikasi apa yang ingin kamu bangun?'"
     }
   },
-  "appName": "Nama aplikasi kreatif & spesifik domain",
-  "businessCategory": "Kategori industri konkret",
-  "narasi": "2-3 kalimat cerita proses bisnis nyata (fase datang -> fase layanan -> fase bayar). ${CONFIRMATION_CLOSING}",
+  "appName": "Nama aplikasi kreatif & spesifik domain (kosong jika BUKAN_IDE_BISNIS)",
+  "businessCategory": "Kategori industri konkret (kosong jika BUKAN_IDE_BISNIS)",
+  "narasi": "2-3 kalimat cerita proses bisnis nyata (fase datang -> fase layanan -> fase bayar). ${CONFIRMATION_CLOSING} (kosong jika BUKAN_IDE_BISNIS)",
   "asumsiMasalah": "Masalah operasional fisik/pencatatan nyata yang dihadapi",
   "asumsiAktor": ["Super Admin", "Peran Spesifik 1", "Peran Spesifik 2", "Pelanggan"],
   "asumsiAlurUtama": "Aktivitas nyata 1 -> Aktivitas nyata 2 -> Aktivitas nyata 3 -> Pemilik memantau rekap",
@@ -673,7 +693,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nAnalisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU) dan analisis pemisahan role frontliner jika DUA_ARAH, susun cerita proses bisnis yang hangat dan hidup memuat aktivitas konkret, lalu ekstrak field terstruktur:`,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nLangkah 1: Nilai apakah ini ide bisnis/aplikasi yang valid (jika tidak, kembalikan kondisi BUKAN_IDE_BISNIS). Langkah 2: Jika valid, analisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU) dan analisis pemisahan role frontliner berdasarkan Diagnostic Litmus Test jika DUA_ARAH, susun cerita proses bisnis yang hangat dan hidup memuat aktivitas konkret, lalu ekstrak semua field terstruktur:`,
     temperature: 0.6,
     maxTokens: 4000,
     provider,
@@ -727,44 +747,41 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         let analisisArah: AnalisisArahResult | undefined = undefined;
         if (parsed.analisisArah && typeof parsed.analisisArah === 'object') {
           const rawArah = parsed.analisisArah;
-          const kondisi: KondisiArahBisnis = (['SATU_ARAH', 'DUA_ARAH', 'AMBIGU'].includes(rawArah.kondisi)
+          const kondisi: KondisiArahBisnis = (['SATU_ARAH', 'DUA_ARAH', 'AMBIGU', 'BUKAN_IDE_BISNIS'].includes(rawArah.kondisi)
             ? rawArah.kondisi
             : 'SATU_ARAH') as KondisiArahBisnis;
 
+          // Jika AI mendeteksi BUKAN_IDE_BISNIS, return langsung tanpa proses lebih lanjut
+          if (kondisi === 'BUKAN_IDE_BISNIS') {
+            const pesanKlarifikasi = rawArah.klarifikasiBukanIde?.pesanKlarifikasi
+              ? String(rawArah.klarifikasiBukanIde.pesanKlarifikasi).trim()
+              : 'Halo! Sepertinya input tadi bukan deskripsi ide bisnis atau aplikasi. Boleh ceritakan lebih detail, aplikasi apa yang ingin kamu bangun?';
+            return {
+              appName: '',
+              businessCategory: '',
+              templateId: 'MT-20',
+              overlayIds: [],
+              patternIds: ['UP-06', 'UP-09'],
+              narasi: '',
+              asumsiMasalah: '',
+              asumsiAktor: [],
+              asumsiAlurUtama: '',
+              analisisArah: {
+                kondisi: 'BUKAN_IDE_BISNIS',
+                alasan: String(rawArah.alasan || '').trim(),
+                klarifikasiBukanIde: { pesanKlarifikasi }
+              }
+            };
+          }
+
+          // Percayakan keputusan pemisahanRole sepenuhnya kepada AI (tanpa keyword override)
           let pemisahanRole: PemisahanRoleResult | undefined = undefined;
           if (rawArah.duaArah?.pemisahanRole && typeof rawArah.duaArah.pemisahanRole === 'object') {
             const rawPr = rawArah.duaArah.pemisahanRole;
-            let finalKeputusan: 'PISAH' | 'GABUNG' = rawPr.keputusan === 'PISAH' ? 'PISAH' : 'GABUNG';
-            let finalAlasan = String(rawPr.alasan || '').trim();
-            let roleKasusA = rawPr.roleKasusA ? String(rawPr.roleKasusA).trim() : undefined;
-            let roleKasusB = rawPr.roleKasusB ? String(rawPr.roleKasusB).trim() : undefined;
-
-            // KONSEPTUAL GROUNDING SAFEGUARD (The Diagnostic Litmus Test):
-            // 1. Spesialis Kategori Berisiko Tinggi (HP, motor, emas, laptop, kamera) -> WAJIB PISAH
-            // 2. Toko Barang Bekas Campuran / Generalis (loak, perabotan campuran, barang antik) -> WAJIB GABUNG
-            // 3. Administrasi Kasir Simetris (money changer, koperasi, agen bank, sembako) -> WAJIB GABUNG
-            const domainScopeText = `${prompt} ${appName} ${businessCategory} ${rawArah.duaArah?.prosesA || ''} ${rawArah.duaArah?.prosesB || ''}`.toLowerCase();
-            
-            const isMixedOrGeneralistSecondhand = /\b(barang\s*bekas(\s*(campuran|umum|serba\s*ada))?|loak|loakan|barang\s*antik|pasar\s*barang\s*bekas|thrift\s*shop|rongsok)\b/i.test(domainScopeText);
-            const isSpecificHighRiskSpecialist = !isMixedOrGeneralistSecondhand && /\b(hp|handphone|smartphone|gadget|laptop|komputer|pc|kamera|lensa|motor|mobil|kendaraan|emas|perhiasan|buyback)\b/i.test(domainScopeText);
-            const isPureAdministrativeFinancialDomain = /\b(money\s*changer|valas|valuta|kurs|koperasi|simpan\s*pinjam|tabungan|ppob|agen\s*bank|sembako|kelontong|galon|gas)\b/i.test(domainScopeText);
-
-            if (isSpecificHighRiskSpecialist && !isPureAdministrativeFinancialDomain) {
-              finalKeputusan = 'PISAH';
-              if (!finalAlasan.toLowerCase().includes('teknis') && !finalAlasan.toLowerCase().includes('diagnostik') && !finalAlasan.toLowerCase().includes('appraisal') && !finalAlasan.toLowerCase().includes('keahlian')) {
-                finalAlasan = 'Penilaian fisik/fungsional barang bekas pada domain spesialis ini membutuhkan kompetensi dan alat diagnostik teknis khusus yang berbeda dari penjualan unit baru.';
-              }
-            } else if (isMixedOrGeneralistSecondhand) {
-              finalKeputusan = 'GABUNG';
-              finalAlasan = 'Toko menerima barang bekas campuran/umum dan tidak berfokus pada satu kategori barang teknis berisiko tinggi, sehingga penilaian kondisi barang bersifat kasat mata/umum dan dapat ditangani oleh staf toko multi-fungsi tanpa alat diagnostik khusus.';
-              roleKasusA = undefined;
-              roleKasusB = undefined;
-            } else if (isPureAdministrativeFinancialDomain && !isSpecificHighRiskSpecialist) {
-              finalKeputusan = 'GABUNG';
-              finalAlasan = 'Transaksi kedua sisi merupakan alur administrasi/keuangan kasir simetris tanpa kebutuhan uji teknis/diagnostik fisik barang bekas, sehingga dapat dilayani oleh satu peran frontliner.';
-              roleKasusA = undefined;
-              roleKasusB = undefined;
-            }
+            const finalKeputusan: 'PISAH' | 'GABUNG' = rawPr.keputusan === 'PISAH' ? 'PISAH' : 'GABUNG';
+            const finalAlasan = String(rawPr.alasan || '').trim();
+            const roleKasusA = rawPr.roleKasusA ? String(rawPr.roleKasusA).trim() : undefined;
+            const roleKasusB = rawPr.roleKasusB ? String(rawPr.roleKasusB).trim() : undefined;
 
             pemisahanRole = {
               keputusan: finalKeputusan,
@@ -789,52 +806,14 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
               opsiA: String(rawArah.klarifikasiAmbigu.opsiA || '').trim(),
               opsiB: String(rawArah.klarifikasiAmbigu.opsiB || '').trim(),
               opsiBoth: String(rawArah.klarifikasiAmbigu.opsiBoth || '').trim()
+            } : undefined,
+            klarifikasiBukanIde: rawArah.klarifikasiBukanIde?.pesanKlarifikasi ? {
+              pesanKlarifikasi: String(rawArah.klarifikasiBukanIde.pesanKlarifikasi).trim()
             } : undefined
           };
         }
 
-        // Safeguard integritas peran jika keputusan adalah GABUNG:
-        // Pastikan tidak ada dua peran kasir semu yang terpisah arah di asumsiAktor
-        if (analisisArah?.kondisi === 'DUA_ARAH' && analisisArah.duaArah?.pemisahanRole?.keputusan === 'GABUNG') {
-          const staffRoles = asumsiAktor.filter(
-            (r: string) => !/^(super\s*admin|pemilik|owner|pelanggan|penyewa|nasabah|anggota|pasien|konsumen)\b/i.test(r)
-          );
-          if (staffRoles.length >= 2) {
-            const hasOppositeStaff =
-              staffRoles.some((r: string) => /sales|kasir|jual|penjualan|setor|setoran|simpan/i.test(r)) &&
-              staffRoles.some((r: string) => /beli|pembelian|tarik|penarikan|pinjam/i.test(r));
-            if (hasOppositeStaff) {
-              const lowerCat = `${businessCategory} ${appName} ${prompt}`.toLowerCase();
-              const combinedStaffName =
-                lowerCat.includes('valas') || lowerCat.includes('money')
-                  ? 'Teller Valas'
-                  : lowerCat.includes('bank') || lowerCat.includes('ppob')
-                  ? 'Operator Loket'
-                  : lowerCat.includes('bekas') || lowerCat.includes('loak') || lowerCat.includes('antik')
-                  ? 'Staf Toko Barang Bekas'
-                  : 'Kasir Operasional';
-
-              const newAktor = asumsiAktor.filter((r: string) => !staffRoles.includes(r));
-              newAktor.splice(1, 0, combinedStaffName);
-              asumsiAktor.length = 0;
-              asumsiAktor.push(...newAktor);
-
-              if (detailAktor) {
-                const combinedTasks: string[] = [];
-                for (const sr of staffRoles) {
-                  if (detailAktor[sr]) {
-                    combinedTasks.push(...detailAktor[sr].tanggungJawab);
-                    delete detailAktor[sr];
-                  }
-                }
-                detailAktor[combinedStaffName] = {
-                  narasi: `Staf frontliner yang melayani transaksi di ${businessCategory}.`,
-                  tanggungJawab: Array.from(new Set(combinedTasks)).slice(0, 3)
-                };
-              }
-            }
-          }
-        }
+        // Peran yang dikembalikan AI sudah digrounding sesuai analisis konseptual — tidak perlu override
 
         // Lapis 1: Sanitasi kata ganti orang pertama jamak ("kami/kita") murni pada kata gantinya saja
         narasi = sanitizeStorylineNarrative(narasi, asumsiAktor);
@@ -880,9 +859,8 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     }
   }
 
-  // Fallback kontekstual berbasis kata kunci jika AI tidak merespons
+  // Fallback generik jika AI tidak merespons (tanpa keyword-based domain overrides)
   const cleanPrompt = prompt.trim();
-  const lowerPrompt = cleanPrompt.toLowerCase();
 
   let fallbackAppName = `Aplikasi ${cleanPrompt.slice(0, 30)}`;
   let fallbackCategory = cleanPrompt.slice(0, 40) || 'Bisnis Anda';
@@ -896,128 +874,6 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
       tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau transaksi dan omzet harian operasional', 'Mengatur konfigurasi dan parameter operasional aplikasi']
     }
   };
-
-  if (lowerPrompt.includes('rental') || lowerPrompt.includes('sewa') || lowerPrompt.includes('rent car')) {
-    fallbackAppName = 'RentCar Mandiri';
-    fallbackCategory = 'Rental & Sewa Kendaraan';
-    fallbackNarasi = `Wah, ide usaha rental kendaraan yang sangat prospektif! Bayangkan alur transaksinya nanti: petugas rental memeriksa ketersediaan armada, memverifikasi data identitas serta jaminan penyewa, lalu melakukan serah-terima kunci dan mengecek kondisi fisik armada bersama penyewa. Saat mobil dikembalikan, pemeriksaan bodi dan bahan bakar tercatat otomatis, sementara kamu sebagai pemilik bisa memantau jadwal armada aktif dan rekap omzet harian dengan tenang. ${CONFIRMATION_CLOSING}`;
-    fallbackAktor = ['Super Admin', 'Petugas Rental', 'Sopir Armada', 'Penyewa'];
-    fallbackAlur = 'Penyewa booking & verifikasi jaminan -> Petugas serah terima kunci & cek unit -> Pengembalian armada -> Pemilik pantau unit aktif & omzet';
-    fallbackDetailAktor = {
-      'Super Admin': {
-        narasi: 'Pemilik usaha rental kendaraan yang mengelola akun staf dan akses sistem, serta memantau pergerakan armada, jadwal sewa aktif, dan pemasukan keuangan harian.',
-        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau jadwal armada dan sewa aktif', 'Meninjau laporan omzet dan denda keterlambatan']
-      },
-      'Petugas Rental': {
-        narasi: 'Petugas garis depan yang memverifikasi dokumen persyaratan penyewa (SIM & KTP/jaminan), mengecek kondisi fisik dan kilometer armada, serta melakukan serah-terima kunci.',
-        tanggungJawab: ['Memverifikasi dokumen identitas dan jaminan penyewa', 'Mencatat kondisi fisik dan kilometer awal-akhir mobil', 'Melakukan serah-terima kunci dan formulir sewa']
-      },
-      'Sopir Armada': {
-        narasi: 'Pengemudi armada rental yang mendampingi dan mengantarkan penumpang dengan aman dan nyaman ke tempat tujuan sesuai kesepakatan perjalanan.',
-        tanggungJawab: ['Mempersiapkan kendaraan dan mendampingi penumpang selama perjalanan', 'Mengemudikan unit secara aman sesuai rute kesepakatan pelanggan', 'Melaporkan status penyelesaian perjalanan dan kondisi kilometer armada']
-      },
-      'Penyewa': {
-        narasi: 'Penyewa armada kendaraan lepas kunci atau dengan sopir yang memilih unit, menyerahkan dokumen persyaratan dan jaminan sewa, serta menikmati perjalanan.',
-        tanggungJawab: ['Memilih armada kendaraan dan durasi waktu sewa', 'Menyerahkan dokumen identitas (SIM/KTP) dan jaminan', 'Melakukan pembayaran dan menerima serah-terima armada']
-      }
-    };
-  } else if (lowerPrompt.includes('cuci') || (lowerPrompt.includes('mobil') && lowerPrompt.includes('cuci'))) {
-    fallbackAppName = 'AutoShine Carwash';
-    fallbackCategory = 'Jasa Cuci Kendaraan';
-    fallbackNarasi = `Wah, ide usaha cuci kendaraan yang sangat prospektif! Bayangkan saat mobil pelanggan masuk ke area cuci: kasir mencatat plat nomor dan paket pembersihan yang dipilih, lalu tim cuci menyemprot bodi dengan air bertekanan dan memvakum jok hingga bersih kesat. Setelah mobil kinclong dan diserahkan ke pelanggan, kamu sebagai pemilik bisa langsung mengecek rekap jumlah kendaraan yang dicuci dan total omzet hari ini tanpa khawatir selisih. ${CONFIRMATION_CLOSING}`;
-    fallbackAktor = ['Super Admin', 'Kasir Penerima Kendaraan', 'Staf Cuci & Vakum', 'Pelanggan'];
-    fallbackAlur = 'Mobil datang dicatat kasir -> Staf cuci mencuci & memvakum interior -> Kasir terima pembayaran -> Pemilik pantau rekap harian';
-    fallbackDetailAktor = {
-      'Super Admin': {
-        narasi: 'Pemilik usaha cuci kendaraan yang mengelola akun staf pencuci/kasir dan memantau rekap harian jumlah kendaraan serta omzet.',
-        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau rekapitulasi jumlah kendaraan yang dicuci dan total omzet harian', 'Mengatur paket layanan cuci dan konfigurasi operasional']
-      },
-      'Kasir Penerima Kendaraan': {
-        narasi: 'Petugas loket penerima kendaraan yang mencatat plat nomor, menginput pilihan paket cuci, dan menerima pembayaran pelanggan.',
-        tanggungJawab: ['Mencatat nomor plat kendaraan dan jenis paket pembersihan', 'Menerima pembayaran tunai/nontunai dari pelanggan', 'Memberikan nomor antrean cuci dan menyerahkan nota']
-      },
-      'Staf Cuci & Vakum': {
-        narasi: 'Petugas lapangan yang mencuci bodi kendaraan dengan air bertekanan dan membersihkan interior mobil menggunakan vakum.',
-        tanggungJawab: ['Mencuci bodi mobil dengan sabun salju dan membilas bersih', 'Memvakum karpet serta jok mobil hingga bebas debu', 'Mengeringkan dan menginspeksi hasil akhir kendaraan sebelum diserahkan']
-      },
-      'Pelanggan': {
-        narasi: 'Pemilik kendaraan yang membawa mobil untuk dibersihkan, memilih paket layanan, dan melakukan pembayaran.',
-        tanggungJawab: ['Membawa mobil dan memilih paket pencucian kendaraan', 'Menyelesaikan pembayaran di loket kasir', 'Memeriksa kondisi mobil yang sudah bersih dan meninggalkan area cuci']
-      }
-    };
-  } else if (lowerPrompt.includes('gigi') || lowerPrompt.includes('dental') || lowerPrompt.includes('klinik')) {
-    fallbackAppName = 'DentalCare Sehat';
-    fallbackCategory = 'Klinik Dokter Gigi';
-    fallbackNarasi = `Wah, ide klinik gigi yang mulia dan sangat dibutuhkan! Bayangkan alur prakteknya: resepsionis menyambut pasien dengan ramah dan mencatat keluhan serta riwayat gigi di meja depan, lalu dokter gigi melakukan pemeriksaan langsung di dental chair dengan alat yang sudah higienis. Pasien selesai berobat menerima resep dan kuitansi, sementara kamu sebagai pemilik klinik dapat meninjau jadwal kunjungan dan pendapatan harian dengan tenang. ${CONFIRMATION_CLOSING}`;
-    fallbackAktor = ['Super Admin', 'Dokter Gigi', 'Resepsionis & Kasir', 'Pasien'];
-    fallbackAlur = 'Pasien mendaftar di meja resepsionis -> Dokter periksa di dental chair -> Pembayaran & penyerahan obat -> Pemilik tinjau rekap pasien';
-    fallbackDetailAktor = {
-      'Super Admin': {
-        narasi: 'Pemilik atau penanggung jawab klinik dokter gigi yang mengelola akun staf/dokter dan memantau jadwal kunjungan serta pendapatan harian.',
-        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau laporan kunjungan pasien dan rekap pendapatan klinik', 'Meninjau operasional klinik dan pengaturan data layanan gigi']
-      },
-      'Dokter Gigi': {
-        narasi: 'Tenaga medis profesional yang memeriksa kesehatan gigi dan rongga mulut pasien di dental chair serta menentukan tindakan medis/resep.',
-        tanggungJawab: ['Melakukan pemeriksaan rongga mulut dan gigi di dental chair', 'Melakukan tindakan medis gigi dan memberikan rekomendasi perawatan', 'Menuliskan resep obat dan catatan rekam medis pasien']
-      },
-      'Resepsionis & Kasir': {
-        narasi: 'Petugas meja depan yang menyambut kedatangan pasien, mencatat identitas dan nomor antrean, serta memproses pembayaran pengobatan.',
-        tanggungJawab: ['Mencatat pendaftaran identitas pasien dan keluhan awal', 'Mengatur antrean panggilan ke ruang dental chair', 'Memproses pembayaran biaya perawatan dan menyerahkan kuitansi']
-      },
-      'Pasien': {
-        narasi: 'Masyarakat yang berkunjung ke klinik untuk mendapatkan pemeriksaan, perawatan, atau pembersihan kesehatan gigi.',
-        tanggungJawab: ['Mendaftarkan diri dan menyampaikan keluhan kesehatan gigi', 'Menjalani pemeriksaan dan perawatan di kursi periksa', 'Melakukan pembayaran dan menerima instruksi perawatan lanjutan']
-      }
-    };
-  } else if (lowerPrompt.includes('laundry') || lowerPrompt.includes('kiloan') || lowerPrompt.includes('cuci pakaian')) {
-    fallbackAppName = 'FreshClean Laundry';
-    fallbackCategory = 'Laundry Kiloan & Satuan';
-    fallbackNarasi = `Wah, ide laundry yang sangat praktis dan dicari banyak orang! Bayangkan operasional hariannya: staf kasir menimbang tumpukan pakaian kotor pelanggan, memilah pakaian khusus, lalu mencetak nota estimasi selesai. Tim cuci memasukkan pakaian ke mesin cuci dan menyetrika uap hingga rapi berbungkus plastik wangi, sementara kamu sebagai pemilik bisa memantau berat cucian yang diproses serta omzet harian langsung dari ponsel. ${CONFIRMATION_CLOSING}`;
-    fallbackAktor = ['Super Admin', 'Kasir Penerima Cucian', 'Staf Cuci & Setrika Uap', 'Pelanggan'];
-    fallbackAlur = 'Pakaian ditimbang kasir -> Dicuci & disetrika uap rapi -> Pelanggan ambil cucian bersih -> Pemilik pantau total kiloan & omzet';
-    fallbackDetailAktor = {
-      'Super Admin': {
-        narasi: 'Pemilik usaha laundry kiloan yang mengelola akun kasir dan staf cuci serta memantau volume timbangan cucian dan omzet harian.',
-        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau total berat kiloan pakaian yang diproses dan omzet harian', 'Mengatur paket tarif laundry dan pengaturan operasional toko']
-      },
-      'Kasir Penerima Cucian': {
-        narasi: 'Petugas meja depan yang menerima titipan pakaian kotor pelanggan, menimbang berat kiloan, dan menerbitkan nota bukti pengambilan.',
-        tanggungJawab: ['Menimbang berat pakaian kotor dan mencatat instruksi khusus pelanggan', 'Mencetak nota bukti penerimaan cucian dan estimasi waktu selesai', 'Menerima pembayaran dan menyerahkan pakaian bersih yang sudah selesai']
-      },
-      'Staf Cuci & Setrika Uap': {
-        narasi: 'Petugas operasional yang memilah pakaian, mengoperasikan mesin cuci/dryer, dan menyetrika uap hingga terbungkus plastik rapi.',
-        tanggungJawab: ['Memilah pakaian luntur dan memasukkan ke mesin pencucian', 'Menyetrika pakaian dengan setrika uap sesuai standar keharuman', 'Membungkus cucian rapi dengan plastik dan menyusun di rak pengambilan']
-      },
-      'Pelanggan': {
-        narasi: 'Masyarakat yang menitipkan cucian kotor untuk dicuci bersih, wangi, dan disetrika rapi.',
-        tanggungJawab: ['Menyerahkan pakaian kotor ke meja kasir untuk ditimbang', 'Melakukan pembayaran biaya jasa laundry', 'Mengambil pakaian bersih dengan menunjukkan nota bukti penerimaan']
-      }
-    };
-  } else if (lowerPrompt.includes('kafe') || lowerPrompt.includes('cafe') || lowerPrompt.includes('kopi') || lowerPrompt.includes('coffee')) {
-    fallbackAppName = 'KopiNusantara Cafe';
-    fallbackCategory = 'Kafe & Kedai Kopi';
-    fallbackNarasi = `Wah, ide kafe dan kedai kopi yang sangat menarik! Bayangkan suasana tempatnya: kasir menyambut pelanggan dan mencatat pesanan menu kopi serta camilan, lalu barista meracik espresso segar dan menyajikannya ke meja pelanggan. Pesanan selesai langsung tercatat di sistem kasir, sementara kamu sebagai pemilik kafe bisa memantau menu terlaris dan rekap omzet harian dengan santai. ${CONFIRMATION_CLOSING}`;
-    fallbackAktor = ['Super Admin', 'Barista & Dapur', 'Staf Kasir', 'Pelanggan'];
-    fallbackAlur = 'Pelanggan pesan kopi -> Barista meracik pesanan -> Pembayaran di kasir -> Pemilik pantau omzet & menu terlaris';
-    fallbackDetailAktor = {
-      'Super Admin': {
-        narasi: 'Pemilik usaha kafe yang memantau menu terlaris, stok bahan baku kopi, dan pemasukan keuangan harian.',
-        tanggungJawab: ['Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi', 'Memantau laporan penjualan, menu terlaris, dan omzet harian', 'Mengatur ketersediaan bahan baku dan menu kafe']
-      },
-      'Barista & Dapur': {
-        narasi: 'Petugas peracik minuman dan makanan di kafe yang menyiapkan pesanan kopi espresso dan menu sesuai tiket pesanan pelanggan.',
-        tanggungJawab: ['Menerima tiket pesanan minuman/makanan dari kasir', 'Meracik biji kopi dan menyajikan menu dengan standar rasa terbaik', 'Memeriksa kebersihan area mesin kopi dan perlengkapan bar']
-      },
-      'Staf Kasir': {
-        narasi: 'Petugas meja depan kafe yang menyambut pelanggan, menginput pesanan kopi/makanan, dan memproses pembayaran transaksi.',
-        tanggungJawab: ['Mencatat pilihan menu dan preferensi pesanan pelanggan', 'Menerima pembayaran tunai maupun nontunai (QRIS)', 'Mencetak struk pesanan untuk diteruskan ke meja barista']
-      },
-      'Pelanggan': {
-        narasi: 'Pengunjung kafe yang memesan sajian kopi atau makanan, menikmati suasana kafe, serta menyelesaikan pembayaran.',
-        tanggungJawab: ['Memilih menu minuman kopi dan makanan favorit', 'Melakukan pembayaran di kasir', 'Menikmati sajian pesanan di tempat atau bawa pulang']
-      }
-    };
-  }
 
   return {
     appName: fallbackAppName,
@@ -3168,6 +3024,57 @@ export async function POST(req: Request) {
 
       const analisis = storylineResult.analisisArah;
 
+      // KONDISI 4: BUKAN_IDE_BISNIS — Input awal bukan ide bisnis atau aplikasi menurut evaluasi AI
+      if (analisis && analisis.kondisi === 'BUKAN_IDE_BISNIS') {
+        const pesanKlarifikasi =
+          analisis.klarifikasiBukanIde?.pesanKlarifikasi ||
+          'Halo! Sepertinya input tadi belum mendeskripsikan ide bisnis atau aplikasi. Boleh ceritakan lebih detail, aplikasi apa yang ingin kamu bangun?';
+
+        const pendingSession: MockupSessionState = {
+          step: 'STORYTELLING',
+          match: {
+            templateId: storylineResult.templateId || 'MT-20',
+            overlayIds: storylineResult.overlayIds || [],
+            patternIds: storylineResult.patternIds || ['UP-06', 'UP-09'],
+            tier: 'BASIC',
+            businessCategory: '',
+            contextualPainPoints: [],
+            contextualRoles: []
+          },
+          storyline: {
+            narasi: '',
+            asumsiMasalah: '',
+            asumsiAktor: [],
+            asumsiAlurUtama: '',
+            statusKonfirmasi: 'dikoreksi',
+            revisiCount: 0,
+            analisisArah: analisis,
+            pendingNonBusinessClarification: {
+              originalPrompt: prompt,
+              pesanKlarifikasi
+            }
+          },
+          roles: { selected: [] },
+          flow: {},
+          painPoints: { selected: [] },
+          features: { selected: [] }
+        };
+
+        const clarificationCard = buildNonBusinessClarificationCard(pesanKlarifikasi);
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: pendingSession,
+          guidedStep: clarificationCard,
+          narration: pesanKlarifikasi,
+          tier: { tier: 'BASIC', reasons: [] },
+          template: null,
+          overlays: [],
+          semantic: null
+        });
+      }
+
       // KONDISI 3: AMBIGU — Permintaan terlalu singkat/umum menurut AI, tampilkan kartu klarifikasi sebelum narasi difinalkan
       if (analisis && analisis.kondisi === 'AMBIGU' && analisis.klarifikasiAmbigu) {
         const amb = analisis.klarifikasiAmbigu;
@@ -3497,6 +3404,179 @@ export async function POST(req: Request) {
       if (stepId === 'STORYTELLING') {
         const selected = body.selected || [];
         const other = (body.other || '').trim();
+
+        // Sub-handler: Jawaban klarifikasi jika input sebelumnya dinilai BUKAN ide bisnis
+        if (session.storyline?.pendingNonBusinessClarification || selected.includes('clarify_business_input')) {
+          const newPrompt = (other || '').trim();
+          if (!newPrompt) {
+            const card = buildNonBusinessClarificationCard(session.storyline?.pendingNonBusinessClarification?.pesanKlarifikasi);
+            return NextResponse.json({
+              success: true,
+              action,
+              session,
+              guidedStep: card,
+              narration: 'Silakan ketikkan deskripsi ide bisnismu di kolom input di bawah agar kita bisa mulai menyusun alur aplikasinya.'
+            });
+          }
+
+          // Generate ulang storyline dengan prompt baru yang diberikan user
+          const storylineResult = await generateStorylineWithAI(
+            newPrompt,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          const analisis = storylineResult.analisisArah;
+
+          // Jika masih dinilai BUKAN_IDE_BISNIS
+          if (analisis && analisis.kondisi === 'BUKAN_IDE_BISNIS') {
+            const pesan =
+              analisis.klarifikasiBukanIde?.pesanKlarifikasi ||
+              'Input tersebut tampaknya masih belum menjelaskan ide aplikasi atau bisnis. Boleh ceritakan usaha apa yang ingin kamu buatkan sistemnya?';
+            const updatedPending: MockupSessionState = {
+              ...session,
+              storyline: {
+                ...session.storyline,
+                narasi: '',
+                asumsiMasalah: '',
+                asumsiAktor: [],
+                asumsiAlurUtama: '',
+                statusKonfirmasi: 'dikoreksi',
+                analisisArah: analisis,
+                pendingNonBusinessClarification: {
+                  originalPrompt: newPrompt,
+                  pesanKlarifikasi: pesan
+                }
+              }
+            };
+            return NextResponse.json({
+              success: true,
+              action,
+              session: updatedPending,
+              guidedStep: buildNonBusinessClarificationCard(pesan),
+              narration: pesan,
+              tier: { tier: 'BASIC', reasons: [] },
+              template: null,
+              overlays: [],
+              semantic: null
+            });
+          }
+
+          // Jika AMBIGU
+          if (analisis && analisis.kondisi === 'AMBIGU' && analisis.klarifikasiAmbigu) {
+            const amb = analisis.klarifikasiAmbigu;
+            const updatedPending: MockupSessionState = {
+              ...session,
+              storyline: {
+                narasi: storylineResult.narasi,
+                asumsiMasalah: storylineResult.asumsiMasalah,
+                asumsiAktor: storylineResult.asumsiAktor,
+                asumsiAlurUtama: storylineResult.asumsiAlurUtama,
+                detailAktor: storylineResult.detailAktor,
+                statusKonfirmasi: 'dikoreksi',
+                revisiCount: 0,
+                analisisArah: analisis,
+                pendingDirectionClarification: {
+                  originalPrompt: newPrompt,
+                  pertanyaan: amb.pertanyaan,
+                  opsiA: amb.opsiA,
+                  opsiB: amb.opsiB,
+                  opsiBoth: amb.opsiBoth || 'Dua-duanya'
+                },
+                pendingNonBusinessClarification: undefined
+              }
+            };
+
+            const clarificationCard = buildDirectionClarificationCard({
+              pertanyaan: amb.pertanyaan,
+              opsiA: amb.opsiA,
+              opsiB: amb.opsiB,
+              opsiBoth: amb.opsiBoth
+            });
+
+            const sapaanAmbigu = amb.sapaan && amb.sapaan.trim()
+              ? amb.sapaan.trim()
+              : 'Halo! Senang bisa mendiskusikan alur bisnismu.';
+
+            const clarificationNarration =
+              `${sapaanAmbigu}\n\n` +
+              `Sebelum kita susun alur cerita proses bisnisnya, ada satu hal penting yang perlu dipastikan terlebih dahulu:\n\n` +
+              `> ❓ **${amb.pertanyaan}**\n\n` +
+              `Silakan pilih arah bisnis di kartu bawah agar alur yang saya siapkan langsung tepat sasaran.`;
+
+            return NextResponse.json({
+              success: true,
+              action,
+              session: updatedPending,
+              guidedStep: clarificationCard,
+              narration: clarificationNarration,
+              tier: { tier: 'BASIC', reasons: [] },
+              template: null,
+              overlays: [],
+              semantic: null
+            });
+          }
+
+          // Normal (SATU_ARAH atau DUA_ARAH): Lanjutkan seperti biasa
+          const isDual = analisis?.kondisi === 'DUA_ARAH' && Boolean(analisis.duaArah);
+          const templateId = storylineResult.templateId || 'MT-20';
+          const overlayIds = storylineResult.overlayIds || [];
+          const patternIds = storylineResult.patternIds || ['UP-06', 'UP-09'];
+          const tier = detectTier({ patternIds });
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            match: {
+              templateId,
+              overlayIds,
+              patternIds,
+              tier: tier.tier,
+              businessCategory: storylineResult.businessCategory,
+              contextualPainPoints: [storylineResult.asumsiMasalah],
+              contextualRoles: storylineResult.asumsiAktor
+            },
+            storyline: {
+              narasi: storylineResult.narasi,
+              asumsiMasalah: storylineResult.asumsiMasalah,
+              asumsiAktor: storylineResult.asumsiAktor,
+              asumsiAlurUtama: storylineResult.asumsiAlurUtama,
+              detailAktor: storylineResult.detailAktor,
+              statusKonfirmasi: 'disetujui',
+              revisiCount: 0,
+              analisisArah: analisis,
+              pendingNonBusinessClarification: undefined
+            },
+            flow: {
+              ...(isDual
+                ? {
+                    dualFlowPreDecided: true,
+                    dualProcessNames: {
+                      processA: analisis!.duaArah!.prosesA,
+                      processB: analisis!.duaArah!.prosesB
+                    }
+                  }
+                : {})
+            }
+          };
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          let rawNarasi = (updatedSession.storyline?.narasi || storylineResult.narasi || '').trim();
+          let sanitized = sanitizeStorylineNarrative(rawNarasi, updatedSession.storyline?.asumsiAktor || storylineResult.asumsiAktor);
+          const matchedTemplate = getMasterTemplateById(templateId);
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration: sanitized,
+            tier: { tier: tier.tier, reasons: tier.reasons },
+            template: matchedTemplate ? { id: matchedTemplate.id, nama: matchedTemplate.nama } : null,
+            overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama })),
+            semantic: null
+          });
+        }
 
         // Sub-handler: Jawaban klarifikasi arah bisnis sebelum narasi dibuat
         if (session.storyline?.pendingDirectionClarification) {

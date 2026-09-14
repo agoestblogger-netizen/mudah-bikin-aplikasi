@@ -171,7 +171,7 @@ export type SessionStep =
   | 'SIMULASI_DB'
   | 'REVIEW_FINAL';
 
-export type KondisiArahBisnis = 'SATU_ARAH' | 'DUA_ARAH' | 'AMBIGU';
+export type KondisiArahBisnis = 'SATU_ARAH' | 'DUA_ARAH' | 'AMBIGU' | 'BUKAN_IDE_BISNIS';
 
 export interface PemisahanRoleResult {
   keputusan: 'PISAH' | 'GABUNG';
@@ -195,6 +195,9 @@ export interface AnalisisArahResult {
     opsiA: string;
     opsiB: string;
     opsiBoth?: string;
+  };
+  klarifikasiBukanIde?: {
+    pesanKlarifikasi: string;
   };
 }
 
@@ -243,6 +246,13 @@ export interface MockupSessionState {
       opsiBoth?: string;
       nameA?: string;
       nameB?: string;
+    };
+    /**
+     * Menyimpan data klarifikasi jika input pengguna dinilai bukan ide proses bisnis/aplikasi.
+     */
+    pendingNonBusinessClarification?: {
+      originalPrompt: string;
+      pesanKlarifikasi: string;
     };
   };
   roles: {
