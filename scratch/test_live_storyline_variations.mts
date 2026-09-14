@@ -20,6 +20,7 @@ if (fs.existsSync(envLocalPath)) {
 import {
   generateStorylineWithAI,
   isClicheStorylineOpening,
+  lacksGreetingOpening,
   sanitizeStorylineNarrative
 } from '../src/app/api/guided/route';
 
@@ -42,6 +43,7 @@ async function runLiveVerification() {
     domain: string;
     openingSentence: string;
     fullNarrative: string;
+    hasGreeting: boolean;
     isCliche: boolean;
     hasMenarik: boolean;
     hasKamiKita: boolean;
@@ -64,14 +66,16 @@ async function runLiveVerification() {
     const firstSentence = sanitized.split(/[\.\n\?\!]/)[0].trim();
 
     const isCliche = isClicheStorylineOpening(sanitized);
+    const hasGreeting = !lacksGreetingOpening(sanitized);
     const hasMenarik = /\bmenarik\b/i.test(firstSentence);
     const hasKamiKita = /\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test(sanitized);
 
     console.log(`⏱️ Selesai dalam ${elapsed}s`);
-    console.log(`📌 Kalimat Pembuka: "${firstSentence}."`);
+    console.log(`📌 Kalimat Pembuka (Sapaan/Pengakuan Ide): "${firstSentence}."`);
     console.log(`📖 Narasi Lengkap: "${sanitized}"`);
     console.log(`🏷️ Aktor: [${res.asumsiAktor.join(', ')}]`);
     console.log(`🔍 Evaluasi Pembuka:`);
+    console.log(`   - Ada Sapaan / Pengakuan Ide?: ${hasGreeting ? '✅ YA (LOLOS)' : '❌ TIDAK (LANGSUNG CERITA)'}`);
     console.log(`   - Terdeteksi Klise?: ${isCliche ? '❌ YA (GAGAL)' : '✅ TIDAK (LOLOS)'}`);
     console.log(`   - Mengandung kata 'menarik' di pembuka?: ${hasMenarik ? '❌ YA' : '✅ TIDAK'}`);
     console.log(`   - Mengandung 'kami/kita'?: ${hasKamiKita ? '❌ YA' : '✅ TIDAK'}`);
@@ -80,6 +84,7 @@ async function runLiveVerification() {
       domain: testCase.name,
       openingSentence: firstSentence,
       fullNarrative: sanitized,
+      hasGreeting,
       isCliche,
       hasMenarik,
       hasKamiKita
@@ -87,6 +92,9 @@ async function runLiveVerification() {
 
     if (isCliche) {
       throw new Error(`FAILED: Kalimat pembuka untuk domain ${testCase.name} masih klise: "${firstSentence}"`);
+    }
+    if (!hasGreeting) {
+      throw new Error(`FAILED: Kalimat pembuka untuk domain ${testCase.name} tidak memiliki sapaan ide: "${firstSentence}"`);
     }
   }
 

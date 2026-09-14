@@ -296,6 +296,16 @@ export function isClicheStorylineOpening(text: string): boolean {
 }
 
 /**
+ * Mendeteksi apakah narasi cerita kehilangan kalimat sapaan/pengakuan ide di awal:
+ * (misal langsung melompat ke tindakan operasional seperti "Ketika pelanggan tiba...", "Pelanggan datang...", "Setiap pagi...")
+ */
+export function lacksGreetingOpening(text: string): boolean {
+  if (!text) return true;
+  const firstSentence = text.split(/[\.\n\?\!]/)[0].toLowerCase();
+  return /^(ketika|saat|setiap\s+pagi|setiap\s+hari|pelanggan\s+(datang|tiba|masuk|membawa)|pasien\s+(datang|tiba|masuk)|anggota\s+(datang|tiba|masuk)|warga\s+(datang|tiba)|di\s+(toko|klinik|bengkel|koperasi|kafe))\b/i.test(firstSentence);
+}
+
+/**
  * Memastikan narasi storytelling murni dari sudut pandang pihak ketiga objektif sebagai jaring pengaman terakhir:
  * - HANYA menangani penggantian kata ganti orang pertama jamak ("kami", "kita", "tim kami", "tim kita") menjadi peran operasional nyata.
  * - DILARANG melakukan replace mekanis terhadap kata benda/kerja (seperti istilah membumi) agar tidak merusak tata bahasa kalimat.
@@ -474,17 +484,30 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 5. ATURAN SELF-CHECK EKSPLISIT (WAJIB DIIKUTI):
    a) Uji Konteks Domain:
       "Sebelum menampilkan cerita, cek apakah alur ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
-   b) Uji Variasi Kerangka Kalimat Pembuka (DILARANG ANCHORING/TEMPLATE KAKU):
-      "Periksa kalimat pembuka narasi: Jika kerangka kalimat tersebut generik dan bisa ditempelkan ke hampir semua bisnis hanya dengan mengganti nama usahanya (contoh: berpola tentang ide/aplikasi lalu diikuti kata sifat pujian klise seperti 'sangat menarik' atau 'menarik sekali'), maka pembuka itu DINILAI GAGAL. Wajib susun ulang kalimat pembuka yang berpijak langsung pada observasi aktivitas operasional nyata atau apresiasi solusi praktis yang spesifik."
+   b) Uji Kalimat Sapaan Pembuka (WAJIB ADA & DILARANG ANCHOR KLISE/SERAGAM):
+      "Periksa kalimat pertama narasi:
+       1. WAJIB ADA SAPAAN IDE: Cek apakah ada satu kalimat singkat di depan yang menyapa atau mengakui ide pengguna sebelum alur cerita dimulai? Jika narasi langsung melompat ke cerita operasional (seperti 'Ketika pelanggan tiba...' atau 'Pelanggan datang...') tanpa menyapa/mengakui ide pengguna terlebih dahulu, maka DINILAI GAGAL.
+       2. WAJIB BERVARIASI (BEBAS KLISE & DILARANG KATA AWALAN SERAGAM):
+          - Dilarang memakai pola klise seragam (seperti '[Ide aplikasi] ... sangat menarik...').
+          - Dilarang selalu mengawali kalimat pertama dengan kata yang sama di berbagai domain (DILARANG selalu diawali 'Senang...', DILARANG selalu diawali 'Ide...', DILARANG selalu diawali 'Aplikasi...').
+          - Wajib susun sapaan yang hangat, segar, dan bervariasi struktur serta kata awalnya."
 
-6. NADA HANGAT, VARIASI KERANGKA PEMBUKA BEBAS, & BAHASA SEHARI-HARI MEMBUMI:
-   - Gunakan bahasa Indonesia percakapan yang santun, luwes, wajar, dan membumi (bahasa sehari-hari orang awam menjelaskan bisnisnya, misal sebut "mencuci kendaraan" bukan "menggosok bodi"; sebut "menimbang barang" bukan "melakukan pengukuran massa").
-   - Awali narasi cerita dengan kalimat pembuka yang BERVARIASI BEBAS setiap sesi. DILARANG menggunakan kerangka kalimat yang monoton atau berulang antar sesi (DILARANG selalu menggunakan pola seragam seperti "Pelanggan datang membawa..." di semua domain!).
-   - PANDUAN GAYA KALIMAT PEMBUKA (BEBAS BERGANTI GAYA TIAP SESI):
-     1) Gaya Observasi Operasional Lapangan: Langsung menyoroti dinamika nyata di lapangan (contoh: kesibukan penataan antrean, persiapan peralatan layanan, suasana meja kasir/resepsionis, atau aktivitas awal penanganan fisik).
-     2) Gaya Apresiasi Praktis Non-Klise: Menyoroti fokus solusi atau efisiensi tanpa menggunakan kata klise "menarik" (contoh: langkah bagus untuk memperjelas alur kerja, solusi tepat untuk memangkas waktu tunggu, atau ide praktis untuk menata pencatatan harian).
-     3) Gaya Sapaan Langsung & Tantangan Bisnis: Sapaan santun yang langsung terhubung dengan titik kritis atau ketelitian yang dibutuhkan dalam operasional bisnis tersebut.
-   - DILARANG KERAS menggunakan kata teknis IT/software (seperti CRUD, database, API, backend, frontend, skema, tabel, sistem informasi, autentikasi, server). Ceritakan murni interaksi manusia dan barang nyata!
+6. STRUKTUR NARASI: 1 KALIMAT SAPAAN SINGKAT + 2-3 KALIMAT CERITA OPERASIONAL:
+   Narasi pada field "narasi" WAJIB berstruktur:
+   [Kalimat 1: Sapaan / Pengakuan Singkat terhadap Ide Pengguna] [Kalimat 2-4: Alur Cerita Nyata di Lapangan] [Kalimat Penutup Konfirmasi].
+
+   ATURAN KALIMAT 1 (SAPAAN / PENGAKUAN IDE SINGKAT - WAJIB ADA SEBAGAI KALIMAT TERPISAH):
+   - Wajib berupa satu kalimat pendek yang menyambut/mengakui ide pengguna secara hangat dan apresiatif sebelum bercerita.
+   - DILARANG menggunakan kerangka klise lama seperti "[Ide aplikasi] ... sangat menarik ...".
+   - KERANGKA & KATA AWALAN WAJIB BERAGAM TIAP SESI (Jangan seragam selalu 'Senang...'):
+     1) Gaya Pengakuan Manfaat / Solusi Praktis: Mengakui kegunaan atau solusi idenya bagi operasional (contoh: "Langkah tepat untuk menata antrean dan pencatatan di usaha cuci kendaraan.", "Inisiatif bagus untuk menertibkan jadwal konsultasi dan rekam medis pasien di klinik gigi.", "Rencana praktis agar penerimaan cucian kiloan tertata rapi sejak awal.").
+     2) Gaya Ajakan & Kolaboratif Kontekstual: Sapaan akrab yang menyemangati penataan alur (contoh: "Mari kita petakan alur operasional bengkel motor ini agar ritme servis harian makin teratur.", "Menata alur pesanan yang terintegrasi tentu membuat operasional kedai kopi makin nyaman.", "Fokus yang sangat baik untuk memperjelas pencatatan transaksi anggota koperasi.").
+     3) Gaya Pengakuan Dinamika / Karakter Usaha: Menyoroti aspek penting yang relevan dengan jenis usahanya (contoh: "Dalam bisnis jual beli emas, akurasi penaksiran dan kecepatan pencatatan nota memang kunci kepercayaan pelanggan.", "Usaha laundry kiloan menuntut ketelitian tinggi sejak penimbangan agar tidak ada pakaian yang tertukar.").
+
+   ATURAN KALIMAT 2-4 (ALUR CERITA BISNIS NYATA 3 FASE):
+   - Baru setelah kalimat sapaan di atas selesai, lanjutkan dengan alur cerita operasional konkret (Fase awal kedatangan pelanggan -> Fase penanganan fisik/layanan oleh staf dengan alat konkret -> Fase pembayaran/tanda terima).
+   - Gunakan bahasa Indonesia sehari-hari yang santun, luwes, dan membumi (sebut "mencuci kendaraan" bukan "menggosok bodi"; sebut "menimbang barang" bukan "melakukan pengukuran massa").
+   - DILARANG KERAS menggunakan kata teknis IT/software (CRUD, database, API, backend, dsb.). Ceritakan murni interaksi manusia dan barang nyata!
 
 7. SUDUT PANDANG (WAJIB PIHAK KETIGA OBJEKTIF):
    - Narasi cerita WAJIB ditulis dari sudut pandang PIHAK KETIGA OBJEKTIF yang mendeskripsikan bagaimana bisnis ini berjalan pada umumnya secara netral.
@@ -522,7 +545,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
   },
   "appName": "Nama aplikasi kreatif & spesifik domain",
   "businessCategory": "Kategori industri konkret",
-  "narasi": "2-4 kalimat cerita proses bisnis hangat yang menyebut aktivitas & objek fisik nyata domain ini. ${CONFIRMATION_CLOSING}",
+  "narasi": "1 kalimat sapaan/pengakuan ide yang hangat & bervariasi. 2-3 kalimat cerita proses bisnis nyata (fase datang -> fase layanan -> fase bayar). ${CONFIRMATION_CLOSING}",
   "asumsiMasalah": "Masalah operasional fisik/pencatatan nyata yang dihadapi",
   "asumsiAktor": ["Super Admin", "Peran Spesifik 1", "Peran Spesifik 2", "Pelanggan"],
   "asumsiAlurUtama": "Aktivitas nyata 1 -> Aktivitas nyata 2 -> Aktivitas nyata 3 -> Pemilik memantau rekap",
@@ -560,14 +583,14 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         let narasi = String(parsed.narasi || '').trim();
 
         // SAFETY NET BERBASIS AI RETRY (BUKAN TRANSFORMASI MEKANIS):
-        // Jika pembuka masih terdeteksi menggunakan pola template klise (misal "[ide aplikasi] ... sangat menarik"),
-        // lakukan retry 1x ke AI agar AI menulis ulang narasinya secara organik & alami tanpa merusak tata bahasa.
-        if (isClicheStorylineOpening(narasi)) {
+        // Jika pembuka masih terdeteksi pola klise ("... sangat menarik ...") ATAU kehilangan kalimat sapaan ide user,
+        // lakukan retry 1x ke AI agar AI menambahkan 1 kalimat sapaan segar di awal narasi.
+        if (isClicheStorylineOpening(narasi) || lacksGreetingOpening(narasi)) {
           try {
-            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Kalimat pembuka narasi di atas masih mengikuti pola klise generik tentang ide aplikasi. Tolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan kalimat pembuka yang benar-benar baru, luwes, dan segar:\n- Awali dengan observasi operasional di lapangan secara langsung atau apresiasi fokus efisiensi/solusi praktis tanpa kata "menarik".\n- Tetap ceritakan alur 3 fase (titik awal, inti layanan fisik, penyelesaian transaksi) dari sudut pandang pihak ketiga objektif.\n- Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA dengan teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
+            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Narasi WAJIB diawali dengan 1 (SATU) kalimat singkat yang menyapa atau mengakui ide bisnis pengguna secara hangat dan segar SEBELUM masuk ke cerita operasional di lapangan. Dilarang menggunakan kerangka klise '[ide aplikasi] ... sangat menarik ...', dilarang selalu mengawali dengan kata 'Senang...', dan dilarang langsung meloncat ke cerita tanpa menyapa ide pengguna terlebih dahulu.\n\nPilihan gaya kalimat sapaan (pilih salah satu):\n- Pengakuan solusi praktis (misal: "Langkah tepat untuk menertibkan antrean dan pencatatan di usaha cuci kendaraan.")\n- Ajakan kontekstual (misal: "Mari kita petakan alur kerja bengkel motor ini agar ritme servis harian makin teratur.")\n- Sorotan dinamika usaha (misal: "Usaha laundry kiloan menuntut ketelitian tinggi sejak awal penerimaan pakaian.")\n\nSetelah 1 kalimat sapaan tersebut, lanjutkan dengan 2-3 kalimat cerita alur operasional di lapangan, lalu akhiri dengan: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
 
             const retryRaw = await invokeAIChat({
-              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda menulis ulang narasi cerita bisnis dengan kalimat pembuka yang segar, hidup, dan membumi tanpa pola klise. Balas HANYA dengan teks narasi murni.',
+              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda memastikan narasi diawali 1 kalimat sapaan/pengakuan ide yang ramah dan segar, diikuti cerita proses bisnis yang membumi. Balas HANYA dengan teks narasi murni.',
               userPrompt: retryUserPrompt,
               temperature: 0.7,
               maxTokens: 1000,
