@@ -944,6 +944,252 @@ Perbarui cerita dan field asumsi dalam format JSON dengan mematuhi prinsip kumul
 }
 
 /**
+ * Parser JSON tangguh yang menangani markdown formatting, trailing commas,
+ * komentar JS, dan pemulihan unclosed braces/brackets akibat token cutoff.
+ */
+export function robustJsonParse<T = any>(raw: string | null | undefined): T | null {
+  if (!raw || typeof raw !== 'string') return null;
+
+  let cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  const firstBracket = cleaned.indexOf('[');
+  let startIndex = -1;
+
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIndex = firstBrace;
+  } else if (firstBracket !== -1) {
+    startIndex = firstBracket;
+  }
+
+  if (startIndex === -1) return null;
+
+  cleaned = cleaned.slice(startIndex);
+
+  // Hapus komentar // dan /* */
+  cleaned = cleaned.replace(/\/\/[^\n\r]*/g, '');
+  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // Hapus trailing comma sebelum } atau ]
+  cleaned = cleaned.replace(/,\s*([\}\]])/g, '$1');
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Lanjutkan ke auto-repair
+  }
+
+  try {
+    let repaired = cleaned;
+    const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) {
+      repaired += '"';
+    }
+
+    let openBraces = 0;
+    let openBrackets = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = 0; i < repaired.length; i++) {
+      const ch = repaired[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (ch === '{') openBraces++;
+        else if (ch === '}') openBraces = Math.max(0, openBraces - 1);
+        else if (ch === '[') openBrackets++;
+        else if (ch === ']') openBrackets = Math.max(0, openBrackets - 1);
+      }
+    }
+
+    repaired = repaired.replace(/,\s*$/, '');
+    while (openBrackets > 0) {
+      repaired += ']';
+      openBrackets--;
+    }
+    while (openBraces > 0) {
+      repaired += '}';
+      openBraces--;
+    }
+
+    repaired = repaired.replace(/,\s*([\}\]])/g, '$1');
+    return JSON.parse(repaired);
+  } catch {
+    return null;
+  }
+}
+
+const CROSS_DOMAIN_ANOMALY_PATTERNS: {
+  triggerAnomaly: RegExp;
+  allowedIfContextHas: RegExp;
+  categoryName: string;
+}[] = [
+  {
+    triggerAnomaly: /\b(hewan|kucing|anjing|anabul|pakan|kandang|grooming|vaksin.*hewan|pasir.*gumpal|sterilisasi.*kandang)\b/i,
+    allowedIfContextHas: /\b(pet|hewan|kucing|anjing|anabul|veteriner|fauna|satwa|ternak)\b/i,
+    categoryName: 'Pet / Penitipan Hewan'
+  },
+  {
+    triggerAnomaly: /\b(cukur|silet|clipper|pomade|kapster|pangkas.*rambut)\b/i,
+    allowedIfContextHas: /\b(barber|cukur|pangkas|rambut|salon|kapster)\b/i,
+    categoryName: 'Barbershop / Pangkas Rambut'
+  },
+  {
+    triggerAnomaly: /\b(kaporit|kolam\s*renang|waterpark|pemandian|pelampung)\b/i,
+    allowedIfContextHas: /\b(kolam|renang|waterpark|pemandian|waterboom)\b/i,
+    categoryName: 'Kolam Renang'
+  },
+  {
+    triggerAnomaly: /\b(armada|odometer|ganti\s*oli|stnk.*unit|mobil.*sewa|lepas\s*kunci)\b/i,
+    allowedIfContextHas: /\b(rental|sewa.*kendaraan|mobil|motor|armada|rent\s*car)\b/i,
+    categoryName: 'Rental Kendaraan'
+  },
+  {
+    triggerAnomaly: /\b(nozzle|cetak.*banner|roll\s*vinyl|mata\s*ayam|sablon.*kaos)\b/i,
+    allowedIfContextHas: /\b(percetakan|cetak|banner|sablon|offset|digital\s*print)\b/i,
+    categoryName: 'Percetakan Digital'
+  }
+];
+
+export function validateSupportingFlowsRelevance(
+  flows: SupportingFlowItem[],
+  session: MockupSessionState
+): { valid: boolean; anomalyFound?: string } {
+  if (!flows || flows.length === 0) return { valid: false, anomalyFound: 'Alur pendukung kosong' };
+
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const removedExt = session.roles?.removedExternalRoles || [];
+
+  // 1. MEKANISME UTAMA: VALIDASI KONSISTENSI AKTOR
+  // Pastikan SEMUA pelaku di setiap langkah alur pendukung adalah peran yang aktif di sesi
+  for (const f of flows) {
+    if (!Array.isArray(f.steps) || f.steps.length === 0) {
+      return { valid: false, anomalyFound: `Alur "${f.nama}" tidak memiliki langkah pengerjaan.` };
+    }
+    for (const step of f.steps) {
+      const pelaku = (step.pelaku || '').trim();
+      if (!pelaku) {
+        return { valid: false, anomalyFound: `Langkah pada alur "${f.nama}" tidak mencantumkan pelaku.` };
+      }
+
+      // Periksa apakah pelaku adalah role yang sudah dihapus
+      const isRemoved = removedExt.some((r) => r.toLowerCase() === pelaku.toLowerCase());
+      if (isRemoved) {
+        return {
+          valid: false,
+          anomalyFound: `Aktor "${pelaku}" telah dihapus dari aplikasi tetapi masih muncul di alur pendukung.`
+        };
+      }
+
+      // Periksa kecocokan dengan daftar peran aktif
+      const isMatched = activeRoles.some(
+        (r) =>
+          r.toLowerCase() === pelaku.toLowerCase() ||
+          r.toLowerCase().includes(pelaku.toLowerCase()) ||
+          pelaku.toLowerCase().includes(r.toLowerCase())
+      );
+
+      if (!isMatched) {
+        return {
+          valid: false,
+          anomalyFound: `Aktor "${pelaku}" tidak terdaftar dalam peran aktif aplikasi (${activeRoles.join(', ')}).`
+        };
+      }
+    }
+  }
+
+  // 2. MEKANISME TAMBAHAN: DETEKSI ANOMALI KATA KUNCI LINTAS DOMAIN
+  const contextText = `${(session as any).domain || ''} ${session.match?.businessCategory || ''} ${session.storyline?.narasi || ''} ${session.storyline?.asumsiAlurUtama || ''}`.toLowerCase();
+
+  const allFlowText = flows
+    .map((f) => `${f.nama} ${f.steps.map((s) => `${s.pelaku} ${s.aksi}`).join(' ')}`)
+    .join(' ')
+    .toLowerCase();
+
+  for (const rule of CROSS_DOMAIN_ANOMALY_PATTERNS) {
+    if (rule.triggerAnomaly.test(allFlowText) && !rule.allowedIfContextHas.test(contextText)) {
+      return {
+        valid: false,
+        anomalyFound: `Konten terdeteksi memuat anomali domain "${rule.categoryName}" yang tidak relevan dengan proses bisnis ini.`
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+export function validateRbacMatrixRelevance(
+  rbac: RbacMatrixResult,
+  session: MockupSessionState
+): { valid: boolean; anomalyFound?: string } {
+  if (!rbac || !Array.isArray(rbac.modul) || rbac.modul.length === 0) {
+    return { valid: false, anomalyFound: 'Matriks RBAC kosong' };
+  }
+
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const removedExt = session.roles?.removedExternalRoles || [];
+
+  // 1. MEKANISME UTAMA: VALIDASI KONSISTENSI ROLE PADA MODUL RBAC
+  for (const m of rbac.modul) {
+    if (!m.nama || !Array.isArray(m.izinPerRole)) {
+      return { valid: false, anomalyFound: `Modul RBAC tidak memiliki nama atau daftar izin peran.` };
+    }
+    for (const ip of m.izinPerRole) {
+      const roleName = (ip.role || '').trim();
+      const isRemoved = removedExt.some((r) => r.toLowerCase() === roleName.toLowerCase());
+      if (isRemoved) {
+        return {
+          valid: false,
+          anomalyFound: `Peran "${roleName}" yang telah dihapus masih muncul di matriks RBAC modul "${m.nama}".`
+        };
+      }
+      const isKnown = activeRoles.some(
+        (r) =>
+          r.toLowerCase() === roleName.toLowerCase() ||
+          r.toLowerCase().includes(roleName.toLowerCase()) ||
+          roleName.toLowerCase().includes(r.toLowerCase())
+      );
+      if (!isKnown) {
+        return {
+          valid: false,
+          anomalyFound: `Peran "${roleName}" pada modul "${m.nama}" tidak terdaftar dalam peran aktif (${activeRoles.join(', ')}).`
+        };
+      }
+    }
+  }
+
+  // 2. MEKANISME TAMBAHAN: DETEKSI ANOMALI KATA KUNCI LINTAS DOMAIN
+  const contextText = `${(session as any).domain || ''} ${session.match?.businessCategory || ''} ${session.storyline?.narasi || ''} ${session.storyline?.asumsiAlurUtama || ''}`.toLowerCase();
+
+  const allRbacText = rbac.modul
+    .map((m) => `${m.nama} ${m.deskripsiFungsional || ''} ${m.izinPerRole.map((ip) => `${ip.role} ${ip.level}`).join(' ')}`)
+    .join(' ')
+    .toLowerCase();
+
+  for (const rule of CROSS_DOMAIN_ANOMALY_PATTERNS) {
+    if (rule.triggerAnomaly.test(allRbacText) && !rule.allowedIfContextHas.test(contextText)) {
+      return {
+        valid: false,
+        anomalyFound: `Modul RBAC memuat anomali domain "${rule.categoryName}" yang tidak relevan dengan proses bisnis ini.`
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Menyusun Alur Pendukung dan Fitur Pendukung operasional berbasis analisis AI konseptual terpadu.
  * Menggantikan total percabangan regex domain dan template statis (Opsi 1).
  */
@@ -1043,63 +1289,99 @@ Peran Operasional Utama: ${coreRole}
 
 Susun Alur Pendukung dan Fitur Pendukung operasional yang paling relevan dan spesifik untuk bisnis ini dalam format JSON:`;
 
-  const raw = await invokeAIChat({
+  const parseAndValidateAIResult = (rawText: string | null): {
+    alurPendukung: SupportingFlowItem[];
+    fiturPendukung: SupportingFeatureItem[];
+  } | null => {
+    if (!rawText) return null;
+    try {
+      const parsed = robustJsonParse<any>(rawText);
+      if (!parsed || typeof parsed !== 'object') return null;
+
+      const alurPendukung: SupportingFlowItem[] = [];
+      if (Array.isArray(parsed.alurPendukung) && parsed.alurPendukung.length > 0) {
+        for (let i = 0; i < parsed.alurPendukung.length; i++) {
+          const ap = parsed.alurPendukung[i];
+          if (ap && typeof ap.nama === 'string' && Array.isArray(ap.steps) && ap.steps.length > 0) {
+            alurPendukung.push({
+              id: ap.id ? String(ap.id).toLowerCase().replace(/[^a-z0-9_]/g, '_') : `alur_pendukung_${i + 1}`,
+              nama: String(ap.nama).trim(),
+              steps: ap.steps.map((s: any) => ({
+                pelaku: resolveActorForStep(String(s.pelaku || coreRole), session.roles),
+                aksi: String(s.aksi || '').trim()
+              }))
+            });
+          }
+        }
+      }
+
+      const fiturPendukung: SupportingFeatureItem[] = [];
+      if (Array.isArray(parsed.fiturPendukung) && parsed.fiturPendukung.length > 0) {
+        for (let j = 0; j < parsed.fiturPendukung.length; j++) {
+          const fp = parsed.fiturPendukung[j];
+          const label = typeof fp === 'string' ? fp : fp?.label;
+          const id = fp?.id ? String(fp.id) : `feat_${j + 1}`;
+          if (label) {
+            fiturPendukung.push({ id, label: String(label).trim() });
+          }
+        }
+      }
+
+      if (alurPendukung.length > 0 && fiturPendukung.length > 0) {
+        const relevance = validateSupportingFlowsRelevance(alurPendukung, session);
+        if (!relevance.valid) {
+          console.warn(`[AI-SUPPORTING-FLOWS] Ditolak karena uji relevansi gagal: ${relevance.anomalyFound}`);
+          return null;
+        }
+        return { alurPendukung, fiturPendukung };
+      }
+    } catch (e) {
+      console.warn('[AI-SUPPORTING-FLOWS] Gagal parse JSON AI:', e);
+    }
+    return null;
+  };
+
+  // Panggilan AI Utama
+  let raw = await invokeAIChat({
     systemInstruction,
     userPrompt,
-    temperature: 0.5,
-    maxTokens: 3000,
+    temperature: 0.4,
+    maxTokens: 4000,
     provider,
     userApiKey: apiKey,
     userModel: model
   });
 
+  let parsedResult = parseAndValidateAIResult(raw);
+
+  // Jika gagal parse atau memuat anomali domain asing, lakukan retry 1x
+  if (!parsedResult && (provider || apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)) {
+    console.log('[AI-SUPPORTING-FLOWS] Melakukan retry AI 1x dengan prompt penegasan format & relevansi...');
+    const retryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN PENTING:
+Output JSON Anda sebelumnya terpotong atau memuat entitas/istilah dari industri lain yang tidak relevan!
+WAJIB keluarkan HANYA JSON murni yang valid tanpa komentar, tanpa trailing comma, dan 100% grounded ke bisnis "${domain}".`;
+
+    raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt: retryPrompt,
+      temperature: 0.2,
+      maxTokens: 4000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+    parsedResult = parseAndValidateAIResult(raw);
+  }
+
   const elapsed = Date.now() - startTime;
   console.log(`[AI-SUPPORTING-FLOWS] Selesai dalam ${elapsed}ms`);
 
-  if (raw) {
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        const alurPendukung: SupportingFlowItem[] = [];
-        if (Array.isArray(parsed.alurPendukung) && parsed.alurPendukung.length > 0) {
-          for (let i = 0; i < parsed.alurPendukung.length; i++) {
-            const ap = parsed.alurPendukung[i];
-            if (ap && typeof ap.nama === 'string' && Array.isArray(ap.steps) && ap.steps.length > 0) {
-              alurPendukung.push({
-                id: ap.id ? String(ap.id).toLowerCase().replace(/[^a-z0-9_]/g, '_') : `alur_pendukung_${i + 1}`,
-                nama: String(ap.nama).trim(),
-                steps: ap.steps.map((s: any) => ({
-                  pelaku: resolveActorForStep(String(s.pelaku || coreRole), session.roles),
-                  aksi: String(s.aksi || '').trim()
-                }))
-              });
-            }
-          }
-        }
-
-        const fiturPendukung: SupportingFeatureItem[] = [];
-        if (Array.isArray(parsed.fiturPendukung) && parsed.fiturPendukung.length > 0) {
-          for (let j = 0; j < parsed.fiturPendukung.length; j++) {
-            const fp = parsed.fiturPendukung[j];
-            const label = typeof fp === 'string' ? fp : fp?.label;
-            const id = fp?.id ? String(fp.id) : `feat_${j + 1}`;
-            if (label) {
-              fiturPendukung.push({ id, label: String(label).trim() });
-            }
-          }
-        }
-
-        if (alurPendukung.length > 0 && fiturPendukung.length > 0) {
-          return { alurPendukung, fiturPendukung };
-        }
-      }
-    } catch (e) {
-      console.warn('[AI-SUPPORTING-FLOWS] Gagal parse JSON AI, menggunakan fallback semantik:', e);
-    }
+  if (parsedResult) {
+    return parsedResult;
   }
 
-  // Fallback semantik jika AI gagal / offline
+  console.warn('[AI-SUPPORTING-FLOWS] AI call gagal atau tidak lolos validasi, menggunakan fallback sintesis dinamis');
+  // Fallback sintesis dinamis murni berbasis sesi aktif (bebas profiling statis)
   const baseFlow = getDomainFlowDetails(session, { forceFresh: true });
   return {
     alurPendukung: baseFlow.alurPendukung,
@@ -1296,10 +1578,12 @@ export function generateFallbackRbacMatrix(session: MockupSessionState): RbacMat
     (r) => !removedExt.includes(r)
   );
   const flowData = session.flow || {};
+  const alurInti = flowData.alurInti || [];
   const alurPendukung = flowData.alurPendukung || [];
   const delegated = session.roles?.tugasDilimpahkan || [];
   const ownerRole = activeRoles.find((r) => isSuperAdminRole(r)) || activeRoles[0] || 'Super Admin';
   const customerRole = activeRoles.find((r) => isExternalRole(r));
+  const domain = ((session as any).domain || session.match?.businessCategory || 'Layanan').trim();
 
   const modul: {
     nama: string;
@@ -1307,27 +1591,27 @@ export function generateFallbackRbacMatrix(session: MockupSessionState): RbacMat
     izinPerRole: { role: string; level: string; keterangan?: string }[];
   }[] = [];
 
-  // Modul 1: Portal Pemesanan Mandiri (Jika ada peran eksternal/pelanggan)
+  // Modul 1: Portal Pemesanan / Pengajuan Mandiri (Jika ada peran eksternal/pelanggan/anggota)
   if (customerRole) {
     modul.push({
-      nama: 'Pengajuan & Reservasi Layanan Mandiri',
-      deskripsiFungsional: 'Portal mandiri pelanggan untuk pemesanan, pengajuan reservasi, dan cek status invoice',
+      nama: `Portal Mandiri & Pengajuan Layanan (${customerRole})`,
+      deskripsiFungsional: `Portal mandiri untuk ${customerRole.toLowerCase()} dalam membuat pengajuan, mengunggah berkas, dan memantau status`,
       izinPerRole: activeRoles.map((r) => {
         if (r === customerRole) {
-          return { role: r, level: 'Buat & Pantau (Milik Sendiri)', keterangan: 'Akses terbatas ke data pesanan pribadi' };
+          return { role: r, level: 'Buat & Pantau (Milik Sendiri)', keterangan: 'Akses terbatas ke data transaksi pribadi' };
         }
         if (r === ownerRole) {
-          return { role: r, level: 'Supervisi & Otorisasi Tarif', keterangan: 'Akses pantau dan kontrol seluruh antrean' };
+          return { role: r, level: 'Supervisi & Otorisasi Pengajuan', keterangan: 'Akses pantau dan kontrol seluruh antrean' };
         }
-        return { role: r, level: 'Verifikasi & Konfirmasi Pengajuan', keterangan: 'Validasi kelayakan berkas dan ketersediaan layanan' };
+        return { role: r, level: 'Verifikasi & Validasi Berkas', keterangan: 'Validasi kelayakan berkas pengajuan' };
       })
     });
   }
 
-  // Modul 2: Operasional Lapangan & Pengerjaan Layanan
+  // Modul 2: Operasional Internal & Pemrosesan Layanan
   modul.push({
-    nama: 'Operasional Lapangan & Pelaksanaan Layanan',
-    deskripsiFungsional: 'Pencatatan checklist, pelaksanaan teknis, inspeksi fisik, dan serah-terima layanan',
+    nama: `Pemrosesan Operasional & Verifikasi Berkas`,
+    deskripsiFungsional: `Pencatatan verifikasi data, validasi operasional harian, dan pelaksanaan teknis layanan`,
     izinPerRole: activeRoles.map((r) => {
       if (customerRole && r === customerRole) {
         return { role: r, level: 'Lihat Status Pengerjaan (Milik Sendiri)', keterangan: 'Menerima bukti pengerjaan/berita acara' };
@@ -1335,46 +1619,49 @@ export function generateFallbackRbacMatrix(session: MockupSessionState): RbacMat
       if (r === ownerRole) {
         return { role: r, level: 'Supervisi Mutu & Kontrol Operasional', keterangan: 'Monitoring progres dan eskalasi kendala' };
       }
-      return { role: r, level: 'Eksekusi Lapangan & Catat Pengerjaan', keterangan: 'Input data inspeksi, serah terima, dan checklist fisik' };
+      return { role: r, level: 'Eksekusi & Validasi Operasional', keterangan: 'Input data verifikasi, checklist, dan pemrosesan' };
     })
   });
 
-  // Modul 3: Penanganan Kendala & Sarana Kerja (Alur Pendukung)
-  if (alurPendukung.length > 0) {
+  // Modul 3: Transaksi Keuangan & Kasir
+  const hasPayment = alurInti.some((s) => /bayar|kasir|uang|tagihan|kuitansi|cair|dana|simpan|angsur|cicil|biaya/i.test(s.aksi));
+  if (hasPayment || alurInti.length >= 3) {
     modul.push({
-      nama: 'Pemeliharaan Sarana & Penanganan Kendala Layanan',
-      deskripsiFungsional: 'Pencatatan pemeliharaan alat, stok bahan kerja, dan tindak lanjut komplain operasional',
+      nama: `Transaksi Pembayaran & Pembukuan Kasir`,
+      deskripsiFungsional: `Penerimaan pembayaran, pencatatan transaksi keuangan, dan penerbitan bukti kuitansi resmi`,
       izinPerRole: activeRoles.map((r) => {
         if (customerRole && r === customerRole) {
-          return { role: r, level: 'Kirim Masukan / Komplain (Milik Sendiri)', keterangan: 'Hanya seputar layanan yang digunakan' };
+          return { role: r, level: 'Lihat Tagihan & Bukti Bayar Pribadi', keterangan: 'Unduh nota pembayaran sendiri' };
         }
         if (r === ownerRole) {
-          return { role: r, level: 'Persetujuan Biaya & Evaluasi Solusi', keterangan: 'Otorisasi pengeluaran dan solusi klaim' };
+          return { role: r, level: 'Audit Keuangan & Rekonsiliasi Saldo', keterangan: 'Akses penuh pembukuan dan kas' };
         }
-        return { role: r, level: 'Pelaksana Teknis & Lapor Kondisi', keterangan: 'Pemeriksaan rutin dan penanganan lapangan' };
+        return { role: r, level: 'Input Transaksi & Cetak Struk', keterangan: 'Pencatatan transaksi kasir harian' };
       })
     });
   }
 
-  // Modul 4: Kasir & Pembayaran
-  modul.push({
-    nama: 'Transaksi Pembayaran & Rekapitulasi Kasir',
-    deskripsiFungsional: 'Penerimaan pembayaran, penerbitan struk transaksi, dan rekap omzet harian',
-    izinPerRole: activeRoles.map((r) => {
-      if (customerRole && r === customerRole) {
-        return { role: r, level: 'Lihat Tagihan & Bukti Bayar Pribadi', keterangan: 'Unduh nota pembayaran sendiri' };
-      }
-      if (r === ownerRole) {
-        return { role: r, level: 'Audit Keuangan & Laporan Konsolidasi', keterangan: 'Akses penuh pembukuan dan kas' };
-      }
-      return { role: r, level: 'Input Pembayaran & Cetak Struk', keterangan: 'Pencatatan transaksi kasir harian' };
-    })
-  });
+  // Modul 4: Penanganan Kendala & Audit (Alur Pendukung)
+  if (alurPendukung.length > 0) {
+    modul.push({
+      nama: `Penanganan Kendala & Audit Kepatuhan Operasional`,
+      deskripsiFungsional: `Pencatatan kendala layanan, tindak lanjut penyesuaian transaksi, dan audit kepatuhan harian`,
+      izinPerRole: activeRoles.map((r) => {
+        if (customerRole && r === customerRole) {
+          return { role: r, level: 'Kirim Masukan / Lapor Kendala (Milik Sendiri)', keterangan: 'Hanya seputar transaksi yang digunakan' };
+        }
+        if (r === ownerRole) {
+          return { role: r, level: 'Otorisasi Solusi & Evaluasi Audit', keterangan: 'Persetujuan kebijakan kompensasi dan audit' };
+        }
+        return { role: r, level: 'Pemeriksaan Berkas & Penanganan Teknis', keterangan: 'Tindak lanjut penyelesaian kendala di lapangan' };
+      })
+    });
+  }
 
   // Modul 5: Manajemen Master Data & Hak Akses
   modul.push({
-    nama: 'Manajemen Sistem, Master Data & Hak Akses',
-    deskripsiFungsional: 'Pengaturan katalog harga, data master, akun pengguna, dan log audit',
+    nama: `Manajemen Sistem, Master Data & Hak Akses`,
+    deskripsiFungsional: `Pengaturan katalog harga, data master, akun pengguna, dan log audit`,
     izinPerRole: activeRoles.map((r) => {
       if (r === ownerRole) {
         return { role: r, level: 'Kontrol Penuh & Pengaturan Sistem', keterangan: 'Kelola akun staf, hak akses, dan tarif' };
@@ -1452,7 +1739,7 @@ ATURAN WAJIB & LARANGAN MUTLAK:
 3. ACTION-SCOPED PERMISSIONS (DILARANG KERAS CRUD GENERIK):
    - DILARANG KERAS menuliskan label izin generik polos seperti "Create, Read", "CRUD", "Read Only", "Akses Penuh", "View, Edit".
    - Setiap izin WAJIB menyebutkan CAKUPAN DATA (SCOPE) dan TINDAKAN SPESIFIK:
-     * Untuk Pelanggan / Customer / Penyewa: "Buat & Pantau (Milik Sendiri)" atau "Input Form & Upload Berkas (Milik Sendiri)". Role publik TIDAK BOLEH memiliki akses ke modul operasional internal staf!
+     * Untuk Pelanggan / Customer / Anggota / Penyewa: "Buat & Pantau (Milik Sendiri)" atau "Input Form & Upload Berkas (Milik Sendiri)". Role publik TIDAK BOLEH memiliki akses ke modul operasional internal staf!
      * Untuk Staf Operasional: "Verifikasi Berkas & Eksekusi Lapangan (Semua Data Aktif)" atau "Input Hasil Inspeksi & Catat Pengembalian".
      * Untuk Pemilik / Super Admin: "Supervisi, Otorisasi Pembatalan, & Audit Penuh" atau "Pengaturan Master Data & Kontrol Penuh".
      * Jika role TIDAK BERHAK / tidak terlibat pada modul tersebut: tulis "-" atau "Tidak Memiliki Akses".
@@ -1498,73 +1785,106 @@ ${fiturPendukung.map((fp) => `- ${typeof fp === 'string' ? fp : (fp as any)?.lab
 
 Susun matriks hak akses per modul fungsional dalam format JSON:`;
 
-  const raw = await invokeAIChat({
+  const parseAndValidateRbac = (rawText: string | null): RbacMatrixResult | null => {
+    if (!rawText) return null;
+    try {
+      const parsed = robustJsonParse<any>(rawText);
+      if (parsed && Array.isArray(parsed.modul) && parsed.modul.length > 0) {
+        const validatedModul: {
+          nama: string;
+          deskripsiFungsional?: string;
+          izinPerRole: { role: string; level: string; keterangan?: string }[];
+        }[] = [];
+
+        for (const m of parsed.modul) {
+          if (m && typeof m.nama === 'string') {
+            const izinPerRole: { role: string; level: string; keterangan?: string }[] = [];
+            for (const r of activeRoles) {
+              const found = Array.isArray(m.izinPerRole)
+                ? m.izinPerRole.find((ip: any) => String(ip.role || '').trim().toLowerCase() === r.toLowerCase())
+                : null;
+              izinPerRole.push({
+                role: r,
+                level: found ? String(found.level || '-').trim() : '-',
+                keterangan: found?.keterangan ? String(found.keterangan).trim() : undefined
+              });
+            }
+            validatedModul.push({
+              nama: String(m.nama).trim(),
+              deskripsiFungsional: m.deskripsiFungsional ? String(m.deskripsiFungsional).trim() : undefined,
+              izinPerRole
+            });
+          }
+        }
+
+        if (validatedModul.length > 0) {
+          const catatanPelimpahan = Array.isArray(parsed.catatanPelimpahan) && parsed.catatanPelimpahan.length > 0
+            ? parsed.catatanPelimpahan.map((c: any) => String(c).trim())
+            : delegated.length > 0
+              ? delegated.map((d) => `Wewenang operasional "${d.dariRole}" dialihkan ke "${d.keRole}" karena perampingan staf (${d.daftarTugas.join(', ')}).`)
+              : undefined;
+
+          const candidate: RbacMatrixResult = {
+            modul: validatedModul,
+            markdownTable: renderRbacMarkdownTable(activeRoles, validatedModul, catatanPelimpahan),
+            catatanPelimpahan
+          };
+
+          const relevance = validateRbacMatrixRelevance(candidate, session);
+          if (!relevance.valid) {
+            console.warn(`[AI-RBAC] Ditolak karena uji relevansi gagal: ${relevance.anomalyFound}`);
+            return null;
+          }
+
+          return candidate;
+        }
+      }
+    } catch (e) {
+      console.warn('[AI-RBAC] Gagal parse JSON AI:', e);
+    }
+    return null;
+  };
+
+  // Panggilan AI Utama (maxTokens dinaikkan ke 5000 agar tidak terpotong)
+  let raw = await invokeAIChat({
     systemInstruction,
     userPrompt,
-    temperature: 0.4,
-    maxTokens: 3500,
+    temperature: 0.3,
+    maxTokens: 5000,
     provider,
     userApiKey: apiKey,
     userModel: model
   });
 
+  let parsedRbac = parseAndValidateRbac(raw);
+
+  // Jika gagal parse atau memuat anomali domain asing, lakukan retry 1x
+  if (!parsedRbac && (provider || apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)) {
+    console.log('[AI-RBAC] Melakukan retry AI 1x dengan prompt penegasan format & relevansi...');
+    const retryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN PENTING:
+Output JSON matriks RBAC Anda sebelumnya terpotong atau memuat modul dari domain bisnis yang tidak relevan!
+WAJIB keluarkan HANYA JSON murni yang valid tanpa komentar, tanpa trailing comma, dan modul-modulnya 100% mencerminkan Alur Inti dan Alur Pendukung di atas.`;
+
+    raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt: retryPrompt,
+      temperature: 0.2,
+      maxTokens: 5000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+    parsedRbac = parseAndValidateRbac(raw);
+  }
+
   const elapsed = Date.now() - startTime;
   console.log(`[AI-RBAC] Selesai dalam ${elapsed}ms`);
 
-  if (raw) {
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed.modul) && parsed.modul.length > 0) {
-          const validatedModul: {
-            nama: string;
-            deskripsiFungsional?: string;
-            izinPerRole: { role: string; level: string; keterangan?: string }[];
-          }[] = [];
-
-          for (const m of parsed.modul) {
-            if (m && typeof m.nama === 'string') {
-              const izinPerRole: { role: string; level: string; keterangan?: string }[] = [];
-              for (const r of activeRoles) {
-                const found = Array.isArray(m.izinPerRole)
-                  ? m.izinPerRole.find((ip: any) => String(ip.role || '').trim().toLowerCase() === r.toLowerCase())
-                  : null;
-                izinPerRole.push({
-                  role: r,
-                  level: found ? String(found.level || '-').trim() : '-',
-                  keterangan: found?.keterangan ? String(found.keterangan).trim() : undefined
-                });
-              }
-              validatedModul.push({
-                nama: String(m.nama).trim(),
-                deskripsiFungsional: m.deskripsiFungsional ? String(m.deskripsiFungsional).trim() : undefined,
-                izinPerRole
-              });
-            }
-          }
-
-          if (validatedModul.length > 0) {
-            const catatanPelimpahan = Array.isArray(parsed.catatanPelimpahan) && parsed.catatanPelimpahan.length > 0
-              ? parsed.catatanPelimpahan.map((c: any) => String(c).trim())
-              : delegated.length > 0
-                ? delegated.map((d) => `Wewenang operasional "${d.dariRole}" dialihkan ke "${d.keRole}" karena perampingan staf (${d.daftarTugas.join(', ')}).`)
-                : undefined;
-
-            const markdownTable = renderRbacMarkdownTable(activeRoles, validatedModul, catatanPelimpahan);
-            return {
-              modul: validatedModul,
-              markdownTable,
-              catatanPelimpahan
-            };
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[AI-RBAC] Gagal parse JSON AI, beralih ke fallback deterministik:', e);
-    }
+  if (parsedRbac) {
+    return parsedRbac;
   }
 
+  console.warn('[AI-RBAC] AI call gagal atau tidak lolos validasi, beralih ke fallback deterministik dinamis');
   return generateFallbackRbacMatrix(session);
 }
 

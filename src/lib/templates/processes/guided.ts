@@ -914,396 +914,118 @@ function generateSemanticSupportingFlows(
   const narrative = (session.storyline?.narasi || '').trim();
   const mainFlow = (session.storyline?.asumsiAlurUtama || '').trim();
   const problem = (session.storyline?.asumsiMasalah || '').trim();
-  const domain = ((session as any).domain || session.match?.businessCategory || 'Layanan').trim();
+  const domain = ((session as any).domain || session.match?.businessCategory || 'Operasional Bisnis').trim();
 
-  const customerActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|tamu|member|warga|siswa|murid|anggota|nasabah/i, 'Pelanggan');
-  const fullText = `${domain} ${narrative} ${mainFlow} ${problem}`.toLowerCase();
-
-  // 1. BARBERSHOP / SALON / PANGKAS RAMBUT
-  if (
-    !/cuci.*mobil|car\s*wash|steam.*kendaraan|salon.*(?:mobil|kendaraan)/i.test(fullText) &&
-    /barber|pangkas.*rambut|potong.*rambut|cukur|salon|kapster|hairstylist|perawatan.*rambut/i.test(fullText)
-  ) {
-    return [
-      {
-        id: 'alur_garansi_potong',
-        nama: 'Klaim Ulang Potong Gratis jika Rambut Kurang Rapi',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Menyampaikan bagian potongan rambut, kumis, atau jenggot yang dirasa kurang simetris atau belum rapi'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Merapikan kembali potongan rambut dan memberikan sentuhan akhir styling secara cermat tanpa biaya tambahan'
-          }
-        ]
-      },
-      {
-        id: 'alur_restock_alat_cukur',
-        nama: 'Restock Silet Cukur, Pisau Clipper & Pomade Rambut',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Memeriksa ketajaman pisau clipper elektrik, ketersediaan silet sekali pakai, dan stok pomade di meja kerja'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui anggaran belanja perlengkapan pangkas dan memesan produk perawatan rambut ke suplier resmi'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 2. STUDIO REKAMAN / AUDIO / MUSIK / PODCAST
-  if (/studio|rekaman|audio|mixing|vokal|sound.*engineer|podcast|lagu|aransemen/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_retake_audio',
-        nama: 'Koreksi Retake Audio Vokal & Penyetelan Equalizer',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Mendengarkan hasil preview track rekaman dan menandai bagian vokal yang perlu take ulang'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Melakukan perekaman ulang bagian vokal serta menyetel kompresor dan equalizer hingga bersih'
-          }
-        ]
-      },
-      {
-        id: 'alur_kalibrasi_mixer',
-        nama: 'Kalibrasi Mixer, Mikrofon Kondensor & Perawatan Kabel Audio',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Menguji tingkat kebisingan mikrofon studio, membersihkan fader mixer, dan memeriksa koneksi kabel audio XLR'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui jadwal perawatan rutin perangkat studio dan pengadaan suku cadang audio yang aus'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 3. KOLAM RENANG / WATERPARK / PEMANDIAN
-  if (/kolam\s*renang|waterpark|pemandian|renang|waterboom/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_uji_kebersihan_air',
-        nama: 'Pengurasan Endapan Dasar Kolam & Uji Kebersihan Air',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Menyampaikan laporan jika mendapati air kolam tampak keruh atau fasilitas bilas mengalami kendala'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Melakukan penyedotan endapan lantai kolam menggunakan vakum bawah air dan menguji kejernihan air'
-          }
-        ]
-      },
-      {
-        id: 'alur_pengadaan_kaporit',
-        nama: 'Pengadaan Kaporit Kolam & Perawatan Pompa Filter Air',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Memeriksa tekanan indikator pompa filter sirkulasi air dan mencatat sisa persediaan kaporit serta tawas'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui pembelian bahan kimia penjernih kolam dan menjadwalkan servis berkala mesin pompa air'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 4. PET HOTEL / PENITIPAN KUCING / HEWAN / GROOMING
-  if (/pet|kucing|anjing|hewan|grooming|kandang|penitipan.*hewan/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_isolasi_hewan',
-        nama: 'Penanganan Hewan Sakit & Isolasi Gejala Alergi',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Menyerahkan buku vaksin hewan, catatan alergi pakan, serta obat-obatan khusus yang perlu diminumkan'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Memantau suhu tubuh dan nafsu makan hewan serta memindahkan hewan yang demam/flu ke ruang isolasi'
-          }
-        ]
-      },
-      {
-        id: 'alur_restock_pakan_pasir',
-        nama: 'Restock Makanan Kering, Pasir Gumpal & Sterilisasi Kandang',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Mencuci baki pasir kotoran dengan desinfektan dan menghitung sisa stok pakan hewan serta vitamin'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Mengotorisasi pembelian pakan hewan berkualitas dan memastikan standar sanitasi kandang terpenuhi'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 5. PERCETAKAN DIGITAL / BANNER / SABLON / OFFSET
-  if (/percetakan|cetak|banner|sablon|offset|digital\s*print|stiker|kaos.*sablon/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_cetak_ulang_garansi',
-        nama: 'Cetak Ulang Cepat jika Warna Luntur atau Format Rusak',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Menunjukkan lembar banner atau kaos cetak jika terdapat garis belang tinta atau teks yang buram'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Memeriksa file master desain, melakukan pembersihan head printer, dan mencetak ulang produk hingga tajam'
-          }
-        ]
-      },
-      {
-        id: 'alur_pembersihan_head_printer',
-        nama: 'Pembersihan Nozzle Head Mesin Cetak & Restock Gulungan Banner',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Memeriksa volume tinta warna cair di tangki mesin dan mendata sisa roll vinyl serta stiker cetak'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui pembelian tinta industri beresolusi tinggi dan memesan bahan baku banner ke pabrik'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 6. RENTAL MOBIL / SEWA KENDARAAN
-  if (/rental|sewa.*(mobil|motor|kendaraan|armada)|lepas\s*kunci|persewaan.*kendaraan/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_denda_klaim_armada',
-        nama: 'Penanganan Keterlambatan Pengembalian, Denda & Klaim Kerusakan Armada',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Mengonfirmasi perpanjangan waktu sewa unit atau melaporkan kendala bodi dan mesin di perjalanan'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Memeriksa jam keterlambatan serta mencocokkan kondisi fisik bodi armada dengan lembar checklist awal'
-          }
-        ]
-      },
-      {
-        id: 'alur_servis_oli_ban',
-        nama: 'Jadwal Servis Berkala, Ganti Oli & Pemeriksaan Ban Armada',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Mencatat odometer kilometer kendaraan, memeriksa ketebalan ban, dan mengecek masa berlaku STNK unit'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui jadwal perawatan rutin ke bengkel rekanan dan memastikan seluruh armada laik jalan'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 7. CUCI MOBIL / CAR WASH / STEAM KENDARAAN
-  if (/cuci.*mobil|car\s*wash|steam.*kendaraan|cuci.*motor/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_garansi_cuci_ulang',
-        nama: 'Garansi Cuci Ulang jika Kaca Buram atau Kolong Masih Kotor',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Menunjukkan sisa noda debu, jamur kaca, atau sela pintu yang belum terangkat saat proses pencucian'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Menyemprot ulang bagian kotor dengan jet cleaner dan menyeka bodi mobil menggunakan lap microfiber hingga kinclong'
-          }
-        ]
-      },
-      {
-        id: 'alur_perawatan_kompresor_steam',
-        nama: 'Perawatan Mesin Steam, Kompresor Salju & Restock Sampo Mobil',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Mengecek tekanan tabung busa snow wash, membersihkan saringan nozel, dan mencatat sisa stok sabun mobil'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui pengadaan konsentrat sampo mobil dan menjadwalkan servis rutin mesin jet pump'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 8. KAFE / RESTORAN / KEDAI KOPI / KULINER
-  if (/kafe|kopi|coffee|resto|makanan|kuliner|kedai|warung|cafe/i.test(fullText)) {
-    return [
-      {
-        id: 'alur_garansi_rasa_masakan',
-        nama: 'Penggantian Pesanan Salah & Garansi Cita Rasa Masakan',
-        steps: [
-          {
-            pelaku: customerActor,
-            aksi: 'Memberitahukan hidangan atau racikan minuman yang tidak sesuai pesanan atau tingkat kematangan'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Membuatkan kembali menu pengganti dengan cepat dan menyajikan permintaan maaf ramah'
-          }
-        ]
-      },
-      {
-        id: 'alur_restock_kopi_dapur',
-        nama: 'Restock Biji Kopi Espresso, Susu Segar & Pengecekan Suhu Chiller',
-        steps: [
-          {
-            pelaku: activeCore,
-            aksi: 'Mendata sisa gramasi biji kopi, tanggal kadaluarsa susu segar, dan memeriksa suhu ruang pendingin makanan'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Menyetujui nota belanja bahan baku harian dan melakukan pemesanan bahan segar ke pemasok'
-          }
-        ]
-      }
-    ];
-  }
-
-  // 9. KOPERASI / SIMPAN PINJAM / KREDIT
-  if (/koperasi|simpan\s*pinjam|kredit|pinjaman/i.test(fullText)) {
-    const governanceCandidate = session.roles?.selected?.find((r) => isGovernanceRole(r, session.storyline?.detailAktor));
-    const committeeActor = governanceCandidate
-      ? resolveActorForStep(governanceCandidate, session.roles)
-      : findActor(/komite|kredit|pengurus|analis|surveyor/i, '');
-    const cashierActor = findActor(/kasir|teller|bendahara/i, activeCore);
-    const hasSpecializedCommittee = committeeActor && committeeActor.toLowerCase() !== customerActor.toLowerCase();
-
-    const alurRestrukturisasiSteps = hasSpecializedCommittee
-      ? [
-          {
-            pelaku: customerActor,
-            aksi: 'Menyampaikan kendala likuiditas keuangan dan mengajukan keringanan tenor atau jadwal angsuran baru'
-          },
-          {
-            pelaku: cashierActor,
-            aksi: 'Menyiapkan data riwayat angsuran, total sisa baki debet pinjaman, dan berkas jaminan debitur'
-          },
-          {
-            pelaku: committeeActor,
-            aksi: 'Menganalisis profil kelayakan, menyetujui skema restrukturisasi, dan menetapkan jadwal cicilan baru'
-          }
-        ]
-      : [
-          {
-            pelaku: customerActor,
-            aksi: 'Menyampaikan kendala likuiditas keuangan dan mengajukan keringanan tenor atau jadwal angsuran baru'
-          },
-          {
-            pelaku: activeCore,
-            aksi: 'Menganalisis profil kemampuan bayar debitur dan merumuskan kesepakatan perpanjangan jadwal pembayaran pinjaman'
-          }
-        ];
-
-    const alurAuditKasSteps = hasSpecializedCommittee
-      ? [
-          {
-            pelaku: cashierActor,
-            aksi: 'Menghitung fisik uang tunai di brankas kasir dan mencocokkan totalnya dengan buku mutasi transaksi harian'
-          },
-          {
-            pelaku: committeeActor,
-            aksi: 'Melakukan verifikasi kas opname bersama pengawas dan menandatangani berita acara rekonsiliasi kas'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Mengotorisasi laporan audit kas harian dan memastikan cadangan likuiditas simpanan koperasi aman'
-          }
-        ]
-      : [
-          {
-            pelaku: activeCore,
-            aksi: 'Menghitung fisik uang tunai di brankas kasir dan mencocokkan totalnya dengan buku mutasi transaksi harian'
-          },
-          {
-            pelaku: activeOwner,
-            aksi: 'Mengotorisasi laporan berita acara kas opname dan memastikan kepatuhan pembukuan keuangan koperasi'
-          }
-        ];
-
-    return [
-      {
-        id: 'alur_restrukturisasi_kredit',
-        nama: 'Penanganan Tunggakan Angsuran & Penjadwalan Ulang Kredit Bermasalah',
-        steps: alurRestrukturisasiSteps
-      },
-      {
-        id: 'alur_audit_brankas_koperasi',
-        nama: 'Audit Fisik Brankas Tunai & Rekonsiliasi Saldo Kas Simpanan',
-        steps: alurAuditKasSteps
-      }
-    ];
-  }
-
-  // 10. NOVEL DOMAIN UNIVERSAL FALLBACK (Ekstraksi Kata Benda & Aksi Konkret)
-  let focalEntity = domain;
-  const matchFocal = fullText.match(
-    /\b(bengkel|mesin|laundry|pakaian|kos|kamar|kursus|bimbel|apotek|obat|gudang|rosok|sembako|ternak|bibit)\b/i
+  const customerActor = findActor(
+    /pelanggan|penyewa|pasien|pembeli|klien|tamu|member|warga|siswa|murid|anggota|nasabah/i,
+    'Pelanggan'
   );
-  if (matchFocal) {
-    focalEntity = matchFocal[1];
+
+  // Periksa peran governance / pengambil keputusan / pengawas
+  const governanceCandidate = session.roles?.selected?.find((r) => isGovernanceRole(r, session.storyline?.detailAktor));
+  const reviewerActor = governanceCandidate ? resolveActorForStep(governanceCandidate, session.roles) : activeOwner;
+  const alur1Actor = customerActor.toLowerCase() !== activeCore.toLowerCase() ? customerActor : activeCore;
+
+  // 1. EKSTRAKSI DETAIL MASALAH OPERASIONAL KONKRET (Untuk Alur Pendukung 1)
+  const fullContext = `${domain} ${narrative} ${mainFlow} ${problem}`.toLowerCase();
+  
+  let cleanProblem = problem
+    .replace(/^(masalah|kendala|permasalahan|isu|kesulitan)\s*(utama|operasional)?\s*[:=-]?\s*/i, '')
+    .replace(/\b(masih\s+manual|sering\s+terjadi|sulit\s+dipantau|tidak\s+tercatat|kurang\s+efisien|kurang\s+terkoordinasi|menumpuk|sering\s+komplain)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Ekstrak judul & objek masalah konkret berdasarkan analisis semantik kata benda
+  let title1 = `Penanganan Kendala Operasional & Penyesuaian Transaksi ${domain}`;
+  let specificFocal = domain;
+
+  if (/\b(kredit\s*macet|tunggakan|angsuran|cicilan|gagal\s*bayar|plafon)\b/i.test(fullContext)) {
+    title1 = 'Penanganan Tunggakan Angsuran & Penjadwalan Ulang Kredit Bermasalah';
+    specificFocal = 'Pinjaman & Simpanan';
+  } else if (/\b(armada|mobil|motor|sewa|kendaraan|rental|bodi|lecet|denda|terlambat)\b/i.test(fullContext)) {
+    title1 = 'Pemeriksaan Lecet Bodi, Klaim Kerusakan & Perhitungan Denda Keterlambatan';
+    specificFocal = 'Unit Armada Kendaraan';
+  } else if (/\b(hewan|kucing|anjing|anabul|pakan|kandang|grooming|vaksin)\b/i.test(fullContext)) {
+    title1 = 'Penanganan Hewan Sakit, Isolasi Gejala Alergi & Penyesuaian Pakan Khusus';
+    specificFocal = 'Hewan Peliharaan & Kandang';
+  } else if (/\b(rambut|cukur|potong|barber|kapster|pomade|silet)\b/i.test(fullContext)) {
+    title1 = 'Klaim Koreksi Hasil Potongan Rambut & Perapian Ulang';
+    specificFocal = 'Potongan Rambut & Styling';
+  } else if (/\b(cetak|banner|sablon|offset|tinta|luntur|warna)\b/i.test(fullContext)) {
+    title1 = 'Koreksi Cetak Ulang Cepat jika Warna Luntur atau Format Rusak';
+    specificFocal = 'Hasil Cetakan & Banner';
+  } else if (/\b(kafe|kopi|resto|menu|makanan|dapur|chiller)\b/i.test(fullContext)) {
+    title1 = 'Penggantian Pesanan Salah & Garansi Cita Rasa Masakan';
+    specificFocal = 'Pesanan Menu Dapur';
+  } else if (/\b(bengkel|mesin|motor|servis|sparepart|onderdil)\b/i.test(fullContext)) {
+    title1 = 'Garansi Perbaikan Ulang jika Kendala Mesin Kambuh & Uji Kelayakan';
+    specificFocal = 'Servis Mesin Kendaraan';
+  } else if (cleanProblem.length > 5) {
+    title1 = `Penanganan Kendala ${cleanProblem.charAt(0).toUpperCase() + cleanProblem.slice(1)}`;
+  }
+
+  // 2. EKSTRAKSI SARANA / AUDIT KERJA KONKRET DARI ALUR KERJA (Untuk Alur Pendukung 2)
+  let title2 = `Audit Berkas Transaksi, Rekonsiliasi Harian & Kesiapan Operasional ${domain}`;
+  let auditAction1 = `Mendata bukti fisik transaksi harian ${specificFocal.toLowerCase()}, mencocokkan rekonsiliasi catatan operasional, dan memeriksa kelayakan instrumen pendukung`;
+  let auditAction2 = `Memeriksa laporan rekonsiliasi berkala, mengotorisasi pengeluaran kas penunjang, dan menyetujui evaluasi kepatuhan tata kelola ${domain.toLowerCase()}`;
+
+  if (/\b(pinjaman|simpanan|koperasi|kredit|brankas|baki\s*debet)\b/i.test(fullContext)) {
+    title2 = 'Audit Fisik Brankas Kasir & Rekonsiliasi Kuitansi Akad Pinjaman';
+    auditAction1 = 'Menghitung fisik uang tunai di brankas kasir dan mencocokkan totalnya dengan kuitansi akad pencairan serta mutasi harian';
+    auditAction2 = 'Memeriksa berita acara kas opname dan mengotorisasi kepatuhan pembukuan likuiditas keuangan koperasi';
+  } else if (/\b(armada|mobil|rental|stnk|odometer|oli)\b/i.test(fullContext)) {
+    title2 = 'Pemeriksaan Masa Berlaku STNK, Servis Berkala & Kesiapan Kunci Armada';
+    auditAction1 = 'Mencatat odometer kilometer unit, memeriksa kebersihan fisik bodi, dan mengecek masa aktif STNK armada';
+    auditAction2 = 'Menyetujui jadwal perawatan rutin ke bengkel rekanan dan otorisasi anggaran servis armada';
+  } else if (/\b(hewan|kandang|pakan|grooming|vaksin)\b/i.test(fullContext)) {
+    title2 = 'Sterilisasi Kebersihan Kandang, Opname Vitamin & Restock Pakan';
+    auditAction1 = 'Mencuci baki pasir kotoran dengan desinfektan dan menghitung sisa stok pakan hewan serta vitamin';
+    auditAction2 = 'Mengotorisasi pembelian pakan hewan berkualitas dan memastikan standar sanitasi kandang terpenuhi';
+  } else if (/\b(rambut|cukur|barber|clipper|pomade)\b/i.test(fullContext)) {
+    title2 = 'Sterilisasi Pisau Clipper, Penggantian Silet Cukur & Restock Pomade';
+    auditAction1 = 'Memeriksa ketajaman pisau clipper elektrik, ketersediaan silet sekali pakai, dan stok pomade di meja kerja';
+    auditAction2 = 'Menyetujui anggaran belanja perlengkapan pangkas dan memesan produk perawatan rambut resmi';
+  } else if (/\b(cetak|banner|tinta|head|nozzle)\b/i.test(fullContext)) {
+    title2 = 'Pembersihan Nozzle Head Mesin Cetak & Restock Gulungan Banner';
+    auditAction1 = 'Memeriksa volume tinta warna cair di tangki mesin dan mendata sisa roll vinyl serta stiker cetak';
+    auditAction2 = 'Menyetujui pembelian tinta industri beresolusi tinggi dan memesan bahan baku banner';
+  }
+
+  const steps1: { pelaku: string; aksi: string }[] = [
+    {
+      pelaku: alur1Actor,
+      aksi: `Menyampaikan permohonan penanganan seputar kendala ${cleanProblem || specificFocal.toLowerCase()} dan menyerahkan bukti transaksi terkait`
+    },
+    {
+      pelaku: activeCore,
+      aksi: `Memeriksa riwayat data ${specificFocal.toLowerCase()}, memvalidasi keabsahan dokumen fisik di sistem, dan merumuskan solusi penanganan`
+    }
+  ];
+
+  if (governanceCandidate) {
+    steps1.push({
+      pelaku: reviewerActor,
+      aksi: `Mengevaluasi laporan tindak lanjut ${specificFocal.toLowerCase()} dan mengotorisasi keputusan persetujuan adendum kebijakan`
+    });
   }
 
   return [
     {
-      id: `alur_klaim_${focalEntity.replace(/\s+/g, '_')}`,
-      nama: `Penanganan Kendala Pengerjaan & Klaim Kualitas ${focalEntity}`,
-      steps: [
-        {
-          pelaku: customerActor,
-          aksi: `Menyampaikan catatan pengerjaan atau ketidaksesuaian spesifikasi fisik ${focalEntity} yang diterima`
-        },
-        {
-          pelaku: activeCore,
-          aksi: `Memeriksa laporan kendala teknis dan segera melakukan penyempurnaan pengerjaan ${focalEntity} hingga tuntas`
-        }
-      ]
+      id: 'alur_kendala_spesifik',
+      nama: title1,
+      steps: steps1
     },
     {
-      id: `alur_inspeksi_${focalEntity.replace(/\s+/g, '_')}`,
-      nama: `Inspeksi Kelayakan Instrumen Fisik & Restock Persediaan ${focalEntity}`,
+      id: 'alur_audit_sarana_spesifik',
+      nama: title2,
       steps: [
         {
           pelaku: activeCore,
-          aksi: `Mendata kondisi fisik peralatan kerja utama serta sisa stok bahan habis pakai operasional ${focalEntity}`
+          aksi: auditAction1
         },
         {
           pelaku: activeOwner,
-          aksi: `Menyetujui anggaran belanja pengadaan dan memastikan fasilitas operasional ${focalEntity} siap digunakan`
+          aksi: auditAction2
         }
       ]
     }
@@ -1311,125 +1033,44 @@ function generateSemanticSupportingFlows(
 }
 
 /**
- * Menghasilkan Fitur Pendukung berbasis analisis semantik (fallback offline jika AI tidak aktif).
+ * Menghasilkan Fitur Pendukung berbasis analisis semantik murni (fallback offline jika AI tidak aktif).
+ * Profil industri statik hardcoded telah DIHAPUS TOTAL untuk mencegah kebocoran domain asing.
  */
 function generateSemanticSupportingFeatures(
   session: MockupSessionState
 ): SupportingFeatureItem[] {
-  const domain = ((session as any).domain || session.match?.businessCategory || 'Layanan Operasional').trim();
-  const narrative = (session.storyline?.narasi || '').trim();
-  const fullText = `${domain} ${narrative}`.toLowerCase();
-
-  // 1. BARBERSHOP
-  if (
-    !/cuci.*mobil|car\s*wash|steam.*kendaraan|salon.*(?:mobil|kendaraan)/i.test(fullText) &&
-    /barber|cukur|pangkas|rambut/i.test(fullText)
-  ) {
-    return [
-      { id: 'feat_antrean_barber', label: 'Dasbor antrean pangkas rambut & pemilihan kapster/barber favorit' },
-      { id: 'feat_katalog_gaya', label: 'Katalog visual model gaya rambut & daftar tarif layanan grooming' },
-      { id: 'feat_struk_barber', label: 'Cetak struk pembayaran pangkas, cuci rambut, dan pembelian pomade (PDF)' },
-      { id: 'feat_wa_antrean_cukur', label: 'Notifikasi WhatsApp otomatis saat giliran nomor antrean pangkas tiba' },
-      { id: 'feat_komisi_barber', label: 'Rekapitulasi komisi bagi hasil barber harian dan rekap omzet mingguan' }
-    ];
-  }
-
-  // 2. STUDIO REKAMAN
-  if (/studio|rekaman|audio|mixing|vokal|sound/i.test(fullText)) {
-    return [
-      { id: 'feat_jadwal_shift_studio', label: 'Dasbor jadwal booking ruangan studio rekaman & pembagian shift sound engineer' },
-      { id: 'feat_log_take_audio', label: 'Pencatatan nomor take audio, daftar instrumen, dan tautan file master mentah' },
-      { id: 'feat_invoice_studio', label: 'Cetak invoice penyewaan studio rekaman, mixing, dan mastering lagu (PDF)' },
-      { id: 'feat_wa_reminder_studio', label: 'Notifikasi WhatsApp otomatis pengingat jam mulai sesi sewa ruang studio' },
-      { id: 'feat_rekap_jam_studio', label: 'Rekapitulasi jam produktif sewa studio dan performa pendapatan per ruangan' }
-    ];
-  }
-
-  // 3. KOLAM RENANG
-  if (/kolam|renang|waterpark/i.test(fullText)) {
-    return [
-      { id: 'feat_tiket_tiket_kolam', label: 'Loket pemindaian tiket masuk barcode & pemantauan kuota pengunjung kolam' },
-      { id: 'feat_sewa_loker_pelampung', label: 'Pencatatan sewa loker penitipan barang, kacamata renang, dan pelampung anak' },
-      { id: 'feat_struk_tiket_kolam', label: 'Cetak tiket masuk fisik dan nota penyewaan fasilitas kolam renang (PDF)' },
-      { id: 'feat_log_kaporit_air', label: 'Buku log harian pencatatan level kebersihan air, dosis kaporit, dan pH kolam' },
-      { id: 'feat_rekap_omzet_kolam', label: 'Rekapitulasi penjualan tiket harian dan pendapatan sewa fasilitas wahana air' }
-    ];
-  }
-
-  // 4. PET HOTEL
-  if (/pet|kucing|anjing|hewan/i.test(fullText)) {
-    return [
-      { id: 'feat_monitoring_kandang', label: 'Dasbor status okupansi kamar kandang & profil riwayat vaksinasi hewan' },
-      { id: 'feat_jadwal_pakan_obat', label: 'Jadwal harian pemberian pakan khusus, takaran vitamin, dan waktu jalan santai' },
-      { id: 'feat_kartu_inap_hewan', label: 'Cetak kartu registrasi penitipan hewan dan rincian biaya menginap (PDF)' },
-      { id: 'feat_wa_kondisi_anabul', label: 'Kirim foto dan pesan kabar kondisi harian hewan via WhatsApp ke pemilik' },
-      { id: 'feat_rekap_omzet_pet', label: 'Rekapitulasi omzet penitipan hewan, layanan salon mandi, dan penjualan pakan' }
-    ];
-  }
-
-  // 5. PERCETAKAN DIGITAL
-  if (/percetakan|cetak|banner|sablon/i.test(fullText)) {
-    return [
-      { id: 'feat_antrean_antrean_cetak', label: 'Papan antrean order cetak banner berdasarkan nomor mesin dan jenis bahan' },
-      { id: 'feat_kalkulator_meteran', label: 'Kalkulator otomatis hitung luas meteran banner, finishing mata ayam, dan stiker' },
-      { id: 'feat_spk_cetak_pdf', label: 'Cetak Surat Perintah Kerja (SPK) untuk operator mesin dan nota pemesan (PDF)' },
-      { id: 'feat_wa_order_selesai', label: 'Notifikasi WhatsApp otomatis saat pesanan banner atau sablon sudah selesai' },
-      { id: 'feat_rekap_konsumsi_tinta', label: 'Rekapitulasi penggunaan roll bahan baku meteran dan sisa volume tinta cetak' }
-    ];
-  }
-
-  // 6. RENTAL MOBIL
-  if (/rental|sewa.*(mobil|motor|kendaraan|armada)/i.test(fullText)) {
-    return [
-      { id: 'feat_dasbor_armada', label: 'Dasbor status armada (Tersedia, Disewa, Dalam Servis, Terlambat)' },
-      { id: 'feat_checklist_bodi', label: 'Checklist digital inspeksi bodi dan level BBM saat serah terima unit' },
-      { id: 'feat_cetak_perjanjian_sewa', label: 'Cetak surat perjanjian sewa mobil & kwitansi pembayaran resmi (PDF)' },
-      { id: 'feat_wa_pengingat_sewa', label: 'Notifikasi WhatsApp otomatis pengingat batas waktu pengembalian armada' },
-      { id: 'feat_rekap_utilisasi_armada', label: 'Rekapitulasi utilisasi armada sewa dan laba operasional bulanan' }
-    ];
-  }
-
-  // 7. CUCI MOBIL
-  if (/cuci.*mobil|car\s*wash|steam/i.test(fullText)) {
-    return [
-      { id: 'feat_antrean_pit_cuci', label: 'Dasbor antrean mobil di pit pencucian dan penugasan regu cuci' },
-      { id: 'feat_pilihan_paket_cuci', label: 'Katalog pilihan paket cuci (Body Wash, Kolong Salju, Jamur Kaca, Fogging)' },
-      { id: 'feat_struk_cuci_mobil', label: 'Cetak struk pembayaran cuci mobil dan voucher poin cuci gratis (PDF)' },
-      { id: 'feat_wa_selesai_cuci', label: 'Notifikasi WhatsApp otomatis saat mobil selesai dikeringkan dan siap diambil' },
-      { id: 'feat_komisi_regu_cuci', label: 'Rekapitulasi omzet harian dan perhitungan komisi bagi hasil regu pencuci' }
-    ];
-  }
-
-  // 8. KAFE / RESTORAN
-  if (/kafe|kopi|resto|makanan|kuliner/i.test(fullText)) {
-    return [
-      { id: 'feat_pos_kasir_kafe', label: 'POS kasir pencatatan meja kafe dan pengiriman tiket pesanan ke dapur/bar' },
-      { id: 'feat_buku_menu_digital', label: 'Katalog menu kopi, makanan utama, dan status ketersediaan bahan dapur' },
-      { id: 'feat_struk_split_bill', label: 'Cetak struk kasir pemesanan kafe dan dukungan hitung pisah tagihan (PDF)' },
-      { id: 'feat_opname_bahan_dapur', label: 'Pencatatan opname sisa biji kopi, susu segar, dan stok daging dapur' },
-      { id: 'feat_laporan_menu_laris', label: 'Rekapitulasi menu terlaris dan laporan omzet harian kafe' }
-    ];
-  }
-
-  // 9. KOPERASI
-  if (/koperasi|simpan\s*pinjam|kredit/i.test(fullText)) {
-    return [
-      { id: 'feat_kartu_pinjaman_anggota', label: 'Buku besar kartu riwayat angsuran, sisa pokok kredit, dan mutasi simpanan' },
-      { id: 'feat_simulasi_angsuran_pdf', label: 'Cetak jadwal amortisasi angsuran kredit dan akad perjanjian pinjaman (PDF)' },
-      { id: 'feat_kuitansi_setoran_koperasi', label: 'Cetak bukti transaksi setoran simpanan wajib/pokok dan pencairan pinjaman' },
-      { id: 'feat_wa_jatuh_tempo_koperasi', label: 'Notifikasi WhatsApp pengingat tanggal jatuh tempo pembayaran cicilan' },
-      { id: 'feat_neraca_likuiditas_koperasi', label: 'Rekapitulasi neraca saldo kas, total penyaluran kredit, dan rasio NPL' }
-    ];
-  }
-
-  // 10. UNIVERSAL FALLBACK
+  const domain = ((session as any).domain || session.match?.businessCategory || 'Operasional Bisnis').trim();
+  const mainFlow = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
   const slug = domain.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15);
+
+  let focalEntity = domain;
+  if (/pinjaman|simpanan|kredit/i.test(mainFlow)) focalEntity = 'Pinjaman & Simpanan';
+  else if (/armada|mobil|kendaraan/i.test(mainFlow)) focalEntity = 'Unit Armada';
+  else if (/kandang|hewan|pakan/i.test(mainFlow)) focalEntity = 'Penitipan Hewan';
+  else if (/potong|cukur|rambut/i.test(mainFlow)) focalEntity = 'Pangkas Rambut';
+  else if (/cetak|banner/i.test(mainFlow)) focalEntity = 'Order Cetakan';
+
   return [
-    { id: `feat_antrean_${slug}`, label: `Dasbor pemantauan antrean dan jadwal aktivitas operasional ${domain} harian` },
-    { id: `feat_riwayat_${slug}`, label: `Pencarian cepat riwayat transaksi, catatan penanganan, dan spesifikasi ${domain}` },
-    { id: `feat_cetak_${slug}`, label: `Cetak lembar bukti transaksi, nota resmi, atau surat konfirmasi ${domain} (PDF)` },
-    { id: `feat_wa_${slug}`, label: `Notifikasi WhatsApp otomatis pengingat jadwal dan pembaruan status pengerjaan ${domain}` },
-    { id: `feat_ekspor_${slug}`, label: `Ekspor laporan performa operasional dan rekapitulasi penerimaan ${domain} ke format Excel` }
+    {
+      id: `feat_monitoring_${slug}`,
+      label: `Dasbor pemantauan antrean transaksi dan status proses ${focalEntity} secara real-time`
+    },
+    {
+      id: `feat_riwayat_${slug}`,
+      label: `Buku besar pencatatan riwayat transaksi, mutasi berkas, dan kartu catatan ${focalEntity}`
+    },
+    {
+      id: `feat_dokumen_${slug}`,
+      label: `Cetak lembar bukti transaksi resmi, kuitansi, invoice, dan dokumen berita acara ${focalEntity} (PDF)`
+    },
+    {
+      id: `feat_notifikasi_${slug}`,
+      label: `Notifikasi WhatsApp otomatis pengingat jadwal, jatuh tempo, atau pembaruan status pengerjaan ${focalEntity}`
+    },
+    {
+      id: `feat_rekap_${slug}`,
+      label: `Rekapitulasi performa harian, ringkasan saldo keuangan/omzet, dan ekspor laporan berkala ${domain}`
+    }
   ];
 }
 
