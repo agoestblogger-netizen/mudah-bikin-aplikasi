@@ -397,7 +397,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 1. STRUKTUR ALUR CERITA LENGKAP END-TO-END BERTAHAP (WAJIB 3 FASE - DILARANG MELOMPAT):
    Narasi cerita (2-4 kalimat) DILARANG melompat langsung ke tengah proses (seperti langsung menimbang barang di timbangan atau langsung cetak nota kasir). Cerita WAJIB merangkai alur lengkap berkesinambungan yang memuat 3 tahapan kronologis:
    a) Fase Pembuka (Titik Awal Interaksi):
-      Pelanggan/warga/sumber barang mendatangi tempat usaha membawa barang/kebutuhan, atau petugas armada mendatangi lokasi sumber barang untuk penjemputan.
+      Pelanggan/warga/sumber barang mendatangi tempat usaha membawa barang/kebutuhan, atau petugas lapangan mendatangi lokasi sumber barang untuk penjemputan.
    b) Fase Inti Operasional (Penanganan Fisik & Layanan Lapangan):
       Staf/petugas memeriksa kondisi fisik, memilah jenis material/layanan, dan menimbang/menguji kelayakan dengan alat ukur presisi di tempat.
    c) Fase Penutup (Penyelesaian Transaksi & Rekonsiliasi):
@@ -850,14 +850,14 @@ ATURAN WAJIB (PRINSIP KUMULATIF & PRESERVASI MUTLAK):
    - Anda WAJIB MEMPERTAHANKAN SEMUA detail fakta operasional, aktivitas fisik nyata, lokasi kerja (misal: rumah warga vs gudang vs toko), alur kerja, dan nama peran yang SUDAH ADA di Cerita Sebelumnya.
    - Masukan / koreksi pengguna HANYA menambal, mengoreksi, atau menambahkan bagian spesifik yang secara eksplisit disinggung.
    - DILARANG KERAS MENGHAPUS, MENYEDERHANAKAN, ATAU MENGUBAH detail fakta yang tidak disinggung pengguna!
-     * Contoh: Jika di cerita sebelumnya sudah ada detail "disetor ke gudang untuk ditimbang ulang dan dipilah", dan koreksi pengguna terbaru hanya membahas "pembayaran langsung di depan rumah warga", Anda WAJIB TETAP MEMPERTAHANKAN alur setor ke gudang, penimbangan ulang, dan pemilahan tersebut secara utuh!
-     * Jangan pernah menghilangkan alur lanjutan ke gudang, sortir barang, pengepul, atau rekonsiliasi kas yang sudah pernah ada di putaran sebelumnya.
+     * Contoh: Jika di cerita sebelumnya sudah ada detail tahapan lanjutan (misal: verifikasi akhir atau serah terima), dan koreksi pengguna terbaru hanya membahas perubahan pada tahap awal transaksi, Anda WAJIB TETAP MEMPERTAHANKAN seluruh tahapan lanjutan yang tidak dikoreksi secara utuh!
+     * Jangan pernah menghilangkan alur lanjutan, pengecekan, atau rekonsiliasi yang sudah pernah disepakati di putaran sebelumnya kecuali pengguna secara eksplisit meminta menghapusnya.
 
-2. FLEKSIBILITAS LOKASI & WAKTU PEMBAYARAN:
-   - Waktu dan lokasi pembayaran WAJIB mengikuti instruksi pengguna dan logika operasional bisnis nyata:
-     * Jika pengguna menyatakan pembayaran dilakukan di tempat / di rumah warga saat penjemputan barang, MAKA pembayaran tersebut terjadi langsung di sana setelah timbang awal.
-     * DILARANG memindahkan pembayaran ke gudang atau ke akhir alur jika pengguna sudah menegaskan pembayaran terjadi di depan / di rumah warga!
-     * Alur lanjutan di gudang/kantor adalah untuk penimbangan ulang, sortir kategori barang, dan rekonsiliasi kas/stok harian.
+2. FLEKSIBILITAS LOKASI & WAKTU PELAKSANAAN:
+   - Waktu dan titik transaksi WAJIB mengikuti instruksi pengguna dan logika operasional bisnis nyata:
+     * Jika pengguna menyatakan suatu aksi dilakukan di tempat tertentu pada awal alur, MAKA aksi tersebut terjadi di sana sesuai penegasan pengguna.
+     * DILARANG memindahkan atau menunda tahapan jika pengguna sudah menegaskan waktu atau lokasinya!
+     * Alur lanjutan adalah untuk pemrosesan berikutnya, pencatatan akhir, dan rekonsiliasi berkala pemilik.
 
 3. STRUKTUR LENGKAP TANPA PEMOTONGAN (3-6 KALIMAT):
    - Rangkai kembali cerita secara utuh dari hulu ke hilir dengan 3-6 kalimat lengkap yang kaya detail konkret.
@@ -866,11 +866,11 @@ ATURAN WAJIB (PRINSIP KUMULATIF & PRESERVASI MUTLAK):
 4. NADA HANGAT & BERSAHABAT: Tanggapi koreksi pengguna dengan positif, apresiatif, dan suportif.
 
 5. PERAN DAN ALUR SPESIFIK:
-   - asumsiAktor WAJIB mencantumkan nama pekerjaan nyata (contoh: "Pengumpul Barang Rosok", "Pengepul / Petugas Gudang", "Warga Penjual", bukan sekadar "Staf Operasional"). Selalu sertakan "Super Admin".
+   - asumsiAktor WAJIB mencantumkan nama pekerjaan nyata sesuai domain bisnis pengguna (bukan sekadar label generik polos jika ada peran spesifik yang disebutkan di cerita). Selalu sertakan "Super Admin".
    - asumsiAlurUtama WAJIB urutan aksi fisik nyata di lokasi kerja yang mencerminkan keseluruhan alur secara kumulatif.
 
 6. ATURAN SELF-CHECK EKSPLISIT:
-   "Sebelum menampilkan cerita, cek: Apakah ada fakta lama dari Cerita Sebelumnya yang hilang atau mundur? Jika ada yang hilang (misal proses gudang atau bayar di tempat), tambahkan kembali sebelum mengirim hasil."
+   "Sebelum menampilkan cerita, cek: Apakah ada fakta lama dari Cerita Sebelumnya yang hilang atau mundur? Jika ada yang hilang, tambahkan kembali sebelum mengirim hasil."
 
 7. TANPA ISTILAH TEKNIS: DILARANG KERAS menggunakan istilah teknis IT/coding/database (seperti CRUD, database, API, tabel, skema, backend). Ceritakan alur aktivitas kerja nyata manusia!
 
@@ -1232,8 +1232,8 @@ ATURAN WAJIB & LARANGAN MUTLAK:
      * "Standar Operasional Penunjang [X]"
      * Frasa payung umum lainnya yang cuma menempelkan nama domain di akhir kalimat!
    - JUDUL ALUR PENDUKUNG WAJIB MENYEBUTKAN SECARA EKSPLISIT:
-     a. Nama peralatan kerja fisik, instrumen, atau bahan konsumsi nyata (contoh: "Restock Silet Cukur, Pisau Clipper & Pomade", "Kalibrasi Mixer & Perawatan Kabel Audio", "Restock Tinta Banner & Pembersihan Head Printer", "Pengadaan Kaporit Kolam & Perawatan Pompa Sirkulasi", "Jadwal Ganti Oli & Pemeriksaan Ban Armada", "Restock Biji Kopi Espresso & Perawatan Suhu Chiller").
-     b. ATAU bentuk kendala / komplain fisik nyata yang dihadapi konsumen (contoh: "Klaim Ulang Potong Gratis jika Rambut Kurang Rapi", "Koreksi Retake Audio Vokal & Re-balancing Frekuensi", "Cetak Ulang Cepat jika Warna Luntur atau Format Rusak", "Uji Kebersihan Air & Pengurasan Endapan Dasar Kolam", "Penanganan Keterlambatan Pengembalian, Denda & Klaim Bodi Armada", "Penggantian Pesanan Salah & Garansi Cita Rasa Masakan").
+     a. Nama peralatan kerja fisik, instrumen, atau bahan konsumsi nyata (contoh: "Restock Silet Cukur, Pisau Clipper & Pomade", "Kalibrasi Mixer & Perawatan Kabel Audio", "Restock Tinta Banner & Pembersihan Head Printer", "Pengadaan Kaporit Kolam & Perawatan Pompa Sirkulasi", "Kalibrasi Mesin & Perawatan Alat Produksi", "Restock Biji Kopi Espresso & Perawatan Suhu Chiller").
+     b. ATAU bentuk kendala / komplain fisik nyata yang dihadapi konsumen (contoh: "Klaim Ulang Potong Gratis jika Rambut Kurang Rapi", "Koreksi Retake Audio Vokal & Re-balancing Frekuensi", "Cetak Ulang Cepat jika Warna Luntur atau Format Rusak", "Uji Kebersihan Air & Pengurasan Endapan Dasar Kolam", "Penanganan Barang Cacat & Garansi Penggantian Produk", "Penggantian Pesanan Salah & Garansi Cita Rasa Masakan").
 
 3. SELF-CHECK SEBELUM MENGELUARKAN OUTPUT (SANGAT KRUSIAL):
    - Lakukan pengujian berikut pada setiap judul alur pendukung Anda sebelum mengeluarkan JSON:
@@ -1730,18 +1730,18 @@ ATURAN WAJIB & LARANGAN MUTLAK:
    DILARANG KERAS membuat kolom untuk peran yang tidak ada di daftar ini! Peran eksternal yang tidak dipakai dilarang muncul!
 
 2. PEMISAHAN MODUL FUNGSIONAL (SEPARATION OF DUTIES):
-   - Jika suatu proses alur kerja melibatkan serah-terima atau pergantian pelaku (contoh: Pelanggan/Penyewa membuat booking/reservasi → Petugas melakukan inspeksi fisik/serah-terima unit/layanan), DILARANG KERAS menggabungkannya ke dalam 1 baris modul!
-   - WAJIB dipecah menjadi modul-modul fungsional terpisah:
-     * Modul Pengguna Luar / Self-Service (misal: "Pengajuan & Reservasi Unit" atau "Pemesanan Layanan Mandiri")
-     * Modul Operasional Internal Staf (misal: "Inspeksi Fisik & Serah-Terima Armada" atau "Pelaksanaan Pengerjaan Layanan")
-   - Modul hanya digabung jika mengelola objek data yang sama dengan hirarki otorisasi (misal: "Manajemen Katalog Layanan / Tarif").
+   - Jika suatu proses alur kerja melibatkan pergantian pelaku atau serah-terima tanggung jawab (contoh abstrak: Role Pemohon membuat pengajuan awal → Role Staf Operasional memverifikasi dan mengeksekusi layanan), DILARANG KERAS menggabungkannya ke dalam 1 baris modul!
+   - WAJIB dipecah menjadi modul-modul fungsional terpisah berdasarkan tanggung jawab pelaku:
+     * Modul Layanan Mandiri Pemohon (misal: "Pengajuan & Permohonan Mandiri" atau "Pemesanan Layanan Mandiri")
+     * Modul Operasional Internal Staf (misal: "Verifikasi Berkas & Pemrosesan Layanan" atau "Pelaksanaan Tugas Lapangan")
+   - Modul hanya digabung jika mengelola objek data referensi/katalog yang sama dengan hirarki otorisasi (misal: "Manajemen Data Master / Katalog Tarif").
 
 3. ACTION-SCOPED PERMISSIONS (DILARANG KERAS CRUD GENERIK):
    - DILARANG KERAS menuliskan label izin generik polos seperti "Create, Read", "CRUD", "Read Only", "Akses Penuh", "View, Edit".
    - Setiap izin WAJIB menyebutkan CAKUPAN DATA (SCOPE) dan TINDAKAN SPESIFIK:
-     * Untuk Pelanggan / Customer / Anggota / Penyewa: "Buat & Pantau (Milik Sendiri)" atau "Input Form & Upload Berkas (Milik Sendiri)". Role publik TIDAK BOLEH memiliki akses ke modul operasional internal staf!
-     * Untuk Staf Operasional: "Verifikasi Berkas & Eksekusi Lapangan (Semua Data Aktif)" atau "Input Hasil Inspeksi & Catat Pengembalian".
-     * Untuk Pemilik / Super Admin: "Supervisi, Otorisasi Pembatalan, & Audit Penuh" atau "Pengaturan Master Data & Kontrol Penuh".
+     * Untuk Peran Publik / Pemohon / Pengguna Luar: "Buat & Pantau (Milik Sendiri)" atau "Input Form & Upload Berkas (Milik Sendiri)". Role publik TIDAK BOLEH memiliki akses ke modul operasional internal staf!
+     * Untuk Staf Operasional / Eksekutor Internal: "Verifikasi Berkas & Eksekusi Operasional (Semua Data Aktif)" atau "Catat Hasil Pelaksanaan & Pembaruan Status (Data Bertugas)".
+     * Untuk Pemilik / Super Admin / Pimpinan: "Supervisi, Otorisasi Pembatalan, & Audit Penuh" atau "Pengaturan Master Data & Kontrol Penuh".
      * Jika role TIDAK BERHAK / tidak terlibat pada modul tersebut: tulis "-" atau "Tidak Memiliki Akses".
 
 4. JUMLAH MODUL PROPORSIONAL:
@@ -2106,10 +2106,9 @@ ${existingRoles.length > 0 ? `\nDAFTAR PERAN LAIN YANG SUDAH ADA DI SISTEM:\n${e
 PRINSIP WAJIB & STRICT RULES:
 1. GROUNDED KE ALUR CERITA BISNIS NYATA (BUKAN KEMIRIPAN STRING / NAMA KATA):
    Analisis fungsi peran WAJIB berdasarkan posisi, peran, dan aktivitas pihak tersebut dalam alur proses bisnis di atas.
-   - DILARANG KERAS menyimpulkan fungsi peran hanya dari kemiripan nama kata!
-   - Contoh: "Pengepul" BUKAN pengumpul keliling jalanan, melainkan pihak penampung/penerima setoran barang rosok di pos/gudang penampungan dari para kolektor armada.
-   - "Sopir" pada rental kendaraan adalah pengemudi armada untuk perjalanan penumpang, BUKAN kurir pengantar barang/paket ekspedisi.
-   - "Petugas Pembeli" pada bisnis barang rosok adalah petugas penimbang/pembeli barang bekas di lapangan, BUKAN pelanggan cuci mobil.
+   - DILARANG KERAS menyimpulkan fungsi peran hanya dari kemiripan nama kata atau stereotipe peran di industri lain!
+   - Analisis fungsi peran secara ketat berdasarkan konteks narasi dan alur bisnis yang diberikan pengguna di atas.
+   - Jika suatu peran bertindak sebagai penerima/penampung atau pemeriksa hasil kerja peran lain, posisikan perannya sesuai tanggung jawab penerimaan dan pengawasan tersebut.
 
 2. ZERO TECH JARGON (BAHASA MANUSIAWI):
    Gunakan bahasa Indonesia yang santun, hangat, konkret, dan profesional.
@@ -2120,8 +2119,8 @@ PRINSIP WAJIB & STRICT RULES:
    - "narasi": 1-2 kalimat konkret yang menjelaskan posisi dan fungsi peran dalam operasional bisnis tersebut.
    - "tanggungJawab": 2-3 butir tugas operasional konkret yang dijalankan peran tersebut sehari-hari.
 
-4. PERAN EKSTERNAL / PELANGGAN / WARGA / PENYEWA / PASIEN:
-   Jika peran adalah pihak luar yang dilayani (customer / counterparty), deskripsi dan butir tanggung jawabnya adalah tindakan pengguna layanan (misal: memesan, menyewa, membayar, atau menerima hasil layanan), BUKAN pekerjaan operasional staf internal.
+4. PERAN EKSTERNAL / PENGGUNA LAYANAN (CUSTOMER / KLIEN):
+   Jika peran adalah pihak luar yang dilayani (customer / counterparty / pengguna layanan), deskripsi dan butir tanggung jawabnya adalah tindakan pengguna layanan (misal: memesan layanan, mengajukan permohonan, membayar transaksi, atau menerima hasil layanan), BUKAN pekerjaan operasional staf internal.
 
 5. PERAN SUPER ADMIN / OWNER (PENGATURAN USER/PENGGUNA WAJIB DI SEMUA DOMAIN):
    Jika peran adalah Super Admin atau Pemilik Usaha, butir tanggung jawab WAJIB SELALU secara eksplisit mencantumkan pengaturan pengguna/user (mendaftarkan akun pengguna, penugasan staf, dan penetapan hak akses aplikasi).
@@ -2132,7 +2131,7 @@ PRINSIP WAJIB & STRICT RULES:
 7. PENGECEKAN KEMIRIPAN (isSimilar, similarRoleName, similarityExplanation):
    ${existingRoles.length > 0 ? `Bandingkan peran baru dengan daftar peran yang sudah ada di atas:
    - Kemiripan HANYA bernilai true jika kedua peran berada di posisi SETARA dan melakukan PEKERJAAN OPERASIONAL YANG SAMA (contoh: "Kasir Pembayaran" vs "Kasir", "Juru Masak" vs "Koki").
-   - HIERARKI / RANTAI PASOK DILARANG DIANGGAP MIRIP: Jika peran baru adalah penampung/penerima dari peran lain (misal: kolektor keliling tingkat 1 vs pengepul penampung tingkat 2), ini adalah BEDA LEVEL/FUNGSI, set isSimilar = false.
+   - HIERARKI / RANTAI PROSES DILARANG DIANGGAP MIRIP: Jika peran baru adalah penampung/penerima/pengawas dari peran lain (misal: pelaksana lapangan vs koordinator penampung), ini adalah BEDA LEVEL/FUNGSI, set isSimilar = false.
    - Jika peran baru berbeda jelas fungsinya: set isSimilar = false.` : 'Set isSimilar = false, similarRoleName = null, similarityExplanation = null.'}
 
 Keluarkan HANYA format JSON valid tanpa markdown tambahan di luar JSON:
