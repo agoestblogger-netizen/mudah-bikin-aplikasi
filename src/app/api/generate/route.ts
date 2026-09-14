@@ -54,6 +54,41 @@ function buildOpenAICompatHeaders(apiKey: string | undefined, isOpenRouter: bool
 export const getGeminiModel = (): string => process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
 export const getOpenAIModel = (): string => process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
 
+// =============================================================================
+// POIN B: Per-Model Max Output Token Cap (berdasarkan batas riil tiap model)
+// Jangan pernah set nilai di atas batas riil model — bisa menyebabkan HTTP 400.
+// =============================================================================
+export function getMaxOutputTokens(modelId: string): number {
+  const id = modelId.toLowerCase();
+
+  // --- Grup 4.096: Model dengan batas output ketat (free tier / model kecil) ---
+  if (
+    id.includes('mistral-7b') ||
+    id.includes('mistral-instruct') ||
+    id.includes('mistral-large') ||    // Mistral Large standard cap 4K via OR
+    id.includes('gemma-2') ||          // Gemma 2 9B: total context 8K → sisakan untuk input
+    id === 'openrouter/free'           // Auto-router: tidak diketahui modelnya
+  ) return 4096;
+
+  // --- Grup 8.192: Model yang hardcap di 8K (termasuk Claude 3.5 series) ---
+  if (
+    id.includes('claude-3.5') ||       // Claude 3.5 Sonnet & Haiku: hard cap 8.192
+    id.includes('claude-3-5') ||
+    id.includes('deepseek-chat') ||    // DeepSeek V3 via OpenRouter provider cap
+    id.includes('deepseek-r1') ||      // DeepSeek R1 via OpenRouter provider cap
+    id.includes('deepseek/deepseek') || // Semua varian deepseek via OR
+    id.includes('qwen') ||             // Qwen 2.5 Coder: 8K-32K, pakai 8K konservatif
+    id.includes('llama-3.3') ||        // Llama 3.3 70B: 4K-16K, pakai 8K konservatif
+    id.includes('llama-3') ||
+    id.includes('llama3')
+  ) return 8192;
+
+  // --- Grup 16.384: Model yang mendukung output panjang ---
+  // GPT-4o series, GPT-5, Claude 3.7+, Gemini 2.5, o1/o3
+  return 16384;
+}
+
+
 export const maxDuration = 300; // 300 detik (5 menit) dengan Vercel Fluid Compute
 
 // Helper: Memverifikasi apakah output kode AI terpotong atau mengalami syntax error di titik potong
@@ -1927,10 +1962,12 @@ ${staffLandingGuide}
         model: activeOpenAIModel,
         messages
       };
+      // POIN B: gunakan batas output riil per model (bukan flat 8192)
+      const codeGenMaxTokens = getMaxOutputTokens(activeOpenAIModel);
       if (isOpenRouter) {
-        reqBody.max_tokens = isIdeationMode ? 1024 : 8192;
+        reqBody.max_tokens = isIdeationMode ? 1024 : codeGenMaxTokens;
       } else {
-        reqBody.max_completion_tokens = isIdeationMode ? 1024 : 8192;
+        reqBody.max_completion_tokens = isIdeationMode ? 1024 : codeGenMaxTokens;
       }
       const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
       if (!isReasoning) {
@@ -2006,9 +2043,9 @@ ${staffLandingGuide}
             messages: continuationMessages
           };
           if (isOpenRouter) {
-            contReqBody.max_tokens = 8192;
+            contReqBody.max_tokens = codeGenMaxTokens;
           } else {
-            contReqBody.max_completion_tokens = 8192;
+            contReqBody.max_completion_tokens = codeGenMaxTokens;
           }
           if (!isReasoning) contReqBody.temperature = 0.2;
 
@@ -2158,9 +2195,9 @@ INSTRUKSI PERBAIKAN WAJIB:
           messages: repairPrompt
         };
         if (isOpenRouter) {
-          repairReqBody.max_tokens = 8192;
+          repairReqBody.max_tokens = getMaxOutputTokens(activeOpenAIModel);
         } else {
-          repairReqBody.max_completion_tokens = 8192;
+          repairReqBody.max_completion_tokens = getMaxOutputTokens(activeOpenAIModel);
         }
         const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
         if (!isReasoning) repairReqBody.temperature = 0.2;
@@ -2290,8 +2327,10 @@ INSTRUKSI PERBAIKAN WAJIB:
                 { role: 'user', content: targetedRepairInstruction }
               ];
               const tReqBody: Record<string, any> = { model: activeOpenAIModel, messages: targetedMessages };
-              if (isOpenRouter) tReqBody.max_tokens = 4096;
-              else tReqBody.max_completion_tokens = 4096;
+              // Targeted repair hanya butuh kode fungsi saja, tapi tetap sesuaikan dengan batas model
+              const targetedRepairMaxTokens = Math.min(getMaxOutputTokens(activeOpenAIModel), 8192); // Cukup untuk implementasi fungsi
+              if (isOpenRouter) tReqBody.max_tokens = targetedRepairMaxTokens;
+              else tReqBody.max_completion_tokens = targetedRepairMaxTokens;
               const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
               if (!isReasoning) tReqBody.temperature = 0.2;
 
