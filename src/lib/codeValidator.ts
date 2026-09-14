@@ -50,41 +50,33 @@ function injectBeforeLastScriptClose(html: string, code: string): string {
   return sanitizedHtml + `\n<script>\n${code}\n</script>\n</body>\n</html>`;
 }
 
+/**
+ * Ekstrak nama-nama fungsi yang hilang (MISMATCH_HANDLER) dari issues array.
+ * Di-export agar route.ts bisa menggunakannya untuk targeted AI repair call
+ * tanpa harus menyuntik stub kosong yang menyesatkan user.
+ */
+export function extractMissingHandlers(issues: string[]): string[] {
+  const missing: string[] = [];
+  for (const issue of issues) {
+    const m = issue.match(/MISMATCH_HANDLER:\s*Fungsi\s*["']([^"']+)["']/i);
+    if (m && m[1] && !missing.includes(m[1])) missing.push(m[1]);
+  }
+  return missing;
+}
+
+/**
+ * @deprecated JANGAN GUNAKAN — Fungsi ini menyuntik stub kosong yang membuat
+ * prototipe terlihat "lolos" validasi padahal fungsionalnya rusak.
+ * Gunakan extractMissingHandlers() + targeted AI repair di route.ts.
+ * Dipertahankan sementara agar tidak ada import error; akan dihapus sepenuhnya
+ * setelah semua caller dimigrasikan.
+ */
 export function injectMissingHandlerStubs(html: string, issues: string[]): string {
-  const missingHandlers: string[] = [];
-  issues.forEach(issue => {
-    const matchHandler = issue.match(/MISMATCH_HANDLER:\s*Fungsi\s*["']([^"']+)["']/i);
-    if (matchHandler && matchHandler[1]) missingHandlers.push(matchHandler[1]);
-  });
-  if (missingHandlers.length === 0 || !html.includes('</script>')) return html;
-
-  let fallbackScript = '\n    // --- AUTO-PATCH SELF-HEALING HANDLERS ---\n';
-  missingHandlers.forEach(fn => {
-    const isModalClose = /tutup|close|batal/i.test(fn);
-    const isModalOpen = /buka|open|tambah|edit/i.test(fn);
-    const isPaymentOrProcess = /proses|bayar|checkout|selesai/i.test(fn);
-
-    fallbackScript += `    function ${fn}(...args) {\n`;
-    fallbackScript += `      console.log('[Auto-Handler] Dipanggil: ${fn}', args);\n`;
-    if (isModalClose) {
-      fallbackScript += `      document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');\n`;
-    } else if (isModalOpen) {
-      fallbackScript += `      const m = document.querySelector('.modal'); if (m) m.style.display = 'flex';\n`;
-    } else if (isPaymentOrProcess) {
-      fallbackScript += `      if (typeof showToast === 'function') showToast('Transaksi/Aksi berhasil diproses!', 'success');\n`;
-      fallbackScript += `      else alert('Transaksi/Aksi berhasil diproses!');\n`;
-      fallbackScript += `      if (typeof render === 'function') { try { render(); } catch(e){} }\n`;
-      fallbackScript += `      else if (typeof renderTable === 'function') { try { renderTable(); } catch(e){} }\n`;
-    } else {
-      fallbackScript += `      if (typeof showToast === 'function') showToast('Aksi ' + '${fn}' + ' berhasil dijalankan!', 'success');\n`;
-      fallbackScript += `      else alert('Aksi ' + '${fn}' + ' berhasil dijalankan!');\n`;
-      fallbackScript += `      if (typeof render === 'function') { try { render(); } catch(e){} }\n`;
-    }
-    fallbackScript += `    }\n`;
-  });
-  fallbackScript += '    // ----------------------------------------\n';
-
-  return injectBeforeLastScriptClose(html, fallbackScript);
+  // Fungsi ini SENGAJA dibuat no-op (mengembalikan html tanpa perubahan)
+  // agar stub palsu tidak bisa lolos diam-diam ke user.
+  // Lihat POIN A pada dokumen perbaikan generate kode untuk konteks lengkapnya.
+  void issues; // suppress unused warning
+  return html;
 }
 
 /**

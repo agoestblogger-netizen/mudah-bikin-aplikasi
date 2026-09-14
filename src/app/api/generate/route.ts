@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { validateAndRepairGeneratedCode, injectMissingHandlerStubs } from '@/lib/codeValidator';
+import { validateAndRepairGeneratedCode, extractMissingHandlers } from '@/lib/codeValidator';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { getUserFromRequest } from '@/lib/supabase/user';
@@ -1702,19 +1702,22 @@ ${staffLandingGuide}
         return true;
       }
 
-      if (fbValidated) {
-        const healedHtml = injectMissingHandlerStubs(fbValidated.repairedCode?.html || fbHtml, fbValidated.issues);
-        if (healedHtml !== (fbValidated.repairedCode?.html || fbHtml)) {
-          const healedValidated = validateAndRepairGeneratedCode(healedHtml, '', '', officialRoles);
-          if (healedValidated && healedValidated.isValid) {
-            htmlCode = healedHtml;
-            assistantMessage = msg;
-            validated = healedValidated;
-            usedDefaultFallback = true;
-            actualProviderUsed = providerName;
-            return true;
-          }
-        }
+      // Jika tidak 100% valid tapi secara struktural lengkap (ada tag penutup, tidak syntax error),
+      // terima fallback ini dan biarkan logika downstream (targeted repair / partial warning jujur) menanganinya.
+      const isStructurallyOk = Boolean(
+        fbValidated &&
+        fbValidated.repairedCode?.html &&
+        fbValidated.repairedCode.html.includes('</html>') &&
+        fbValidated.repairedCode.html.includes('</script>') &&
+        !fbValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'))
+      );
+      if (isStructurallyOk) {
+        htmlCode = fbValidated.repairedCode?.html || fbHtml;
+        assistantMessage = msg;
+        validated = fbValidated;
+        usedDefaultFallback = true;
+        actualProviderUsed = providerName;
+        return true;
       }
 
       console.warn(
@@ -2204,33 +2207,164 @@ INSTRUKSI PERBAIKAN WAJIB:
       await tryServerDefaultFallback(`validasi gagal (${validated.issues.slice(0, 2).join('; ').slice(0, 120)})`);
     }
 
-    // SELF-HEALING FINAL PASS: Jika setelah upaya perbaikan AI masih menyisakan MISMATCH_HANDLER atau MISMATCH_DOM_ID,
-    // lakukan auto-patch fallback cerdas agar user tidak dihadapkan pada layar error dan prototipe tetap dapat dijalankan 100%!
+    // =========================================================================
+    // SELF-HEALING FINAL PASS (POIN A — Kejujuran ke User)
+    // Setelah semua upaya repair (continuation + NFR-10b AI repair + server fallback),
+    // jika masih ada MISMATCH_HANDLER yang tersisa:
+    //   Opsi 1: Targeted AI call khusus untuk mengisi implementasi fungsi yang hilang
+    //   Opsi 2: Jika Opsi 1 gagal — tampilkan kode apa adanya + peringatan jujur ke user
+    // DILARANG lagi menyuntik stub kosong yang membuat prototipe terlihat jalan padahal cacat.
+    // =========================================================================
+    let partialWarningFunctions: string[] = []; // Fungsi yang tetap hilang setelah semua upaya
+
     if (!isStage1AwaitingConfirmation && validated && !validated.isValid && htmlCode && htmlCode.includes('</html>') && htmlCode.includes('</script>')) {
       const hasSyntaxError = validated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
       const hasCriticalSwap = validated.issues.some(i => i.startsWith('CRITICAL_ACTION_SWAP'));
       const hasRoleContamination = validated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
 
+      // Hanya lanjutkan self-healing jika tidak ada isu kritis yang lebih parah
       if (!hasSyntaxError && !hasCriticalSwap && !hasRoleContamination) {
-        const patchedHtml = injectMissingHandlerStubs(validated.repairedCode?.html || htmlCode, validated.issues);
+        const missingHandlers = extractMissingHandlers(validated.issues);
 
-        // Re-validasi setelah self-healing patch
-        const reValidated = validateAndRepairGeneratedCode(patchedHtml, '', '', officialRoles);
-        if (reValidated.isValid || !reValidated.issues.some(i => i.startsWith('SYNTAX_ERROR') || i.startsWith('CRITICAL_ACTION_SWAP'))) {
-          validated = reValidated;
-          htmlCode = patchedHtml;
+        if (missingHandlers.length > 0) {
+          // --- OPSI 1: Targeted AI call — generate implementasi nyata hanya untuk fungsi yang hilang ---
+          let targetedRepairSuccess = false;
+          const targetedProvider = actualProviderUsed;
+
+          const missingHandlerContext = missingHandlers.map(fn => `- function ${fn}(...args) { /* implementasikan sesuai konteks aplikasi */ }`).join('\n');
+          const targetedRepairInstruction = `PERINGATAN: Fungsi-fungsi berikut dipanggil di atribut onclick HTML tetapi BELUM DIDEFINISIKAN di dalam tag <script>:\n${missingHandlerContext}\n\nINSTRUKSI:\n1. Tulis HANYA definisi fungsi-fungsi di atas yang hilang tersebut — dengan implementasi NYATA sesuai konteks dan array data aplikasi ini (bukan stub kosong).\n2. Setiap fungsi WAJIB memiliki logika yang benar-benar berfungsi: manipulasi array state, buka/tutup modal yang ada, panggil render(), dan showToast().\n3. JANGAN mengulangi kode HTML/CSS — cukup tulis blok <script> berisi fungsi-fungsi yang hilang saja.\n4. Format output: hanya blok JavaScript murni (tanpa \\\`\\\`\\\`html atau tag HTML lain).`;
+
+          try {
+            if (targetedProvider === 'gemini' && geminiApiKey) {
+              const targetedRepairContents = [
+                ...geminiContents,
+                { role: 'model', parts: [{ text: assistantMessage }] },
+                { role: 'user', parts: [{ text: targetedRepairInstruction }] }
+              ];
+              const tRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${activeGeminiModel}:generateContent?key=${geminiApiKey}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: targetedRepairContents,
+                    generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
+                  })
+                }
+              );
+              if (tRes.ok) {
+                const tData = await tRes.json();
+                const tMsg: string = tData.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || '';
+                if (tMsg && tMsg.trim().length > 20) {
+                  // Ekstrak blok JS dari respons (bisa berupa ```javascript ... ``` atau kode polos)
+                  let injectedJs = tMsg;
+                  const jsBlockMatch = tMsg.match(/```(?:javascript|js)?([\s\S]*?)```/);
+                  if (jsBlockMatch) injectedJs = jsBlockMatch[1];
+                  else injectedJs = tMsg.replace(/```[\s\S]*?```/g, '').trim();
+
+                  if (injectedJs && !injectedJs.toLowerCase().includes('tidak dapat')) {
+                    // Suntikkan definisi fungsi nyata ke dalam kode HTML
+                    const insertPos = htmlCode.lastIndexOf('</script>');
+                    if (insertPos !== -1) {
+                      htmlCode = htmlCode.slice(0, insertPos) + '\n' + injectedJs.trim() + '\n' + htmlCode.slice(insertPos);
+                    }
+                    // Re-validasi setelah targeted repair
+                    const reValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+                    if (reValidated.isValid || extractMissingHandlers(reValidated.issues).length < missingHandlers.length) {
+                      validated = reValidated;
+                      // Catat sisa fungsi yang masih belum teratasi
+                      partialWarningFunctions = extractMissingHandlers(reValidated.issues);
+                      targetedRepairSuccess = true;
+                      console.log(`[Targeted Repair] Berhasil. Sisa handler hilang: ${partialWarningFunctions.length}`);
+                    }
+                  }
+                }
+              }
+            } else if (openaiApiKey) {
+              const targetedMessages = [
+                { role: 'system', content: systemPrompt },
+                ...recentHistory.map((m: any) => ({ role: m.sender === 'USER' ? 'user' : 'assistant', content: m.text })),
+                { role: 'user', content: userPromptWithContext },
+                { role: 'assistant', content: assistantMessage },
+                { role: 'user', content: targetedRepairInstruction }
+              ];
+              const tReqBody: Record<string, any> = { model: activeOpenAIModel, messages: targetedMessages };
+              if (isOpenRouter) tReqBody.max_tokens = 4096;
+              else tReqBody.max_completion_tokens = 4096;
+              const isReasoning = activeOpenAIModel.includes('o1') || activeOpenAIModel.includes('o3') || activeOpenAIModel.includes('r1');
+              if (!isReasoning) tReqBody.temperature = 0.2;
+
+              const tRes = await fetch(`${openaiBaseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: buildOpenAICompatHeaders(openaiApiKey, isOpenRouter),
+                body: JSON.stringify(tReqBody)
+              });
+              if (tRes.ok) {
+                const tData = await tRes.json();
+                const tMsg: string = tData.choices?.[0]?.message?.content || '';
+                if (tMsg && tMsg.trim().length > 20) {
+                  let injectedJs = tMsg;
+                  const jsBlockMatch = tMsg.match(/```(?:javascript|js)?([\s\S]*?)```/);
+                  if (jsBlockMatch) injectedJs = jsBlockMatch[1];
+                  else injectedJs = tMsg.replace(/```[\s\S]*?```/g, '').trim();
+
+                  if (injectedJs && !injectedJs.toLowerCase().includes('tidak dapat')) {
+                    const insertPos = htmlCode.lastIndexOf('</script>');
+                    if (insertPos !== -1) {
+                      htmlCode = htmlCode.slice(0, insertPos) + '\n' + injectedJs.trim() + '\n' + htmlCode.slice(insertPos);
+                    }
+                    const reValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+                    if (reValidated.isValid || extractMissingHandlers(reValidated.issues).length < missingHandlers.length) {
+                      validated = reValidated;
+                      partialWarningFunctions = extractMissingHandlers(reValidated.issues);
+                      targetedRepairSuccess = true;
+                      console.log(`[Targeted Repair] Berhasil. Sisa handler hilang: ${partialWarningFunctions.length}`);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (targetedErr) {
+            console.warn('[Targeted Repair] Error:', targetedErr);
+          }
+
+          // --- OPSI 2: Jika Opsi 1 gagal total — catat semua handler yang masih hilang sebagai partial warning ---
+          if (!targetedRepairSuccess) {
+            partialWarningFunctions = missingHandlers;
+            console.warn(`[Targeted Repair] Gagal. ${missingHandlers.length} handler masih hilang: ${missingHandlers.join(', ')}`);
+            // Re-validasi untuk mendapatkan verified.repairedCode yang paling mutakhir
+            const finalValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            validated = finalValidated;
+          }
+        } else {
+          // Tidak ada MISMATCH_HANDLER — issue lain (ROLE_GATING, dsb.) tidak perlu targeted repair
+          // Catat isu non-handler untuk keperluan logging saja
+          console.log('[Self-healing] Tidak ada MISMATCH_HANDLER yang tersisa, skip targeted repair.');
         }
       }
     }
 
-    const hasValidCode = Boolean(
-      !isStage1AwaitingConfirmation &&
+    // Kode dianggap valid jika secara struktural lengkap (</html> + </script> ada),
+    // tidak ada SYNTAX_ERROR, dan bisa ditampilkan ke user.
+    // Kasus "partial" (ada MISMATCH_HANDLER yang tersisa) tetap dikirim ke user
+    // tapi dengan peringatan jujur — BUKAN diblokir atau distub diam-diam.
+    const isStructurallyComplete = Boolean(
+      htmlCode &&
+      htmlCode.includes('</html>') &&
+      htmlCode.includes('</script>') &&
       validated &&
-      validated.isValid &&
       validated.repairedCode &&
       validated.repairedCode.html &&
       validated.repairedCode.html.trim().length > 0 &&
       !validated.issues.some(i => i.startsWith('SYNTAX_ERROR'))
+    );
+    const hasValidCode = Boolean(
+      !isStage1AwaitingConfirmation &&
+      isStructurallyComplete &&
+      // Kode diizinkan "valid" jika: (a) memang valid penuh, atau (b) partial — ada handler hilang
+      // tapi secara struktural sudah cukup untuk ditampilkan ke user dengan peringatan
+      (validated!.isValid || partialWarningFunctions.length > 0)
     );
 
     // Format Pesan Teks Chat Bersih & Jujur
@@ -2301,6 +2435,14 @@ INSTRUKSI PERBAIKAN WAJIB:
 
         credentialsGuide += '\n\n💡 *Tips: Anda juga dapat langsung mengklik tombol role login instan (Quick Login) yang tersedia pada layar login aplikasi.*';
         cleanReplyText += credentialsGuide;
+      }
+
+      // PERINGATAN JUJUR PARTIAL (POIN A): Jika ada fungsi yang masih hilang setelah semua upaya repair,
+      // beri tahu user secara eksplisit dengan nama fungsinya — DILARANG sembunyikan dengan stub diam-diam.
+      if (partialWarningFunctions.length > 0) {
+        const fnList = partialWarningFunctions.map(fn => '`' + fn + '()`').join(', ');
+        const firstFn = partialWarningFunctions[0];
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Prototipe:**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **${partialWarningFunctions.length} tombol/aksi yang belum sepenuhnya terhubung**: ${fnList}.\n> Tombol-tombol ini mungkin tidak merespons saat diklik. Untuk memperbaikinya, ketik misalnya **"perbaiki fungsi ${firstFn}"** atau **"generate ulang prototipe"**.`;
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {
       // Pesan kegagalan yang ACTIONABLE dan informatif
