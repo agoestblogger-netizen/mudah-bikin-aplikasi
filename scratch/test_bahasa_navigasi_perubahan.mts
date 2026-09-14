@@ -50,7 +50,12 @@ async function runTests() {
     'Melihat banyaknya kendaraan yang parkir, tampak jelas betapa pentingnya layanan ini bagi pemilik kendaraan.',
     'Aplikasi ini menunjukkan bermanfaatnya sistem digital untuk operasional bengkel.',
     'Strategisnya lokasi ini dalam menarik pelanggan menjadi keunggulan tersendiri.',
-    'Krusialnya koordinasi tim bagi kelancaran transaksi di meja kasir.'
+    'Krusialnya koordinasi tim bagi kelancaran transaksi di meja kasir.',
+    // Kasus Pola Evaluatif / Peran Generik [sangat/amat/sungguh + peran/kata + dalam/bagi/untuk] (Klausa kedua / mana pun)
+    'Dalam dunia bengkel motor, efisiensi dalam menangani kendaraan sangat berperan dalam kepuasan pelanggan.',
+    'Di tengah persaingan bisnis kafe, keramahan barista sangat menentukan bagi loyalitas pengunjung.',
+    'Saat jam sibuk laundry tiba, ketelitian pemilahan pakaian amat berpengaruh dalam mencegah komplain pelanggan.',
+    'Bagi usaha toko emas, keakuratan timbangan digital benar-benar krusial untuk menjaga kepercayaan pembeli.'
   ];
   const freshSamples = [
     'Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba. Pelanggan datang...',

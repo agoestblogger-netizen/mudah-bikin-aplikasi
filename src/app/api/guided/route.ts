@@ -291,35 +291,41 @@ export function isClicheStorylineOpening(text: string): boolean {
   if (!text) return false;
   const firstSentence = text.split(/[\.\n\?\!]/)[0].toLowerCase();
 
-  // 1. Pola Intensifier [sangat/amat/sungguh/cukup/benar-benar/betapa/begitu/teramat] + Kata Sifat Pujian (dengan imbuhan -nya, dsb) ... [preposisi tujuan: untuk/dalam/guna/demi/agar/bagi]
-  // Contoh: "sangat penting untuk...", "betapa pentingnya layanan ini bagi...", "begitu krusialnya dalam..."
+  // 1. Pola Intensifier Generik: [sangat/amat/sungguh/cukup/benar-benar/betapa/begitu/teramat] + 1-2 kata (dengan toleransi imbuhan -nya, dsb) + [preposisi tujuan: untuk/dalam/guna/demi/agar/bagi]
+  // Contoh: "sangat berperan dalam...", "sangat penting untuk...", "amat berpengaruh dalam...", "begitu esensial bagi...", "sangat berperan penting dalam..."
   const isIntensifierPraise =
-    /\b(sangat|amat|sungguh|cukup|benar-benar|betapa|begitu|teramat)\s+(tepat|relevan|cerdas|cemerlang|brilian|hebat|luar\s+biasa|istimewa|solutif|potensial|prospektif|strategis|bermanfaat|krusial|menjanjikan|penting|efektif|efisien)(?:nya|an|kan|lah|kah|pun)?\b(?:\s+\w+){0,3}\s+(untuk|dalam|guna|demi|agar|bagi)\b/i.test(firstSentence);
+    /\b(sangat|amat|sungguh|cukup|benar-benar|betapa|begitu|teramat)\s+(?:[a-z]+(?:nya|an|kan|lah|kah|pun)?\s+){1,2}(untuk|dalam|guna|demi|agar|bagi)\b/i.test(firstSentence);
 
   // 2. Pola Sifat Pujian Formulaik (dengan toleransi imbuhan -nya, -an, -lah, -kah) + Preposisi Tujuan:
   // Contoh: "pentingnya ... bagi...", "bermanfaatnya ... untuk...", "strategisnya ... dalam...", "cerdas untuk...", dsb.
   const isDirectPraiseGoal =
     /\b(tepat|relevan|cerdas|cemerlang|brilian|hebat|luar\s+biasa|istimewa|solutif|potensial|prospektif|strategis|bermanfaat|krusial|menjanjikan|penting|efektif|efisien)(?:nya|an|kan|lah|kah|pun)?\b(?:\s+\w+){0,3}\s+(untuk|dalam|guna|demi|agar|bagi)\b/i.test(firstSentence);
 
-  // 3. Pola Template Formulaik [Langkah/Cara/Solusi/Upaya/Inisiatif] + [Sifat] + Preposisi
+  // 3. Pola Pujian Subjek Ide/Aplikasi/Inisiatif (dengan kata sifat evaluatif apa pun):
+  // Contoh: "Ide untuk aplikasi laundry ini sangat relevan di era sekarang", "Konsep aplikasi ini tepat sekali..."
+  const isIdeSubjectPraise =
+    /\b(ide|aplikasi|konsep|rencana|gagasan|inisiatif)\b.*?\b(sangat|amat|sungguh|cukup|benar-benar)?\s*(tepat|relevan|cerdas|cemerlang|brilian|hebat|luar\s+biasa|istimewa|solutif|potensial|prospektif|strategis|bermanfaat|krusial|menjanjikan|penting|efektif|efisien)(?:nya|an|kan|lah|kah|pun)?\b/i.test(firstSentence);
+
+  // 4. Pola Template Formulaik [Langkah/Cara/Solusi/Upaya/Inisiatif] + [Sifat] + Preposisi
   // Menangkap pola template generik seperti: "langkah penting untuk...", "langkah cerdas untuk...", "inisiatif solutif bagi..."
   const isLangkahFormula =
     /\b(langkah|cara|solusi|upaya|inisiatif|pilihan|terobosan)\s+(yang\s+)?(sangat\s+)?([a-z]+(?:nya)?)\s+(untuk|dalam|guna|demi|agar|bagi)\b/i.test(firstSentence);
 
-  // 4. Pola awalan sebuah + pujian
+  // 5. Pola awalan sebuah + pujian
   const isSebuahPraise =
     /^(sebuah\s+(ide|langkah|inisiatif|rencana|terobosan|solusi|upaya))\b.*?\b(cerdas|cemerlang|tepat|luar\s+biasa|brilian|bagus|hebat|relevan|efektif|solutif|menarik)(?:nya|an|lah|kah)?\b/i.test(firstSentence);
 
-  // 5. Pola klise kata 'menarik' di posisi MANA PUN dalam kalimat pembuka (termasuk "menariknya", dsb)
+  // 6. Pola klise kata 'menarik' di posisi MANA PUN dalam kalimat pembuka (termasuk "menariknya", dsb)
   const isGenericMenarik = /\bmenarik(?:nya|kan|an|lah|kah|pun)?\b/i.test(firstSentence);
 
-  // 6. Boilerplate kaku ajakan hasil anchoring: "Mari kita lihat bagaimana alur/proses..."
+  // 7. Boilerplate kaku ajakan hasil anchoring: "Mari kita lihat bagaimana alur/proses..."
   const isBoilerplateAjakan =
     /^(mari|ayo|yuk)\s+kita\s+lihat\s+bagaimana\s+(alur|proses)\b/i.test(firstSentence);
 
   return (
     isIntensifierPraise ||
     isDirectPraiseGoal ||
+    isIdeSubjectPraise ||
     isLangkahFormula ||
     isSebuahPraise ||
     isGenericMenarik ||
@@ -533,10 +539,10 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    b) Uji Kerangka Tata Bahasa Sapaan Pembuka (DILARANG ANCHOR KLISE/FORMULA PUJIAN):
       "Periksa kalimat pertama narasi:
        1. WAJIB ADA SAPAAN IDE: Cek apakah ada satu kalimat singkat di depan yang menyapa atau mengakui ide pengguna sebelum alur cerita dimulai? Jika narasi langsung melompat ke cerita operasional (seperti 'Ketika pelanggan tiba...' atau 'Pelanggan datang...') tanpa menyapa/mengakui ide pengguna terlebih dahulu, maka DINILAI GAGAL.
-       2. DILARANG KERANGKA PUJIAN FORMULAIK '[SUBJEK APA PUN] + [SIFAT PUJIAN / SANGAT + SIFAT] + UNTUK/DALAM/BAGI/GUNA/DEMI + [MANFAAT]':
-           - DILARANG KERAS menilai/memuji subjek apa pun dengan pola: '[subjek apa pun] [sangat penting / sangat tepat / sangat relevan / langkah cerdas / langkah tepat / bermanfaat] untuk/dalam/bagi/guna/demi [manfaat]' (contoh SALAH: 'Sistem antrean ini sangat penting untuk...', 'Mengelola koperasi adalah langkah cerdas untuk...').
+       2. DILARANG KERANGKA PUJIAN FORMULAIK '[SUBJEK APA PUN] + [SIFAT PUJIAN / SANGAT + SIFAT/PERAN] + UNTUK/DALAM/BAGI/GUNA/DEMI + [MANFAAT]':
+           - DILARANG KERAS menilai/memuji subjek apa pun dengan pola: '[subjek apa pun] [sangat penting / sangat tepat / sangat relevan / sangat berperan / sangat menentukan / langkah cerdas / langkah tepat / bermanfaat] untuk/dalam/bagi/guna/demi [manfaat]' (contoh SALAH: 'Sistem antrean ini sangat penting untuk...', 'Efisiensi penanganan sangat berperan dalam kepuasan pelanggan', 'Mengelola koperasi adalah langkah cerdas untuk...').
            - DILARANG KERAS memuat kata 'menarik' di posisi MANA PUN dalam kalimat pembuka!
-           - Kalimat pembuka HARUS murni berupa observasi atmosfer/tantangan lapangan, pertanyaan retoris, ajakan dinamis, atau refleksi proses — BUKAN menilai atau memuji dengan formula 'sifat + preposisi tujuan'!
+           - Kalimat pembuka HARUS murni berupa observasi atmosfer/tantangan lapangan, pertanyaan retoris, ajakan dinamis, atau refleksi proses — BUKAN menilai atau memuji dengan formula 'sifat/peran + preposisi tujuan'!
            - Wajib gunakan ragam struktur tata bahasa yang berbeda (observasi fakta bisnis, pertanyaan retoris, ajakan langsung, atau konfirmasi praktis)."
 
 6. STRUKTUR NARASI: 1 KALIMAT SAPAAN SINGKAT + 2-3 KALIMAT CERITA OPERASIONAL:
@@ -783,13 +789,19 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         narasi = sanitizeStorylineNarrative(narasi, asumsiAktor);
 
         // Lapis 2: SAFETY NET BERBASIS AI RETRY UNTUK KALIMAT PEMBUKA (Single Source of Truth)
-        // Jika pembuka masih terdeteksi pola klise/formulaik ("[ide/langkah] ... [sifat] untuk ...") ATAU kehilangan sapaan:
-        if (isClicheStorylineOpening(narasi) || lacksGreetingOpening(narasi)) {
+        // Jika pembuka masih terdeteksi pola klise/formulaik ATAU kehilangan sapaan:
+        let retryAttempts = 0;
+        while ((isClicheStorylineOpening(narasi) || lacksGreetingOpening(narasi)) && retryAttempts < 2) {
+          retryAttempts++;
           try {
-            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Kalimat pembuka narasi di atas masih melanggar aturan (terdeteksi pola formulaik pujian '[sifat/sangat sifat/betapa sifatnya] untuk/dalam/bagi [manfaat]' seperti "sangat penting untuk...", "betapa pentingnya ... bagi...", "langkah cerdas untuk...", mengandung kata "menarik", menggunakan boilerplate kaku "Mari kita lihat bagaimana alur operasional...", atau langsung melompat ke cerita kronologis kedatangan operasional seperti "Ketika pemilik membawa...").\n\nTolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan aturan:\n1. Awali dengan 1 kalimat singkat pembuka yang orisinal, segar, dan kontekstual:\n   - DILARANG KERAS pola formulaik pujian apa pun (termasuk bentuk berimbuhan seperti 'betapa pentingnya... bagi...', 'bermanfaatnya... untuk...', 'krusialnya... dalam...')\n   - DILARANG KERAS memuat kata 'menarik' di posisi mana pun\n   - DILARANG KERAS boilerplate kaku 'Mari kita lihat bagaimana alur/proses...'\n   - DILARANG mengawali kalimat pertama dengan awalan kronologis operasional (seperti "Ketika pemilik membawa...", "Ketika pelanggan datang...", "Saat seseorang tiba...")\n   - Gunakan observasi fakta lapangan spesifik yang menyoroti kesibukan atau tantangan bisnis ini\n   - ATAU pertanyaan retoris pemantik rasa ingin tahu terkait kelancaran pelayanan\n   - ATAU ajakan aktif dengan kata kerja dinamis bervariasi (amati alur pesanan, telusuri langkah demi langkah, cermati perpindahan barang)\n   - ATAU refleksi praktis mengenai titik fokus penataan proses\n2. Lanjutkan dengan 2-3 kalimat cerita operasional konkret 3 fase (kedatangan -> penanganan fisik & alat presisi -> pembayaran/struk) dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami/kita/tim kami').\n3. Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
+            const violationReason = isClicheStorylineOpening(narasi)
+              ? 'Kalimat pembuka narasi di atas masih terdeteksi pola formulaik evaluasi/pujian (mengandung kata "menarik", pola subjek ide/aplikasi dipuji, pola "sangat berperan dalam...", atau boilerplate kaku "Mari kita lihat...").'
+              : 'Kalimat pembuka narasi di atas langsung melompat ke cerita kronologis operasional tanpa satu kalimat sapaan/pengakuan ide di depan.';
+
+            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI (Percobaan ${retryAttempts}/2): ${violationReason}\n\nTolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan aturan:\n1. Awali dengan 1 kalimat singkat pembuka yang orisinal, segar, dan kontekstual:\n   - DILARANG KERAS memuat kata 'menarik' di posisi mana pun!\n   - DILARANG KERAS pola formulaik evaluasi/pujian apa pun (seperti 'sangat berperan dalam...', 'sangat relevan...', 'amat berpengaruh bagi...', 'betapa pentingnya... bagi...', 'bermanfaatnya... untuk...', 'krusialnya... dalam...')\n   - DILARANG KERAS memuji subjek ide/aplikasi (seperti "Ide untuk aplikasi ini...", "Aplikasi ini tepat...")\n   - DILARANG KERAS boilerplate kaku 'Mari kita lihat bagaimana alur/proses...'\n   - DILARANG mengawali kalimat pertama dengan awalan kronologis operasional (seperti "Ketika pemilik membawa...", "Ketika pelanggan datang...", "Saat seseorang tiba...")\n   - Gunakan observasi fakta lapangan spesifik yang menyoroti kesibukan atau tantangan bisnis ini\n   - ATAU pertanyaan retoris pemantik rasa ingin tahu terkait kelancaran pelayanan\n   - ATAU ajakan aktif dengan kata kerja dinamis bervariasi (amati alur pesanan, telusuri langkah demi langkah, cermati perpindahan barang)\n   - ATAU refleksi praktis mengenai titik fokus penataan proses\n2. Lanjutkan dengan 2-3 kalimat cerita operasional konkret 3 fase (kedatangan -> penanganan fisik & alat presisi -> pembayaran/struk) dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami/kita/tim kami').\n3. Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
 
             const retryRaw = await invokeAIChat({
-              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda memastikan narasi diawali 1 kalimat sapaan/pengakuan ide yang ramah dan segar tanpa kerangka pujian klise, diikuti cerita proses bisnis yang membumi dari sudut pandang pihak ketiga objektif. Balas HANYA dengan teks narasi murni.',
+              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda memastikan narasi diawali 1 kalimat sapaan/pengakuan ide yang ramah dan segar TANPA KATA "MENARIK" dan tanpa kerangka pujian klise, diikuti cerita proses bisnis yang membumi dari sudut pandang pihak ketiga objektif. Balas HANYA dengan teks narasi murni.',
               userPrompt: retryUserPrompt,
               temperature: 0.7,
               maxTokens: 1000,
@@ -805,10 +817,22 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
                 cleanRetry = jsonRetryMatch[1];
               }
               narasi = cleanRetry;
+            } else {
+              break;
             }
           } catch (retryErr) {
             console.warn('Storyline greeting retry failed:', retryErr);
+            break;
           }
+        }
+
+        // Lapis 3: Jika kata 'menarik' masih tersisa di pembuka setelah retry, bersihkan secara kontekstual
+        const openingSentence = narasi.split(/[\.\n\?\!]/)[0] || '';
+        if (/\bmenarik(?:nya|kan|an|lah|kah|pun)?\b/i.test(openingSentence)) {
+          const sanitizedOpening = openingSentence
+            .replace(/bisa menjadi pengalaman yang menarik/i, 'memiliki dinamika dan ritme tersendiri')
+            .replace(/\b(sangat\s+|cukup\s+)?menarik(?:nya|kan|an|lah|kah|pun)?\b/gi, 'tersendiri');
+          narasi = narasi.replace(openingSentence, sanitizedOpening);
         }
 
         if (!narasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
