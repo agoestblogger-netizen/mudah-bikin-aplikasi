@@ -696,6 +696,31 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         };
       }
 
+      // POIN D: Jika backend mengembalikan flag suggestSimplify, tambahkan tombol aksi otomatis
+      // ke pesan AI — user tidak perlu mengetik ulang prompt dari nol
+      if (data.suggestSimplify || data.suggestedRetryPrompt) {
+        const autoOptions: string[] = [];
+        if (data.suggestedRetryPrompt) autoOptions.push(`🔄 Coba Generate Ulang`);
+        if (data.suggestSimplify && data.suggestedSimplifyPrompt) autoOptions.push(`📦 Generate Versi Sederhana`);
+
+        if (autoOptions.length > 0) {
+          // Update pesan AI terakhir dengan suggestedOptions agar tombol dirender
+          const updatedAiMsg: ChatMessage = {
+            ...aiMsg,
+            suggestedOptions: autoOptions,
+            // Simpan prompt asli di metadata agar handleSendMessage bisa meneruskan prompt yang tepat
+            metadata: {
+              retryPrompt: data.suggestedRetryPrompt || 'buatkan prototipe sekarang',
+              simplifyPrompt: data.suggestedSimplifyPrompt || ''
+            }
+          };
+          const msgWithOptions = [...updatedMessages, updatedAiMsg];
+          setMessages(msgWithOptions);
+          onUpdateState({ ...stateUpdate, chatMessages: msgWithOptions });
+          return;
+        }
+      }
+
       onUpdateState(stateUpdate);
     } catch (err: any) {
       const errorAiMsg: ChatMessage = {
@@ -1173,18 +1198,30 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     </div>
                   )}
 
-                  {/* Quick Action Pills */}
-                  {m.suggestedOptions && m.suggestedOptions.length > 0 && messages.length <= 1 && (
+                  {/* Quick Action Pills — untuk pesan pertama (welcome) ATAU pesan kegagalan generate (POIN D) */}
+                  {m.suggestedOptions && m.suggestedOptions.length > 0 && (messages.length <= 1 || m.metadata?.retryPrompt) && (
                     <div className="pt-3 border-t border-white/10 flex flex-wrap gap-1.5">
-                      {m.suggestedOptions.map((opt, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleSendMessage(opt)}
-                          className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/35 text-[11px] font-medium text-zinc-300 hover:text-[#10f48e] transition-all text-left active:scale-[0.98]"
-                        >
-                          {opt}
-                        </button>
-                      ))}
+                      {m.suggestedOptions.map((opt, i) => {
+                        // POIN D: Jika ada metadata, resolve prompt aktual dari metadata
+                        // (bukan label tombol seperti "🔄 Coba Generate Ulang")
+                        let actualPrompt = opt;
+                        if (m.metadata) {
+                          if (opt.startsWith('🔄') && m.metadata.retryPrompt) {
+                            actualPrompt = m.metadata.retryPrompt as string;
+                          } else if (opt.startsWith('📦') && m.metadata.simplifyPrompt) {
+                            actualPrompt = m.metadata.simplifyPrompt as string;
+                          }
+                        }
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => handleSendMessage(actualPrompt)}
+                            className="px-2.5 py-1 rounded-xl bg-white/5 hover:bg-[#10f48e]/15 border border-white/10 hover:border-[#10f48e]/35 text-[11px] font-medium text-zinc-300 hover:text-[#10f48e] transition-all text-left active:scale-[0.98]"
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 

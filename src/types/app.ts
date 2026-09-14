@@ -15,6 +15,12 @@ export interface ChatMessage {
   timestamp: string;
   suggestedOptions?: string[];
   guidedStep?: GuidedStepPayload;
+  /** POIN D: metadata untuk tombol fallback otomatis saat generate gagal */
+  metadata?: {
+    retryPrompt?: string;
+    simplifyPrompt?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface MandatorySpecs {

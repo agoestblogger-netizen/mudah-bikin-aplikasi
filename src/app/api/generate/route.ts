@@ -2536,12 +2536,30 @@ INSTRUKSI PERBAIKAN WAJIB:
       const topIssues = validated?.issues && validated.issues.length > 0
         ? validated.issues.slice(0, 2).join('; ')
         : (isCodeIncomplete ? 'Kode HTML/JS terpotong di tengah jalan' : 'Pemeriksaan DOM ID & event handler tidak lolos');
-      
-       cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:**\n1. Ketik **"buatkan prototipe sekarang"** untuk mencoba generate ulang.\n2. Jika aplikasi memiliki banyak role (Super Admin/Kasir/Petugas), Anda juga bisa meminta versi yang lebih sederhana dulu (misal: 2 role utama), lalu menambahkan role lainnya pada tahap revisi.`;
+
+      // POIN D: Tentukan apakah kandidat untuk "generate versi sederhana"
+      const isComplexityRelated = officialRoles.length > 2 || isCodeIncomplete;
+      const top2Roles = officialRoles.slice(0, 2);
+      const suggestedSimplifyPrompt = top2Roles.length >= 2
+        ? `buatkan prototipe versi sederhana dulu, fokus hanya 2 role utama: ${top2Roles.join(' dan ')}`
+        : 'buatkan prototipe versi sederhana dulu';
+
+      cleanReplyText = `⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** ${topIssues}.\n\n💡 **Saran Tindakan:** Gunakan tombol di bawah untuk mencoba lagi, atau minta versi yang lebih sederhana terlebih dahulu.`;
+
+      return NextResponse.json({
+        success: true,
+        provider: actualProviderUsed,
+        replyText: cleanReplyText,
+        code: null,
+        isContinued: retryCount > 0,
+        // POIN D: Flag fallback otomatis — frontend render tombol "Coba Lagi" dan "Versi Sederhana"
+        suggestSimplify: isComplexityRelated,
+        suggestedRetryPrompt: 'buatkan prototipe sekarang',
+        suggestedSimplifyPrompt: isComplexityRelated ? suggestedSimplifyPrompt : undefined
+      });
     } else {
       cleanReplyText = sanitizeBriefKebutuhanText(assistantMessage.trim());
     }
-
 
     return NextResponse.json({
       success: true,
