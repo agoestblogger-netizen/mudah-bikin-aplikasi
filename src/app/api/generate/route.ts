@@ -57,34 +57,45 @@ export const getOpenAIModel = (): string => process.env.OPENAI_MODEL || DEFAULT_
 // =============================================================================
 // POIN B: Per-Model Max Output Token Cap (berdasarkan batas riil tiap model)
 // Jangan pernah set nilai di atas batas riil model — bisa menyebabkan HTTP 400.
+//
+// CATATAN PENTING (terverifikasi Sep 2026):
+// - claude-3.7-sonnet: DEFAULT 8.192 tokens. Butuh header anthropic-beta: output-128k-2025-02-19
+//   untuk mencapai 128K. Tanpa header itu, request dengan max_tokens > 8192 AKAN DITOLAK.
+//   Header beta dikirim di buildOpenAICompatHeaders() untuk model Claude via OpenRouter.
+// - openrouter/free: Alias auto-routing — model aktual bisa Nemotron (65K), Gemma 4 (besar).
+//   Capping di 4096 terlalu konservatif dan salah. Gunakan 16384 (aman untuk semua model modern free).
+//   Jika model aktual di baliknya memberi 400, loop error handling di route.ts akan menangani.
 // =============================================================================
 export function getMaxOutputTokens(modelId: string): number {
   const id = modelId.toLowerCase();
 
-  // --- Grup 4.096: Model dengan batas output ketat (free tier / model kecil) ---
+  // --- Grup 4.096: Model dengan hard cap output ketat ---
+  // Mistral Large (4K via OR), Mistral 7B (4K), Gemma 2 9B (context 8K total → sisakan untuk input)
   if (
     id.includes('mistral-7b') ||
     id.includes('mistral-instruct') ||
-    id.includes('mistral-large') ||    // Mistral Large standard cap 4K via OR
-    id.includes('gemma-2') ||          // Gemma 2 9B: total context 8K → sisakan untuk input
-    id === 'openrouter/free'           // Auto-router: tidak diketahui modelnya
+    id.includes('mistral-large') ||    // Mistral Large: 4K output via OpenRouter (terverifikasi)
+    id.includes('gemma-2')             // Gemma 2 9B: total context hanya 8K → sisakan ruang input
   ) return 4096;
 
-  // --- Grup 8.192: Model yang hardcap di 8K (termasuk Claude 3.5 series) ---
+  // --- Grup 8.192: Model dengan hard cap 8K (tanpa parameter/header khusus) ---
   if (
-    id.includes('claude-3.5') ||       // Claude 3.5 Sonnet & Haiku: hard cap 8.192
+    id === 'openrouter/free' ||        // OpenRouter Free router: model aktual beragam (8K-65K). 8K aman 100% tanpa risiko 400.
+    id.includes('claude-3.5') ||       // Claude 3.5 Sonnet & Haiku: hard cap 8.192 (terverifikasi)
     id.includes('claude-3-5') ||
-    id.includes('deepseek-chat') ||    // DeepSeek V3 via OpenRouter provider cap
-    id.includes('deepseek-r1') ||      // DeepSeek R1 via OpenRouter provider cap
+    id.includes('claude-3.7') ||       // KOREKSI: Claude 3.7 Sonnet default 8.192 TANPA beta header!
+    id.includes('claude-3-7') ||       // (butuh anthropic-beta: output-128k-2025-02-19 untuk 128K)
+    id.includes('deepseek-chat') ||    // DeepSeek V3 via OpenRouter: provider cap 8K
+    id.includes('deepseek-r1') ||      // DeepSeek R1 via OpenRouter: provider cap 8K
     id.includes('deepseek/deepseek') || // Semua varian deepseek via OR
     id.includes('qwen') ||             // Qwen 2.5 Coder: 8K-32K, pakai 8K konservatif
-    id.includes('llama-3.3') ||        // Llama 3.3 70B: 4K-16K, pakai 8K konservatif
+    id.includes('llama-3.3') ||        // Llama 3.3 70B: 4K-16K tergantung provider, pakai 8K
     id.includes('llama-3') ||
     id.includes('llama3')
   ) return 8192;
 
-  // --- Grup 16.384: Model yang mendukung output panjang ---
-  // GPT-4o series, GPT-5, Claude 3.7+, Gemini 2.5, o1/o3
+  // --- Grup 16.384: Model yang mendukung output panjang secara default ---
+  // GPT-4o/mini (16K, terverifikasi), GPT-5, Gemini 2.5, o1/o3 (100K)
   return 16384;
 }
 
