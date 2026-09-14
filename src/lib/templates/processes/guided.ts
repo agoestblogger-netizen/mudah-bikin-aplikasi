@@ -2512,10 +2512,13 @@ export function generateDeterministicSimulasiDb(
     { nama: 'total_biaya', tipe: 'angka', keterangan: 'Nominal transaksi' }
   ];
 
-  // Helper membuat nilai contoh realistis sesuai tipe & nama field
+  // Helper membuat nilai contoh realistis sesuai TIPE, NAMA FIELD, DAN KETERANGAN (semantik domain)
   const generateFieldValue = (field: { nama: string; tipe: string; keterangan?: string }, rowIdx: number): any => {
     const fName = field.nama.toLowerCase();
     const fType = field.tipe.toLowerCase();
+    const kata = (field.keterangan || '').toLowerCase();
+
+    const pick = (list: string[]): string => list[rowIdx % list.length] || list[0];
 
     if (fType === 'tanggal' || fName.includes('tanggal') || fName.includes('tgl') || fName.includes('date')) {
       return ['2026-09-10', '2026-09-11', '2026-09-12'][rowIdx];
@@ -2524,7 +2527,7 @@ export function generateDeterministicSimulasiDb(
     if (fType.includes('relasi ke') || fName.endsWith('_id') || (fName.startsWith('id_') && fName !== 'id')) {
       const match = fType.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
       const targetEntity = match ? match[1] : fName.replace(/(_id|^id_)/g, '');
-      const prefix = targetEntity.substring(0, 3).toUpperCase();
+      const prefix = (targetEntity || tableName).substring(0, 3).toUpperCase();
       return [`${prefix}-001`, `${prefix}-002`, `${prefix}-003`][rowIdx];
     }
 
@@ -2550,37 +2553,97 @@ export function generateDeterministicSimulasiDb(
       return [10, 20, 30][rowIdx];
     }
 
-    // Default text
     if (/^id$|^kode|^nomor_nota|^no_nota|^id_nota/i.test(fName)) {
       const pfx = tableName.substring(0, 3).toUpperCase();
       return [`${pfx}-001`, `${pfx}-002`, `${pfx}-003`][rowIdx];
     }
+
+    // 1) SEMANTIK DARI KETERANGAN FIELD (paling diandalkan: makna/domain nilai)
+    // 1a) Enum eksplisit di keterangan: "(besi/kardus/plastik)" atau "Tersedia / Disewa / Bengkel"
+    const parenMatch = kata.match(/\(([^)]+)\)/);
+    const enumBlob = parenMatch ? parenMatch[1] : kata;
+    const enumParts = enumBlob
+      .split(/\s*\/\s*|\s*,\s*/)
+      .map((s) => s.trim())
+      .filter((s) => /^[a-z0-9][a-z0-9\s'’-]*$/i.test(s) && s.split(/\s+/).length <= 3);
+    if (enumParts.length >= 2 && enumParts.length <= 6) {
+      return enumParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1))[rowIdx % enumParts.length];
+    }
+
+    // 1b) Hint keyword pada keterangan
+    if (/aktif|nonaktif|tersedia|ketersediaan/i.test(kata)) {
+      return pick(['Aktif', 'Nonaktif', 'Aktif']);
+    }
+    if (/rasa|varian|flavor|topping|es krim|menu/i.test(kata)) {
+      return pick(['Vanilla', 'Coklat', 'Strawberry']);
+    }
+    if (/kategori|jenis item|jenis/i.test(kata)) {
+      return pick(['Utama', 'Tambahan', 'Topping']);
+    }
+    if (/barang|produk|sembako|item dagangan/i.test(kata)) {
+      return pick(['Indomie Goreng', 'Susu Kotak', 'Kopi Sachet']);
+    }
+    if (/persetujuan|pengajuan|approval/i.test(kata)) {
+      return pick(['Menunggu', 'Disetujui', 'Ditolak']);
+    }
+    if (/pembayaran|pelunasan|lunas|cicilan|bayar/i.test(kata)) {
+      return pick(['Lunas', 'Belum Lunas', 'Cicilan']);
+    }
+    if (/warna/i.test(kata)) return pick(['Merah', 'Biru', 'Hijau']);
+    if (/ukuran|size/i.test(kata)) return pick(['S', 'M', 'L']);
+    if (/alamat|lokasi/i.test(kata)) return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
+    if (/kota|domisili/i.test(kata)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
+    if (/jenis kelamin|gender/i.test(kata)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
+    if (/telepon|whatsapp|kontak|nomor hp|no.?hp/i.test(kata)) return pick(['081234567890', '081298765432', '085712345678']);
+    if (/email/i.test(kata)) return pick(['pelanggan1@gmail.com', 'pelanggan2@gmail.com', 'pelanggan3@gmail.com']);
+
+    // 2) SEMANTIK BERBASIS NAMA FIELD (jika keterangan tidak memberikan petunjuk)
+    if (/varian|rasa|flavor|topping/i.test(fName)) {
+      return pick(['Vanilla', 'Coklat', 'Strawberry']);
+    }
+    if (/produk|barang|item|menu|sembako/i.test(fName)) {
+      return pick(['Indomie Goreng', 'Susu Kotak', 'Kopi Sachet']);
+    }
     if (/nama|pelanggan|warga|penyewa|anggota|konsumen|pasien|pembeli|klien/i.test(fName)) {
-      return ['Budi Santoso', 'Siti Rahma', 'Ahmad Hidayat'][rowIdx];
-    }
-    if (/plat|nopol|nomor_plat/i.test(fName)) {
-      return ['B 1234 ABC', 'D 5678 EFG', 'L 9012 HIJ'][rowIdx];
-    }
-    if (/merk|tipe|model|mobil|motor|kendaraan/i.test(fName)) {
-      return ['Toyota Avanza', 'Honda Brio', 'Mitsubishi Xpander'][rowIdx];
-    }
-    if (/barang|rosok|item|suku_cadang|sparepart|produk/i.test(fName)) {
-      return ['Kardus Bekas', 'Besi Tua', 'Tembaga Super'][rowIdx];
+      return pick(['Budi Santoso', 'Siti Rahma', 'Ahmad Hidayat']);
     }
     if (/status/i.test(fName)) {
-      return ['Selesai', 'Diproses', 'Menunggu Verifikasi'][rowIdx];
+      if (/tersedia|ketersediaan|aktif|nonaktif/i.test(fName)) {
+        return pick(['Aktif', 'Nonaktif', 'Aktif']);
+      }
+      if (/pengajuan|persetujuan|approval/i.test(fName)) {
+        return pick(['Menunggu', 'Disetujui', 'Ditolak']);
+      }
+      return pick(['Diproses', 'Selesai', 'Menunggu Verifikasi']);
     }
+    if (/kategori|jenis/i.test(fName)) return pick(['Utama', 'Tambahan', 'Topping']);
+    if (/warna/i.test(fName)) return pick(['Merah', 'Biru', 'Hijau']);
+    if (/ukuran|size/i.test(fName)) return pick(['S', 'M', 'L']);
+    if (/alamat|lokasi/i.test(fName)) return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
+    if (/kota|domisili/i.test(fName)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
+    if (/kelamin|gender/i.test(fName)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
+    if (/telepon|whatsapp|kontak|hp|wa_/i.test(fName)) return pick(['081234567890', '081298765432', '085712345678']);
+    if (/email/i.test(fName)) return pick(['pelanggan1@gmail.com', 'pelanggan2@gmail.com', 'pelanggan3@gmail.com']);
+    if (/plat|nopol|nomor_plat/i.test(fName)) return ['B 1234 ABC', 'D 5678 EFG', 'L 9012 HIJ'][rowIdx];
+    if (/rosok|besi|tua|tembaga|kardus/i.test(fName)) return pick(['Kardus Bekas', 'Besi Tua', 'Tembaga Super']);
+    if (/merk|tipe|model|mobil|motor|kendaraan/i.test(fName)) return ['Toyota Avanza', 'Honda Brio', 'Mitsubishi Xpander'][rowIdx];
+    if (/produk|barang|item|suku_cadang|sparepart/i.test(fName)) return pick(['Indomie Goreng', 'Susu Kotak', 'Kopi Sachet']);
     if (/catatan|keterangan|deskripsi|keluhan|gejala/i.test(fName)) {
-      return ['Kondisi baik & lengkap', 'Perlu penanganan lanjutan', 'Selesai tepat waktu'][rowIdx];
-    }
-    if (/kontak|telepon|wa|whatsapp|hp/i.test(fName)) {
-      return ['081234567890', '081298765432', '085712345678'][rowIdx];
+      return pick(['Kondisi baik & lengkap', 'Perlu penanganan lanjutan', 'Selesai tepat waktu']);
     }
     if (/petugas|diperiksa_oleh|mekanik|pengumpul|kasir|admin/i.test(fName)) {
       return ['Staf Lapangan 1', 'Staf Lapangan 2', 'Staf Lapangan 1'][rowIdx];
     }
 
-    return [`Contoh Data ${rowIdx + 1}`, `Contoh Data ${rowIdx + 2}`, `Contoh Data ${rowIdx + 3}`][rowIdx];
+    // 3) DEFAULT: nilai berbasis kata kunci keterangan/nama field (BUKAN placeholder "Contoh Data N")
+    const baseToken = (field.keterangan || field.nama)
+      .trim()
+      .split(/\s+/)
+      .filter((w) => /^[a-z]/i.test(w) && !/^(nama|jenis|kategori|status|dan|atau|untuk|dari|ke|yang|id|no|nomor)$/i.test(w))[0];
+    let stem = baseToken ? baseToken.charAt(0).toUpperCase() + baseToken.slice(1) : '';
+    if (!stem) stem = fName.replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!stem) stem = 'Item';
+    return [`${stem} A`, `${stem} B`, `${stem} C`][rowIdx];
   };
 
   const sampleRows: Record<string, any>[] = [0, 1, 2].map((idx) => {
@@ -2657,6 +2720,48 @@ export function generateDeterministicSimulasiDb(
     ...result,
     markdownTable: md
   };
+}
+
+/**
+ * Validasi ringan kesesuaian data contoh vs skema tabel (digunakan untuk regresi POIN 7):
+ * - nama field harus sama persis
+ * - tidak boleh ada placeholder "Contoh Data N"
+ * - field ketersediaan (tersedia/aktif/nonaktif) tidak boleh bernilai status transaksi
+ */
+export function validateContohDataVsSchema(
+  contohData: { tabel: string; baris: Record<string, unknown>[] },
+  tabelSchema?: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] }
+): string[] {
+  const masalah: string[] = [];
+  if (!contohData || !contohData.baris || contohData.baris.length === 0) {
+    return ['contohData kosong / tidak ada baris'];
+  }
+
+  const keys = Object.keys(contohData.baris[0] || {});
+  if (tabelSchema && tabelSchema.field && tabelSchema.field.length > 0) {
+    const schemaNames = tabelSchema.field.map((f) => f.nama);
+    if (JSON.stringify(keys) !== JSON.stringify(schemaNames)) {
+      masalah.push(`nama field tidak sama: [${keys.join(', ')}] vs skema [${schemaNames.join(', ')}]`);
+    }
+
+    const statusTransaksi = /^(selesai|diproses|menunggu verifikasi|dibatalkan)$/i;
+    for (const fld of tabelSchema.field) {
+      const kata = (fld.keterangan || '').toLowerCase();
+      const hintsAvail =
+        /tersedia|ketersediaan|aktif|nonaktif/i.test(fld.nama.toLowerCase()) || /aktif|nonaktif|tersedia/i.test(kata);
+      for (const row of contohData.baris) {
+        const v = String(row[fld.nama] ?? '').trim();
+        if (/^contoh data/i.test(v)) {
+          masalah.push(`field "${fld.nama}" berisi placeholder "Contoh Data N": "${v}"`);
+        }
+        if (hintsAvail && statusTransaksi.test(v.toLowerCase())) {
+          masalah.push(`field "${fld.nama}" (ketersediaan) berisi nilai status transaksi: "${v}"`);
+        }
+      }
+    }
+  }
+
+  return masalah;
 }
 
 /**
