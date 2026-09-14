@@ -25,6 +25,7 @@ import {
   REQUIRED_SYSTEM_ROLE,
   standardizeBriefRoleNames
 } from '@/lib/rolePolicy';
+import { renderRbacMarkdownTable } from '@/lib/templates/processes/guided';
 
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
@@ -507,6 +508,22 @@ export async function POST(req: Request) {
       roleLandingTabs = parsed.roleLandingTabs;
       if (officialRoles.length > 0) {
         console.log(`[Fallback] Menggunakan ekstraksi chat history: ${officialRoles.length} roles`);
+      }
+    }
+
+    // Ekstraksi RBAC Modul dari session (Bagian B)
+    let sessionRbacModul: any[] = [];
+    if (incomingSession?.rbac?.modul && Array.isArray(incomingSession.rbac.modul) && incomingSession.rbac.modul.length > 0) {
+      sessionRbacModul = incomingSession.rbac.modul;
+    }
+
+    // Jika ada sessionRbacModul dan approvedBrief belum memuat matriks RBAC, masukkan tabelnya
+    if (sessionRbacModul.length > 0 && (!approvedBrief || !approvedBrief.includes('Matriks Hak Akses (RBAC)'))) {
+      const tableMd = incomingSession?.rbac?.markdownTable || renderRbacMarkdownTable(officialRoles, sessionRbacModul, incomingSession?.rbac?.catatanPelimpahan);
+      if (tableMd) {
+        approvedBrief = approvedBrief
+          ? `${approvedBrief}\n\n- **Matriks Hak Akses (RBAC) per Modul Fungsional**:\n${tableMd}`
+          : `- **Matriks Hak Akses (RBAC) per Modul Fungsional**:\n${tableMd}`;
       }
     }
     
@@ -1353,6 +1370,33 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
      * Role Operasional (misal: Petugas Rental, Kasir, Washer): Berisi katalog/tabel operasional, form transaksi/alur kerja (serah terima, cek fisik, hitung denda, perbaikan/status).
      * Role Eksternal (misal: Penyewa, Pelanggan, Pasien): Berisi katalog ketersediaan mandiri, form pemesanan/booking mandiri, atau kartu identitas/status pesanan pribadi. DILARANG memuat tabel akun staf atau tombol aksi manajemen staf!
    - DILARANG KERAS menampilkan data, tabel, atau formulir yang sama persis di semua role!
+
+7. PANDUAN PENERJEMAHAN MATRIKS RBAC KE ANTARMUKA (ACTION-LEVEL RBAC UI GATING — BAGIAN B):
+   - Membatasi akses tab navigasi saja TIDAK CUKUP. Di dalam halaman/tab yang diakses, setiap peran WAJIB mendapatkan hak aksi (tombol, formulir, kolom mutasi, filter data) yang SELARAS dengan wewenang mereka pada matriks RBAC!
+   - PRINSIP INTERPRETASI KONSEPTUAL / SEMANTIK (BUKAN KEYWORD MATCHING KAKU):
+     Wewenang pada matriks RBAC dirumuskan dalam bahasa proses bisnis nyata. Interpretasikan maksud wewenangnya secara kontekstual per modul sesuai domain aplikasi, dengan 4 pola umum (misalnya, bukan daftar tertutup):
+     a. POLA "TANPA AKSES" (misalnya: "-", "Tidak Ada Akses", "None"):
+        * Sembunyikan tab atau section modul ini sepenuhnya untuk peran tersebut (display: none atau tidak di-render).
+     b. POLA "PANTAU / MILIK SENDIRI / TERBATAS" (misalnya: "Lihat Status Sendiri", "Riwayat Pengerjaan Milik Sendiri", "Pantau Antrean", "Self-Service", "Read-Only"):
+        * Tampilkan data dalam mode pantau/baca saja (read-only table/card).
+        * SEMBUNYIKAN tombol aksi mutasi global (seperti "➕ Tambah Data Baru", tombol "Edit", tombol "Hapus").
+        * Jika wewenang menyebutkan "milik sendiri", filter data di JavaScript agar HANYA menampilkan entri milik pengguna tersebut (contoh: item.pelangganId === currentUserId || item.barberId === currentUserId).
+     c. POLA "EKSEKUSI / OPERASIONAL / KERJA LAPANGAN" (misalnya: "Kerjakan Servis", "Verifikasi Berkas", "Mulai Pengerjaan", "Check-in Unit", "Input Hasil Cek", "Proses Transaksi"):
+        * Sediakan tombol aksi operasional yang relevan di baris tabel atau kartu (misalnya: tombol "Mulai Pengerjaan", "Selesai", "Verifikasi", "Check-out").
+        * Jangan beri tombol manajemen sistem tingkat tinggi atau otorisasi manajerial.
+     d. POLA "SUPERVISI / MANAJERIAL / KONTROL PENUH" (misalnya: "Otorisasi Transaksi", "Supervisi Mutu", "Setujui/Tolak Pengajuan", "Audit & Laporan Global", "Kelola Tarif & Master"):
+        * Sediakan tombol persetujuan manajerial (Approve/Reject), tombol pembatalan, pengaturan tarif/master data, atau ekspor laporan menyeluruh.
+
+   ⚠️ PENEGASAN EKSPLISIT:
+   Contoh di atas cuma ilustrasi pola umum — nilai izin di RBAC bisa berbentuk kalimat lain yang maknanya setara, jangan menolak menginterpretasikan wewenang hanya karena kata persisnya tidak cocok dengan contoh.
+
+   - PENERAPAN TEKNIS DI KODE HTML & JAVASCRIPT:
+     * Di dalam loop render data (misalnya: renderOrders(), renderAntrean(), renderTabel()):
+       Gunakan pengecekan currentRole (atau currentUserId) untuk menentukan tombol aksi apa yang di-render di kolom "Aksi" tabel atau kartu.
+     * Tombol Tambah Data di Toolbar Tab:
+       Tombol seperti "➕ Tambah Data" HANYA boleh muncul jika peran yang sedang aktif login memiliki wewenang membuat data di modul tersebut.
+     * Modal dan Formulir:
+       Field input atau opsi tertentu yang hanya boleh diubah oleh manajer/supervisi harus dinonaktifkan atau disembunyikan untuk peran staf operasional biasa.
 
 ================================================================================
 ⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52, 53):
