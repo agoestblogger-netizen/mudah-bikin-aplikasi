@@ -283,16 +283,24 @@ async function invokeAIChat(options: {
 
 /**
  * Mendeteksi apakah narasi cerita masih terpengaruh kerangka klise:
- * misal: "Ide aplikasi [X] sangat menarik..." atau "Aplikasi yang ingin kamu buat sangat menarik..."
- * Kalimat pertama tidak boleh menggabungkan kata ide/aplikasi/konsep dengan kata sifat klise 'menarik'.
+ * 1. Formula pujian: [ide/inisiatif/langkah/rencana/konsep/aplikasi/dsb] + [kata sifat pujian] + [untuk/dalam/guna/demi/agar]
+ * 2. Formula pujian terbalik / awalan sebuah: [sebuah ide/langkah/inisiatif] + [cerdas/tepat/cemerlang/dsb]
+ * 3. Pola klise umum ide/aplikasi ... menarik
  */
 export function isClicheStorylineOpening(text: string): boolean {
   if (!text) return false;
   const firstSentence = text.split(/[\.\n\?\!]/)[0].toLowerCase();
-  return (
-    (/\b(ide|aplikasi|konsep)\b/i.test(firstSentence) && /\bmenarik\b/i.test(firstSentence)) ||
-    /^(ide\s+aplikasi|aplikasi|konsep\s+aplikasi)\b.*?\b(sangat|amat|cukup|paling)\b/i.test(firstSentence)
-  );
+
+  // 1. [Subjek inisiatif/ide/langkah/dsb] ... [pujian apa pun] ... [untuk/dalam/guna/demi/agar]
+  const isPraiseFormula = /\b(ide|inisiatif|langkah|rencana|konsep|aplikasi|gagasan|terobosan)\b.*?\b(tepat|luar\s+biasa|cerdas|cemerlang|brilian|hebat|istimewa|menarik|solutif|bagus|potensial|prospektif|strategis|positif|sangat\s+tepat|sangat\s+baik)\b.*?\b(untuk|dalam|guna|demi|agar)\b/i.test(firstSentence);
+
+  // 2. [Sebuah ide/sebuah langkah/dsb] ... [pujian]
+  const isSebuahPraise = /^(sebuah\s+(ide|langkah|inisiatif|rencana|terobosan))\b.*?\b(cerdas|cemerlang|tepat|luar\s+biasa|brilian|bagus|hebat)\b/i.test(firstSentence);
+
+  // 3. Pola klise umum ide/aplikasi ... menarik
+  const isGenericMenarik = /\b(ide|aplikasi|konsep)\b/i.test(firstSentence) && /\bmenarik\b/i.test(firstSentence);
+
+  return isPraiseFormula || isSebuahPraise || isGenericMenarik;
 }
 
 /**
@@ -319,7 +327,9 @@ export function sanitizeStorylineNarrative(narrative: string, actors: string[] =
     (actors.length > 1 ? actors[1] : 'Petugas');
 
   cleaned = cleaned.replace(/\b(tim\s+kami|tim\s+kita)\b/gi, defaultActor);
-  cleaned = cleaned.replace(/\b(kami|kita)\b/gi, defaultActor);
+  cleaned = cleaned.replace(/\bkami\b/gi, defaultActor);
+  // Jangan ganti 'kita' jika bagian dari frasa ajakan inklusif konsultan AI ("Mari kita", "Ayo kita", "Yuk kita")
+  cleaned = cleaned.replace(/(?<!\b(?:mari|ayo|yuk)\s+)\bkita\b/gi, defaultActor);
   return cleaned;
 }
 
@@ -484,25 +494,34 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 5. ATURAN SELF-CHECK EKSPLISIT (WAJIB DIIKUTI):
    a) Uji Konteks Domain:
       "Sebelum menampilkan cerita, cek apakah alur ini bisa dipakai untuk industri lain tanpa berubah signifikan selain nama aplikasi — kalau ya, tulis ulang dengan detail yang lebih spesifik ke domain yang diminta."
-   b) Uji Kalimat Sapaan Pembuka (WAJIB ADA & DILARANG ANCHOR KLISE/SERAGAM):
+   b) Uji Kerangka Tata Bahasa Sapaan Pembuka (DILARANG ANCHOR KLISE/FORMULA PUJIAN):
       "Periksa kalimat pertama narasi:
        1. WAJIB ADA SAPAAN IDE: Cek apakah ada satu kalimat singkat di depan yang menyapa atau mengakui ide pengguna sebelum alur cerita dimulai? Jika narasi langsung melompat ke cerita operasional (seperti 'Ketika pelanggan tiba...' atau 'Pelanggan datang...') tanpa menyapa/mengakui ide pengguna terlebih dahulu, maka DINILAI GAGAL.
-       2. WAJIB BERVARIASI (BEBAS KLISE & DILARANG KATA AWALAN SERAGAM):
-          - Dilarang memakai pola klise seragam (seperti '[Ide aplikasi] ... sangat menarik...').
-          - Dilarang selalu mengawali kalimat pertama dengan kata yang sama di berbagai domain (DILARANG selalu diawali 'Senang...', DILARANG selalu diawali 'Ide...', DILARANG selalu diawali 'Aplikasi...').
-          - Wajib susun sapaan yang hangat, segar, dan bervariasi struktur serta kata awalnya."
+       2. DILARANG KERANGKA PUJIAN KLISE '[SUBJEK] + [SIFAT PUJIAN] + UNTUK + [MANFAAT]':
+          - DILARANG menggunakan kerangka formulaik seperti: '[Ide/Langkah/Inisiatif/Rencana/Aplikasi] [tepat/cerdas/cemerlang/luar biasa/sangat tepat] untuk [tujuan/manfaat]'.
+          - Mengganti kata sifat dengan sinonimnya (seperti mengganti 'menarik' jadi 'tepat', 'cerdas', 'cemerlang', 'luar biasa') TETAP DINILAI GAGAL jika kerangka kalimatnya masih formulaik!
+          - Wajib gunakan ragam struktur tata bahasa yang berbeda (observasi fakta bisnis, pertanyaan retoris, ajakan langsung, atau konfirmasi praktis)."
 
 6. STRUKTUR NARASI: 1 KALIMAT SAPAAN SINGKAT + 2-3 KALIMAT CERITA OPERASIONAL:
    Narasi pada field "narasi" WAJIB berstruktur:
    [Kalimat 1: Sapaan / Pengakuan Singkat terhadap Ide Pengguna] [Kalimat 2-4: Alur Cerita Nyata di Lapangan] [Kalimat Penutup Konfirmasi].
 
-   ATURAN KALIMAT 1 (SAPAAN / PENGAKUAN IDE SINGKAT - WAJIB ADA SEBAGAI KALIMAT TERPISAH):
-   - Wajib berupa satu kalimat pendek yang menyambut/mengakui ide pengguna secara hangat dan apresiatif sebelum bercerita.
-   - DILARANG menggunakan kerangka klise lama seperti "[Ide aplikasi] ... sangat menarik ...".
-   - KERANGKA & KATA AWALAN WAJIB BERAGAM TIAP SESI (Jangan seragam selalu 'Senang...'):
-     1) Gaya Pengakuan Manfaat / Solusi Praktis: Mengakui kegunaan atau solusi idenya bagi operasional (contoh: "Langkah tepat untuk menata antrean dan pencatatan di usaha cuci kendaraan.", "Inisiatif bagus untuk menertibkan jadwal konsultasi dan rekam medis pasien di klinik gigi.", "Rencana praktis agar penerimaan cucian kiloan tertata rapi sejak awal.").
-     2) Gaya Ajakan & Kolaboratif Kontekstual: Sapaan akrab yang menyemangati penataan alur (contoh: "Mari kita petakan alur operasional bengkel motor ini agar ritme servis harian makin teratur.", "Menata alur pesanan yang terintegrasi tentu membuat operasional kedai kopi makin nyaman.", "Fokus yang sangat baik untuk memperjelas pencatatan transaksi anggota koperasi.").
-     3) Gaya Pengakuan Dinamika / Karakter Usaha: Menyoroti aspek penting yang relevan dengan jenis usahanya (contoh: "Dalam bisnis jual beli emas, akurasi penaksiran dan kecepatan pencatatan nota memang kunci kepercayaan pelanggan.", "Usaha laundry kiloan menuntut ketelitian tinggi sejak penimbangan agar tidak ada pakaian yang tertukar.").
+   ATURAN KALIMAT 1 (SAPAAN / PENGAKUAN IDE SINGKAT - STRUKTUR TATA BAHASA HARUS BERBEDA):
+   - Wajib berupa satu kalimat pendek di depan sebelum bercerita operasional.
+   - PENTING: Yang membedakan BUKAN cuma kata sifat pujian, melainkan STRUKTUR BENTUK KALIMATNYA. Jangan melulu memuji! Seringkali tidak butuh kata sifat pujian sama sekali.
+   - PILIHAN STRUKTUR BENTUK KALIMAT (PILIH SALAH SATU YANG PALING ALAMI & BERAGAM TIAP SESI):
+     a) Bentuk Observasi / Fakta Nyata Bisnis (Tanpa Pujian):
+        Menyoroti dinamika nyata yang biasa terjadi di lapangan.
+        Contoh: "Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba." / "Usaha laundry kiloan mengandalkan kedisiplinan pemilahan pakaian sejak awal diterima kasir." / "Di klinik dokter gigi, ketepatan rekam medis dan antrean pasien adalah kunci kelancaran pelayanan."
+     b) Bentuk Pertanyaan Retoris Singkat:
+        Mengajak berpikir tentang perbaikan alur operasional.
+        Contoh: "Bagaimana kalau proses antrean dan pencatatan servis motor bisa lebih teratur dari sekarang?" / "Bagaimana jika seluruh alur pesanan menu kopi di meja kasir bisa tercatat serba rapi?"
+     c) Bentuk Ajakan Langsung Tanpa Basa-Basi Pujian:
+        Langsung mengarahkan fokus ke operasional nyata.
+        Contoh: "Mari kita lihat bagaimana alur operasional servis kendaraan di bengkel ini biasanya berjalan." / "Mari kita bedah aktivitas penaksiran dan penjualan di toko perhiasan ini."
+     d) Bentuk Konfirmasi & Refleksi Praktis:
+        Menyapa dengan merangkum fokus utama usaha.
+        Contoh: "Jadi fokus utamanya adalah merapikan pencatatan setoran dan pengajuan pinjaman anggota koperasi, ya." / "Menata operasional bengkel motor memang sering berhadapan dengan riwayat servis yang tercecer."
 
    ATURAN KALIMAT 2-4 (ALUR CERITA BISNIS NYATA 3 FASE):
    - Baru setelah kalimat sapaan di atas selesai, lanjutkan dengan alur cerita operasional konkret (Fase awal kedatangan pelanggan -> Fase penanganan fisik/layanan oleh staf dengan alat konkret -> Fase pembayaran/tanda terima).
@@ -581,37 +600,6 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           String(parsed.appName || '').trim() ||
           (businessCategory.toLowerCase().startsWith('aplikasi') ? businessCategory : `Aplikasi ${businessCategory}`);
         let narasi = String(parsed.narasi || '').trim();
-
-        // SAFETY NET BERBASIS AI RETRY (BUKAN TRANSFORMASI MEKANIS):
-        // Jika pembuka masih terdeteksi pola klise ("... sangat menarik ...") ATAU kehilangan kalimat sapaan ide user,
-        // lakukan retry 1x ke AI agar AI menambahkan 1 kalimat sapaan segar di awal narasi.
-        if (isClicheStorylineOpening(narasi) || lacksGreetingOpening(narasi)) {
-          try {
-            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Narasi WAJIB diawali dengan 1 (SATU) kalimat singkat yang menyapa atau mengakui ide bisnis pengguna secara hangat dan segar SEBELUM masuk ke cerita operasional di lapangan. Dilarang menggunakan kerangka klise '[ide aplikasi] ... sangat menarik ...', dilarang selalu mengawali dengan kata 'Senang...', dan dilarang langsung meloncat ke cerita tanpa menyapa ide pengguna terlebih dahulu.\n\nPilihan gaya kalimat sapaan (pilih salah satu):\n- Pengakuan solusi praktis (misal: "Langkah tepat untuk menertibkan antrean dan pencatatan di usaha cuci kendaraan.")\n- Ajakan kontekstual (misal: "Mari kita petakan alur kerja bengkel motor ini agar ritme servis harian makin teratur.")\n- Sorotan dinamika usaha (misal: "Usaha laundry kiloan menuntut ketelitian tinggi sejak awal penerimaan pakaian.")\n\nSetelah 1 kalimat sapaan tersebut, lanjutkan dengan 2-3 kalimat cerita alur operasional di lapangan, lalu akhiri dengan: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
-
-            const retryRaw = await invokeAIChat({
-              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda memastikan narasi diawali 1 kalimat sapaan/pengakuan ide yang ramah dan segar, diikuti cerita proses bisnis yang membumi. Balas HANYA dengan teks narasi murni.',
-              userPrompt: retryUserPrompt,
-              temperature: 0.7,
-              maxTokens: 1000,
-              provider,
-              userApiKey: apiKey,
-              userModel: model
-            });
-
-            if (retryRaw && retryRaw.trim()) {
-              let cleanRetry = retryRaw.trim().replace(/^["']|["']$/g, '');
-              const jsonRetryMatch = cleanRetry.match(/"narasi"\s*:\s*"([^"]+)"/);
-              if (jsonRetryMatch) {
-                cleanRetry = jsonRetryMatch[1];
-              }
-              narasi = cleanRetry;
-            }
-          } catch (retryErr) {
-            console.warn('Storyline greeting retry failed:', retryErr);
-          }
-        }
-
         if (!narasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
           narasi = narasi ? `${narasi} ${CONFIRMATION_CLOSING}` : CONFIRMATION_CLOSING;
         }
@@ -757,39 +745,42 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
           }
         }
 
-        // RETRY AI jika narasi masih mengandung kata ganti orang pertama jamak ("kami/kita/tim kami")
-        if (/\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test(narasi)) {
+        // Lapis 1: Sanitasi kata ganti orang pertama jamak ("kami/kita") murni pada kata gantinya saja
+        narasi = sanitizeStorylineNarrative(narasi, asumsiAktor);
+
+        // Lapis 2: SAFETY NET BERBASIS AI RETRY UNTUK KALIMAT PEMBUKA (Single Source of Truth)
+        // Jika pembuka masih terdeteksi pola klise/formulaik ("[ide/langkah] ... [sifat] untuk ...") ATAU kehilangan sapaan:
+        if (isClicheStorylineOpening(narasi) || lacksGreetingOpening(narasi)) {
           try {
-            console.info('[generateStorylineWithAI] Narasi memuat kata ganti orang pertama jamak, melakukan RETRY AI dengan penegasan...');
+            const retryUserPrompt = `Permintaan Pengguna: "${prompt}"\n\nNarasi sebelumnya: "${narasi}"\n\nCATATAN KOREKSI: Kalimat pembuka narasi di atas masih mengikuti kerangka formulaik klise (seperti "[Ide/Langkah/Inisiatif] ... [sifat pujian] untuk ...") atau belum menyapa ide pengguna.\n\nTolong tulis ulang HANYA teks narasi cerita proses bisnis tersebut (2-4 kalimat) dengan aturan:\n1. Awali dengan 1 kalimat singkat pembuka yang menggunakan STRUKTUR BERBEDA (DILARANG pola pujian '[ide/langkah] ... untuk ...'):\n   - Gunakan bentuk observasi fakta lapangan (misal: "Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba.")\n   - ATAU bentuk pertanyaan retoris (misal: "Bagaimana kalau antrean dan pencatatan di tempat ini bisa berjalan lebih rapi?")\n   - ATAU bentuk ajakan langsung tanpa pujian (misal: "Mari kita lihat bagaimana alur operasional di tempat ini biasanya berjalan.")\n   - ATAU bentuk konfirmasi praktis (misal: "Jadi fokus utamanya adalah merapikan alur pencatatan dan pelayanan harian, ya.")\n2. Lanjutkan dengan 2-3 kalimat cerita operasional konkret 3 fase (kedatangan -> penanganan fisik & alat presisi -> pembayaran/struk) dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami/kita/tim kami').\n3. Akhiri dengan kalimat: "${CONFIRMATION_CLOSING}".\n\nBalas HANYA teks narasi baru (string murni tanpa JSON dan tanpa markdown):`;
+
             const retryRaw = await invokeAIChat({
-              systemInstruction: `${systemInstruction}\n\n[PERINGATAN KRITIS RETRY]:\nOutput narasi sebelumnya melanggar aturan sudut pandang karena menggunakan kata ganti orang pertama jamak ('kami/kita/tim kami'). DILARANG KERAS menggunakan kata 'kami', 'kita', atau 'tim kami' sama sekali! Tulis ulang narasi cerita murni dari sudut pandang PIHAK KETIGA OBJEKTIF secara netral. Sebut nama peran secara eksplisit (seperti: ${asumsiAktor.join(', ')}). Gunakan bahasa sehari-hari orang awam yang wajar dan membumi.`,
-              userPrompt: `Permintaan Pengguna: "${prompt}"\nTulis ulang output JSON dengan narasi yang 100% dari sudut pandang pihak ketiga objektif (DILARANG pakai kata 'kami' atau 'kita'):`,
-              temperature: 0.5,
-              maxTokens: 4000,
+              systemInstruction: 'Anda adalah konsultan proses bisnis AI. Tugas Anda memastikan narasi diawali 1 kalimat sapaan/pengakuan ide yang ramah dan segar tanpa kerangka pujian klise, diikuti cerita proses bisnis yang membumi dari sudut pandang pihak ketiga objektif. Balas HANYA dengan teks narasi murni.',
+              userPrompt: retryUserPrompt,
+              temperature: 0.7,
+              maxTokens: 1000,
               provider,
               userApiKey: apiKey,
               userModel: model
             });
 
-            if (retryRaw) {
-              const retryMatch = retryRaw.match(/\{[\s\S]*\}/);
-              if (retryMatch) {
-                const retryParsed = JSON.parse(retryMatch[0]);
-                if (retryParsed.narasi && typeof retryParsed.narasi === 'string' && retryParsed.narasi.trim()) {
-                  narasi = retryParsed.narasi.trim();
-                  if (!narasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
-                    narasi = `${narasi} ${CONFIRMATION_CLOSING}`;
-                  }
-                }
+            if (retryRaw && retryRaw.trim()) {
+              let cleanRetry = retryRaw.trim().replace(/^["']|["']$/g, '');
+              const jsonRetryMatch = cleanRetry.match(/"narasi"\s*:\s*"([^"]+)"/);
+              if (jsonRetryMatch) {
+                cleanRetry = jsonRetryMatch[1];
               }
+              narasi = cleanRetry;
             }
-          } catch (err) {
-            console.warn('Gagal retry storyline AI:', err);
+          } catch (retryErr) {
+            console.warn('Storyline greeting retry failed:', retryErr);
           }
         }
 
-        // Lapis pengaman terakhir: jika setelah retry AI masih ada kata ganti yang lolos,
-        // jalankan sanitasi khusus kata ganti saja (tanpa menyentuh kata benda/kerja di sekitarnya)
+        if (!narasi.toLowerCase().includes('apakah ini sudah menggambarkan proses bisnismu')) {
+          narasi = narasi ? `${narasi} ${CONFIRMATION_CLOSING}` : CONFIRMATION_CLOSING;
+        }
+
         narasi = sanitizeStorylineNarrative(narasi, asumsiAktor);
 
         return {

@@ -67,11 +67,25 @@ async function runLiveVerification() {
 
     const isCliche = isClicheStorylineOpening(sanitized);
     const hasGreeting = !lacksGreetingOpening(sanitized);
-    const hasMenarik = /\bmenarik\b/i.test(firstSentence);
-    const hasKamiKita = /\b(kami|kita|tim\s+kami|tim\s+kita)\b/i.test(sanitized);
+    const hasKamiKita = /\b(tim\s+kami|tim\s+kita)\b|(?<!\b(?:mari|ayo|silakan|yuk)\s+)\b(kami|kita)\b/i.test(sanitized);
+
+    // Analisis struktur tata bahasa pembuka
+    let strukturGramatikal = 'Lainnya';
+    if (/^(bisnis|usaha|di\s+|pengelolaan|aktivitas|operasional|menata|setiap)\b/i.test(firstSentence) && !/\b(untuk|dalam)\s+(meningkatkan|mempermudah|menyederhanakan|mengelola)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Observasi / Fakta Nyata Bisnis';
+    } else if (/\?$/.test(firstSentence) || /^(bagaimana|pernahkah|apakah)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Pertanyaan Retoris';
+    } else if (/^(mari|ayo|silakan)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Ajakan Langsung Tanpa Basa-Basi';
+    } else if (/^(jadi|fokus|intinya)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Konfirmasi & Refleksi Praktis';
+    } else if (/\b(untuk|dalam|guna|demi)\b/i.test(firstSentence) && /\b(tepat|cerdas|cemerlang|luar biasa|bagus)\b/i.test(firstSentence)) {
+      strukturGramatikal = 'Pujian Formulaik (Klise)';
+    }
 
     console.log(`⏱️ Selesai dalam ${elapsed}s`);
-    console.log(`📌 Kalimat Pembuka (Sapaan/Pengakuan Ide): "${firstSentence}."`);
+    console.log(`📌 Kalimat Pembuka: "${firstSentence}."`);
+    console.log(`📐 Struktur Tata Bahasa: [${strukturGramatikal}]`);
     console.log(`📖 Narasi Lengkap: "${sanitized}"`);
     console.log(`🏷️ Aktor: [${res.asumsiAktor.join(', ')}]`);
     console.log(`🔍 Evaluasi Pembuka:`);
@@ -87,11 +101,12 @@ async function runLiveVerification() {
       hasGreeting,
       isCliche,
       hasMenarik,
-      hasKamiKita
+      hasKamiKita,
+      strukturGramatikal
     });
 
     if (isCliche) {
-      throw new Error(`FAILED: Kalimat pembuka untuk domain ${testCase.name} masih klise: "${firstSentence}"`);
+      throw new Error(`FAILED: Kalimat pembuka untuk domain ${testCase.name} masih klise formulaik: "${firstSentence}"`);
     }
     if (!hasGreeting) {
       throw new Error(`FAILED: Kalimat pembuka untuk domain ${testCase.name} tidak memiliki sapaan ide: "${firstSentence}"`);
@@ -99,19 +114,47 @@ async function runLiveVerification() {
   }
 
   console.log('\n================================================================');
-  console.log('📊 REKAPITULASI KALIMAT PEMBUKA DARI 7 DOMAIN BERBEDA:');
+  console.log('📊 REKAPITULASI KALIMAT PEMBUKA & STRUKTUR DARI 7 DOMAIN BERBEDA:');
   console.log('================================================================');
   results.forEach((r, idx) => {
     console.log(`${idx + 1}. [${r.domain}]`);
-    console.log(`   👉 "${r.openingSentence}."\n`);
+    console.log(`   👉 "${r.openingSentence}."`);
+    console.log(`   📐 Struktur: ${r.strukturGramatikal}\n`);
   });
 
-  // Uji Diversitas Struktur: Pastikan tidak ada 2 domain yang memiliki awal kalimat identik
-  const openingPrefixes = results.map(r => r.openingSentence.slice(0, 20).toLowerCase());
-  const uniquePrefixes = new Set(openingPrefixes);
-  console.log(`Variasi Prefix Kalimat Pembuka: ${uniquePrefixes.size} unik dari ${results.length} domain.`);
+  // Uji Khusus: Cuci Mobil vs Bengkel Motor (tidak boleh menghasilkan kalimat yang sama persis)
+  console.log('\n================================================================');
+  console.log('🔬 UJI KHUSUS: PENGUJIAN BERULANG CUCI MOBIL VS BENGKEL MOTOR');
+  console.log('================================================================');
+  console.log('Menjalankan kembali pemanggilan untuk Cuci Mobil & Bengkel Motor...');
 
-  console.log('\n🎉 SELURUH VERIFIKASI LIVE 7 DOMAIN BERHASIL 100%! TIDAK ADA POLA "SANGAT MENARIK"!');
+  const repeatCuci = await generateStorylineWithAI(
+    'buatkan aplikasi cuci mobil dan motor',
+    'openai',
+    process.env.OPENAI_API_KEY,
+    process.env.OPENAI_MODEL || 'gpt-4o-mini'
+  );
+  const repeatBengkel = await generateStorylineWithAI(
+    'aplikasi servis berkala dan riwayat kendaraan bengkel motor',
+    'openai',
+    process.env.OPENAI_API_KEY,
+    process.env.OPENAI_MODEL || 'gpt-4o-mini'
+  );
+
+  const firstCuci = repeatCuci.narasi.split(/[\.\n\?\!]/)[0].trim();
+  const firstBengkel = repeatBengkel.narasi.split(/[\.\n\?\!]/)[0].trim();
+
+  console.log(`🚗 Cuci Mobil (Run 2): "${firstCuci}."`);
+  console.log(`🏍️ Bengkel Motor (Run 2): "${firstBengkel}."`);
+
+  if (firstCuci.toLowerCase() === firstBengkel.toLowerCase()) {
+    throw new Error('FAILED: Cuci Mobil dan Bengkel Motor menghasilkan kalimat yang sama persis!');
+  }
+  if (isClicheStorylineOpening(firstCuci) || isClicheStorylineOpening(firstBengkel)) {
+    throw new Error('FAILED: Pengujian berulang Cuci Mobil / Bengkel Motor masih mengandung kerangka klise!');
+  }
+
+  console.log('\n🎉 SELURUH VERIFIKASI LIVE 7 DOMAIN & UJI KHUSUS BERHASIL 100%!');
 }
 
 runLiveVerification().catch((err) => {

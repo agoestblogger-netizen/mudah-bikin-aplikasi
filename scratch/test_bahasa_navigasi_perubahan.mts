@@ -29,12 +29,20 @@ async function runTests() {
     'Ide aplikasi cuci mobil dan motormu sangat menarik untuk membantu pelanggan lebih tertib.',
     'Aplikasi yang ingin kamu buat sangat menarik. Pelanggan membawa kendaraan...',
     'Konsep aplikasi ini sangat menarik sekali untuk dicoba.',
-    'Ide aplikasi klinik gigi ini cukup menarik untuk meningkatkan efisiensi.'
+    'Ide untuk aplikasi cuci kendaraan ini sangat tepat untuk meningkatkan efisiensi pelayanan.',
+    'Ide untuk aplikasi servis berkala dan riwayat kendaraan ini sangat tepat untuk meningkatkan efisiensi operasional bengkel.',
+    'Inisiatif yang luar biasa untuk meningkatkan manajemen klinik gigi dan pelayanan pasien.',
+    'Sebuah langkah yang cerdas untuk menyederhanakan pengalaman pelanggan saat memesan.',
+    'Sebuah ide yang cemerlang untuk mempermudah transaksi jual beli perhiasan.',
+    'Sebuah langkah cerdas untuk mengelola simpanan dan pinjaman anggota koperasi.'
   ];
   const freshSamples = [
-    'Mengelola antrean kendaraan saat jam sibuk di tempat cuci mobil memang memerlukan alur kerja yang rapi. Pelanggan datang...',
-    'Langkah tepat untuk menertibkan jadwal konsultasi dan rekam medis pasien di klinik gigi. Pasien mendaftar di resepsionis...',
-    'Aktivitas penimbangan cucian kiloan dan pemilahan pakaian membutuhkan pencatatan yang disiplin. Pelanggan menyerahkan pakaian kotor...'
+    'Bisnis cuci kendaraan memang butuh ketelitian ekstra saat jam ramai tiba. Pelanggan datang...',
+    'Bagaimana kalau proses antrean cuci mobil bisa lebih rapi dari sekarang? Pelanggan datang...',
+    'Mari kita lihat bagaimana proses cuci kendaraan ini biasanya berjalan di lapangan. Pelanggan datang...',
+    'Usaha laundry kiloan menuntut ketelitian tinggi sejak awal penerimaan pakaian. Pelanggan menyerahkan pakaian kotor...',
+    'Di klinik gigi, ketepatan rekam medis dan antrean pasien adalah kunci kelancaran pelayanan. Pasien datang...',
+    'Pengelolaan simpan pinjam di koperasi sangat terbantu jika setiap setoran tercatat transparan. Anggota datang...'
   ];
 
   for (const s of clicheSamples) {
@@ -73,6 +81,19 @@ async function runTests() {
     if (hasDoubleKendaraan || hasKendaraanMobil) {
       throw new Error(`FAILED: Ditemukan kejanggalan kalimat/kata dobel akibat replace mekanis: ${cleaned}`);
     }
+  }
+
+  // Test 1.2b: Pengecualian frasa ajakan 'Mari kita' (konsultan AI menyapa user)
+  const mariKitaNarrative = 'Mari kita lihat bagaimana alur operasional di tempat ini biasanya berjalan. Kami menyiapkan peralatan servis.';
+  const cleanedMariKita = sanitizeStorylineNarrative(mariKitaNarrative, ['Super Admin', 'Teknisi Servis', 'Pelanggan']);
+  console.log('\n--- Sanitasi Frasa Ajakan "Mari kita" ---');
+  console.log('Kotor :', mariKitaNarrative);
+  console.log('Bersih:', cleanedMariKita);
+  if (!cleanedMariKita.startsWith('Mari kita lihat')) {
+    throw new Error(`FAILED: Frasa ajakan 'Mari kita lihat' rusak menjadi '${cleanedMariKita}'`);
+  }
+  if (cleanedMariKita.includes('Kami menyiapkan')) {
+    throw new Error(`FAILED: Kata 'kami' operasional tidak ter-replace: '${cleanedMariKita}'`);
   }
 
   // Test 1.3: Mekanisme deteksi kata ganti untuk pemicu RETRY AI
