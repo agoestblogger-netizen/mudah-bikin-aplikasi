@@ -1532,6 +1532,7 @@ export default function AppWorkspacePage() {
         {/* PANEL TENGAH / KIRI: Percakapan AI & Kapsul Prompt */}
         <div className="flex flex-col min-w-0 h-full overflow-hidden">
           <ChatPanel
+            key={projectState.id}
             projectState={projectState}
             onUpdateState={handleUpdateState}
             isGenerating={isGenerating}
