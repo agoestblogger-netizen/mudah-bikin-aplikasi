@@ -3999,42 +3999,45 @@ export function compileBriefFromSession(
         lines.push('        - [x] onclick: Atur Role & Permission (Mengubah hak akses staf)');
       } else {
         const cat = getRoleCategory(role);
-        let pageName = 'Operasional & Layanan (default)';
+        let pageName = `${role.trim()} (default)`;
         let roleSections: string[] = [];
 
-        if (cat === 'external') {
-          if (/sewa|nyewa|rental|booking|peminjam/i.test(role)) {
-            pageName = 'Katalog & Sewa Mandiri (default)';
-          } else if (/pasien|klinik|antri/i.test(role)) {
-            pageName = 'Pendaftaran & Antrean Mandiri (default)';
-          } else if (/siswa|murid|pelajar/i.test(role)) {
-            pageName = 'Portal Belajar & Jadwal (default)';
-          } else if (/anggota|member/i.test(role)) {
-            pageName = 'Kartu Digital & Iuran (default)';
-          } else {
-            pageName = 'Layanan & Pemesanan Mandiri (default)';
+        // Ambil fitur dari fiturPendukung alur baru atau fitur legacy
+        const allFiturLabels = (session.flow?.fiturPendukung && session.flow.fiturPendukung.length > 0)
+          ? session.flow.fiturPendukung
+          : wajib.map((f) => features.find((x) => x.id === f.id)?.label).filter((lbl): lbl is string => Boolean(lbl));
+
+        // Ambil aksi spesifik role ini dari Alur Inti & Pendukung
+        const roleAksiList: string[] = [];
+        session.flow?.alurInti?.forEach((ai) => {
+          if (ai.pelaku.toLowerCase().includes(role.toLowerCase()) || role.toLowerCase().includes(ai.pelaku.toLowerCase())) {
+            roleAksiList.push(ai.aksi);
           }
+        });
+        session.flow?.alurPendukung?.forEach((ap) => {
+          ap.steps.forEach((s) => {
+            if (s.pelaku.toLowerCase().includes(role.toLowerCase()) || role.toLowerCase().includes(s.pelaku.toLowerCase())) {
+              roleAksiList.push(s.aksi);
+            }
+          });
+        });
 
-          // Filter fitur yang relevan untuk pengguna eksternal / pelanggan (hilangkan fitur khusus staf)
-          const customerFeatures = wajib
-            .map((f) => features.find((x) => x.id === f.id)?.label)
-            .filter((lbl): lbl is string => Boolean(lbl))
-            .filter((lbl) => {
-              const isStaffOnly = /akun staf|staf|karyawan|serah terima|cek fisik|pengembalian unit|kalkulator denda|opname|disposal|mutasi|audit|omset/i.test(lbl);
-              return !isStaffOnly;
-            });
+        if (cat === 'external') {
+          pageName = `Portal ${role.trim()} (default)`;
+          const customerFeatures = allFiturLabels.filter((lbl) => {
+            return !/akun staf|staf|karyawan|audit|omset|penugasan|hak akses/i.test(lbl);
+          });
 
-          if (customerFeatures.length > 0) {
-            roleSections = customerFeatures.slice(0, 4);
+          if (roleAksiList.length > 0) {
+            roleSections = roleAksiList.slice(0, 3).map((a) => a.replace(/^(melihat|mengisi|memilih|mendaftar|melakukan)\s+/i, '').trim());
+          } else if (customerFeatures.length > 0) {
+            roleSections = customerFeatures.slice(0, 3);
           } else {
-            roleSections = ['Katalog & Ketersediaan', 'Form Pemesanan / Sewa Mandiri', 'Status & Riwayat Saya'];
+            roleSections = ['Layanan & Pendaftaran Mandiri', 'Status & Riwayat Saya', 'Informasi Akun'];
           }
         } else if (cat === 'business') {
           pageName = 'Dashboard & Laporan (default)';
-          const businessFeatures = wajib
-            .map((f) => features.find((x) => x.id === f.id)?.label)
-            .filter((lbl): lbl is string => Boolean(lbl))
-            .filter((lbl) => /laporan|omset|rekap|analisis|dashboard|statistik|performa|ringkasan/i.test(lbl));
+          const businessFeatures = allFiturLabels.filter((lbl) => /laporan|omset|rekap|analisis|dashboard|statistik|performa|ringkasan/i.test(lbl));
 
           if (businessFeatures.length > 0) {
             roleSections = businessFeatures.slice(0, 4);
@@ -4042,31 +4045,18 @@ export function compileBriefFromSession(
             roleSections = ['Ringkasan Performa & Omset', 'Laporan Transaksi', 'Monitoring Operasional'];
           }
         } else {
-          // Operational role (Petugas Rental, Kasir, Washer, Montir, dll)
-          if (/rental|sewa/i.test(role)) {
-            pageName = 'Operasional Rental (default)';
-          } else if (/kasir|cashier/i.test(role)) {
-            pageName = 'Kasir & Transaksi (default)';
-          } else if (/washer|cuci/i.test(role)) {
-            pageName = 'Antrean Pengerjaan Cuci (default)';
-          } else if (/gudang|stok|warehouse/i.test(role)) {
-            pageName = 'Stok & Gudang (default)';
-          } else {
-            pageName = `Operasional ${role.trim()} (default)`;
-          }
+          // Operational role (Instruktur, Petugas, Kasir, dll)
+          pageName = `Operasional ${role.trim()} (default)`;
+          const opFeatures = allFiturLabels.filter((lbl) => {
+            return !/kartu saya|pesanan saya|portal mandiri|riwayat saya/i.test(lbl);
+          });
 
-          const opFeatures = wajib
-            .map((f) => features.find((x) => x.id === f.id)?.label)
-            .filter((lbl): lbl is string => Boolean(lbl))
-            .filter((lbl) => {
-              const isCustomerOnly = /mandiri|kartu saya|pesanan saya|portal belajar/i.test(lbl);
-              return !isCustomerOnly;
-            });
-
-          if (opFeatures.length > 0) {
-            roleSections = opFeatures.slice(0, 5);
+          if (roleAksiList.length > 0) {
+            roleSections = roleAksiList.slice(0, 3).map((a) => a.replace(/^(melihat|mengisi|memilih|mendaftar|melakukan)\s+/i, '').trim());
+          } else if (opFeatures.length > 0) {
+            roleSections = opFeatures.slice(0, 4);
           } else {
-            roleSections = ['Katalog & Ketersediaan Unit', 'Pencatatan Transaksi', 'Update Status & Proses'];
+            roleSections = [`Manajemen ${role.trim()}`, 'Pencatatan Transaksi & Proses', 'Update Status'];
           }
         }
 
@@ -4074,6 +4064,28 @@ export function compileBriefFromSession(
           ? `: section ${roleSections.join(', section ')}`
           : '';
         lines.push(`    - ${pageName}${sectionText}`);
+
+        // Tambahkan Field Input dan Action spesifik dari dataSchema jika ada
+        const relevantTables = (session.dataSchema?.tabel || []).filter((t) => {
+          const tName = t.nama.toLowerCase();
+          const rName = role.toLowerCase();
+          return tName.includes(rName) || rName.includes(tName) ||
+                 (cat === 'external' && /daftar|transaksi|pesan|sewa|booking|murid|pelanggan/i.test(tName)) ||
+                 (cat !== 'external' && !/user|pengguna/i.test(tName));
+        });
+
+        const targetTable = relevantTables[0] || session.dataSchema?.tabel?.[1];
+        if (targetTable && targetTable.field.length > 0) {
+          lines.push('      * Field Input:');
+          targetTable.field.slice(0, 3).forEach((f) => {
+            lines.push(`        - [x] ${f.nama.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())} (${f.tipe})`);
+          });
+          lines.push('      * Action / Event:');
+          const sampleActionName = roleAksiList[0]
+            ? roleAksiList[0].slice(0, 30)
+            : `Simpan Data ${targetTable.nama.replace(/_/g, ' ')}`;
+          lines.push(`        - [x] onclick: ${sampleActionName} (Memproses data di tabel ${targetTable.nama})`);
+        }
       }
     }
   }

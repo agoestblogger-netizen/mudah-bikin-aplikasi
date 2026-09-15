@@ -2200,6 +2200,106 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
   };
 }
 
+export function extractTablesAndCorrelationFromParsed(
+  parsed: any,
+  fallbackCorrelation?: string
+): { tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[]; korelasiRingkas?: string } | null {
+  if (!parsed) return null;
+  const rawTables = Array.isArray(parsed)
+    ? parsed
+    : (Array.isArray(parsed.tabel) ? parsed.tabel : (Array.isArray(parsed.tables) ? parsed.tables : null));
+
+  if (!rawTables || rawTables.length === 0) return null;
+
+  const validatedTables: {
+    nama: string;
+    keterangan?: string;
+    field: { nama: string; tipe: string; keterangan: string }[];
+  }[] = [];
+
+  for (const t of rawTables) {
+    const rawFields = t && (t.field || t.fields || t.kolom);
+    if (t && typeof t.nama === 'string' && Array.isArray(rawFields) && rawFields.length > 0) {
+      const validFields: { nama: string; tipe: string; keterangan: string }[] = [];
+      for (const f of rawFields) {
+        if (f && typeof f.nama === 'string') {
+          validFields.push({
+            nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
+            tipe: String(f.tipe || 'text').trim(),
+            keterangan: String(f.keterangan || f.deskripsi || '').trim()
+          });
+        }
+      }
+      if (validFields.length > 0) {
+        validatedTables.push({
+          nama: String(t.nama).trim().toLowerCase().replace(/\s+/g, '_'),
+          keterangan: t.keterangan ? String(t.keterangan).trim() : (t.deskripsi ? String(t.deskripsi).trim() : undefined),
+          field: validFields
+        });
+      }
+    }
+  }
+
+  if (validatedTables.length === 0) return null;
+
+  const korelasi = (parsed.korelasiRingkas || parsed.korelasi || parsed.summary)
+    ? String(parsed.korelasiRingkas || parsed.korelasi || parsed.summary).trim()
+    : fallbackCorrelation;
+
+  return { tables: validatedTables, korelasiRingkas: korelasi };
+}
+
+export function detectMissingCoreTermsFromSchema(
+  tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[],
+  alurInti: { step: number; pelaku: string; aksi: string }[],
+  fiturPendukung: string[] = []
+): string[] {
+  const missing: string[] = [];
+  const allFieldTexts = tables.flatMap((t) => [
+    t.nama.toLowerCase(),
+    (t.keterangan || '').toLowerCase(),
+    ...t.field.map((f) => `${f.nama.toLowerCase()} ${f.keterangan.toLowerCase()}`)
+  ]).join(' ');
+
+  const combinedAlurText = [
+    ...alurInti.map((s) => s.aksi),
+    ...fiturPendukung
+  ].join('. ');
+
+  const regexPatterns = [
+    /(?:memilih|pilihan|pilih)\s+([a-z0-9_]+(?:\s+[a-z0-9_]+)?)/gi,
+    /\b(paket\s+[a-z0-9_]+)/gi,
+    /\b(jenis\s+[a-z0-9_]+)/gi,
+    /\b(tipe\s+[a-z0-9_]+)/gi,
+    /\b(kategori\s+[a-z0-9_]+)/gi
+  ];
+
+  const candidateTerms = new Set<string>();
+  for (const regex of regexPatterns) {
+    const matches = combinedAlurText.matchAll(regex);
+    for (const m of matches) {
+      const term = m[1]?.trim().toLowerCase();
+      if (term && !/^(dan|atau|yang|untuk|dari|di|ke|pada|dengan|oleh|ini|itu)$/i.test(term)) {
+        candidateTerms.add(term);
+      }
+    }
+  }
+
+  if (/paket\s+kursus/i.test(combinedAlurText) || /memilih\s+paket/i.test(combinedAlurText)) {
+    candidateTerms.add('paket kursus');
+  }
+
+  for (const term of candidateTerms) {
+    const keywords = term.split(/\s+/).filter((w) => w.length > 2);
+    const isPresent = keywords.some((kw) => allFieldTexts.includes(kw));
+    if (!isPresent) {
+      missing.push(term);
+    }
+  }
+
+  return Array.from(new Set(missing));
+}
+
 export async function generateDataSchemaWithAI(
   session: MockupSessionState,
   provider?: string,
@@ -2212,6 +2312,7 @@ export async function generateDataSchemaWithAI(
   const narrative = session.storyline?.narasi || '';
   const mainFlow = session.flow?.alurInti || [];
   const alurPendukung = session.flow?.alurPendukung || [];
+  const fiturPendukung = session.flow?.fiturPendukung || [];
   const rbacModul = session.rbac?.modul || [];
   const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
 
@@ -2225,32 +2326,41 @@ ${delegated.map((d) => `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan se
 Tugas Anda: Menyusun Skema Tabel Data dan Relasi Entitas yang SANGAT PRESISI, MURNI DIGROUNDING pada alur proses bisnis nyata, peran pengguna yang aktif, dan matriks hak akses (RBAC) yang telah disepakati.
 
 ATURAN WAJIB & STRICT PRINCIPLES:
-1. MURNI ANALISIS KONSEPTUAL (DILARANG KERAS TEMPLATE INDUSTRI / CABANG DOMAIN):
-   - Seluruh tabel dan field WAJIB disimpulkan murni dari narasi, alur operasional, peran aktif, dan modul RBAC pengguna!
-   - DILARANG menggunakan daftar tabel template bawaan yang tidak relevan dengan kebutuhan alur bisnis saat ini.
+1. PENYISIRAN KATA BENDA & ATRIBUT PILIHAN (GROUNDING MUTLAK):
+   - SETIAP kata benda konkret, pilihan opsi, jenis, paket, tipe, kategori, instrumen, durasi, ruangan, tarif, atau metode yang disebutkan di Alur Inti, Alur Pendukung, maupun Fitur (misalnya: 'paket kursus', 'paket cuci', 'jenis layanan', 'ruangan studio', 'metode pembayaran') WAJIB diekstrak menjadi field nyata di tabel terkait!
+   - DILARANG menyatukan atau mengaburkan pilihan konkret ini menjadi field generik seperti 'keterangan' atau 'catatan' semata.
+   - Jika pengguna memilih atau mencatat suatu entitas (misal: 'memilih paket kursus'), tabel transaksi/pendaftaran WAJIB memiliki field konkret seperti 'paket_kursus' (atau 'jenis_kursus', 'pilihan_paket').
 
-2. PEMETAAN DARI MODUL RBAC & ALUR KERJA:
+2. REFERENSI POLA SKEMA UMUM INDUSTRI (MURNI PENALARAN AI - SEBAGAI PERTIMBANGAN PELENGKAP):
+   - Gunakan pemahaman Anda tentang pola skema data yang LAZIM untuk jenis bisnis yang sedang dibangun:
+     * Bisnis kursus / edukasi: lazim mencatat jenis/paket kursus, instrumen/mata pelajaran, level kemahiran, ruangan, jadwal sesi.
+     * Bisnis servis / bengkel / klinik: lazim mencatat jenis layanan/tindakan, keluhan awal, diagnosa, suku cadang/obat.
+     * Bisnis rental / sewa: lazim mencatat tipe/kategori unit, nomor polisi/identitas unit, tarif sewa, kondisi fisik unit.
+     * Bisnis retail / inventaris: lazim mencatat kategori produk, satuan unit, harga modal/jual, stok minimum.
+   - Seluruh field tambahan dari referensi umum ini TETAP harus masuk akal untuk alur spesifik dan tunduk pada prinsip "tanpa kuota artifisial" (tidak dipaksakan jika tidak relevan).
+
+3. PEMETAAN DARI MODUL RBAC & ALUR KERJA:
    - Gunakan matriks modul RBAC sebagai petunjuk utama entitas data. Setiap modul fungsional umumnya membutuhkan setidaknya satu tabel data transaksi/pencatatan.
    - Jika proses bisnis membutuhkan struktur master-detail atau log tersendiri (misal: rincian item, angsuran cicilan, riwayat servis), sediakan tabel terkait secara proporsional.
    - Tabel akun pengguna / peran (misal: "pengguna") WAJIB ada untuk mendukung otorisasi RBAC peran-peran aktif: ${activeRoles.join(', ')}.
 
-3. TANPA KUOTA ARTIFISIAL (3 HINGGA 6 TABEL PROPORSIONAL):
+4. TANPA KUOTA ARTIFISIAL (3 HINGGA 6 TABEL PROPORSIONAL):
    - Rancang skema dengan jumlah tabel yang pas dan proporsional (biasanya 3 sampai 6 tabel).
    - Jangan membuat tabel kembung atau tabel dummy yang tidak ada kaitannya dengan alur kerja pengguna.
 
-4. TIPE DATA MANUSIAWI (LEVEL PENGGUNA AWAM - ZERO TECH JARGON):
+5. TIPE DATA MANUSIAWI (LEVEL PENGGUNA AWAM - ZERO TECH JARGON):
    - DILARANG KERAS memakai istilah teknis SQL seperti VARCHAR, INT, BIGINT, BOOLEAN, ENUM, TIMESTAMP, FOREIGN KEY!
    - Gunakan HANYA 4 tipe data yang mudah dipahami orang awam:
-     a. "text" (untuk nama, catatan, kode, status, nomor surat, alamat)
+     a. "text" (untuk nama, catatan, kode, status, nomor surat, alamat, jenis, kategori)
      b. "angka" (untuk nominal uang, tarif, harga, durasi waktu, jumlah item, persentase)
      c. "tanggal" (untuk tanggal pengajuan, batas waktu, jadwal pelaksanaan, jam transaksi)
-     d. "relasi ke [Nama Tabel]" (untuk hubungan antar-entitas, contoh: "relasi ke pengguna", "relasi ke pemesanan")
+     d. "relasi ke [Nama Tabel]" (untuk hubungan antar-entitas, contoh: "relasi ke pengguna", "relasi ke kursus")
 
-5. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
+6. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
    - Di akhir, berikan 2-3 kalimat penjelasan korelasi ringkas yang menggambarkan aliran data antar-tabel dari hulu ke hilir.
 ${delegationRulesPrompt}
 
-6. FORMAT OUTPUT JSON WAJIB:
+7. FORMAT OUTPUT JSON WAJIB:
 {
   "tabel": [
     {
@@ -2269,6 +2379,7 @@ ${delegationRulesPrompt}
 
 Gambaran Proses:
 ${narrative}
+${session.storyline?.asumsiAlurUtama ? `Alur Utama (Storyline): ${session.storyline.asumsiAlurUtama}` : ''}
 
 Daftar Peran Aktif:
 ${activeRoles.join(', ')}
@@ -2278,6 +2389,7 @@ ${mainFlow.map((s) => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
 
 Alur Pendukung:
 ${alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
+${fiturPendukung.length > 0 ? `\nFitur Pendukung Disepakati:\n${fiturPendukung.map((fp, idx) => `${idx + 1}. ${fp}`).join('\n')}` : ''}
 
 Matriks Modul RBAC yang Disepakati:
 ${rbacModul.map((m) => `- ${m.nama}: ${m.deskripsiFungsional || ''}`).join('\n')}
@@ -2288,44 +2400,14 @@ Rancang skema tabel data dan relasi dalam format JSON:`;
     if (!rawText) return null;
     try {
       const parsed = robustJsonParse<any>(rawText);
-      if (parsed && Array.isArray(parsed.tabel) && parsed.tabel.length > 0) {
-        const validatedTables: {
-          nama: string;
-          keterangan?: string;
-          field: { nama: string; tipe: string; keterangan: string }[];
-        }[] = [];
-
-        for (const t of parsed.tabel) {
-          if (t && typeof t.nama === 'string' && Array.isArray(t.field) && t.field.length > 0) {
-            const validFields: { nama: string; tipe: string; keterangan: string }[] = [];
-            for (const f of t.field) {
-              if (f && typeof f.nama === 'string') {
-                validFields.push({
-                  nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
-                  tipe: String(f.tipe || 'text').trim(),
-                  keterangan: String(f.keterangan || '').trim()
-                });
-              }
-            }
-            if (validFields.length > 0) {
-              validatedTables.push({
-                nama: String(t.nama).trim().toLowerCase().replace(/\s+/g, '_'),
-                keterangan: t.keterangan ? String(t.keterangan).trim() : undefined,
-                field: validFields
-              });
-            }
-          }
-        }
-
-        if (validatedTables.length >= 2) {
-          const korelasi = parsed.korelasiRingkas ? String(parsed.korelasiRingkas).trim() : undefined;
-          const markdownTable = renderDataSchemaMarkdown(validatedTables, korelasi);
-          return {
-            tabel: validatedTables,
-            korelasiRingkas: korelasi,
-            markdownTable
-          };
-        }
+      const extracted = extractTablesAndCorrelationFromParsed(parsed);
+      if (extracted && extracted.tables.length >= 2) {
+        const markdownTable = renderDataSchemaMarkdown(extracted.tables, extracted.korelasiRingkas);
+        return {
+          tabel: extracted.tables,
+          korelasiRingkas: extracted.korelasiRingkas,
+          markdownTable
+        };
       }
     } catch (e) {
       console.warn('[AI-DATA-SCHEMA] Gagal parse JSON skema data:', e);
@@ -2345,6 +2427,7 @@ Rancang skema tabel data dan relasi dalam format JSON:`;
 
   let parsedSchema = parseAndValidateDataSchema(raw);
 
+  // Format retry jika parse gagal
   if (!parsedSchema && (provider || apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)) {
     console.log('[AI-DATA-SCHEMA] Melakukan retry AI 1x dengan prompt penegasan format...');
     const retryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN PENTING:
@@ -2361,6 +2444,33 @@ WAJIB keluarkan HANYA JSON murni yang valid tanpa komentar, tanpa trailing comma
       userModel: model
     });
     parsedSchema = parseAndValidateDataSchema(raw);
+  }
+
+  // Validasi Grounding Kata Benda Alur (Bagian A.2)
+  if (parsedSchema && (provider || apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)) {
+    const missingTerms = detectMissingCoreTermsFromSchema(parsedSchema.tabel, mainFlow, fiturPendukung);
+    if (missingTerms.length > 0) {
+      console.log(`[AI-DATA-SCHEMA] Terdeteksi istilah penting alur yang belum tercermin di field: ${missingTerms.join(', ')}. Melakukan penegasan grounding...`);
+      const groundingRetryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN GROUNDING ALUR BISNIS (WAJIB DIPENUHI):
+Skema data Anda sebelumnya belum memuat atribut/entitas konkret yang secara eksplisit disepakati di Alur Operasional:
+- Istilah/Pilihan yang belum tercermin: ${missingTerms.map((m) => `"${m}"`).join(', ')}.
+WAJIB masukkan atribut di atas sebagai field nyata (misal: nama field, tipe, dan keterangannya) ke dalam tabel transaksi/pendaftaran/layanan yang sesuai!
+Kembalikan JSON lengkap seluruh tabel yang telah diperbarui:`;
+
+      const retryRaw = await invokeAIChat({
+        systemInstruction,
+        userPrompt: groundingRetryPrompt,
+        temperature: 0.2,
+        maxTokens: 4000,
+        provider,
+        userApiKey: apiKey,
+        userModel: model
+      });
+      const retryParsed = parseAndValidateDataSchema(retryRaw);
+      if (retryParsed) {
+        parsedSchema = retryParsed;
+      }
+    }
   }
 
   const elapsed = Date.now() - startTime;
@@ -2396,7 +2506,7 @@ ATURAN REVISI (KONSISTEN & KUMULATIF):
 1. Baca koreksi pengguna dengan teliti: sesuaikan tabel, field, atau relasi yang diminta.
 2. PERTAHANKAN seluruh tabel dan kolom lain yang tidak diminta diubah (KUMULATIF).
 3. Pertahankan tipe data manusiawi: "text", "angka", "tanggal", "relasi ke [Tabel]".
-4. Format output JSON sama persis dengan format skema data sebelumnya.`;
+4. Format output JSON WAJIB memuat array "tabel" (dengan "nama", "keterangan", dan "field") serta "korelasiRingkas".`;
 
   const userPrompt = `Skema Tabel Data Saat Ini:
 ${JSON.stringify(currentTables, null, 2)}
@@ -2428,44 +2538,14 @@ Perbarui dan kembalikan JSON lengkap:`;
   if (raw) {
     try {
       const parsed = robustJsonParse<any>(raw);
-      if (parsed && Array.isArray(parsed.tabel) && parsed.tabel.length > 0) {
-        const validatedTables: {
-          nama: string;
-          keterangan?: string;
-          field: { nama: string; tipe: string; keterangan: string }[];
-        }[] = [];
-
-        for (const t of parsed.tabel) {
-          if (t && typeof t.nama === 'string' && Array.isArray(t.field) && t.field.length > 0) {
-            const validFields: { nama: string; tipe: string; keterangan: string }[] = [];
-            for (const f of t.field) {
-              if (f && typeof f.nama === 'string') {
-                validFields.push({
-                  nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
-                  tipe: String(f.tipe || 'text').trim(),
-                  keterangan: String(f.keterangan || '').trim()
-                });
-              }
-            }
-            if (validFields.length > 0) {
-              validatedTables.push({
-                nama: String(t.nama).trim().toLowerCase().replace(/\s+/g, '_'),
-                keterangan: t.keterangan ? String(t.keterangan).trim() : undefined,
-                field: validFields
-              });
-            }
-          }
-        }
-
-        if (validatedTables.length > 0) {
-          const korelasi = parsed.korelasiRingkas ? String(parsed.korelasiRingkas).trim() : session.dataSchema?.korelasiRingkas;
-          const markdownTable = renderDataSchemaMarkdown(validatedTables, korelasi);
-          return {
-            tabel: validatedTables,
-            korelasiRingkas: korelasi,
-            markdownTable
-          };
-        }
+      const extracted = extractTablesAndCorrelationFromParsed(parsed, session.dataSchema?.korelasiRingkas);
+      if (extracted && extracted.tables.length > 0) {
+        const markdownTable = renderDataSchemaMarkdown(extracted.tables, extracted.korelasiRingkas);
+        return {
+          tabel: extracted.tables,
+          korelasiRingkas: extracted.korelasiRingkas,
+          markdownTable
+        };
       }
     } catch (e) {
       console.warn('[AI-DATA-SCHEMA-REVISE] Gagal parse JSON revisi:', e);

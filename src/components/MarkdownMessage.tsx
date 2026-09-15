@@ -28,7 +28,21 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
   }, [content]);
 
   if (isUser) {
-    return <p className={`whitespace-pre-wrap text-xs leading-relaxed ${className}`}>{content}</p>;
+    return (
+      <div className={`markdown-message text-xs leading-relaxed text-white space-y-1.5 ${className}`}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            p: ({ node, ...props }) => <p className="whitespace-pre-wrap" {...props} />,
+            strong: ({ node, ...props }) => <strong className="font-semibold text-white" {...props} />,
+            code: ({ node, ...props }) => <code className="bg-white/20 px-1 py-0.5 rounded text-white font-mono text-[11px]" {...props} />
+          }}
+        >
+          {normalizedContent}
+        </ReactMarkdown>
+      </div>
+    );
   }
 
   return (

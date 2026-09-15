@@ -497,7 +497,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         setSelectedMode('BUILD');
         setTimeout(() => {
           handleSendMessage(
-            `Saya menyetujui Brief Kebutuhan ini. Silakan buatkan prototipe aplikasinya sekarang.\n\n${briefText}`,
+            '✅ Saya menyetujui Brief Kebutuhan ini. Silakan buatkan prototipe aplikasinya sekarang.',
             'BUILD',
             nextSession
           );

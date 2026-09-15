@@ -263,7 +263,8 @@ function filterTabsByRole(role) {
       const roles = btn.getAttribute('data-access-roles');
       if (!roles) return;
       const allowed = roles.split(',').map(r => r.trim().toLowerCase());
-      if (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all'))) {
+      const isAdmin = String(role).toLowerCase().includes('admin') || String(role).toLowerCase().includes('owner') || String(role).toLowerCase().includes('pemilik');
+      if (isAdmin || (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all')))) {
         btn.style.display = 'inline-flex';
       } else {
         btn.style.display = 'none';
@@ -342,6 +343,28 @@ function showToast(msg, type = 'info') {
 }
 `);
     definedFunctions.add('showToast');
+  }
+
+  // Inisialisasi state array otomatis jika fungsi CRUD merujuk items / data tanpa deklarasi
+  if (/\bitems\s*\.\s*(find|filter|map|push|some|every|forEach)\b/.test(combinedJs) && !/\b(?:let|var|const)\s+items\b/.test(combinedJs)) {
+    plumbingToInject.push(`
+var items = typeof items !== 'undefined' ? items : [
+  { id: '1', nama: 'Contoh Data 1', status: 'Aktif' },
+  { id: '2', nama: 'Contoh Data 2', status: 'Aktif' }
+];`);
+  }
+  if (/\bdata\s*\.\s*(find|filter|map|push|some|every|forEach)\b/.test(combinedJs) && !/\b(?:let|var|const)\s+data\b/.test(combinedJs)) {
+    plumbingToInject.push(`
+var data = typeof data !== 'undefined' ? data : [
+  { id: '1', nama: 'Contoh Data 1', status: 'Aktif' },
+  { id: '2', nama: 'Contoh Data 2', status: 'Aktif' }
+];`);
+  }
+  if (/DEMO_ACCOUNTS/.test(combinedJs) && !/window\.DEMO_ACCOUNTS\s*=/.test(combinedJs)) {
+    plumbingToInject.push(`
+if (typeof DEMO_ACCOUNTS !== 'undefined' && typeof window !== 'undefined') {
+  window.DEMO_ACCOUNTS = DEMO_ACCOUNTS;
+}`);
   }
 
   if (plumbingToInject.length > 0) {

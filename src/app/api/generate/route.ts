@@ -1372,6 +1372,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       e. DATA TIDAK BOLEH BERBEDA — array state TETAP SAMA, yang beda hanya tampilan/filter per role.
 23. EFISIENSI MODAL & KESELARASAN HANDLER JAVASCRIPT LENGKAP:
     - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
+    - STATE DATA ARRAY WAJIB DIINISIALISASI: Jika fungsi JavaScript merujuk variabel data array (seperti \`items\`, \`data\`, \`list\`), WAJIB deklarasikan secara global di tag <script> dengan 3-5 data awal (misal: \`let items = [...];\` atau \`let data = [...];\`). DILARANG memanggil \`items.find\` atau \`items.push\` tanpa deklarasi variabel \`items\`!
+    - KREDENSIAL DEMO DI WINDOW: Selalu lampirkan akun demo ke window: \`window.DEMO_ACCOUNTS = DEMO_ACCOUNTS;\` di dalam tag <script>.
+    - HAK AKSES SUPER ADMIN / ADMIN TERHADAP TAB: Super Admin sebagai pengelola sistem WAJIB memiliki akses untuk memeriksa seluruh modul tab operasional (sertakan 'Super Admin' di atribut data-access-roles setiap tab operasional atau rancang filterTabsByRole agar Admin dapat melihat seluruh tab).
     - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`handleLogin\`, \`bukaModalLogin\`, \`tutupModalLogin\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`prosesPenjualan\`, \`prosesTransaksi\`, \`checkout\`, \`bayar\`, \`cetakStruk\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
 
       // Mode Pure AI: Matikan semua template/referensi statis

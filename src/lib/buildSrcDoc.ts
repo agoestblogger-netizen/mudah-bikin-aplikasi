@@ -823,7 +823,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       window.filterTabsByRole = function(role) {
         document.querySelectorAll('.tab-btn').forEach(function(btn) {
           var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
-          btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
+          var isAdmin = String(role).toLowerCase().indexOf('admin') !== -1 || String(role).toLowerCase().indexOf('owner') !== -1;
+          btn.style.display = (isAdmin || (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1)) ? '' : 'none';
         });
         if (typeof _origFilterTabs === 'function' && _origFilterTabs !== window.filterTabsByRole) {
           try { _origFilterTabs(role); } catch(e){}
