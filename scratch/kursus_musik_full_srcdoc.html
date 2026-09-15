@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons (Pure DOM SVG Parser) -->
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    /* Anti-Stacked Multi-Role Tab Content Isolation */
+    .tab-content, .tab-pane, [data-tab-content] {
+      display: none;
+    }
+    .tab-content.active, .tab-pane.active, [data-tab-content].active {
+      display: block;
+    }
+    
+  </style>
+  
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Kursus Musik</title>
+    <link rel="stylesheet" href="https://unpkg.com/lucide@latest">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background-color: #f8fafc;
+        color: #0f172a;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        min-height: 100vh;
+        padding: 24px;
+      }
+      .container { max-width: 1200px; margin: 0 auto; }
+      .app-header {
+        display: flex; justify-content: space-between; align-items: center; background: #ffffff;
+        border-radius: 16px; padding: 18px 24px; border: 1px solid #e2e8f0; margin-bottom: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+      }
+      .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; }
+      .tab-btn {
+        padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 15px; font-weight: 500; transition: all 0.2s;
+      }
+      .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; font-weight: 600; }
+      .tab-content { display: none; }
+      .tab-content.active { display: block; }
+      .modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+      .modal-box { background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-width: 500px; width: 100%; padding: 26px; }
+      .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 13px; }
+      .toast.error { background: #ef4444; }
+      .toast.success { background: #10b981; }
+      .toast.info { background: #3b82f6; }
+      .card { background: #ffffff; border-radius: 14px; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04); padding: 24px; margin-bottom: 24px; }
+      .form-input { width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; }
+      .btn-primary { background: #4f46e5; color: #ffffff; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; }
+      .btn-danger { background: #fff1f2; color: #e11d48; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: all 0.15s; }
+      .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+      .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+      .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+      .badge-danger { background: #ffe4e6; color: #b91c1c; border: 1px solid #fecdd3; }
+      .badge-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    </style>
+</head>
+<body>
+
+<!-- LAYAR LOGIN DI TENGAH LAYAR -->
+<div id="loginScreen" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f8fafc; padding: 20px; font-family: system-ui, -apple-system, sans-serif;">
+  <div class="card" style="max-width: 420px; width: 100%; padding: 36px 32px; border-radius: 20px; background: #ffffff; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06), 0 8px 10px -6px rgba(0,0,0,0.02); text-align: center;">
+    <div style="width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px; background: #eff6ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 26px;">
+      🎵
+    </div>
+    <h2 style="font-size: 24px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0;">Aplikasi Kursus Musik</h2>
+    <p style="font-size: 14px; color: #64748b; margin: 0 0 24px 0;">Masuk ke Akun Anda untuk Memulai</p>
+    <div style="text-align: left; margin-bottom: 16px;">
+      <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Username</label>
+      <input type="text" id="loginUsername" placeholder="Masukkan username" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;" required>
+    </div>
+    <div style="text-align: left; margin-bottom: 20px;">
+      <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Kata Sandi</label>
+      <input type="password" id="loginPassword" placeholder="Masukkan kata sandi" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;" required>
+    </div>
+    <button type="button" class="btn-primary" onclick="handleLogin()" style="width: 100%; justify-content: center; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; background: #4f46e5; color: #ffffff; border: none;">
+      ➔] Masuk
+    </button>
+    <div style="margin-top: 24px; background: #f1f5f9; border-radius: 12px; padding: 16px; font-size: 13px; text-align: left; color: #334155; line-height: 1.6;">
+      <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px;">🔑 Akun Demo Staf:</div>
+      <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('superadmin', 'superadmin123')">• Super Admin: <code style="color: #4f46e5; font-weight: 600;">superadmin / superadmin123</code></div>
+      <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('instrukturmusik', 'instrukturmusik123')">• Instruktur Musik: <code style="color: #4f46e5; font-weight: 600;">instrukturmusik / instrukturmusik123</code></div>
+      <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('murid', 'murid123')">• Murid: <code style="color: #4f46e5; font-weight: 600;">murid / murid123</code></div>
+      <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('petugasadmin', 'petugasadmin123')">• Petugas Admin: <code style="color: #4f46e5; font-weight: 600;">petugasadmin / petugasadmin123</code></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTAINER UTAMA APLIKASI -->
+<div id="appContainer" style="display: none;">
+  <header class="app-header">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="width: 42px; height: 42px; border-radius: 10px; background: #eff6ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;">
+        🎵
+      </div>
+      <div>
+        <div style="font-size: 18px; font-weight: 700; color: #0f172a;">Aplikasi Kursus Musik</div>
+        <div style="font-size: 12px; color: #64748b;">Peran: <span id="currentRoleBadge" style="font-weight: 600; color: #4f46e5;">Admin</span></div>
+      </div>
+    </div>
+    <button type="button" class="btn-secondary" onclick="logout()" style="padding: 8px 14px; font-size: 13px; border-radius: 8px;">
+      🚪 Keluar / Ganti Akun
+    </button>
+  </header>
+
+  <div class="tab-nav">
+    <button type="button" class="tab-btn active" data-access-roles="Super Admin" onclick="showTab('superadmin')" style="display: none;">👥 Manajemen Staf</button>
+    <button type="button" class="tab-btn" data-access-roles="Instruktur Musik" onclick="showTab('instrukturmusik')" style="display: none;">🎸 Kelas Musik</button>
+    <button type="button" class="tab-btn" data-access-roles="Murid" onclick="showTab('murid')" style="display: none;">📚 Portal Murid</button>
+    <button type="button" class="tab-btn" data-access-roles="Petugas Admin" onclick="showTab('petugasadmin')" style="display: none;">🛠️ Admin</button>
+  </div>
+
+  <div id="superadmin" class="tab-content active">
+    <h2>Manajemen Staf</h2>
+    <div class="toolbar">
+      <input type="text" class="search-input" placeholder="Cari staf...">
+      <button type="button" class="btn-primary" onclick="bukaModalTambah()">➕ Tambah Akun Staf</button>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Nama</th>
+            <th>Role</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="staffTableBody">
+          <!-- Data Dummy -->
+          <tr>
+            <td>John Doe</td>
+            <td>Instruktur Musik</td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('1')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('1')">Hapus</button>
+            </td>
+          </tr>
+          <tr>
+            <td>Jane Smith</td>
+            <td>Petugas Admin</td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('2')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('2')">Hapus</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="instrukturmusik" class="tab-content">
+    <h2>Kelas Musik</h2>
+    <div class="toolbar">
+      <input type="text" class="search-input" placeholder="Cari kelas...">
+      <button type="button" class="btn-primary" onclick="bukaModalTambah()">➕ Tambah Kelas</button>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Instruktur</th>
+            <th>Hari & Jam</th>
+            <th>Ruangan</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="classTableBody">
+          <!-- Data Dummy -->
+          <tr>
+            <td>John Doe</td>
+            <td>Senin 15:00</td>
+            <td>Studio 1</td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('1')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('1')">Hapus</button>
+            </td>
+          </tr>
+          <tr>
+            <td>Jane Smith</td>
+            <td>Selasa 16:00</td>
+            <td>Studio 2</td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('2')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('2')">Hapus</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="murid" class="tab-content">
+    <h2>Portal Murid</h2>
+    <div class="toolbar">
+      <input type="text" class="search-input" placeholder="Cari murid...">
+      <button type="button" class="btn-primary" onclick="bukaModalTambah()">➕ Tambah Murid</button>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Nama Murid</th>
+            <th>Instrumen</th>
+            <th>Status</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="studentTableBody">
+          <!-- Data Dummy -->
+          <tr>
+            <td>Ali</td>
+            <td>Piano</td>
+            <td><span class="badge badge-success">Aktif</span></td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('1')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('1')">Hapus</button>
+            </td>
+          </tr>
+          <tr>
+            <td>Siti</td>
+            <td>Gitar</td>
+            <td><span class="badge badge-warning">Cuti</span></td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('2')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('2')">Hapus</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="petugasadmin" class="tab-content">
+    <h2>Admin</h2>
+    <div class="toolbar">
+      <input type="text" class="search-input" placeholder="Cari transaksi...">
+      <button type="button" class="btn-primary" onclick="bukaModalTambah()">➕ Tambah Transaksi</button>
+    </div>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Nama Murid</th>
+            <th>Bulan</th>
+            <th>Status Pembayaran</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="paymentTableBody">
+          <!-- Data Dummy -->
+          <tr>
+            <td>Ali</td>
+            <td>Januari 2025</td>
+            <td><span class="badge badge-success">Lunas</span></td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('1')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('1')">Hapus</button>
+            </td>
+          </tr>
+          <tr>
+            <td>Siti</td>
+            <td>Februari 2025</td>
+            <td><span class="badge badge-danger">Belum Bayar</span></td>
+            <td>
+              <button type="button" class="btn-secondary" onclick="bukaModalEdit('2')">Edit</button>
+              <button type="button" class="btn-danger" onclick="bukaModalHapus('2')">Hapus</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL FORM (TAMBAH & EDIT) -->
+<div id="modalForm" class="modal">
+  <div class="modal-box">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 id="modalTitle" class="title" style="font-size:18px; margin-bottom:0;">Tambah Data</h3>
+      <button type="button" class="btn-secondary" onclick="tutupModalForm()" style="padding:4px 8px;">✕</button>
+    </div>
+    <form id="formData" onsubmit="event.preventDefault(); simpanForm();">
+      <input type="hidden" id="editId" value="">
+      <div class="form-group">
+        <label class="form-label" for="inputNama">Nama</label>
+        <input type="text" id="inputNama" class="form-input" placeholder="Masukkan nama...">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="inputRole">Role</label>
+        <select id="inputRole" class="form-input">
+          <option value="Instruktur Musik">Instruktur Musik</option>
+          <option value="Murid">Murid</option>
+          <option value="Petugas Admin">Petugas Admin</option>
+        </select>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
+        <button type="button" class="btn-secondary" onclick="tutupModalForm()">Batal</button>
+        <button type="button" class="btn-primary" onclick="simpanForm()">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL KONFIRMASI HAPUS -->
+<div id="modalHapus" class="modal">
+  <div class="modal-box">
+    <h3 class="title" style="font-size:18px;">Konfirmasi Hapus</h3>
+    <p class="subtitle" style="margin-bottom:20px;">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+    <input type="hidden" id="hapusId" value="">
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn-secondary" onclick="tutupModalHapus()">Batal</button>
+      <button type="button" class="btn-danger" onclick="eksekusiHapus()">Hapus</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastNotification" class="toast"></div>
+
+<script>
+  const DEMO_ACCOUNTS = [
+    { role: 'Super Admin', username: 'superadmin', password: 'superadmin123', landingTab: 'superadmin' },
+    { role: 'Instruktur Musik', username: 'instrukturmusik', password: 'instrukturmusik123', landingTab: 'instrukturmusik' },
+    { role: 'Murid', username: 'murid', password: 'murid123', landingTab: 'murid' },
+    { role: 'Petugas Admin', username: 'petugasadmin', password: 'petugasadmin123', landingTab: 'petugasadmin' }
+  ];
+
+  let currentRole = '';
+  let editId = null;
+
+  function quickLogin(u, p) {
+    const uInput = document.getElementById('loginUsername');
+    const pInput = document.getElementById('loginPassword');
+    if (uInput) uInput.value = u;
+    if (pInput) pInput.value = p;
+    handleLogin();
+  }
+
+  function handleLogin() {
+    const u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
+    const p = (document.getElementById('loginPassword')?.value || '').trim();
+
+    const matched = DEMO_ACCOUNTS.find(acc => acc.username.toLowerCase() === u && acc.password === p);
+    if (matched) {
+      loginAs(matched.role);
+      showToast('Selamat datang! Masuk sebagai ' + matched.role, 'success');
+    } else {
+      showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error');
+    }
+  }
+
+  function loginAs(role) {
+    currentRole = role;
+    const loginEl = document.getElementById('loginScreen');
+    const appEl = document.getElementById('appContainer');
+    if (loginEl) loginEl.style.display = 'none';
+    if (appEl) appEl.style.display = 'block';
+
+    filterTabsByRole(role);
+
+    const badgeEl = document.getElementById('currentRoleBadge');
+    if (badgeEl) badgeEl.innerText = role;
+
+    const matched = DEMO_ACCOUNTS.find(a => a.role === role);
+    if (matched && matched.landingTab) {
+      showTab(matched.landingTab);
+    }
+  }
+
+  function filterTabsByRole(role) {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim().toLowerCase());
+      btn.style.display = (role && allowed.includes(role.toLowerCase())) ? '' : 'none';
+    });
+  }
+
+  function logout() {
+    currentRole = '';
+    const loginEl = document.getElementById('loginScreen');
+    const appEl = document.getElementById('appContainer');
+    if (appEl) appEl.style.display = 'none';
+    if (loginEl) loginEl.style.display = 'flex';
+    showToast('Berhasil keluar. Silakan login kembali.', 'info');
+  }
+
+  function showTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+    document.getElementById(tabId)?.classList.add('active');
+    document.querySelector(`.tab-btn[data-access-roles="${currentRole}"][onclick*="${tabId}"]`)?.classList.add('active');
+  }
+
+  function showToast(message, type = 'error') {
+    const toast = document.getElementById('toastNotification');
+    toast.className = 'toast ' + type;
+    toast.innerText = message;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 3000);
+  }
+
+  function bukaModalTambah() {
+    editId = null;
+    document.getElementById('modalTitle').innerText = 'Tambah Data';
+    document.getElementById('editId').value = '';
+    document.getElementById('inputNama').value = '';
+    document.getElementById('modalForm').style.display = 'flex';
+  }
+
+  function bukaModalEdit(id) {
+    editId = String(id);
+    const item = items.find(i => String(i.id) === String(id));
+    if (!item) return;
+    document.getElementById('modalTitle').innerText = 'Edit Data';
+    document.getElementById('editId').value = item.id;
+    document.getElementById('inputNama').value = item.nama;
+    document.getElementById('modalForm').style.display = 'flex';
+  }
+
+  function tutupModalForm() {
+    document.getElementById('modalForm').style.display = 'none';
+  }
+
+  function simpanForm() {
+    const nama = document.getElementById('inputNama')?.value.trim();
+    if (!nama) {
+      showToast('Harap lengkapi semua kolom formulir!', 'error');
+      return;
+    }
+    if (editId) {
+      // UPDATE DATA EXISTING
+      items = items.map(item => String(item.id) === String(editId) ? { ...item, nama } : item);
+      showToast('Data berhasil diperbarui!', 'success');
+    } else {
+      // TAMBAH DATA BARU
+      const newItem = { id: String(Date.now()), nama };
+      items.push(newItem);
+      showToast('Data baru berhasil ditambahkan!', 'success');
+    }
+    tutupModalForm();
+    render();
+  }
+
+  function bukaModalHapus(id) {
+    document.getElementById('hapusId').value = String(id);
+    document.getElementById('modalHapus').style.display = 'flex';
+  }
+
+  function tutupModalHapus() {
+    document.getElementById('modalHapus').style.display = 'none';
+  }
+
+  function eksekusiHapus() {
+    const id = document.getElementById('hapusId')?.value;
+    if (!id) return;
+    items = items.filter(item => String(item.id) !== String(id));
+    tutupModalHapus();
+    render();
+    showToast('Data berhasil dihapus!', 'success');
+  }
+
+  function render() {
+    // Implement render logic here
+  }
+</script>
+
+  <script>
+  (function() {
+    const SOURCE = 'OD_BRIDGE';
+    const ALLOWED_SELECTOR = "p,h1,h2,h3,h4,h5,h6,span,label,button,a,li,th,td,b,strong,i,em,small,div,section,form,header,nav,main,aside,footer,table,tbody,tr,ul,ol,select,input,textarea";
+    const PATCH_TYPE_TEXT_COLOR = 'textColor';
+    const PATCH_TYPE_TEXT_CONTENT = 'textContent';
+    const PATCH_TYPE_BG_COLOR = 'bgColor';
+    const PATCH_TYPE_FONT_SIZE = 'fontSize';
+    const PATCH_TYPE_FONT_WEIGHT = 'fontWeight';
+    const PATCH_TYPE_TEXT_ALIGN = 'textAlign';
+    const PATCH_TYPE_BORDER_RADIUS = 'borderRadius';
+    const PATCH_TYPE_REMOVE = 'remove';
+
+    let odMode = 'none';
+    let odPatches = Array.isArray(window.__OD_PATCHES__) ? window.__OD_PATCHES__ : [];
+
+    function postToParent(payload) {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(Object.assign({ source: SOURCE }, payload), '*');
+        }
+      } catch (e) {}
+    }
+
+    function clamp01(n) {
+      return Math.max(0, Math.min(1, n));
+    }
+
+    function getViewportSize() {
+      const w = window.innerWidth || document.documentElement.clientWidth || 1;
+      const h = window.innerHeight || document.documentElement.clientHeight || 1;
+      return { w, h };
+    }
+
+    function normalizeRect(rect) {
+      const { w, h } = getViewportSize();
+      const left = rect.left / w;
+      const top = rect.top / h;
+      const width = rect.width / w;
+      const height = rect.height / h;
+      return {
+        x: clamp01(left),
+        y: clamp01(top),
+        w: clamp01(width),
+        h: clamp01(height)
+      };
+    }
+
+    function assignElementUids() {
+      const existingUids = new Set();
+      document.querySelectorAll('[data-od-uid]').forEach(function(el) {
+        const uid = el.getAttribute('data-od-uid');
+        if (uid) existingUids.add(uid);
+      });
+      let counter = 0;
+      const els = Array.from(document.querySelectorAll(ALLOWED_SELECTOR));
+      els.forEach(function(el) {
+        if (!el.hasAttribute('data-od-uid')) {
+          while (existingUids.has('e' + counter)) {
+            counter++;
+          }
+          const newUid = 'e' + counter;
+          el.setAttribute('data-od-uid', newUid);
+          existingUids.add(newUid);
+        }
+      });
+    }
+
+    function applyOnePatch(patch) {
+      if (!patch || !patch.elementUid) return;
+      const el = document.querySelector('[data-od-uid="' + patch.elementUid + '"]');
+      if (!el) return;
+      if (patch.patchType === PATCH_TYPE_TEXT_COLOR) {
+        el.style.color = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_BG_COLOR) {
+        el.style.backgroundColor = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_TEXT_CONTENT) {
+        el.textContent = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_FONT_SIZE) {
+        el.style.fontSize = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_FONT_WEIGHT) {
+        el.style.fontWeight = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_TEXT_ALIGN) {
+        el.style.textAlign = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_BORDER_RADIUS) {
+        el.style.borderRadius = String(patch.value ?? '');
+      } else if (patch.patchType === PATCH_TYPE_REMOVE) {
+        el.remove();
+      }
+    }
+
+    function applyAllPatches() {
+      if (!Array.isArray(odPatches)) return;
+      odPatches.forEach(applyOnePatch);
+    }
+
+    function setMode(mode) {
+      odMode = mode || 'none';
+      if (odMode === 'select' || odMode === 'mark') {
+        document.documentElement.style.cursor = 'crosshair';
+      } else {
+        document.documentElement.style.cursor = '';
+      }
+      if (hoveredEl) {
+        hoveredEl.style.outline = '';
+        hoveredEl.style.outlineOffset = '';
+        hoveredEl = null;
+      }
+    }
+
+    // Hover highlight in select mode
+    let hoveredEl = null;
+    let isEditingText = false;
+    let justFinishedEditTime = 0;
+
+    document.addEventListener('mouseover', function(e) {
+      if (odMode !== 'select' || isEditingText) return;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const el = target.closest('[data-od-uid]');
+      if (el && el !== hoveredEl) {
+        if (hoveredEl) {
+          hoveredEl.style.outline = '';
+          hoveredEl.style.outlineOffset = '';
+        }
+        hoveredEl = el;
+        hoveredEl.style.outline = '2px dashed rgba(99, 102, 241, 0.75)';
+        hoveredEl.style.outlineOffset = '2px';
+      }
+    }, true);
+
+    document.addEventListener('mouseout', function(e) {
+      if (hoveredEl && !isEditingText) {
+        hoveredEl.style.outline = '';
+        hoveredEl.style.outlineOffset = '';
+        hoveredEl = null;
+      }
+    }, true);
+
+    // Prevent any form submits while in design/select/mark modes
+    document.addEventListener('submit', function(e) {
+      if (odMode === 'select' || odMode === 'mark') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+
+    // Double-click inline text editing (WYSIWYG Direct Edit)
+    document.addEventListener('dblclick', function(e) {
+      if (odMode !== 'select') return;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const el = target.closest('[data-od-uid]');
+      if (!el) return;
+
+      // Elemen form (select/input/textarea) tidak boleh diedit sebagai teks HTML
+      const tag = (el.tagName || '').toLowerCase();
+      if (tag === 'select' || tag === 'input' || tag === 'textarea' || tag === 'option') return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      isEditingText = true;
+      const initialText = el.textContent || '';
+      if (hoveredEl && hoveredEl !== el) {
+        hoveredEl.style.outline = '';
+        hoveredEl.style.outlineOffset = '';
+        hoveredEl = null;
+      }
+
+      el.contentEditable = 'true';
+      el.focus();
+      el.style.outline = '2px solid #6366f1';
+      el.style.outlineOffset = '2px';
+      el.style.cursor = 'text';
+
+      let done = false;
+      function finishEdit() {
+        if (done) return;
+        done = true;
+        isEditingText = false;
+        justFinishedEditTime = Date.now();
+
+        el.contentEditable = 'false';
+        el.style.outline = '';
+        el.style.outlineOffset = '';
+        el.style.cursor = '';
+        el.removeEventListener('blur', onBlur);
+        el.removeEventListener('keydown', onKeyDown);
+
+        const newText = (el.textContent || '').trim();
+        const elementUid = el.getAttribute('data-od-uid');
+        if (!elementUid) return;
+
+        // Langsung simpan patch ke odPatches memori lokal iframe agar persist saat ada re-apply
+        const patch = {
+          id: 'patch_' + Date.now(),
+          elementUid: elementUid,
+          patchType: PATCH_TYPE_TEXT_CONTENT,
+          value: newText
+        };
+        odPatches = (odPatches || []).filter(function(p) {
+          return !(p.elementUid === elementUid && p.patchType === PATCH_TYPE_TEXT_CONTENT);
+        });
+        odPatches.push(patch);
+
+        const rect = el.getBoundingClientRect();
+        const bounds = normalizeRect(rect);
+
+        postToParent({
+          type: 'OD_UPDATE_TEXT',
+          elementUid,
+          newText,
+          bounds
+        });
+      }
+
+      function onBlur() {
+        finishEdit();
+      }
+
+      function onKeyDown(ke) {
+        if (ke.key === 'Enter' && !ke.shiftKey) {
+          ke.preventDefault();
+          ke.stopPropagation();
+          finishEdit();
+        } else if (ke.key === 'Escape') {
+          ke.preventDefault();
+          ke.stopPropagation();
+          done = true;
+          isEditingText = false;
+          justFinishedEditTime = Date.now();
+          el.textContent = initialText; // Kembalikan ke teks awal saat dibatalkan
+          el.contentEditable = 'false';
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+          el.style.cursor = '';
+          el.removeEventListener('blur', onBlur);
+          el.removeEventListener('keydown', onKeyDown);
+        }
+      }
+
+      el.addEventListener('blur', onBlur);
+      el.addEventListener('keydown', onKeyDown);
+    }, true);
+
+    // Select by element click
+    document.addEventListener('click', function(e) {
+      if (odMode !== 'select') return;
+
+      // Dalam mode select, selalu tahan default behavior (jangan redirect link atau submit form)
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Jika baru saja selesai edit teks dalam 350ms terakhir, abaikan click lanjutan ini
+      if (Date.now() - justFinishedEditTime < 350) {
+        return;
+      }
+
+      try {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const el = target.closest('[data-od-uid]');
+        
+        // Klik di area kanvas kosong / non-elemen: tahan aksi tombol prototipe tapi JANGAN tutup popover
+        if (!el) {
+          return;
+        }
+
+        const elementUid = el.getAttribute('data-od-uid');
+        const rect = el.getBoundingClientRect();
+        const bounds = normalizeRect(rect);
+        const cs = window.getComputedStyle(el);
+        const currentText = (el.textContent || '').trim().slice(0, 2000);
+        const currentColor = (cs && cs.color) ? cs.color : '';
+        const currentBg = (cs && cs.backgroundColor) ? cs.backgroundColor : '';
+        const currentFontSize = (cs && cs.fontSize) ? cs.fontSize : '';
+        const currentFontWeight = (cs && cs.fontWeight) ? cs.fontWeight : '';
+        const currentTextAlign = (cs && cs.textAlign) ? cs.textAlign : '';
+        const currentBorderRadius = (cs && cs.borderRadius) ? cs.borderRadius : '';
+        const tagName = el.tagName.toLowerCase();
+
+        const outerHtml = (el.outerHTML || '').slice(0, 20000);
+        const breadcrumbs = [];
+        let curr = el;
+        while (curr && curr !== document.body && curr !== document.documentElement && breadcrumbs.length < 3) {
+          const tName = curr.tagName.toLowerCase();
+          const cName = curr.className && typeof curr.className === 'string' ? '.' + curr.className.trim().split(/s+/)[0] : '';
+          breadcrumbs.unshift(tName + cName);
+          curr = curr.parentElement;
+        }
+
+        postToParent({
+          type: 'OD_SELECT_ELEMENT',
+          elementUid,
+          tagName,
+          bounds,
+          currentText,
+          currentColor,
+          currentBg,
+          currentFontSize,
+          currentFontWeight,
+          currentTextAlign,
+          currentBorderRadius,
+          outerHtml,
+          breadcrumbs
+        });
+      } catch (err) {}
+    }, true);
+
+    // Mark by dragging area (MVP: kirim final saat mouse up)
+    let dragging = false;
+    let dragStart = null;
+    let dragEnd = null;
+
+    function getDragRect() {
+      if (!dragStart || !dragEnd) return null;
+      const x1 = Math.min(dragStart.x, dragEnd.x);
+      const y1 = Math.min(dragStart.y, dragEnd.y);
+      const x2 = Math.max(dragStart.x, dragEnd.x);
+      const y2 = Math.max(dragStart.y, dragEnd.y);
+      return { left: x1, top: y1, width: x2 - x1, height: y2 - y1 };
+    }
+
+    function beginDrag(e) {
+      if (odMode !== 'mark') return;
+      if (!(e instanceof MouseEvent)) return;
+      if (e.button !== 0) return;
+      dragging = true;
+      dragStart = { x: e.clientX, y: e.clientY };
+      dragEnd = { x: e.clientX, y: e.clientY };
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+      } catch (err) {}
+    }
+
+    function updateDrag(e) {
+      if (!dragging || odMode !== 'mark') return;
+      if (!(e instanceof MouseEvent)) return;
+      dragEnd = { x: e.clientX, y: e.clientY };
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+      } catch (err) {}
+    }
+
+    function endDrag(e) {
+      if (!dragging || odMode !== 'mark') return;
+      if (!(e instanceof MouseEvent)) return;
+      dragging = false;
+      dragEnd = { x: e.clientX, y: e.clientY };
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+      } catch (err) {}
+
+      const r = getDragRect();
+      if (!r || r.width < 6 || r.height < 6) return;
+      const bounds = normalizeRect(r);
+      postToParent({
+        type: 'OD_AREA_MARK',
+        bounds
+      });
+
+      dragStart = null;
+      dragEnd = null;
+    }
+
+    document.addEventListener('mousedown', beginDrag, true);
+    window.addEventListener('mousemove', updateDrag, { passive: false });
+    window.addEventListener('mouseup', endDrag, true);
+
+    // Receive messages from parent
+    window.addEventListener('message', function(ev) {
+      const msg = ev && ev.data;
+      if (!msg || msg.source !== SOURCE) return;
+      if (msg.type === 'OD_MODE') {
+        setMode(msg.mode);
+      } else if (msg.type === 'OD_SET_PATCHES') {
+        odPatches = Array.isArray(msg.patches) ? msg.patches : [];
+      } else if (msg.type === 'OD_APPLY_PATCH') {
+        const patch = msg.patch;
+        odPatches = Array.isArray(odPatches) ? odPatches : [];
+        odPatches.push(patch);
+        applyOnePatch(patch);
+      } else if (msg.type === 'OD_START_INLINE_EDIT') {
+        const el = document.querySelector('[data-od-uid="' + msg.elementUid + '"]');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        }
+      } else if (msg.type === 'OD_REMOVE_ELEMENT') {
+        const el = document.querySelector('[data-od-uid="' + msg.elementUid + '"]');
+        if (el) el.remove();
+      } else if (msg.type === 'OD_REPLACE_ELEMENT') {
+        const { elementUid, newElementHtml } = msg;
+        const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
+        if (target && newElementHtml) {
+          const temp = document.createElement('div');
+          temp.innerHTML = newElementHtml;
+          const newEl = temp.firstElementChild;
+          if (newEl) {
+            newEl.setAttribute('data-od-uid', elementUid);
+            target.replaceWith(newEl);
+            if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+              try { window.lucide.createIcons(); } catch(e) {}
+            }
+          }
+        }
+      } else if (msg.type === 'OD_INSERT_ICON') {
+        const { elementUid, iconName } = msg;
+        const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
+        if (target && iconName) {
+          const existingIcon = target.querySelector('i[data-lucide], svg.lucide, svg[data-lucide]');
+          const newI = document.createElement('i');
+          newI.setAttribute('data-lucide', String(iconName).toLowerCase().trim());
+          newI.style.width = '16px';
+          newI.style.height = '16px';
+          newI.style.display = 'inline-block';
+          newI.style.verticalAlign = 'middle';
+          newI.style.marginRight = '6px';
+          if (existingIcon) {
+            existingIcon.replaceWith(newI);
+          } else {
+            target.insertBefore(newI, target.firstChild);
+          }
+          if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+            try { window.lucide.createIcons(); } catch(e) {}
+          }
+        }
+      } else if (msg.type === 'OD_INSERT_IMAGE') {
+        const { elementUid, imageUrl, styleType } = msg;
+        const target = document.querySelector('[data-od-uid="' + elementUid + '"]');
+        if (target && imageUrl) {
+          if (target.tagName && target.tagName.toLowerCase() === 'img') {
+            target.src = imageUrl;
+          } else {
+            const existingImg = target.querySelector('img');
+            if (existingImg) {
+              existingImg.src = imageUrl;
+            } else {
+              const newImg = document.createElement('img');
+              newImg.src = imageUrl;
+              newImg.alt = 'Gambar';
+              if (styleType === 'avatar') {
+                newImg.style.width = '36px';
+                newImg.style.height = '36px';
+                newImg.style.borderRadius = '9999px';
+                newImg.style.objectFit = 'cover';
+                newImg.style.display = 'inline-block';
+                newImg.style.verticalAlign = 'middle';
+                newImg.style.marginRight = '8px';
+              } else if (styleType === 'banner') {
+                newImg.style.width = '100%';
+                newImg.style.height = '180px';
+                newImg.style.objectFit = 'cover';
+                newImg.style.borderRadius = '8px';
+                newImg.style.marginBottom = '12px';
+                newImg.style.display = 'block';
+              } else {
+                newImg.style.width = '48px';
+                newImg.style.height = '48px';
+                newImg.style.borderRadius = '8px';
+                newImg.style.objectFit = 'cover';
+                newImg.style.display = 'inline-block';
+                newImg.style.verticalAlign = 'middle';
+                newImg.style.marginRight = '8px';
+              }
+              target.insertBefore(newImg, target.firstChild);
+            }
+          }
+        }
+      } else if (msg.type === 'OD_RESOLVE_AREA') {
+        const { markId, bounds } = msg;
+        if (!bounds) return;
+
+        assignElementUids();
+
+        const winW = window.innerWidth || document.documentElement.clientWidth || 1;
+        const winH = window.innerHeight || document.documentElement.clientHeight || 1;
+        const boxLeft = bounds.x * winW;
+        const boxTop = bounds.y * winH;
+        const boxRight = (bounds.x + bounds.w) * winW;
+        const boxBottom = (bounds.y + bounds.h) * winH;
+        const boxW = Math.max(1, bounds.w * winW);
+        const boxH = Math.max(1, bounds.h * winH);
+        const boxArea = boxW * boxH;
+
+        const allEls = Array.from(document.querySelectorAll('[data-od-uid]'));
+        let bestEl = null;
+        let bestScore = -1;
+
+        for (let i = 0; i < allEls.length; i++) {
+          const el = allEls[i];
+          if (el === document.body || el === document.documentElement) continue;
+          const tName = (el.tagName || '').toUpperCase();
+          if (tName === 'BODY' || tName === 'HTML' || tName === 'SCRIPT' || tName === 'STYLE') continue;
+
+          const r = el.getBoundingClientRect();
+          if (r.width <= 4 || r.height <= 4) continue;
+
+          const interW = Math.max(0, Math.min(boxRight, r.right) - Math.max(boxLeft, r.left));
+          const interH = Math.max(0, Math.min(boxBottom, r.bottom) - Math.max(boxTop, r.top));
+          const interArea = interW * interH;
+          if (interArea <= 0) continue;
+
+          const elArea = r.width * r.height;
+          const coverageOfEl = interArea / elArea;
+          const coverageOfBox = interArea / boxArea;
+
+          let score = 0;
+          if (coverageOfEl >= 0.7) {
+            // Sebagian besar elemen berada di dalam kotak seleksi
+            score = coverageOfBox * 12 + coverageOfEl * 6;
+          } else if (coverageOfBox >= 0.7) {
+            // Elemen melingkupi sebagian besar kotak seleksi
+            score = coverageOfBox * 8 + coverageOfEl * 4;
+          } else {
+            // Irisan proporsional (IoU)
+            score = (interArea / (elArea + boxArea - interArea)) * 10;
+          }
+
+          if (elArea > boxArea * 5) {
+            score *= 0.2;
+          }
+
+          const outerLen = el.outerHTML ? el.outerHTML.length : 0;
+          if (outerLen > 15000) {
+            score *= 0.1;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestEl = el;
+          }
+        }
+
+        if (bestEl) {
+          const elementUid = bestEl.getAttribute('data-od-uid');
+          const tagName = bestEl.tagName.toLowerCase();
+          const outerHtml = (bestEl.outerHTML || '').slice(0, 15000);
+          const currentText = (bestEl.textContent || '').trim().slice(0, 2000);
+          const breadcrumbs = [];
+          let curr = bestEl;
+          while (curr && curr !== document.body && curr !== document.documentElement && breadcrumbs.length < 3) {
+            const tn = curr.tagName.toLowerCase();
+            const cn = curr.className && typeof curr.className === 'string' ? '.' + curr.className.trim().split(/s+/)[0] : '';
+            breadcrumbs.unshift(tn + cn);
+            curr = curr.parentElement;
+          }
+
+          postToParent({
+            type: 'OD_AREA_RESOLVED',
+            markId: markId,
+            elementUid: elementUid,
+            tagName: tagName,
+            outerHtml: outerHtml,
+            currentText: currentText,
+            breadcrumbs: breadcrumbs
+          });
+        }
+      }
+    });
+
+    // Polyfill window.confirm agar tidak diblokir oleh sandbox iframe
+    try {
+      const _origConfirm = window.confirm;
+      window.confirm = function(msg) {
+        try {
+          if (_origConfirm) return _origConfirm.call(window, msg);
+        } catch (e) {}
+        return true;
+      };
+    } catch (e) {}
+
+    // Fallback pengaman untuk modal konfirmasi hapus
+    if (typeof window.bukaModalHapus !== 'function') {
+      window.bukaModalHapus = function(id) {
+        const input = document.getElementById('hapusId');
+        if (input) input.value = String(id);
+        const modal = document.getElementById('modalHapus');
+        if (modal) {
+          modal.style.display = 'flex';
+        } else if (typeof window.eksekusiHapus === 'function') {
+          window.eksekusiHapus(id);
+        } else if (typeof window.hapusItem === 'function') {
+          window.hapusItem(id);
+        } else if (typeof window.hapusData === 'function') {
+          window.hapusData(id);
+        }
+      };
+    }
+
+    if (typeof window.tutupModalHapus !== 'function') {
+      window.tutupModalHapus = function() {
+        const modal = document.getElementById('modalHapus');
+        if (modal) modal.style.display = 'none';
+      };
+    }
+
+    if (typeof window.eksekusiHapus !== 'function') {
+      window.eksekusiHapus = function(passedId) {
+        const id = passedId || document.getElementById('hapusId')?.value;
+        let deleted = false;
+
+        // 1. Coba panggil fungsi hapus spesifik jika ada
+        const altFns = ['hapusItem', 'hapusData', 'hapusPesanan', 'hapusOrder', 'hapusProduk', 'deleteItem', 'removeItem', 'hapusPasien', 'hapusAntrian'];
+        for (const fn of altFns) {
+          if (typeof window[fn] === 'function' && fn !== 'eksekusiHapus') {
+            try {
+              window[fn](id);
+              deleted = true;
+              break;
+            } catch (e) {}
+          }
+        }
+
+        // 2. Jika belum terhapus, filter array global yang relevan
+        if (!deleted && id) {
+          const commonArrays = ['items', 'dataList', 'daftarPesanan', 'daftarProduk', 'orders', 'pesananList', 'pasien', 'antrian', 'members', 'transactions', 'transaksi', 'produk'];
+          for (const arrName of commonArrays) {
+            try {
+              if (Array.isArray(window[arrName])) {
+                const beforeLen = window[arrName].length;
+                window[arrName] = window[arrName].filter(item => String(item?.id ?? item?.kode ?? item?.no ?? '') !== String(id));
+                if (window[arrName].length < beforeLen) deleted = true;
+              }
+            } catch (e) {}
+          }
+        }
+
+        // 3. Tutup modal
+        const modal = document.getElementById('modalHapus');
+        if (modal) modal.style.display = 'none';
+
+        // 4. Re-render tampilan
+        if (typeof window.render === 'function') {
+          try { window.render(); } catch (e) {}
+        } else if (typeof window.renderTable === 'function') {
+          try { window.renderTable(); } catch (e) {}
+        }
+
+        if (typeof window.showToast === 'function') {
+          try { window.showToast('Data berhasil dihapus!', 'success'); } catch (e) {}
+        }
+      };
+    }
+
+    // Runtime Safety Net: Menjamin fungsi login, quickLogin, loginAs, showTab, dan filterTabsByRole selalu aktif dan mengisolasi role 100%
+    (function ensureAuthRuntime() {
+      // 1. Helper Isolasi Fisik Tab Konten
+      var _origShowTab = window.showTab;
+      window.showTab = function(tabId) {
+        try {
+          var contents = document.querySelectorAll('.tab-content, .tab-pane, [data-tab-content]');
+          contents.forEach(function(c) {
+            c.classList.remove('active');
+            c.style.display = 'none';
+          });
+          var target = document.getElementById(tabId) ||
+                       document.getElementById('tab-' + tabId) ||
+                       document.querySelector('[data-tab-id="' + tabId + '"]') ||
+                       document.querySelector('[id*="' + tabId + '"]');
+          if (target) {
+            target.classList.add('active');
+            target.style.display = 'block';
+          }
+          var btns = document.querySelectorAll('.tab-btn, [data-tab-btn]');
+          btns.forEach(function(b) {
+            b.classList.remove('active');
+          });
+          var activeBtn = document.getElementById('tab-btn-' + tabId) ||
+                          document.querySelector('[onclick*="' + tabId + '"]') ||
+                          document.querySelector('[data-tab-target="' + tabId + '"]');
+          if (activeBtn) activeBtn.classList.add('active');
+        } catch(e) { console.warn('showTab DOM update error:', e); }
+
+        if (typeof _origShowTab === 'function' && _origShowTab !== window.showTab) {
+          try { _origShowTab(tabId); } catch(e){}
+        }
+
+        ['render', 'renderTable', 'renderPOSCatalog', 'renderSKU', 'renderProduk', 'renderAll'].forEach(function(fn) {
+          if (typeof window[fn] === 'function') {
+            try { window[fn](); } catch(e){}
+          }
+        });
+        if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+          try { window.lucide.createIcons(); } catch(e){}
+        }
+      };
+
+      if (!window.quickLogin) {
+        window.quickLogin = function(u, p) {
+          var uInput = document.getElementById('loginUsername');
+          var pInput = document.getElementById('loginPassword');
+          if (uInput) uInput.value = u || '';
+          if (pInput) pInput.value = p || '';
+          if (typeof window.handleLogin === 'function') {
+            window.handleLogin();
+          }
+        };
+      }
+
+      var _origLoginAs = window.loginAs;
+      window.loginAs = function(role) {
+        var targetRole = role || 'Super Admin';
+        window.currentRole = targetRole;
+        var loginEl = document.getElementById('loginScreen') || document.querySelector('.login-screen, #loginModal, .login-container');
+        var appEl = document.getElementById('appContainer') || document.querySelector('.app-container, #mainContainer, .container');
+        if (loginEl) loginEl.style.display = 'none';
+        if (appEl) appEl.style.display = 'block';
+        document.querySelectorAll('.app-layout, #mainLayout, .main-container').forEach(function(el) {
+          if (el !== loginEl) el.style.display = '';
+        });
+        var badge = document.getElementById('currentRoleBadge') || document.querySelector('.role-badge, [data-role-badge]');
+        if (badge) badge.innerText = targetRole;
+
+        if (typeof window.filterTabsByRole === 'function') {
+          try { window.filterTabsByRole(targetRole); } catch(e){}
+        }
+
+        // Gate role-restricted sections
+        document.querySelectorAll('[data-access-roles]').forEach(function(el) {
+          if (el.classList.contains('tab-btn')) return;
+          var allowed = (el.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
+          var roleMatch = allowed.some(function(r) { return r === targetRole.toLowerCase() || targetRole.toLowerCase().includes(r); });
+          el.style.display = roleMatch ? '' : 'none';
+        });
+
+        // Buka landingTab resmi atau tab pertama yang visible
+        var activeTabId = null;
+        if (typeof window.DEMO_ACCOUNTS !== 'undefined' && Array.isArray(window.DEMO_ACCOUNTS)) {
+          var acc = window.DEMO_ACCOUNTS.find(function(a) { return String(a.role).toLowerCase() === targetRole.toLowerCase(); });
+          if (acc && acc.landingTab) activeTabId = acc.landingTab;
+        }
+        if (!activeTabId) {
+          var firstVisibleBtn = document.querySelector('.tab-btn:not([style*="display: none"])');
+          if (firstVisibleBtn) {
+            var tabMatch = (firstVisibleBtn.getAttribute('onclick') || '').match(/showTab(['"]([^'"]+)['"])/);
+            if (tabMatch && tabMatch[1]) activeTabId = tabMatch[1];
+          }
+        }
+        if (activeTabId && typeof window.showTab === 'function') {
+          window.showTab(activeTabId);
+        }
+
+        if (typeof _origLoginAs === 'function' && _origLoginAs !== window.loginAs) {
+          try { _origLoginAs(targetRole); } catch(e){}
+        }
+
+        ['render', 'renderTable', 'renderPOSCatalog', 'renderSKU', 'renderProduk', 'renderAll'].forEach(function(fn) {
+          if (typeof window[fn] === 'function') {
+            try { window[fn](); } catch(e){}
+          }
+        });
+        if (typeof window.lucide !== 'undefined' && window.lucide.createIcons) {
+          try { window.lucide.createIcons(); } catch(e){}
+        }
+      };
+
+      if (!window.handleLogin) {
+        window.handleLogin = function() {
+          var uInp = document.getElementById('loginUsername');
+          var pInp = document.getElementById('loginPassword');
+          var u = (uInp && uInp.value ? uInp.value : '').trim().toLowerCase();
+          var p = (pInp && pInp.value ? pInp.value : '').trim();
+          var acc = null;
+          if (typeof window.DEMO_ACCOUNTS !== 'undefined' && Array.isArray(window.DEMO_ACCOUNTS)) {
+            acc = window.DEMO_ACCOUNTS.find(function(a) {
+              return String(a.username).toLowerCase() === u && (String(a.password) === p || !p);
+            });
+          }
+          if (!acc) {
+            if (u.includes('super') || u === 'superadmin') acc = { role: 'Super Admin' };
+            else if (u.includes('admin')) acc = { role: 'Admin' };
+            else if (u.includes('kasir')) acc = { role: 'Kasir' };
+            else if (u.includes('staf') || u.includes('staff')) acc = { role: 'Staff' };
+            else if (u.includes('owner') || u.includes('pemilik')) acc = { role: 'Pemilik' };
+            else if (u.includes('user') || u.includes('pelanggan')) acc = { role: 'Pelanggan' };
+            else if (u) acc = { role: u.charAt(0).toUpperCase() + u.slice(1) };
+            else acc = { role: 'Super Admin' };
+          }
+          if (acc && typeof window.loginAs === 'function') {
+            window.loginAs(acc.role);
+            if (typeof window.showToast === 'function') {
+              window.showToast('Selamat datang! Masuk sebagai ' + acc.role, 'success');
+            }
+          }
+        };
+      }
+
+      if (!window.logout) {
+        window.logout = function() {
+          window.currentRole = '';
+          var loginEl = document.getElementById('loginScreen') || document.querySelector('.login-screen, #loginModal, .login-container');
+          var appEl = document.getElementById('appContainer') || document.querySelector('.app-container, #mainContainer, .container');
+          if (appEl) appEl.style.display = 'none';
+          if (loginEl) loginEl.style.display = 'flex';
+          if (typeof window.showToast === 'function') {
+            window.showToast('Berhasil keluar. Silakan login kembali.', 'info');
+          }
+        };
+      }
+
+      var _origFilterTabs = window.filterTabsByRole;
+      window.filterTabsByRole = function(role) {
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+          var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
+          btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
+        });
+        if (typeof _origFilterTabs === 'function' && _origFilterTabs !== window.filterTabsByRole) {
+          try { _origFilterTabs(role); } catch(e){}
+        }
+      };
+
+      // Auto-bind event listeners jika elemen login ada
+      function bindLoginEvents() {
+        try {
+          var loginForm = document.querySelector('form#loginForm, #loginScreen form, .login-form');
+          if (loginForm) {
+            loginForm.onsubmit = function(e) {
+              if (e) e.preventDefault();
+              if (typeof window.handleLogin === 'function') window.handleLogin();
+              return false;
+            };
+          }
+          var loginBtns = document.querySelectorAll('#loginScreen button, .login-btn, button[type="submit"]');
+          loginBtns.forEach(function(btn) {
+            if (!btn.getAttribute('onclick')) {
+              btn.addEventListener('click', function(e) {
+                if (e) e.preventDefault();
+                if (typeof window.handleLogin === 'function') window.handleLogin();
+              });
+            }
+          });
+          var inputs = [document.getElementById('loginUsername'), document.getElementById('loginPassword')];
+          inputs.forEach(function(inp) {
+            if (inp) {
+              inp.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                  if (e) e.preventDefault();
+                  if (typeof window.handleLogin === 'function') window.handleLogin();
+                }
+              });
+            }
+          });
+        } catch(e) {}
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindLoginEvents);
+      } else {
+        setTimeout(bindLoginEvents, 50);
+      }
+    })();
+
+    // Init
+    assignElementUids();
+    postToParent({ type: 'OD_READY' });
+  })();
+  </script>
+  </body>
+</html>

@@ -27,7 +27,7 @@ import {
   REQUIRED_SYSTEM_ROLE,
   standardizeBriefRoleNames
 } from '@/lib/rolePolicy';
-import { renderRbacMarkdownTable } from '@/lib/templates/processes/guided';
+import { renderRbacMarkdownTable, renderDataSchemaMarkdown, renderSimulasiDbMarkdown } from '@/lib/templates/processes/guided';
 
 // =============================================================================
 // KONFIGURASI MODEL AI TERPUSAT (Single Source of Truth)
@@ -531,7 +531,41 @@ export async function POST(req: Request) {
           : `- **Matriks Hak Akses (RBAC) per Modul Fungsional**:\n${tableMd}`;
       }
     }
-    
+
+    // Ekstraksi skema data tabel dari session (SUMBER KEBENARAN field form CRUD)
+    const sessionDataSchema = incomingSession?.dataSchema;
+    const sessionSimulasiDb = incomingSession?.simulasiDb;
+    const schemaMarkdownBlock = sessionDataSchema?.tabel && sessionDataSchema.tabel.length > 0
+      ? (sessionDataSchema.markdownTable || renderDataSchemaMarkdown(sessionDataSchema.tabel, sessionDataSchema.korelasiRingkas))
+      : null;
+    // Bangun peta relasi: field bertipe "relasi ke X" → daftar kandidat label dari simulasiDb
+    const relasiFieldMap: Record<string, { label: string; id: string }[]> = {};
+    if (sessionDataSchema?.tabel && sessionSimulasiDb?.tabel) {
+      for (const tbl of sessionDataSchema.tabel) {
+        for (const fld of (tbl.field || [])) {
+          const relasiMatch = fld.tipe?.match(/relasi ke\s+([\w_]+)/i);
+          if (relasiMatch) {
+            const targetNama = relasiMatch[1].toLowerCase();
+            const targetTbl = sessionSimulasiDb.tabel.find((t: any) =>
+              t.nama?.toLowerCase() === targetNama ||
+              t.nama?.toLowerCase().replace(/^(tb_|tbl_|t_)/, '') === targetNama
+            );
+            if (targetTbl && Array.isArray(targetTbl.baris) && targetTbl.baris.length > 0) {
+              const sample = targetTbl.baris[0];
+              const idKey = Object.keys(sample).find(k => k === 'id' || /^id_/.test(k)) || Object.keys(sample)[0];
+              const labelKey = Object.keys(sample).find(k =>
+                /nama|title|judul|name/i.test(k)
+              ) || Object.keys(sample).find(k => k !== idKey) || idKey;
+              relasiFieldMap[`${tbl.nama}.${fld.nama}`] = targetTbl.baris.slice(0, 8).map((row: any) => ({
+                id: String(row[idKey] ?? ''),
+                label: String(row[labelKey] ?? row[idKey] ?? '')
+              }));
+            }
+          }
+        }
+      }
+    }
+
     // Deteksi Permintaan Penyesuaian Skenario / Update Brief oleh Pengguna
     const isAdjustScenarioRequest = /(sesuaikan\s+skenario|penyesuaian\s+skenario|update\s+brief|perbarui\s+brief|simpan\s+catatan|sesuaikan\s+alur|saya\s+telah\s+(?:menyesuaikan|mengubah)\s+rincian\s+brief)/i.test(prompt);
 
@@ -1401,6 +1435,31 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           const hint = roleLandingTabs[r] || r.toLowerCase().replace(/[^a-z0-9]/g, '');
           return `   - Role "${r}": landingTab harus diisi dengan ID tab pertama yang terlihat setelah login (Tab default "${r}" sesuai Brief, BUKAN tab publik "${publicRole || 'Pelanggan'}"). Contoh hint ID: '${hint}' — sesuaikan dengan ID tab HTML yang dibuat.`;
         }).join('\n');
+
+        // Suntikkan skema data tabel jika tersedia — SUMBER KEBENARAN field form CRUD
+        if (schemaMarkdownBlock) {
+          systemPrompt += `\n\n` +
+`================================================================================
+🗄️ SKEMA DATA TABEL RESMI (SUMBER KEBENARAN FIELD FORM CRUD — WAJIB DIIKUTI 100%):
+${schemaMarkdownBlock}
+================================================================================
+⚠️ ATURAN WAJIB FORM CRUD BERDASARKAN SKEMA DI ATAS:
+1. SETIAP form/modal Tambah & Edit WAJIB menggunakan PERSIS field dari tabel yang bersangkutan sesuai skema di atas.
+   - Judul modal HARUS sesuai nama tabel yang dioperasikan (misal: "Catat Evaluasi Baru" → hanya field dari tabel \`lembar_evaluasi\`).
+   - DILARANG KERAS mencampurkan field dari tabel berbeda dalam 1 modal (misal: memasukkan field \`nama_lengkap\` dari tabel \`siswa\` ke dalam form \`lembar_evaluasi\`).
+   - Setiap input di modal WAJIB memetakan ke field yang ADA di kolom tabel terkait di skema ini.
+2. FIELD BERTIPE "relasi ke [Entitas]" WAJIB DIRENDER SEBAGAI <select>, BUKAN <input type="text">:
+   - Dropdown select WAJIB diisi dengan data dari tabel yang direlasikan (ambil dari array state yang sudah dideklarasikan).
+   - Tampilkan label yang manusiawi (nama, judul, dsb.) sebagai teks opsi, simpan ID-nya sebagai value.
+   - Contoh wajib untuk field \`relasi_ke_siswa\`: 
+     \`<select id="inputSiswaId"><option value="">-- Pilih Siswa --</option></select>\`
+     dan isi opsinya via JS: \`siswaList.forEach(s => select.innerHTML += \`<option value="\${s.id}">\${s.nama}</option>\`)\`
+   - Populate ulang dropdown relasi setiap kali modal dibuka (\`bukaModalTambah\` & \`bukaModalEdit\`) agar data terbaru selalu termuat.
+3. DATA CONTOH (DEMO) WAJIB MENGIKUTI RELASI YANG VALID:
+   - ID relasi di tabel anak HARUS mengacu ke ID yang benar-benar ada di tabel induk.
+   - Contoh: \`jadwal_pertemuan.relasi_ke_instruktur\` HANYA boleh berisi ID instruktur yang ada di tabel \`pengguna\`/\`instruktur\`, BUKAN ID siswa.
+================================================================================`;
+        }
 
         systemPrompt += `\n\n` +
 `================================================================================

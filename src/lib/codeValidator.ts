@@ -1300,6 +1300,37 @@ function loginAs(role) {
     }
   }
 
+  // =========================================================================
+  // 11. VALIDASI FIELD RELASI: Field "relasi ke X" WAJIB <select>, BUKAN <input type="text">
+  // =========================================================================
+  // Deteksi pola input teks bebas untuk field yang jelas bertipe relasi:
+  // - input dengan id/name/placeholder yang mengandung "relasi_ke_", "Id", "_id", "_fk"
+  // - DILARANG type="text" untuk field ini; WAJIB <select> berisi opsi dari tabel induk
+  {
+    // Pola: <input type="text" ... id="inputXxxId"> atau placeholder yang menyebutkan "relasi"
+    // Cek apakah ada input dengan nama yang khas field relasi
+    const relasiInputPattern = /<input(?=[^>]*type=["']text["'])[^>]*(?:id|name|placeholder)=["'][^"']*(?:relasi_ke_|_fk|RelId|SiswaId|InstrukturId|PenggunaId|UserId|GurId|MuridId|PelaId|PaketId)[^"']*["'][^>]*>/gi;
+    const relasiInputMatches = [...repairedHtml.matchAll(relasiInputPattern)];
+    if (relasiInputMatches.length > 0) {
+      issues.push(
+        `RELASI_FIELD_NOT_DROPDOWN: Ditemukan ${relasiInputMatches.length} field relasi (FK/foreign key) yang dirender sebagai <input type="text"> bukan <select>. ` +
+        `Field bertipe "relasi ke [Entitas]" WAJIB menggunakan <select> berisi daftar pilihan dari tabel yang direlasikan. ` +
+        `Field bermasalah: ${relasiInputMatches.map(m => m[0].match(/id=["']([^"']+)["']/i)?.[1] || 'unknown').join(', ')}`
+      );
+    }
+
+    // Cek juga pola yang lebih umum: input dengan label/placeholder yang menyebut "pilih" atau "relasi"
+    // namun ternyata diimplementasikan sebagai text input
+    const generalRelasiInputPattern = /<input(?=[^>]*type=["']text["'])[^>]*placeholder=["'][^"']*(?:pilih|relasi|select)\s+(?:siswa|instruktur|pengguna|guru|murid|pelanggan|anggota|pasien|produk|paket|kelas|kategori)[^"']*["'][^>]*>/gi;
+    const generalRelasiMatches = [...repairedHtml.matchAll(generalRelasiInputPattern)];
+    if (generalRelasiMatches.length > 0) {
+      issues.push(
+        `RELASI_FIELD_TEXT_INPUT: Ditemukan input teks dengan placeholder "pilih [entitas]" yang seharusnya menjadi <select> dropdown. ` +
+        `WAJIB ganti dengan <select> yang memuat opsi dari array data tabel terkait.`
+      );
+    }
+  }
+
   repairedHtml = cleanConversationalLeaks(repairedHtml);
 
   return {
