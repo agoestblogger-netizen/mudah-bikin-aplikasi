@@ -3,6 +3,8 @@ import { validateAndRepairGeneratedCode, extractMissingHandlers } from '@/lib/co
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { getUserFromRequest } from '@/lib/supabase/user';
+import { stitchContinuationCode } from '@/lib/continuationStitcher';
+import * as acorn from 'acorn';
 import {
   getConciseCatalogSummary,
   detectMatchingMasterTemplate,
@@ -1526,10 +1528,13 @@ ${staffLandingGuide}
      * Jika aplikasi bertema Rental / Sewa / Peminjaman (sepeda, mobil, motor, buku, kamera):
        - WAJIB memiliki alur Mulai Sewa (Check-out) DAN Pengembalian (Check-in).
        - Pada tabel transaksi sewa aktif, sediakan tombol aksi "Kembalikan" yang membuka modal pengembalian unit, mencatat kondisi fisik (Bagus/Rusak), menghitung denda jika terlambat, dan mengembalikan status unit kembali menjadi "Tersedia".
-  8. FUNGSI WAJIB NAVIGASI & AUTENTIKASI DI DALAM <script>:
-     - WAJIB definisikan \`function showTab(tabId) { ... }\` di dalam tag <script> jika ada tab navigasi onclick="showTab(...)".
-     - WAJIB definisikan \`function logout() { ... }\` di dalam tag <script> jika ada tombol onclick="logout()".
-     - WAJIB definisikan \`function loginAs(role) { ... }\`, \`function handleLogin() { ... }\`, dan \`function quickLogin(u, p) { ... }\` di dalam tag <script> jika menggunakan login simulation multi-role.
+  8. FUNGSI NAVIGASI, AUTENTIKASI & HANDLER BISNIS OPERASIONAL:
+     - Kerangka plumbing navigasi standar (\`showTab\`, \`filterTabsByRole\`, \`loginAs\`, \`logout\`, \`showToast\`) telah didukung secara otomatis oleh runtime framework prototipe.
+     - Di dalam tag <script>, fokuskan implementasi pada:
+       a) Deklarasi \`DEMO_ACCOUNTS\` lengkap dengan field \`landingTab\` spesifik per role.
+       b) Fungsi autentikasi \`handleLogin()\` dan \`quickLogin(u, p)\` yang mengarahkan ke \`loginAs(role)\`.
+       c) Logika aksi bisnis operasional (Bagian B) seperti \`render()\`, \`bukaModal(type)\`, \`tutupModal()\`, \`simpanData()\`, \`eksekusiHapus()\`, serta fungsi alur transaksi bisnis domain (misal: tambah pesanan, proses layanan, serah terima, dsb.).
+     - SETIAP fungsi aksi kustom yang dipanggil di atribut onclick HTML WAJIB memiliki implementasi fungsi yang nyata di JavaScript.
 - Tuliskan ringkasan checklist kesiapan aplikasi di bawah kode HTML.`;
 
       } else if (stage === 'TAHAP_5_PATCH') {
@@ -2086,13 +2091,8 @@ ${staffLandingGuide}
             break;
           }
 
-          // Bersihkan jika model mengulang pembuka code fence di awal sambungan
-          if (contText.startsWith('```html\n')) contText = contText.slice(8);
-          else if (contText.startsWith('```html')) contText = contText.slice(7);
-          else if (contText.startsWith('```\n')) contText = contText.slice(4);
-          else if (contText.startsWith('```')) contText = contText.slice(3);
-
-          assistantMessage += contText;
+          // Gunakan Smart Boundary Continuation Stitcher (Pilar 3)
+          assistantMessage = stitchContinuationCode(assistantMessage, contText);
           retryCount++;
         }
       }
@@ -2232,12 +2232,8 @@ ${staffLandingGuide}
           break;
         }
 
-        if (contText.startsWith('```html\n')) contText = contText.slice(8);
-        else if (contText.startsWith('```html')) contText = contText.slice(7);
-        else if (contText.startsWith('```\n')) contText = contText.slice(4);
-        else if (contText.startsWith('```')) contText = contText.slice(3);
-
-        assistantMessage += contText;
+        // Gunakan Smart Boundary Continuation Stitcher (Pilar 3)
+        assistantMessage = stitchContinuationCode(assistantMessage, contText);
         retryCount++;
       }
       }
@@ -2469,10 +2465,10 @@ INSTRUKSI MUTLAK:
             });
             js = cleanLines.join('\n').trim();
             try {
-              new Function(js);
+              acorn.parse(js, { ecmaVersion: 'latest', sourceType: 'script' });
               return js;
-            } catch (err) {
-              console.warn('[Targeted Repair] Sintaks JS tidak valid sebelum injeksi:', err);
+            } catch (err: any) {
+              console.warn('[Targeted Repair] Sintaks JS tidak valid sebelum injeksi:', err?.message);
               return '';
             }
           };

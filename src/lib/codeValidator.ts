@@ -5,6 +5,7 @@
 
 import { cleanConversationalLeaks } from './cleanLeaks';
 import { isSuperAdminRole } from './rolePolicy';
+import * as acorn from 'acorn';
 
 export interface ValidationReport {
   isValid: boolean;
@@ -14,6 +15,55 @@ export interface ValidationReport {
     css: string;
     js: string;
   };
+}
+
+/**
+ * Ekstraksi seluruh nama fungsi yang didefinisikan di JavaScript menggunakan AST traversal.
+ * Mendukung: FunctionDeclaration, VariableDeclaration (FunctionExpression & ArrowFunction),
+ * AssignmentExpression (window.xyz = ..., xyz = ...), dan fungsi bersarang di dalam block/event.
+ */
+export function extractFunctionsFromAst(ast: any): Set<string> {
+  const fns = new Set<string>();
+
+  function walk(node: any) {
+    if (!node || typeof node !== 'object') return;
+
+    if (node.type === 'FunctionDeclaration' && node.id?.name) {
+      fns.add(node.id.name);
+    } else if (node.type === 'VariableDeclarator' && node.id?.name && node.init) {
+      if (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') {
+        fns.add(node.id.name);
+      }
+    } else if (node.type === 'AssignmentExpression') {
+      const left = node.left;
+      const right = node.right;
+      const isFn = right && (right.type === 'FunctionExpression' || right.type === 'ArrowFunctionExpression');
+      if (isFn) {
+        if (left.type === 'Identifier' && left.name) {
+          fns.add(left.name);
+        } else if (left.type === 'MemberExpression' && left.property) {
+          if (left.object?.name === 'window') {
+            fns.add(left.property.name || left.property.value);
+          }
+        }
+      }
+    }
+
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key === 'range') continue;
+      const child = node[key];
+      if (Array.isArray(child)) {
+        for (const c of child) {
+          if (c && typeof c.type === 'string') walk(c);
+        }
+      } else if (child && typeof child.type === 'string') {
+        walk(child);
+      }
+    }
+  }
+
+  walk(ast);
+  return fns;
 }
 
 function injectBeforeLastScriptClose(html: string, code: string): string {
@@ -146,37 +196,165 @@ export function validateAndRepairGeneratedCode(
     const parts = repairedHtml.split(/<script[\s\S]*?>/i);
     inlineJs = parts.slice(1).join('\n').replace(/<\/script>[\s\S]*$/i, '');
   }
-  const combinedJs = (inlineJs + '\n' + repairedJs).trim();
+  let combinedJs = (inlineJs + '\n' + repairedJs).trim();
 
 
-  // 1.5 VALIDASI SINTAKS JAVASCRIPT PALING AWAL (PRD NFR-10b / Step 10)
-  // Menolak dan menangkap SyntaxError (misal: unexpected identifier, unclosed string, syntax error token)
+  // 1.5 VALIDASI SINTAKS JAVASCRIPT DENGAN ACORN AST PARSER (Pilar 2)
+  // Menolak dan menangkap SyntaxError dengan line & column number akurat
+  const definedFunctions = new Set<string>();
   if (combinedJs) {
     try {
-      // Validasi parsing sintaks JS tanpa mengeksekusi side effects runtime
-      new Function(combinedJs);
+      const ast: any = acorn.parse(combinedJs, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
+      const astFns = extractFunctionsFromAst(ast);
+      for (const fn of astFns) {
+        definedFunctions.add(fn);
+      }
     } catch (syntaxErr: any) {
-      issues.push(`SYNTAX_ERROR: JavaScript SyntaxError pada script: ${syntaxErr.message}`);
+      const loc = syntaxErr.loc ? ` (baris ${syntaxErr.loc.line}, kolom ${syntaxErr.loc.column})` : '';
+      issues.push(`SYNTAX_ERROR: JavaScript SyntaxError pada script: ${syntaxErr.message}${loc}`);
     }
+  }
+
+  // 1.6 Regex Fallback untuk definisi fungsi (menjaga kompatibilitas jika AST gagal parsing)
+  let m: RegExpExecArray | null;
+  const funcDefRegex = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>)|window\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?function/g;
+  while ((m = funcDefRegex.exec(combinedJs)) !== null) {
+    const fnName = m[1] || m[2] || m[3] || m[4];
+    if (fnName) definedFunctions.add(fnName);
+  }
+
+  // 1.8 KERANGKA PLUMBING DETERMINISTIK (Pilar 1)
+  // Menyediakan implementasi standar yang teruji untuk navigasi tab, login role, dan toast
+  // jika aplikasi memuat elemen tab (.tab-btn / showTab) atau sistem otentikasi login
+  const hasTabs = repairedHtml.includes('.tab-btn') || repairedHtml.includes('showTab(') || /data-access-roles/i.test(repairedHtml);
+  const hasLogin = repairedHtml.includes('loginScreen') || repairedHtml.includes('loginAs(') || repairedHtml.includes('DEMO_ACCOUNTS');
+
+  const plumbingToInject: string[] = [];
+
+  if (hasTabs && !definedFunctions.has('showTab')) {
+    plumbingToInject.push(`
+function showTab(tabId) {
+  try {
+    document.querySelectorAll('.tab-content, .tab-pane, [data-tab-content]').forEach(t => {
+      t.classList.remove('active');
+      t.style.display = 'none';
+    });
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+    const target = document.getElementById(tabId) || document.getElementById('tab-' + tabId) || document.querySelector('[id*="' + tabId + '"]');
+    if (target) {
+      target.classList.add('active');
+      target.style.display = 'block';
+    }
+    const targetBtn = document.getElementById('tab-btn-' + tabId) || document.querySelector('[onclick*="' + tabId + '"]');
+    if (targetBtn) targetBtn.classList.add('active');
+    if (typeof render === 'function') render();
+    else if (typeof renderTable === 'function') renderTable();
+  } catch (e) { console.log('showTab error', e); }
+}
+`);
+    definedFunctions.add('showTab');
+  }
+
+  if (hasTabs && !definedFunctions.has('filterTabsByRole')) {
+    plumbingToInject.push(`
+function filterTabsByRole(role) {
+  try {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const roles = btn.getAttribute('data-access-roles');
+      if (!roles) return;
+      const allowed = roles.split(',').map(r => r.trim().toLowerCase());
+      if (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all'))) {
+        btn.style.display = 'inline-flex';
+      } else {
+        btn.style.display = 'none';
+      }
+    });
+  } catch (e) { console.log('filterTabs error', e); }
+}
+`);
+    definedFunctions.add('filterTabsByRole');
+  }
+
+  if (hasLogin && !definedFunctions.has('logout')) {
+    plumbingToInject.push(`
+function logout() {
+  try {
+    currentRole = '';
+    const loginEl = document.querySelector('#loginScreen, .login-screen');
+    const appEl = document.querySelector('#appContainer, .app-container');
+    if (appEl) appEl.style.display = 'none';
+    if (loginEl) loginEl.style.display = 'flex';
+    if (typeof showToast === 'function') showToast('Berhasil keluar. Silakan login kembali.', 'info');
+  } catch (e) { console.log('logout error', e); }
+}
+`);
+    definedFunctions.add('logout');
+  }
+
+  if (hasLogin && !definedFunctions.has('loginAs')) {
+    plumbingToInject.push(`
+function loginAs(role) {
+  try {
+    currentRole = role;
+    const loginEl = document.querySelector('#loginScreen, .login-screen');
+    const appEl = document.querySelector('#appContainer, .app-container');
+    if (loginEl) loginEl.style.display = 'none';
+    if (appEl) appEl.style.display = 'block';
+    const badge = document.querySelector('#currentRoleBadge, #userRoleBadge, .role-badge');
+    if (badge) badge.innerText = role;
+    if (typeof filterTabsByRole === 'function') filterTabsByRole(role);
+    const matched = (typeof DEMO_ACCOUNTS !== 'undefined' ? DEMO_ACCOUNTS : []).find(a => a.role === role);
+    if (matched && matched.landingTab && typeof showTab === 'function') {
+      showTab(matched.landingTab);
+    } else if (typeof showTab === 'function') {
+      const firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
+      const tabMatch = firstTab?.getAttribute('onclick')?.match(/showTab\\(['"]([^'"]+)['"]\\)/);
+      if (tabMatch && tabMatch[1]) {
+        showTab(tabMatch[1]);
+      } else if (firstTab) {
+        firstTab.click();
+      }
+    }
+    if (typeof render === 'function') render();
+    else if (typeof renderTable === 'function') renderTable();
+  } catch (e) { console.log('loginAs error', e); }
+}
+`);
+    definedFunctions.add('loginAs');
+  }
+
+  if (!definedFunctions.has('showToast')) {
+    plumbingToInject.push(`
+function showToast(msg, type = 'info') {
+  try {
+    let t = document.getElementById('appToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'appToast';
+      t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:9999;font-size:14px;transition:opacity 0.3s ease;';
+      document.body.appendChild(t);
+    }
+    t.innerText = (type === 'error' ? '❌ ' : type === 'success' ? '✅ ' : 'ℹ️ ') + msg;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 3000);
+  } catch (e) { console.log('showToast', msg); }
+}
+`);
+    definedFunctions.add('showToast');
+  }
+
+  if (plumbingToInject.length > 0) {
+    const codeChunk = plumbingToInject.join('\n');
+    repairedHtml = injectBeforeLastScriptClose(repairedHtml, codeChunk);
+    combinedJs = (combinedJs + '\n' + codeChunk).trim();
   }
 
   // 2. Pemeriksaan Keselarasan Event Handler (onclick="..." vs JS Function Definitions)
   const onclickFunctionNames: string[] = [];
   const onclickRegex = /onclick=["']\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
-  let m: RegExpExecArray | null;
   while ((m = onclickRegex.exec(repairedHtml)) !== null) {
     onclickFunctionNames.push(m[1]);
-  }
-
-  // Cari semua nama fungsi yang didefinisikan di JS
-  // Termasuk: function declaration, async function, const/let/var = function,
-  // arrow function, async arrow function (mis. const handleLogin = async () => {}),
-  // dan assignment ke window / variabel global.
-  const definedFunctions = new Set<string>();
-  const funcDefRegex = /(?:async\s+)?function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)|(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>)|window\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?(?:function\b|(?:\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>)|([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*(?:async\s+)?function/g;
-  while ((m = funcDefRegex.exec(combinedJs)) !== null) {
-    const fnName = m[1] || m[2] || m[3] || m[4];
-    if (fnName) definedFunctions.add(fnName);
   }
 
 
@@ -346,15 +524,15 @@ function quickLogin(u, p) {
       }
 
       // Auto-repair untuk fungsi navigasi tab & autentikasi jika dipanggil di onclick tapi belum terdefinisi
-      if (!resolved && (fn === 'logout' || fn === 'showTab' || fn === 'loginAs' || fn === 'filterTabsByRole') && repairedHtml.includes('</script>')) {
+      if (!resolved && (fn === 'logout' || fn === 'showTab' || fn === 'loginAs' || fn === 'filterTabsByRole' || fn === 'showToast')) {
         let fallbackFn = '';
         if (fn === 'logout') {
           fallbackFn = `
 function logout() {
   try {
     currentRole = '';
-    const loginEl = document.getElementById('loginScreen');
-    const appEl = document.getElementById('appContainer');
+    const loginEl = document.querySelector('#loginScreen, .login-screen');
+    const appEl = document.querySelector('#appContainer, .app-container');
     if (appEl) appEl.style.display = 'none';
     if (loginEl) loginEl.style.display = 'flex';
     if (typeof showToast === 'function') showToast('Berhasil keluar. Silakan login kembali.', 'info');
@@ -365,7 +543,7 @@ function logout() {
           fallbackFn = `
 function showTab(tabId) {
   try {
-    document.querySelectorAll('.tab-content, .tab-pane').forEach(t => {
+    document.querySelectorAll('.tab-content, .tab-pane, [data-tab-content]').forEach(t => {
       t.classList.remove('active');
       t.style.display = 'none';
     });
@@ -387,17 +565,18 @@ function showTab(tabId) {
 function loginAs(role) {
   try {
     currentRole = role;
-    const loginEl = document.getElementById('loginScreen');
-    const appEl = document.getElementById('appContainer');
+    const loginEl = document.querySelector('#loginScreen, .login-screen');
+    const appEl = document.querySelector('#appContainer, .app-container');
     if (loginEl) loginEl.style.display = 'none';
     if (appEl) appEl.style.display = 'block';
-    const badge = document.getElementById('currentRoleBadge');
+    const badge = document.querySelector('#currentRoleBadge, #userRoleBadge, .role-badge');
     if (badge) badge.innerText = role;
     if (typeof filterTabsByRole === 'function') filterTabsByRole(role);
     if (typeof showTab === 'function') {
       const firstTab = document.querySelector('.tab-btn:not([style*="display: none"])');
       const tabMatch = firstTab?.getAttribute('onclick')?.match(/showTab\\(['"]([^'"]+)['"]\\)/);
       if (tabMatch && tabMatch[1]) showTab(tabMatch[1]);
+      else if (firstTab) firstTab.click();
     }
     if (typeof render === 'function') render();
     else if (typeof renderTable === 'function') renderTable();
@@ -412,13 +591,31 @@ function filterTabsByRole(role) {
       const roles = btn.getAttribute('data-access-roles');
       if (!roles) return;
       const allowed = roles.split(',').map(r => r.trim().toLowerCase());
-      if (allowed.includes(String(role).toLowerCase())) {
+      if (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all'))) {
         btn.style.display = 'inline-flex';
       } else {
         btn.style.display = 'none';
       }
     });
   } catch (e) { console.log('filterTabs error', e); }
+}
+`;
+        } else if (fn === 'showToast') {
+          fallbackFn = `
+function showToast(msg, type = 'info') {
+  try {
+    let t = document.getElementById('appToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'appToast';
+      t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:9999;font-size:14px;transition:opacity 0.3s ease;';
+      document.body.appendChild(t);
+    }
+    t.innerText = (type === 'error' ? '❌ ' : type === 'success' ? '✅ ' : 'ℹ️ ') + msg;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 3000);
+  } catch (e) { console.log('showToast', msg); }
 }
 `;
         }
