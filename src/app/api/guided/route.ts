@@ -47,6 +47,7 @@ import {
   renderSimulasiDbMarkdown,
   repairRelasiSimulasiDb,
   validateContohDataVsSchema,
+  detectTargetRoleForField,
   type SimulasiContohData,
   type SimulasiContohTabel,
   renderReviewFinalMarkdown,
@@ -2220,14 +2221,23 @@ export function extractTablesAndCorrelationFromParsed(
   for (const t of rawTables) {
     const rawFields = t && (t.field || t.fields || t.kolom);
     if (t && typeof t.nama === 'string' && Array.isArray(rawFields) && rawFields.length > 0) {
-      const validFields: { nama: string; tipe: string; keterangan: string }[] = [];
+      const validFields: { nama: string; tipe: string; keterangan: string; targetRole?: string }[] = [];
       for (const f of rawFields) {
         if (f && typeof f.nama === 'string') {
-          validFields.push({
+          const fieldObj: { nama: string; tipe: string; keterangan: string; targetRole?: string } = {
             nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
             tipe: String(f.tipe || 'text').trim(),
             keterangan: String(f.keterangan || f.deskripsi || '').trim()
-          });
+          };
+          if (f.targetRole && typeof f.targetRole === 'string' && f.targetRole.trim()) {
+            fieldObj.targetRole = f.targetRole.trim();
+          } else {
+            const detected = detectTargetRoleForField(fieldObj);
+            if (detected) {
+              fieldObj.targetRole = detected;
+            }
+          }
+          validFields.push(fieldObj);
         }
       }
       if (validFields.length > 0) {
@@ -2835,7 +2845,9 @@ ATURAN KETAT:
    - Jika field produk/barang/layanan/varian: gunakan nama produk/layanan nyata sesuai domain (misal distro/pakaian: "Kemeja Flannel Tartan", "Kaos Polos Cotton Combed", "Jaket Denim Trucker"; klinik hewan: "Kucing Persia", "Anjing Golden Retriever", "Kelinci Holland Lop"; es krim: "Vanilla Classic", "Dark Chocolate", "Strawberry Swirl").
    - Jika field ukuran baju/produk: gunakan ukuran industri nyata ("S", "M", "L", "XL").
    - Jika field warna: gunakan warna nyata ("Hitam Solid", "Navy Blue", "Olive Green", "Maroon").
-   - Jika field status/ketersediaan: patuhi pilihan yang tertulis di keterangan field (misal "Tersedia", "Disewa", "Perawatan" atau "Aktif", "Nonaktif"). JANGAN gunakan status transaksi ("Selesai", "Diproses") pada kolom ketersediaan barang.
+   - Jika field status/ketersediaan/kondisi/evaluasi: patuhi pilihan yang tertulis di keterangan field (misal "Baik", "Rusak", "Perlu Servis" atau "Lulus", "Tidak Lulus"). DILARANG KERAS menggunakan placeholder generik seperti "Hasil A/B/C", "Pilihan 1/2/3", atau "Data 1/2/3".
+   - Untuk kolom skor/nilai/angka evaluasi (misal nilai kopling, nilai rem, skor teknik): berikan angka realistis yang bervariasi wajar (misal: 85, 78, 92). DILARANG KERAS memberikan angka increment berurutan rata seperti 10, 20, 30 atau 1, 2, 3.
+   - Untuk field peran/role pada tabel pengguna: nilai HARUS PERSIS SAMA (exact match) dengan salah satu nama peran resmi: [${(session.roles?.selected || []).join(', ')}]. DILARANG KERAS menyingkat nama peran (misal "Staf Administrasi" disingkat jadi "Staf", atau "Super Admin" jadi "Admin").
    - JANGAN PERNAH menaruh nama orang di field nama barang/produk/varian/status/ukuran/warna/spesifikasi.
    - Nama orang HANYA boleh dipakai untuk field nama pelanggan, nama staf, nama dokter, nama peminjam (gunakan nama orang Indonesia: "Budi Santoso", "Siti Rahma", "Ahmad Hidayat").
 4. Untuk tipe "angka": kembalikan angka murni (number) dalam rentang nominal wajar (misal harga: 25000, 75000, 150000; stok: 10, 25, 50; bobot kg: 2.5, 4.0, 7.5).
@@ -2852,7 +2864,13 @@ ${schemaBrief}`;
   const retryNote =
     opts?.masalahDariValidasi && opts.masalahDariValidasi.length > 0
       ? `\n\nHasil sebelumnya DITOLAK validator dengan masalah berikut — perbaiki semua:
-${opts.masalahDariValidasi.map((m) => `- ${m}`).join('\n')}`
+${opts.masalahDariValidasi.map((m) => `- ${m}`).join('\n')}
+
+INSTRUKSI KHUSUS PERBAIKAN:
+- Perbaiki setiap field di atas agar nilainya bervariasi, realistis, dan kontekstual sesuai skema.
+- Untuk field yang memiliki pilihan di keterangan, pilih HANYA salah satu nilai dari daftar pilihan tersebut.
+- DILARANG membuat nilai increment rata (seperti 10, 20, 30); berikan skor/nilai natural yang bervariasi.
+- DILARANG menggunakan placeholder generik ("Hasil A", "Data 1", dsb).`
       : '';
 
   let raw: string | null = null;
@@ -2958,7 +2976,7 @@ export async function generateSimulasiDbHybrid(
       });
       if (!aiRes) return null;
       const built = buildDenganAI(aiRes.nilai);
-      const validasi = validateContohDataVsSchema(built.contohData, schemaTables);
+      const validasi = validateContohDataVsSchema(built.contohData, schemaTables, session.roles?.selected);
       return { built, masalah: validasi };
     } catch (e) {
       console.warn('[AI-SIMULASI-ISI] kendala saat membangun hasil AI:', e);
@@ -4921,6 +4939,9 @@ export async function POST(req: Request) {
           const hybrid = await generateSimulasiDbHybrid(updated, { provider, apiKey: userApiKey, model: userModel });
           updated.simulasiDb = hybrid.simulasiDb;
           console.log(`[guided/route] SIMULASI_DB ${hybrid.sumber.toUpperCase()} dalam ${hybrid.latensiAIMs}ms (${session.dataSchema?.tabel?.length || 0} tabel)`);
+          if (hybrid.masalahTerakhir && hybrid.masalahTerakhir.length > 0) {
+            (updated.simulasiDb as any).peringatanValidasi = hybrid.masalahTerakhir;
+          }
         }
 
         const guidedStep = buildGuidedStep(updated);
@@ -4928,11 +4949,14 @@ export async function POST(req: Request) {
           updated.simulasiDb?.markdownTable ||
           (updated.simulasiDb ? renderSimulasiDbMarkdown(updated.simulasiDb) : '');
         const changeNoteSimulasi = generateChangeNote('SIMULASI_DB', updated);
+        const honestValidationWarning = (updated.simulasiDb as any)?.peringatanValidasi?.length
+          ? `\n\n> ⚠️ **Catatan Integritas Data Contoh:**\n> Sistem mendeteksi beberapa nilai contoh yang perlu disesuaikan: ${(updated.simulasiDb as any).peringatanValidasi.slice(0, 3).join('; ')}.\n> Anda dapat meminta penyesuaian nilai dengan mengetik pesan di kolom chat.`
+          : '';
         const narration =
           (changeNoteSimulasi ? `${changeNoteSimulasi}\n\n` : '') +
           `Bagus sekali! Skema data telah disepakati.\n\n` +
           `Berikut simulasi database singkat (data contoh) dan akun demo untuk login uji coba prototipe Anda:\n\n` +
-          `${simulasiMarkdown}\n\n` +
+          `${simulasiMarkdown}${honestValidationWarning}\n\n` +
           `Silakan periksa contoh data dan akun login di atas. Jika sudah pas, klik "Sudah pas, lanjut ke Ringkasan Final".`;
 
         return NextResponse.json({

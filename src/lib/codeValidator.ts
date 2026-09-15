@@ -115,6 +115,25 @@ export function extractMissingHandlers(issues: string[]): string[] {
 }
 
 /**
+ * Ekstrak daftar elemen stub form dari issues array.
+ * Di-export agar route.ts dapat mengidentifikasi kolom/form mana yang memerlukan
+ * targeted repair atau peringatan eksplisit ke pengguna (POIN A).
+ */
+export function extractStubFormIssues(issues: string[]): string[] {
+  const stubs: string[] = [];
+  for (const issue of issues) {
+    const m = issue.match(/STUB_FORM_FIELDS:\s*Ditemukan\s*\d+\s*elemen form dengan label\/placeholder template palsu:\s*\[(.*?)\]/i);
+    if (m && m[1]) {
+      const parts = m[1].split(',').map(s => s.trim()).filter(Boolean);
+      for (const p of parts) {
+        if (!stubs.includes(p)) stubs.push(p);
+      }
+    }
+  }
+  return stubs;
+}
+
+/**
  * @deprecated JANGAN GUNAKAN — Fungsi ini menyuntik stub kosong yang membuat
  * prototipe terlihat "lolos" validasi padahal fungsionalnya rusak.
  * Gunakan extractMissingHandlers() + targeted AI repair di route.ts.
@@ -1327,6 +1346,51 @@ function loginAs(role) {
       issues.push(
         `RELASI_FIELD_TEXT_INPUT: Ditemukan input teks dengan placeholder "pilih [entitas]" yang seharusnya menjadi <select> dropdown. ` +
         `WAJIB ganti dengan <select> yang memuat opsi dari array data tabel terkait.`
+      );
+    }
+  }
+
+  // =========================================================================
+  // 12. VALIDASI FORM STUB / GENERIC PLACEHOLDER (Langkah 2 - Anti-Stub Form)
+  // =========================================================================
+  // Deteksi label, placeholder, atau id form yang menggunakan template generik
+  // seperti "Field 1", "Field 2", "Value 1", "Value 2", "Kolom 2", dsb.
+  {
+    const stubLabelPattern = /<label\b[^>]*>([\s\S]*?)<\/label>/gi;
+    const stubPlaceholderPattern = /placeholder=["']([^"']+)["']/gi;
+    const stubIdPattern = /(?:id|name)=["'](inputField\d+|inputValue\d+|field_\d+|value_\d+)["']/gi;
+
+    const detectedStubs: string[] = [];
+
+    // Deteksi label stub
+    let labelMatch: RegExpExecArray | null;
+    while ((labelMatch = stubLabelPattern.exec(repairedHtml)) !== null) {
+      const text = labelMatch[1].replace(/<[^>]*>/g, '').trim();
+      if (/^(?:Field\s*\d+|Value\s*\d+|Kolom\s*\d+|Nama\s*Field\s*\d*|Placeholder\s*\d*)$/i.test(text)) {
+        detectedStubs.push(`Label: "${text}"`);
+      }
+    }
+
+    // Deteksi placeholder stub
+    let placeholderMatch: RegExpExecArray | null;
+    while ((placeholderMatch = stubPlaceholderPattern.exec(repairedHtml)) !== null) {
+      const ph = placeholderMatch[1].trim();
+      if (/^(?:Value\s*\d+|Field\s*\d+|Kolom\s*\d+|Nilai\s*\d+|Placeholder\s*\d+|Contoh\s*Value|Contoh\s*Field)$/i.test(ph)) {
+        detectedStubs.push(`Placeholder: "${ph}"`);
+      }
+    }
+
+    // Deteksi id/name stub
+    let idMatch: RegExpExecArray | null;
+    while ((idMatch = stubIdPattern.exec(repairedHtml)) !== null) {
+      detectedStubs.push(`ID/Name: "${idMatch[1]}"`);
+    }
+
+    if (detectedStubs.length > 0) {
+      const uniqueStubs = [...new Set(detectedStubs)];
+      issues.push(
+        `STUB_FORM_FIELDS: Ditemukan ${uniqueStubs.length} elemen form dengan label/placeholder template palsu: [${uniqueStubs.join(', ')}]. ` +
+        `Formulir WAJIB menggunakan nama field sungguhan dari skema data tabel (bukan stub template generik seperti Field 2 atau Value 2).`
       );
     }
   }

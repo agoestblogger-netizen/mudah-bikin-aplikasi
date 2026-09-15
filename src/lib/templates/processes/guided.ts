@@ -2516,6 +2516,96 @@ const SIMULASI_SINONIM: Record<string, string> = {
   member: 'anggota'
 };
 
+export function isTablePengguna(tableName: string): boolean {
+  const key = normalizeEntityKey(tableName || '');
+  return (
+    key === 'pengguna' ||
+    key === 'user' ||
+    key === 'users' ||
+    key === 'akun' ||
+    key === 'staf' ||
+    key === 'karyawan' ||
+    SIMULASI_SINONIM[key] === 'pengguna'
+  );
+}
+
+export function detectTargetRoleForField(
+  fld: { nama: string; tipe?: string; keterangan?: string; targetRole?: string },
+  officialRoles?: string[]
+): string | null {
+  if (fld.targetRole && fld.targetRole.trim()) {
+    return fld.targetRole.trim();
+  }
+
+  const fName = (fld.nama || '').toLowerCase().replace(/[\s_]+/g, '_');
+  const fType = (fld.tipe || '').toLowerCase();
+  const kata = (fld.keterangan || '').toLowerCase();
+
+  // Hanya periksa jika field merupakan relasi atau menunjuk ID/user
+  const isRelasiLike =
+    fType.includes('relasi ke') ||
+    fName.endsWith('_id') ||
+    fName.startsWith('id_') ||
+    fName.includes('pengguna') ||
+    fName.includes('user') ||
+    /^(instruktur|siswa|murid|pelanggan|kasir|mekanik|dokter|pasien|penyewa|warga|anggota|staf|petugas|admin|pemilik)/.test(fName);
+
+  if (!isRelasiLike) return null;
+
+  const roles = (officialRoles || []).filter(Boolean);
+  // Urutkan roles descending by length agar lebih spesifik dicocokkan lebih dulu (misal "Staf Administrasi" sebelum "Staf")
+  const sortedRoles = [...roles].sort((a, b) => b.length - a.length);
+
+  // 1. Cek kecocokan langsung dari keterangan dengan official roles
+  for (const r of sortedRoles) {
+    const rLower = r.toLowerCase();
+    const regex = new RegExp(`\\b${rLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(kata)) {
+      return r;
+    }
+  }
+
+  // 2. Ekstrak stem dari nama field: misal "instruktur_id" -> "instruktur", "id_siswa" -> "siswa"
+  const stem = fName.replace(/_(id|fk)$/i, '').replace(/^id_/i, '').replace(/_/g, ' ').trim();
+
+  // Cek apakah stem cocok langsung dengan salah satu official role
+  for (const r of sortedRoles) {
+    const rLower = r.toLowerCase();
+    if (stem === rLower || rLower.includes(stem) || stem.includes(rLower)) {
+      return r;
+    }
+  }
+
+  // 3. Mapping sinonim umum antar istilah role
+  const ROLE_SYNONYMS: Record<string, string[]> = {
+    siswa: ['murid', 'peserta', 'pelajar', 'kursus'],
+    instruktur: ['pengajar', 'guru', 'tutor', 'trainer', 'pelatih'],
+    staf: ['admin', 'administrasi', 'petugas', 'operator'],
+    pemilik: ['owner', 'pimpinan', 'kepala', 'bos', 'manager'],
+    pelanggan: ['customer', 'konsumen', 'klien', 'pembeli'],
+    anggota: ['member', 'nasabah', 'peserta'],
+    penyewa: ['renter', 'tenant', 'peminjam'],
+    pasien: ['klien', 'pasien']
+  };
+
+  for (const r of sortedRoles) {
+    const rLower = r.toLowerCase();
+    for (const [canonical, syns] of Object.entries(ROLE_SYNONYMS)) {
+      const matchRole = rLower.includes(canonical) || syns.some((s) => rLower.includes(s));
+      const matchStem =
+        stem.includes(canonical) ||
+        syns.some((s) => stem.includes(s)) ||
+        kata.includes(canonical) ||
+        syns.some((s) => kata.includes(s));
+      if (matchRole && matchStem) {
+        return r;
+      }
+    }
+  }
+
+  return null;
+}
+
 function resolveRelasiTarget(
   contohTabel: SimulasiContohTabel[],
   fType: string,
@@ -2537,7 +2627,11 @@ function resolveRelasiTarget(
     });
   }
   if (!t) return null;
-  const idField = (t.field || []).find((f) => f.nama === 'id' || /^id_/.test(f.nama))?.nama || 'id';
+  const firstRowKeys = t.baris && t.baris[0] ? Object.keys(t.baris[0]) : [];
+  const idField =
+    (t.field || []).find((f) => f.nama === 'id' || /^id_/.test(f.nama))?.nama ||
+    firstRowKeys.find((k) => k === 'id' || /^id_/.test(k) || /_id$/.test(k) || /^kode/i.test(k)) ||
+    'id';
   return { nama: t.nama, idField };
 }
 
@@ -2567,21 +2661,61 @@ function normalizeContohTabel(contohData: unknown): SimulasiContohTabel[] {
 /**
  * Memperbaiki deterministik nilai field relasi agar FK benar-benar merujuk ID yang ada
  * di tabel tujuan (dipakai setelah revisi AI agar koreksi user tak memutus korelasi).
+ * Role-aware: jika merujuk tabel pengguna dan field memiliki targetRole, rujuk ID yang cocok perannya.
  */
-export function repairRelasiSimulasiDb(contohTabel: SimulasiContohTabel[]): void {
+export function repairRelasiSimulasiDb(
+  contohTabel: SimulasiContohTabel[],
+  officialRoles?: string[]
+): void {
   for (const t of contohTabel) {
-    const relasiFields = (t.field || []).filter((f) => (f.tipe || '').toLowerCase().includes('relasi ke'));
+    const allFields =
+      t.field ||
+      (t.baris[0] ? Object.keys(t.baris[0]).map((k) => ({ nama: k, tipe: '' })) : []);
+    const relasiFields = allFields.filter((f) => {
+      const fType = (f.tipe || '').toLowerCase();
+      const fName = f.nama.toLowerCase();
+      return fType.includes('relasi ke') || fName.endsWith('_id') || /^id_/.test(fName);
+    });
+
     for (const f of relasiFields) {
-      const tgt = resolveRelasiTarget(contohTabel, f.tipe, f.nama);
+      const tgt = resolveRelasiTarget(contohTabel, f.tipe || '', f.nama);
       if (!tgt) continue;
       const tgtTabel = contohTabel.find((x) => x.nama === tgt.nama);
-      if (!tgtTabel) continue;
-      const tgtIds = tgtTabel.baris.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean);
-      if (tgtIds.length === 0) continue;
+      if (!tgtTabel || !tgtTabel.baris || tgtTabel.baris.length === 0) continue;
+
+      let validIds: string[] = [];
+
+      // Jika relasi menunjuk ke tabel pengguna dan ada targetRole
+      if (isTablePengguna(tgt.nama)) {
+        const targetRole = detectTargetRoleForField(f, officialRoles);
+        if (targetRole) {
+          const roleCol = Object.keys(tgtTabel.baris[0] || {}).find((k) =>
+            /^(peran|role|jabatan)$/i.test(k)
+          );
+          if (roleCol) {
+            const matchingUsers = tgtTabel.baris.filter((r) => {
+              const actual = String(r[roleCol] ?? '').trim().toLowerCase();
+              const target = targetRole.toLowerCase();
+              return actual === target || actual.includes(target) || target.includes(actual);
+            });
+            if (matchingUsers.length > 0) {
+              validIds = matchingUsers
+                .map((r) => String(r[tgt.idField] ?? '').trim())
+                .filter(Boolean);
+            }
+          }
+        }
+      }
+
+      if (validIds.length === 0) {
+        validIds = tgtTabel.baris.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean);
+      }
+      if (validIds.length === 0) continue;
+
       t.baris.forEach((row, i) => {
         const cur = String(row[f.nama] ?? '').trim();
-        if (cur && tgtIds.includes(cur)) return;
-        row[f.nama] = tgtIds[i % tgtIds.length];
+        if (cur && validIds.includes(cur)) return;
+        row[f.nama] = validIds[i % validIds.length];
       });
     }
   }
@@ -2601,6 +2735,53 @@ export function generateDeterministicSimulasiDb(
   const schemaTables = session.dataSchema?.tabel || [];
   const nilaiAI = opts?.nilaiAI || {};
 
+  // 2. Akun Demo Login & Role Aktif (HANYA role aktif di session.roles.selected)
+  const activeRoles =
+    session.roles?.selected && session.roles.selected.length > 0 ? session.roles.selected : [REQUIRED_ROLE];
+
+  const akunLogin = activeRoles.map((role) => {
+    const cleanUsername = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const password = `${cleanUsername}123`;
+    let nama = `Akun Demo ${role}`;
+
+    if (isSuperAdminRole(role)) {
+      nama = 'Pak Bambang (Pemilik)';
+    } else if (/instruktur|pengajar|guru/i.test(role)) {
+      nama = 'Pak Hendra (Instruktur)';
+    } else if (/siswa|murid|kursus/i.test(role)) {
+      nama = 'Budi Pratama (Siswa)';
+    } else if (/staf|admin/i.test(role)) {
+      nama = 'Siti Rahma (Staf Administrasi)';
+    } else if (/kasir/i.test(role)) {
+      nama = 'Siti Rahma (Kasir)';
+    } else if (/pengumpul/i.test(role)) {
+      nama = 'Joko Purnomo (Pengumpul)';
+    } else if (/mekanik|montir/i.test(role)) {
+      nama = 'Agus Mekanik';
+    } else if (/barista/i.test(role)) {
+      nama = 'Rian Barista';
+    } else if (/bendahara/i.test(role)) {
+      nama = 'Ibu Sri (Bendahara)';
+    } else if (/ketua/i.test(role)) {
+      nama = 'Pak Bambang (Ketua)';
+    } else if (/penyewa/i.test(role)) {
+      nama = 'Dimas (Penyewa)';
+    } else if (/warga/i.test(role)) {
+      nama = 'Pak RT Warga';
+    } else if (/anggota|member/i.test(role)) {
+      nama = 'Ahmad (Anggota)';
+    } else if (/pelanggan|konsumen/i.test(role)) {
+      nama = 'Budi Santoso (Pelanggan)';
+    }
+
+    return {
+      nama,
+      role,
+      username: cleanUsername,
+      password
+    };
+  });
+
   interface TableGenMeta {
     table: (typeof schemaTables)[number];
     pkField: { nama: string; tipe: string; keterangan?: string } | null;
@@ -2613,8 +2794,10 @@ export function generateDeterministicSimulasiDb(
   const cleanIdPrefix = (raw: string): string =>
     (raw || 'ID').replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 4) || 'ID';
 
-  const idValuesOf = (m: TableGenMeta): string[] =>
-    [0, 1, 2].map((i) => `${m.idPrefix}-${String(i + 1).padStart(3, '0')}`);
+  const idValuesOf = (m: TableGenMeta): string[] => {
+    const count = isTablePengguna(m.table.nama) ? Math.max(3, activeRoles.length) : 3;
+    return Array.from({ length: count }, (_, i) => `${m.idPrefix}-${String(i + 1).padStart(3, '0')}`);
+  };
 
   // PASS A: tentukan kolom primary key & prefiks ID per tabel
   const metas: TableGenMeta[] = schemaTables.map((t) => {
@@ -2676,7 +2859,7 @@ export function generateDeterministicSimulasiDb(
 
   // Helper membuat nilai contoh realistis sesuai TIPE, NAMA FIELD, DAN KETERANGAN (semantik domain)
   const generateFieldValue = (
-    field: { nama: string; tipe: string; keterangan?: string },
+    field: { nama: string; tipe: string; keterangan?: string; targetRole?: string },
     rowIdx: number,
     meta: TableGenMeta
   ): any => {
@@ -2692,6 +2875,29 @@ export function generateDeterministicSimulasiDb(
       return ids[rowIdx % ids.length];
     }
 
+    // Penanganan khusus jika tabel saat ini adalah tabel pengguna / user
+    if (isTablePengguna(meta.table.nama)) {
+      if (/^(peran|role|jabatan)$/i.test(fName)) {
+        return activeRoles[rowIdx % activeRoles.length];
+      }
+      if (/^(nama|nama_lengkap|nama_pengguna|nama_user)$/i.test(fName)) {
+        return akunLogin[rowIdx % akunLogin.length]?.nama || `Pengguna ${rowIdx + 1}`;
+      }
+      if (/^(username|user_name)$/i.test(fName)) {
+        return akunLogin[rowIdx % akunLogin.length]?.username || `user${rowIdx + 1}`;
+      }
+      if (/^(password|kata_sandi)$/i.test(fName)) {
+        return akunLogin[rowIdx % akunLogin.length]?.password || 'password123';
+      }
+      if (/^(email)$/i.test(fName)) {
+        const u = akunLogin[rowIdx % akunLogin.length]?.username || `user${rowIdx + 1}`;
+        return `${u}@gmail.com`;
+      }
+      if (/^(status)$/i.test(fName)) {
+        return 'Aktif';
+      }
+    }
+
     if (fType === 'tanggal' || fName.includes('tanggal') || fName.includes('tgl') || fName.includes('date')) {
       return ['2026-09-10', '2026-09-11', '2026-09-12'][rowIdx];
     }
@@ -2700,6 +2906,25 @@ export function generateDeterministicSimulasiDb(
     if (fType.includes('relasi ke') || fName.endsWith('_id') || (fName.startsWith('id_') && fName !== 'id')) {
       const tgt = resolveTarget(fType, fName);
       if (tgt) {
+        // Jika relasi ke pengguna dan memiliki targetRole
+        if (isTablePengguna(tgt.table.nama)) {
+          const targetRole = detectTargetRoleForField(field, activeRoles);
+          if (targetRole) {
+            const tgtLower = targetRole.toLowerCase();
+            const matchingIndices: number[] = [];
+            activeRoles.forEach((r, idx) => {
+              const rLower = r.toLowerCase();
+              if (rLower === tgtLower || rLower.includes(tgtLower) || tgtLower.includes(rLower)) {
+                matchingIndices.push(idx);
+              }
+            });
+            if (matchingIndices.length > 0) {
+              const ids = idValuesOf(tgt);
+              const chosenRoleIdx = matchingIndices[rowIdx % matchingIndices.length];
+              return ids[chosenRoleIdx % ids.length];
+            }
+          }
+        }
         const ids = idValuesOf(tgt);
         return ids[rowIdx % ids.length];
       }
@@ -2728,7 +2953,10 @@ export function generateDeterministicSimulasiDb(
       if (/stok|qty|jumlah|kuantitas/i.test(fName)) {
         return [5, 12, 20][rowIdx];
       }
-      return [10, 20, 30][rowIdx];
+      if (/nilai|skor|score|point|poin|rating|evaluasi|kopling|rem|tanjakan|parkir|kemampuan|teknik|pemahaman/i.test(fName) || /skor|nilai|skala|rentang|evaluasi/i.test(kata)) {
+        return [85, 78, 92][rowIdx];
+      }
+      return [15, 28, 45][rowIdx];
     }
 
     if (/^id$|^kode|^nomor_nota|^no_nota|^id_nota/i.test(fName)) {
@@ -2828,7 +3056,8 @@ export function generateDeterministicSimulasiDb(
   // Prinsip HYBRID: struktur tabel, field, ID, dan relasi SELALU deterministik;
   // AI hanya mengisi KONTEN di field non-ID/non-relasi bila nilaiAI disuntikkan.
   const contohTabel: SimulasiContohTabel[] = metas.map((m) => {
-    const baris = [0, 1, 2].map((idx) => {
+    const rowCount = isTablePengguna(m.table.nama) ? Math.max(3, activeRoles.length) : 3;
+    const baris = Array.from({ length: rowCount }, (_, idx) => {
       const row: Record<string, any> = {};
       const tableNilai =
         nilaiAI[m.table.nama] ||
@@ -2867,47 +3096,6 @@ export function generateDeterministicSimulasiDb(
       keterangan: m.table.keterangan,
       field: m.table.field.map((f) => ({ nama: f.nama, tipe: f.tipe, keterangan: f.keterangan })),
       baris
-    };
-  });
-
-  // 2. Akun Demo Login (HANYA role aktif di session.roles.selected)
-  const activeRoles =
-    session.roles?.selected && session.roles.selected.length > 0 ? session.roles.selected : [REQUIRED_ROLE];
-
-  const akunLogin = activeRoles.map((role) => {
-    const cleanUsername = role.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const password = `${cleanUsername}123`;
-    let nama = `Akun Demo ${role}`;
-
-    if (isSuperAdminRole(role)) {
-      nama = 'Pak Bambang (Pemilik)';
-    } else if (/kasir/i.test(role)) {
-      nama = 'Siti Rahma (Kasir)';
-    } else if (/pengumpul/i.test(role)) {
-      nama = 'Joko Purnomo (Pengumpul)';
-    } else if (/mekanik|montir/i.test(role)) {
-      nama = 'Agus Mekanik';
-    } else if (/barista/i.test(role)) {
-      nama = 'Rian Barista';
-    } else if (/bendahara/i.test(role)) {
-      nama = 'Ibu Sri (Bendahara)';
-    } else if (/ketua/i.test(role)) {
-      nama = 'Pak Bambang (Ketua)';
-    } else if (/penyewa/i.test(role)) {
-      nama = 'Dimas (Penyewa)';
-    } else if (/warga/i.test(role)) {
-      nama = 'Pak RT Warga';
-    } else if (/anggota|member/i.test(role)) {
-      nama = 'Ahmad (Anggota)';
-    } else if (/pelanggan|konsumen/i.test(role)) {
-      nama = 'Budi Santoso (Pelanggan)';
-    }
-
-    return {
-      nama,
-      role,
-      username: cleanUsername,
-      password
     };
   });
 
@@ -2963,6 +3151,51 @@ const NAMA_PRODUK_SIMULASI: string[] = [
 ];
 
 /**
+ * Ekstrak daftar pilihan ENUM/opsi dari teks keterangan field skema.
+ * Mendukung format:
+ * - Dalam kurung: "(Baik / Rusak / Perlu Servis)", "(Lulus / Tidak Lulus)", "(Tunai, Transfer, QRIS)"
+ * - Format prefix: "Pilihan: Baik / Rusak / Perlu Servis", "Opsi: Aktif / Nonaktif"
+ */
+export function extractEnumOptions(keterangan?: string): string[] | null {
+  if (!keterangan) return null;
+  const raw = keterangan.trim();
+
+  // Pola 1: Di dalam tanda kurung
+  const paren = raw.match(/\(([^)]+)\)/);
+  let candidate = paren ? paren[1].trim() : '';
+
+  // Pola 2: Format eksplisit "pilihan:", "opsi:", "nilai:", "status:"
+  if (!candidate) {
+    const prefixMatch = raw.match(/(?:pilihan|opsi|nilai|status|kondisi)\s*:\s*([^.;]+)/i);
+    if (prefixMatch) {
+      candidate = prefixMatch[1].trim();
+    }
+  }
+
+  if (!candidate) return null;
+
+  // Bersihkan awalan contoh/misal
+  candidate = candidate.replace(/^(?:contoh|misal|seperti|misalnya|e\.g\.)\s*:?/i, '').trim();
+
+  if (!candidate.includes('/') && !candidate.includes(',')) return null;
+
+  const parts = candidate
+    .split(/\s*[/,]\s*/)
+    .map((s) => s.trim())
+    .filter((s) => {
+      if (!s) return false;
+      if (/^(?:contoh|misal|seperti|dan|dll|dsb)$/i.test(s)) return false;
+      const wordCount = s.split(/\s+/).length;
+      return wordCount >= 1 && wordCount <= 4 && /^[a-zA-Z0-9\s'’/_-]+$/.test(s);
+    });
+
+  if (parts.length >= 2 && parts.length <= 8) {
+    return parts;
+  }
+  return null;
+}
+
+/**
  * Memvalidasi hasil pengisian AI/KAMUS: nilai berupa placeholder, tipe salah (angka/tanggal),
  * atau tertukar domain (nama orang dimasukkan ke field produk, dst) akan ditangkap di sini.
  */
@@ -2979,6 +3212,14 @@ function checkKontenSimulasi(
 
   if (/^contoh\b|\bcontoh data/i.test(v) || /^(isi|tulis|masukkan|ganti|dummy)\b/i.test(v) || /^[-…x]{1,3}$/i.test(v)) {
     masalah.push(`"${t.nama}.${fld.nama}" berisi nilai placeholder: "${v}"`);
+  }
+
+  // Deteksi placeholder generik (Hasil A/B/C, Data 1/2/3, Opsi A/B, dsb.)
+  if (
+    /^(?:hasil|opsi|pilihan|data|item|nilai|kondisi|status|tipe|kategori|dummy)\s*[a-z0-9]$/i.test(v) ||
+    /^(?:hasil|opsi|pilihan|data|item|nilai|kondisi|status)\s*[-_]\s*(?:[a-z0-9])$/i.test(v)
+  ) {
+    masalah.push(`"${t.nama}.${fld.nama}" berisi placeholder generik: "${v}" (bukan nilai realistis sesuai domain)`);
   }
 
   // Field "angka" harus berisi angka
@@ -3022,7 +3263,11 @@ function checkKontenSimulasi(
  */
 export function validateContohDataVsSchema(
   contohData: SimulasiContohData,
-  tabelSchemas?: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] }[]
+  tabelSchemas?: {
+    nama: string;
+    field: { nama: string; tipe: string; keterangan?: string; targetRole?: string }[];
+  }[],
+  officialRoles?: string[]
 ): string[] {
   const masalah: string[] = [];
   const contohTabel = normalizeContohTabel(contohData);
@@ -3052,6 +3297,9 @@ export function validateContohDataVsSchema(
       const kata = (fld.keterangan || '').toLowerCase();
       const hintsAvail =
         /tersedia|ketersediaan|aktif|nonaktif/i.test(fld.nama.toLowerCase()) || /aktif|nonaktif|tersedia/i.test(kata);
+      const enumOpts = extractEnumOptions(fld.keterangan);
+      const normalizedEnumOpts = enumOpts ? enumOpts.map((o) => o.toLowerCase().trim()) : null;
+
       for (const row of t.baris) {
         const v = String(row[fld.nama] ?? '').trim();
         if (/^contoh data/i.test(v)) {
@@ -3060,7 +3308,82 @@ export function validateContohDataVsSchema(
         if (hintsAvail && statusTransaksi.test(v.toLowerCase())) {
           masalah.push(`"${t.nama}.${fld.nama}" (ketersediaan) berisi nilai status transaksi: "${v}"`);
         }
+
+        // Pengecekan Domain ENUM jika ada opsi terdefinisi di skema (Langkah 3)
+        if (normalizedEnumOpts && normalizedEnumOpts.length > 0 && v !== '') {
+          const vLower = v.toLowerCase();
+          const matchesEnum = normalizedEnumOpts.some(
+            (opt) => vLower === opt || vLower.includes(opt) || opt.includes(vLower)
+          );
+          if (!matchesEnum) {
+            masalah.push(
+              `"${t.nama}.${fld.nama}" bernilai "${v}" yang tidak sesuai domain pilihan skema: [${enumOpts!.join(', ')}]`
+            );
+          }
+        }
+
         checkKontenSimulasi(fld, row[fld.nama], t, masalah);
+      }
+
+      // Deteksi Nilai Numerik Increment Berurutan Rata (Arithmetic Progression) (Langkah 3)
+      const fNameLower = fld.nama.toLowerCase();
+      const fTypeLower = (fld.tipe || '').toLowerCase();
+      const isScoreOrRating =
+        /nilai|skor|score|point|poin|rating|evaluasi|kopling|rem|tanjakan|parkir|kemampuan|teknik|pemahaman/i.test(
+          fNameLower
+        ) || /skor|nilai|skala|rentang|evaluasi/i.test(kata);
+      const isNumeric = /angka|number|integer/i.test(fTypeLower) || isScoreOrRating;
+
+      if (isNumeric && t.baris.length >= 3) {
+        const numVals = t.baris.map((r) => {
+          const rawVal = r[fld.nama];
+          return typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal));
+        });
+        const allValid = numVals.every((n) => typeof n === 'number' && !isNaN(n));
+        if (allValid) {
+          const d1 = numVals[1] - numVals[0];
+          const d2 = numVals[2] - numVals[1];
+          if (d1 === d2 && d1 > 0) {
+            if (isScoreOrRating || d1 === 10 || d1 === 1 || d1 === 100 || d1 === 5) {
+              masalah.push(
+                `"${t.nama}.${fld.nama}" berisi nilai numerik increment berurutan rata [${numVals.join(', ')}] (indikasi placeholder increment, bukan variasi realistis)`
+              );
+            }
+          }
+        }
+      }
+
+      // Validasi Kolom Peran pada Tabel Pengguna (Langkah 5):
+      // Nilai peran harus exact match dengan officialRoles, DILARANG menyingkat atau alias
+      if (isTablePengguna(t.nama) && officialRoles && officialRoles.length > 0) {
+        const isRoleCol = /^(peran|role|jabatan)$/i.test(fld.nama);
+        if (isRoleCol) {
+          for (const row of t.baris) {
+            const v = String(row[fld.nama] ?? '').trim();
+            if (!v) continue;
+            const isExactMatch = officialRoles.includes(v);
+            if (!isExactMatch) {
+              const isShortOrAlias = officialRoles.some((r) => {
+                const rLower = r.toLowerCase();
+                const vLower = v.toLowerCase();
+                return (
+                  rLower.startsWith(vLower) ||
+                  rLower.endsWith(vLower) ||
+                  (rLower.includes(vLower) && vLower.length >= 3)
+                );
+              });
+              if (isShortOrAlias) {
+                masalah.push(
+                  `"${t.nama}.${fld.nama}" = "${v}" bukan nama peran resmi yang valid (singkatan/alias terlarang). Peran resmi yang tersedia: [${officialRoles.join(', ')}]. Dilarang menyingkat nama peran.`
+                );
+              } else {
+                masalah.push(
+                  `"${t.nama}.${fld.nama}" = "${v}" tidak terdaftar di daftar peran resmi: [${officialRoles.join(', ')}].`
+                );
+              }
+            }
+          }
+        }
       }
     }
 
@@ -3088,6 +3411,43 @@ export function validateContohDataVsSchema(
         const v = String(row[fld.nama] ?? '').trim();
         if (v && !tgtIds.has(v)) {
           masalah.push(`"${t.nama}.${fld.nama}" = "${v}" tidak ada di "${tgt.nama}.${tgt.idField}"`);
+        }
+      }
+
+      // Validasi Role-Aware jika relasi menunjuk ke tabel pengguna (Langkah 4)
+      if (isTablePengguna(tgt.nama)) {
+        const targetRole = detectTargetRoleForField(fld, officialRoles);
+        if (targetRole && tgtTabel.baris.length > 0) {
+          const roleCol = Object.keys(tgtTabel.baris[0] || {}).find((k) =>
+            /^(peran|role|jabatan)$/i.test(k)
+          );
+          if (roleCol) {
+            const matchingUsers = tgtTabel.baris.filter((r) => {
+              const actual = String(r[roleCol] ?? '').trim().toLowerCase();
+              const target = targetRole.toLowerCase();
+              return actual === target || actual.includes(target) || target.includes(actual);
+            });
+
+            if (matchingUsers.length === 0) {
+              masalah.push(
+                `"${t.nama}.${fld.nama}" membutuhkan relasi ke pengguna dengan peran "${targetRole}", namun tabel "${tgt.nama}" belum memiliki data pengguna dengan peran tersebut.`
+              );
+            } else {
+              const matchingIds = new Set(
+                matchingUsers.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean)
+              );
+              for (const row of t.baris) {
+                const v = String(row[fld.nama] ?? '').trim();
+                if (v && !matchingIds.has(v)) {
+                  const actualUser = tgtTabel.baris.find((r) => String(r[tgt.idField] ?? '').trim() === v);
+                  const actualRole = actualUser ? String(actualUser[roleCol] ?? '').trim() : 'tidak diketahui';
+                  masalah.push(
+                    `"${t.nama}.${fld.nama}" = "${v}" merujuk ke pengguna dengan peran "${actualRole}", seharusnya peran "${targetRole}"`
+                  );
+                }
+              }
+            }
+          }
         }
       }
     }

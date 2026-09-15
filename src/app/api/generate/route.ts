@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { validateAndRepairGeneratedCode, extractMissingHandlers } from '@/lib/codeValidator';
+import { validateAndRepairGeneratedCode, extractMissingHandlers, extractStubFormIssues } from '@/lib/codeValidator';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { getUserFromRequest } from '@/lib/supabase/user';
@@ -1161,36 +1161,67 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       * Tombol Hapus: \`<button type="button" class="btn-danger" onclick="bukaModalHapus('\${item.id}')">Hapus</button>\` (DILARANG KERAS memanggil fungsi edit di tombol Hapus!).
     - DILARANG menulis tombol aksi tabel tanpa class atau membiarkannya polos default HTML.
 19. ARSITEKTUR REUSABLE MODAL/POPUP WAJIB (CRUD POPUP PATTERN):
-    - Form Tambah & Edit DILARANG nempel/inline di halaman. WAJIB menggunakan 1 MODAL FORM TUNGGAL yang dipakai ulang (reusable) untuk Tambah & Edit, serta 1 MODAL KONFIRMASI HAPUS.
-    - POLA HTML MODAL WAJIB:
+    - Form Tambah & Edit DILARANG nempel/inline di halaman. WAJIB menggunakan MODAL FORM yang dipakai ulang (reusable) untuk Tambah & Edit, serta 1 MODAL KONFIRMASI HAPUS.
+    - DILARANG KERAS MENGGUNAKAN STUB / PLACEHOLDER GENERIK SEPERTI: "Field 1", "Field 2", "Field 3", "Value 1", "Value 2", "Kolom 2", "Nama Field 2", atau placeholder abstrak semacamnya!
+    - SETIAP FORMULIR WAJIB MEMILIKI KOLOM SUNGGUHAN SESUAI SKEMA TABEL ENTITAS (misal untuk Transaksi: Tanggal, Kategori, Nominal/Jumlah, Catatan, Status; untuk Siswa: Nama Lengkap, No HP, Paket/Kelas, Status).
+    - FIELD BERSIFAT RELASI (Foreign Key / Relasi ke tabel lain) WAJIB berupa \`<select>\` dropdown berisi opsi dari data tabel relasi terkait, DILARANG input teks bebas!
+    - POLA HTML MODAL WAJIB (Contoh Konkret Multi-Field Sesuai Skema):
       \`\`\`html
       <!-- MODAL FORM (TAMBAH & EDIT) -->
-      <div id="modalForm" class="modal">
-        <div class="modal-box">
+      <div id="modalForm" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+        <div class="modal-box" style="background:#fff; border-radius:12px; padding:24px; max-width:500px; width:90%; max-height:90vh; overflow-y:auto;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 id="modalTitle" class="title" style="font-size:18px; margin-bottom:0;">Tambah Data</h3>
-            <button type="button" class="btn-secondary" onclick="tutupModalForm()" style="padding:4px 8px;">✕</button>
+            <h3 id="modalTitle" class="title" style="font-size:18px; margin:0; font-weight:600;">Tambah Data</h3>
+            <button type="button" class="btn-secondary" onclick="tutupModalForm()" style="padding:4px 8px; cursor:pointer;">✕</button>
           </div>
           <form id="formData" onsubmit="event.preventDefault(); simpanForm();">
             <input type="hidden" id="editId" value="">
-            <div class="form-group">
-              <label class="form-label" for="inputNama">Nama</label>
-              <input type="text" id="inputNama" class="form-input" placeholder="Masukkan nama...">
+            
+            <!-- Kolom Teks Utama Sesuai Entitas -->
+            <div class="form-group" style="margin-bottom:12px;">
+              <label class="form-label" for="inputNama" style="display:block; margin-bottom:4px; font-weight:500;">Nama / Keterangan</label>
+              <input type="text" id="inputNama" class="form-input" placeholder="Masukkan nama atau keterangan..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;" required>
             </div>
-            <!-- field input lainnya sesuai aplikasi -->
+
+            <!-- Kolom Dropdown Relasi / Kategori Sesuai Entitas -->
+            <div class="form-group" style="margin-bottom:12px;">
+              <label class="form-label" for="inputKategori" style="display:block; margin-bottom:4px; font-weight:500;">Kategori / Pilihan Relasi</label>
+              <select id="inputKategori" class="form-input" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;">
+                <option value="">-- Pilih Kategori --</option>
+                <option value="Operasional">Operasional</option>
+                <option value="Pendapatan">Pendapatan</option>
+              </select>
+            </div>
+
+            <!-- Kolom Angka / Nominal / Nilai Spesifik -->
+            <div class="form-group" style="margin-bottom:12px;">
+              <label class="form-label" for="inputNominal" style="display:block; margin-bottom:4px; font-weight:500;">Nominal / Jumlah</label>
+              <input type="number" id="inputNominal" class="form-input" placeholder="Contoh: 50000" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;">
+            </div>
+
+            <!-- Kolom Status / Dropdown Nilai -->
+            <div class="form-group" style="margin-bottom:16px;">
+              <label class="form-label" for="inputStatus" style="display:block; margin-bottom:4px; font-weight:500;">Status</label>
+              <select id="inputStatus" class="form-input" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;">
+                <option value="Aktif">Aktif</option>
+                <option value="Pending">Pending</option>
+                <option value="Selesai">Selesai</option>
+              </select>
+            </div>
+
             <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
               <button type="button" class="btn-secondary" onclick="tutupModalForm()">Batal</button>
-              <button type="button" class="btn-primary" onclick="simpanForm()">Simpan</button>
+              <button type="submit" class="btn-primary">Simpan</button>
             </div>
           </form>
         </div>
       </div>
 
       <!-- MODAL KONFIRMASI HAPUS -->
-      <div id="modalHapus" class="modal">
-        <div class="modal-box">
-          <h3 class="title" style="font-size:18px;">Konfirmasi Hapus</h3>
-          <p class="subtitle" style="margin-bottom:20px;">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+      <div id="modalHapus" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+        <div class="modal-box" style="background:#fff; border-radius:12px; padding:24px; max-width:400px; width:90%;">
+          <h3 class="title" style="font-size:18px; margin-top:0;">Konfirmasi Hapus</h3>
+          <p class="subtitle" style="margin-bottom:20px; color:#64748b;">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
           <input type="hidden" id="hapusId" value="">
           <div style="display:flex; justify-content:flex-end; gap:8px;">
             <button type="button" class="btn-secondary" onclick="tutupModalHapus()">Batal</button>
@@ -1208,7 +1239,9 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         document.getElementById('modalTitle').innerText = 'Tambah Data';
         document.getElementById('editId').value = '';
         document.getElementById('inputNama').value = '';
-        // reset form input lainnya...
+        if (document.getElementById('inputKategori')) document.getElementById('inputKategori').value = '';
+        if (document.getElementById('inputNominal')) document.getElementById('inputNominal').value = '';
+        if (document.getElementById('inputStatus')) document.getElementById('inputStatus').value = 'Aktif';
         document.getElementById('modalForm').style.display = 'flex';
       }
 
@@ -1218,8 +1251,10 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         if (!item) return;
         document.getElementById('modalTitle').innerText = 'Edit Data';
         document.getElementById('editId').value = item.id;
-        document.getElementById('inputNama').value = item.nama;
-        // isi input lainnya...
+        document.getElementById('inputNama').value = item.nama || item.keterangan || '';
+        if (document.getElementById('inputKategori')) document.getElementById('inputKategori').value = item.kategori || '';
+        if (document.getElementById('inputNominal')) document.getElementById('inputNominal').value = item.nominal || item.jumlah || '';
+        if (document.getElementById('inputStatus')) document.getElementById('inputStatus').value = item.status || 'Aktif';
         document.getElementById('modalForm').style.display = 'flex';
       }
 
@@ -1233,13 +1268,17 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
           showToast('Harap lengkapi semua kolom formulir!', 'error');
           return;
         }
+        const kategori = document.getElementById('inputKategori')?.value || '-';
+        const nominal = Number(document.getElementById('inputNominal')?.value || 0);
+        const status = document.getElementById('inputStatus')?.value || 'Aktif';
+
         if (editId) {
           // UPDATE DATA EXISTING
-          items = items.map(item => String(item.id) === String(editId) ? { ...item, nama } : item);
+          items = items.map(item => String(item.id) === String(editId) ? { ...item, nama, kategori, nominal, status } : item);
           showToast('Data berhasil diperbarui!', 'success');
         } else {
           // TAMBAH DATA BARU
-          const newItem = { id: String(Date.now()), nama };
+          const newItem = { id: String(Date.now()), nama, kategori, nominal, status };
           items.push(newItem);
           showToast('Data baru berhasil ditambahkan!', 'success');
         }
@@ -1264,7 +1303,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
         render();
         showToast('Data berhasil dihapus!', 'success');
       }
-
+      \`\`\`
 20. LAYAR LOGIN SIMULASI SEBAGAI TAMPILAN AWAL (WAJIB PERSIS SEPERTI GAMBAR 2):
     - JIKA APLIKASI MEMILIKI LEBIH DARI 1 PERAN (MULTI-ROLE):
       * TAMPILAN AWAL WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN DI TENGAH LAYAR (#loginScreen).
@@ -1541,7 +1580,8 @@ ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES P
 ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK (WAJIB DIPATUHI — POIN 52):
 1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
 2. DILARANG KERAS menambahkan role generic (Admin, Kasir, Washer, Petugas, Owner, Manager) jika TIDAK ADA di daftar resmi di atas. Role "Super Admin" adalah pengecualian wajib dan selalu ada!
-3. TAMPILAN AWAL: LAYAR LOGIN DI TENGAH LAYAR (#loginScreen — WAJIB PERSIS GAMBAR 2):
+3. DILARANG KERAS MENYINGKAT NAMA PERAN DALAM KODE MAUPUN DATA (contoh: "Staf Administrasi" DILARANG disingkat jadi "Staf", "Super Admin" DILARANG disingkat jadi "Admin"). Semua pengecekan role di JavaScript (misal: currentUser.role === 'Staf Administrasi') WAJIB MENGGUNAKAN NAMA PERAN LENGKAP PERSIS SESUAI DAFTAR DI ATAS.
+4. TAMPILAN AWAL: LAYAR LOGIN DI TENGAH LAYAR (#loginScreen — WAJIB PERSIS GAMBAR 2):
    - Aplikasi WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN (#loginScreen) di tengah layar saat pertama kali dibuka (PERSIS SEPERTI GAMBAR 2).
    - Container aplikasi (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
    - DILARANG KERAS langsung menampilkan dashboard aplikasi dengan tombol "Login Staf" di header!
@@ -2370,7 +2410,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.
-9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!` }] }
+9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!
+10. FORMULIR SESUAI SKEMA TABEL (ANTI-STUB): Dilarang keras menggunakan label atau placeholder template palsu seperti "Field 2", "Value 2", "Kolom 2", dsb. Seluruh form input WAJIB memiliki field riil sesuai skema tabel entitas!` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
@@ -2416,7 +2457,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 6. TAB GATING PUBLIK & ANTI-DATA LEAK (POIN 52): Jika ada peran publik, panggil filterTabsByRole(rolePublik) saat inisialisasi awal (DOMContentLoaded) agar seluruh tab staf tersembunyi tanpa login. Tab publik HANYA untuk pencarian/pelacakan spesifik atau input mandiri, dan DILARANG memuat tombol Edit/Hapus staf!
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.
-9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!` }
+9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!
+10. FORMULIR SESUAI SKEMA TABEL (ANTI-STUB): Dilarang keras menggunakan label atau placeholder template palsu seperti "Field 2", "Value 2", "Kolom 2", dsb. Seluruh form input WAJIB memiliki field riil sesuai skema tabel entitas!` }
         ];
 
         const repairReqBody: Record<string, any> = {
@@ -2482,6 +2524,7 @@ INSTRUKSI PERBAIKAN WAJIB:
     // DILARANG lagi menyuntik stub kosong yang membuat prototipe terlihat jalan padahal cacat.
     // =========================================================================
     let partialWarningFunctions: string[] = []; // Fungsi yang tetap hilang setelah semua upaya
+    let partialWarningStubs: string[] = []; // Kolom form stub yang masih tersisa setelah semua upaya
 
     if (!isStage1AwaitingConfirmation && validated && !validated.isValid && htmlCode && htmlCode.includes('</html>') && htmlCode.includes('</script>')) {
       const hasSyntaxError = validated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
@@ -2659,12 +2702,19 @@ INSTRUKSI MUTLAK:
           // Tidak ada MISMATCH_HANDLER — issue lain (ROLE_GATING, dsb.) tidak perlu targeted repair
           console.log('[Self-healing] Tidak ada MISMATCH_HANDLER yang tersisa, skip targeted repair.');
         }
+
+        // Deteksi stub form yang tersisa setelah seluruh auto-repair pass (POIN A & Langkah 2)
+        const remainingStubForms = extractStubFormIssues(validated.issues);
+        if (remainingStubForms.length > 0) {
+          partialWarningStubs = remainingStubForms;
+          console.warn(`[Self-healing] Terdeteksi ${remainingStubForms.length} kolom form stub tersisa:`, remainingStubForms);
+        }
       }
     }
 
     // Kode dianggap valid jika secara struktural lengkap (</html> + </script> ada),
     // tidak ada SYNTAX_ERROR, dan bisa ditampilkan ke user.
-    // Kasus "partial" (ada MISMATCH_HANDLER yang tersisa) tetap dikirim ke user
+    // Kasus "partial" (ada MISMATCH_HANDLER atau STUB_FORM yang tersisa) tetap dikirim ke user
     // tapi dengan peringatan jujur — BUKAN diblokir atau distub diam-diam.
     const isStructurallyComplete = Boolean(
       htmlCode &&
@@ -2679,9 +2729,9 @@ INSTRUKSI MUTLAK:
     const hasValidCode = Boolean(
       !isStage1AwaitingConfirmation &&
       isStructurallyComplete &&
-      // Kode diizinkan "valid" jika: (a) memang valid penuh, atau (b) partial — ada handler hilang
-      // tapi secara struktural sudah cukup untuk ditampilkan ke user dengan peringatan
-      (validated!.isValid || partialWarningFunctions.length > 0)
+      // Kode diizinkan "valid" jika: (a) memang valid penuh, atau (b) partial — ada handler/form belum sempurna
+      // tapi secara struktural sudah cukup untuk ditampilkan ke user dengan peringatan jujur
+      (validated!.isValid || partialWarningFunctions.length > 0 || partialWarningStubs.length > 0)
     );
 
     // Format Pesan Teks Chat Bersih & Jujur
@@ -2760,6 +2810,13 @@ INSTRUKSI MUTLAK:
         const fnList = partialWarningFunctions.map(fn => '`' + fn + '()`').join(', ');
         const firstFn = partialWarningFunctions[0];
         cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Prototipe:**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **${partialWarningFunctions.length} tombol/aksi yang belum sepenuhnya terhubung**: ${fnList}.\n> Tombol-tombol ini mungkin tidak merespons saat diklik. Untuk memperbaikinya, ketik misalnya **"perbaiki fungsi ${firstFn}"** atau **"generate ulang prototipe"**.`;
+      }
+
+      // PERINGATAN JUJUR FORM STUB (POIN A & Langkah 2): Jika ada kolom form yang masih memakai label/placeholder template palsu,
+      // beri tahu user secara eksplisit — DILARANG menampilkan form palsu tanpa penjelasan.
+      if (partialWarningStubs.length > 0) {
+        const stubList = partialWarningStubs.join(', ');
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Formulir:**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **kolom formulir yang belum sepenuhnya sesuai skema data**: ${stubList}.\n> Kolom-kolom ini masih menggunakan label/placeholder sementara. Anda dapat meminta AI untuk menyesuaikannya dengan mengetik: **"sesuaikan kolom formulir dengan skema data"**.`;
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {
       // Pesan kegagalan yang ACTIONABLE dan informatif

@@ -309,7 +309,7 @@ export interface MockupSessionState {
     tabel: {
       nama: string;
       keterangan?: string;
-      field: { nama: string; tipe: string; keterangan: string }[];
+      field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[];
     }[];
     korelasiRingkas?: string;
     markdownTable?: string;
@@ -321,7 +321,7 @@ export interface MockupSessionState {
       tabel: {
         nama: string;
         keterangan?: string;
-        field?: { nama: string; tipe: string; keterangan?: string }[];
+        field?: { nama: string; tipe: string; keterangan?: string; targetRole?: string }[];
         baris: Record<string, any>[];
       }[];
     };
