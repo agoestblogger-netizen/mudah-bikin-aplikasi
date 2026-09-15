@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { validateAndRepairGeneratedCode, extractMissingHandlers, extractStubFormIssues } from '@/lib/codeValidator';
+import { validateAndRepairGeneratedCode, extractMissingHandlers, extractStubFormIssues, extractMissingCreateBranches, extractMissingToastFeedbacks, extractMissingTypeBranches, extractMissingDeleteWiring, extractFakeDeleteActions } from '@/lib/codeValidator';
 import { cleanConversationalLeaks } from '@/lib/cleanLeaks';
 import { checkRateLimit } from '@/lib/rateLimiter';
 import { getUserFromRequest } from '@/lib/supabase/user';
@@ -2411,7 +2411,11 @@ INSTRUKSI PERBAIKAN WAJIB:
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.
 9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!
-10. FORMULIR SESUAI SKEMA TABEL (ANTI-STUB): Dilarang keras menggunakan label atau placeholder template palsu seperti "Field 2", "Value 2", "Kolom 2", dsb. Seluruh form input WAJIB memiliki field riil sesuai skema tabel entitas!` }] }
+10. FORMULIR SESUAI SKEMA TABEL (ANTI-STUB): Dilarang keras menggunakan label atau placeholder template palsu seperti "Field 2", "Value 2", "Kolom 2", dsb. Seluruh form input WAJIB memiliki field riil sesuai skema tabel entitas!
+11. JALUR KODE CREATE PADA FORMULIR: Setiap fungsi simpan data (seperti simpanSiswa, simpanTransaksi, simpanForm, handleSubmit) WAJIB memiliki cabang 'else' untuk CREATE (menambahkan item baru dengan .push() ke array state) saat ID edit kosong. DILARANG KERAS hanya memiliki cabang UPDATE (if editId) tanpa cabang CREATE!
+12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
+13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
+14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
@@ -2458,7 +2462,11 @@ INSTRUKSI PERBAIKAN WAJIB:
 7. Pertahankan seluruh fitur fungsional (array 3-5 item contoh, tambah, edit, hapus, modal).
 8. SINKRONISASI TAB PER PERAN (MUTLAK): Jika aplikasi multi-role (${officialRoles.join(', ')}), WAJIB buat <button class="tab-btn" data-access-roles="..."> terpisah untuk masing-masing peran! Setiap peran WAJIB memiliki tab dan tampilan UI khusus yang terpisah sesuai dengan Job Description di Brief Kebutuhan, BUKAN satu halaman statis tanpa tab.
 9. ISOLASI CSS & DATA ROLE (MUTLAK): Di tag <style> WAJIB sertakan: .tab-content, .tab-pane { display: none; } dan .tab-content.active, .tab-pane.active { display: block; }. SETIAP tab role WAJIB memiliki konten, tabel, dan form yang BERBEDA (Super Admin = Akun Staf & Hak Akses, Petugas = Operasional & Unit, Customer = Mandiri/Booking), DILARANG menumpuk konten yang sama di semua role!
-10. FORMULIR SESUAI SKEMA TABEL (ANTI-STUB): Dilarang keras menggunakan label atau placeholder template palsu seperti "Field 2", "Value 2", "Kolom 2", dsb. Seluruh form input WAJIB memiliki field riil sesuai skema tabel entitas!` }
+10. FORMULIR SESUAI SKEMA TABEL (ANTI-STUB): Dilarang keras menggunakan label atau placeholder template palsu seperti "Field 2", "Value 2", "Kolom 2", dsb. Seluruh form input WAJIB memiliki field riil sesuai skema tabel entitas!
+11. JALUR KODE CREATE PADA FORMULIR: Setiap fungsi simpan data (seperti simpanSiswa, simpanTransaksi, simpanForm, handleSubmit) WAJIB memiliki cabang 'else' untuk CREATE (menambahkan item baru dengan .push() ke array state) saat ID edit kosong. DILARANG KERAS hanya memiliki cabang UPDATE (if editId) tanpa cabang CREATE!
+12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
+13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
+14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!` }
         ];
 
         const repairReqBody: Record<string, any> = {
@@ -2525,6 +2533,11 @@ INSTRUKSI PERBAIKAN WAJIB:
     // =========================================================================
     let partialWarningFunctions: string[] = []; // Fungsi yang tetap hilang setelah semua upaya
     let partialWarningStubs: string[] = []; // Kolom form stub yang masih tersisa setelah semua upaya
+    let partialWarningCreateBranches: string[] = []; // Fungsi simpan tanpa jalur CREATE yang tersisa
+    let partialWarningToastFeedbacks: string[] = []; // Fungsi tombol aksi tanpa showToast feedback
+    let partialWarningTypeBranches: string[] = []; // Fungsi modal multi-tipe tanpa cabang penanganan lengkap
+    let partialWarningDeleteWirings: string[] = []; // Infrastruktur hapus yang tidak terpasang di tombol tabel
+    let partialWarningFakeDeletes: string[] = []; // Fungsi hapus yang tidak memodifikasi array state
 
     if (!isStage1AwaitingConfirmation && validated && !validated.isValid && htmlCode && htmlCode.includes('</html>') && htmlCode.includes('</script>')) {
       const hasSyntaxError = validated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
@@ -2709,12 +2722,47 @@ INSTRUKSI MUTLAK:
           partialWarningStubs = remainingStubForms;
           console.warn(`[Self-healing] Terdeteksi ${remainingStubForms.length} kolom form stub tersisa:`, remainingStubForms);
         }
+
+        // Deteksi fungsi simpan tanpa jalur CREATE yang tersisa (Langkah 6a)
+        const remainingCreateBranches = extractMissingCreateBranches(validated.issues);
+        if (remainingCreateBranches.length > 0) {
+          partialWarningCreateBranches = remainingCreateBranches;
+          console.warn(`[Self-healing] Terdeteksi ${remainingCreateBranches.length} fungsi simpan tanpa jalur CREATE:`, remainingCreateBranches);
+        }
+
+        // Deteksi fungsi tombol aksi tanpa showToast yang tersisa (Langkah 6b)
+        const remainingToastFeedbacks = extractMissingToastFeedbacks(validated.issues);
+        if (remainingToastFeedbacks.length > 0) {
+          partialWarningToastFeedbacks = remainingToastFeedbacks;
+          console.warn(`[Self-healing] Terdeteksi ${remainingToastFeedbacks.length} fungsi aksi tanpa showToast:`, remainingToastFeedbacks);
+        }
+
+        // Deteksi fungsi modal multi-tipe tanpa cabang lengkap yang tersisa (Langkah 6c)
+        const remainingTypeBranches = extractMissingTypeBranches(validated.issues);
+        if (remainingTypeBranches.length > 0) {
+          partialWarningTypeBranches = remainingTypeBranches;
+          console.warn(`[Self-healing] Terdeteksi ${remainingTypeBranches.length} fungsi modal multi-tipe tanpa cabang lengkap:`, remainingTypeBranches);
+        }
+
+        // Deteksi infrastruktur hapus tanpa tombol pemanggil di tabel (Langkah 6d)
+        const remainingDeleteWirings = extractMissingDeleteWiring(validated.issues);
+        if (remainingDeleteWirings.length > 0) {
+          partialWarningDeleteWirings = remainingDeleteWirings;
+          console.warn(`[Self-healing] Terdeteksi ${remainingDeleteWirings.length} modal hapus tanpa tombol di tabel:`, remainingDeleteWirings);
+        }
+
+        // Deteksi fungsi eksekusi hapus palsu tanpa mutasi state (Langkah 6d)
+        const remainingFakeDeletes = extractFakeDeleteActions(validated.issues);
+        if (remainingFakeDeletes.length > 0) {
+          partialWarningFakeDeletes = remainingFakeDeletes;
+          console.warn(`[Self-healing] Terdeteksi ${remainingFakeDeletes.length} fungsi eksekusi hapus palsu:`, remainingFakeDeletes);
+        }
       }
     }
 
     // Kode dianggap valid jika secara struktural lengkap (</html> + </script> ada),
     // tidak ada SYNTAX_ERROR, dan bisa ditampilkan ke user.
-    // Kasus "partial" (ada MISMATCH_HANDLER atau STUB_FORM yang tersisa) tetap dikirim ke user
+    // Kasus "partial" (ada MISMATCH_HANDLER atau STUB_FORM atau MISSING_CREATE_BRANCH atau MISSING_TOAST_FEEDBACK atau MISSING_TYPE_BRANCH atau MISSING_DELETE_WIRING atau FAKE_DELETE_ACTION yang tersisa) tetap dikirim ke user
     // tapi dengan peringatan jujur — BUKAN diblokir atau distub diam-diam.
     const isStructurallyComplete = Boolean(
       htmlCode &&
@@ -2729,9 +2777,9 @@ INSTRUKSI MUTLAK:
     const hasValidCode = Boolean(
       !isStage1AwaitingConfirmation &&
       isStructurallyComplete &&
-      // Kode diizinkan "valid" jika: (a) memang valid penuh, atau (b) partial — ada handler/form belum sempurna
+      // Kode diizinkan "valid" jika: (a) memang valid penuh, atau (b) partial — ada handler/form/create/toast/type-branch/delete belum sempurna
       // tapi secara struktural sudah cukup untuk ditampilkan ke user dengan peringatan jujur
-      (validated!.isValid || partialWarningFunctions.length > 0 || partialWarningStubs.length > 0)
+      (validated!.isValid || partialWarningFunctions.length > 0 || partialWarningStubs.length > 0 || partialWarningCreateBranches.length > 0 || partialWarningToastFeedbacks.length > 0 || partialWarningTypeBranches.length > 0 || partialWarningDeleteWirings.length > 0 || partialWarningFakeDeletes.length > 0)
     );
 
     // Format Pesan Teks Chat Bersih & Jujur
@@ -2817,6 +2865,35 @@ INSTRUKSI MUTLAK:
       if (partialWarningStubs.length > 0) {
         const stubList = partialWarningStubs.join(', ');
         cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Formulir:**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **kolom formulir yang belum sepenuhnya sesuai skema data**: ${stubList}.\n> Kolom-kolom ini masih menggunakan label/placeholder sementara. Anda dapat meminta AI untuk menyesuaikannya dengan mengetik: **"sesuaikan kolom formulir dengan skema data"**.`;
+      }
+
+      // PERINGATAN JUJUR CREATE BRANCH (POIN A & Langkah 6a): Jika ada fungsi simpan yang belum punya jalur CREATE
+      if (partialWarningCreateBranches.length > 0) {
+        const fnList = partialWarningCreateBranches.map(fn => '`' + fn + '`').join(', ');
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Tombol Simpan (CREATE):**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **fungsi simpan yang belum memiliki jalur penambahan data baru**: ${fnList}.\n> Formulir tambah mungkin tidak menyimpan entri baru ke tabel saat ID kosong. Anda dapat meminta AI memperbaikinya dengan mengetik: **"perbaiki fungsi simpan agar bisa menambah data baru"**.`;
+      }
+
+      // PERINGATAN JUJUR TOAST FEEDBACK (POIN A & Langkah 6b): Jika ada fungsi tombol aksi tanpa showToast
+      if (partialWarningToastFeedbacks.length > 0) {
+        const fnList = partialWarningToastFeedbacks.map(fn => '`' + fn + '`').join(', ');
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Notifikasi Aksi (Feedback):**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **fungsi tombol aksi yang belum memanggil showToast()**: ${fnList}.\n> Tombol-tombol ini mungkin tidak memunculkan notifikasi di layar saat diklik. Anda dapat meminta AI memperbaikinya dengan mengetik: **"tambahkan notifikasi showToast pada tombol aksi"**.`;
+      }
+
+      // PERINGATAN JUJUR TYPE BRANCH (POIN A & Langkah 6c): Jika ada fungsi modal multi-tipe yang belum lengkap
+      if (partialWarningTypeBranches.length > 0) {
+        const branchList = partialWarningTypeBranches.map(b => '`' + b + '`').join(', ');
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Modal Multi-Tipe (Tipe Data):**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **fungsi modal yang belum menangani tipe data terkait secara lengkap**: ${branchList}.\n> Modal mungkin tampil kosong saat dibuka untuk tipe data tersebut. Anda dapat meminta AI memperbaikinya dengan mengetik: **"lengkapi tampilan modal untuk semua tipe data"**.`;
+      }
+
+      // PERINGATAN JUJUR DELETE WIRING (POIN A & Langkah 6d): Jika ada modal hapus tapi tidak ada tombol di tabel
+      if (partialWarningDeleteWirings.length > 0) {
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Tombol Hapus (Wiring):**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **fitur hapus belum terpasang di baris tabel**: ${partialWarningDeleteWirings.join(', ')}.\n> Pengguna belum dapat menghapus data dari antarmuka. Anda dapat meminta AI memperbaikinya dengan mengetik: **"tambahkan tombol hapus pada setiap baris data di tabel"**.`;
+      }
+
+      // PERINGATAN JUJUR FAKE DELETE (POIN A & Langkah 6d): Jika ada fungsi hapus yang tidak memodifikasi array state
+      if (partialWarningFakeDeletes.length > 0) {
+        const fnList = partialWarningFakeDeletes.map(f => '`' + f + '`').join(', ');
+        cleanReplyText += `\n\n> ⚠️ **Catatan Integritas Eksekusi Hapus (State Mutation):**\n> Prototipe berhasil dimuat, namun sistem mendeteksi **fungsi hapus yang belum menghapus data dari array memori**: ${fnList}.\n> Data mungkin tetap muncul setelah modal ditutup. Anda dapat meminta AI memperbaikinya dengan mengetik: **"perbaiki fungsi eksekusi hapus agar benar-benar menghapus data dari array"**.`;
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {
       // Pesan kegagalan yang ACTIONABLE dan informatif

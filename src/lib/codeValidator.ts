@@ -1395,6 +1395,73 @@ function loginAs(role) {
     }
   }
 
+  // =========================================================================
+  // 13. VALIDASI TOMBOL & AKSI (Langkah 6a — MISSING_CREATE_BRANCH)
+  // =========================================================================
+  // Memastikan fungsi simpan memiliki jalur CREATE (bukan cuma UPDATE if editId)
+  {
+    let jsAst: any = null;
+    try {
+      jsAst = acorn.parse(combinedJs, { ecmaVersion: 'latest', sourceType: 'script' });
+    } catch {
+      // syntax error sudah ditangkap sebelumnya jika ada
+    }
+
+    const createBranchIssues = checkMissingCreateBranches(jsAst, repairedHtml, combinedJs);
+    issues.push(...createBranchIssues);
+  }
+
+  // =========================================================================
+  // 14. VALIDASI TOMBOL & AKSI (Langkah 6b — MISSING_TOAST_FEEDBACK)
+  // =========================================================================
+  // Memastikan fungsi tombol aksi operasional memberikan feedback visual showToast()
+  // dan dilarang hanya memanggil console.log() tanpa feedback ke user
+  {
+    let jsAst: any = null;
+    try {
+      jsAst = acorn.parse(combinedJs, { ecmaVersion: 'latest', sourceType: 'script' });
+    } catch {
+      // syntax error sudah ditangkap sebelumnya jika ada
+    }
+
+    const toastIssues = checkMissingToastFeedbacks(jsAst, repairedHtml, combinedJs);
+    issues.push(...toastIssues);
+  }
+
+  // =========================================================================
+  // 15. VALIDASI TOMBOL & AKSI (Langkah 6c — MISSING_TYPE_BRANCH)
+  // =========================================================================
+  // Memastikan fungsi modal/detail yang dipanggil lintas tipe data memiliki
+  // percabangan dan pengisian konten nyata untuk SETIAP tipe data yang dipanggil di UI.
+  {
+    let jsAst: any = null;
+    try {
+      jsAst = acorn.parse(combinedJs, { ecmaVersion: 'latest', sourceType: 'script' });
+    } catch {
+      // syntax error sudah ditangkap sebelumnya jika ada
+    }
+
+    const typeBranchIssues = checkMissingTypeBranches(jsAst, repairedHtml, combinedJs);
+    issues.push(...typeBranchIssues);
+  }
+
+  // =========================================================================
+  // 16. VALIDASI TOMBOL & AKSI (Langkah 6d — MISSING_DELETE_WIRING / FAKE_DELETE_ACTION)
+  // =========================================================================
+  // Memastikan aksi hapus terpasang di UI tabel (bukan modal yatim) dan
+  // fungsi eksekusi hapus benar-benar memodifikasi array state (.splice() / .filter()).
+  {
+    let jsAst: any = null;
+    try {
+      jsAst = acorn.parse(combinedJs, { ecmaVersion: 'latest', sourceType: 'script' });
+    } catch {
+      // syntax error sudah ditangkap sebelumnya jika ada
+    }
+
+    const deleteIssues = checkMissingDeleteWiringAndFakeAction(jsAst, repairedHtml, combinedJs);
+    issues.push(...deleteIssues);
+  }
+
   repairedHtml = cleanConversationalLeaks(repairedHtml);
 
   return {
@@ -1407,3 +1474,1040 @@ function loginAs(role) {
     }
   };
 }
+
+/**
+ * Ekstraksi issue MISSING_TOAST_FEEDBACK untuk pelaporan atau auto-recovery
+ */
+export function extractMissingToastFeedbacks(issues: string[]): string[] {
+  return (issues || [])
+    .filter((i) => i.startsWith('MISSING_TOAST_FEEDBACK:'))
+    .map((i) => i.replace(/^MISSING_TOAST_FEEDBACK:\s*/, ''));
+}
+
+/**
+ * Memeriksa apakah ada fungsi tombol aksi operasional yang hanya memanggil console.log()
+ * tanpa memanggil showToast() untuk memberikan feedback visual ke pengguna (Sub-Bug 6b).
+ */
+export function checkMissingToastFeedbacks(
+  ast: any,
+  html: string,
+  jsCode: string
+): string[] {
+  const issues: string[] = [];
+
+  // 1. Ekstrak tombol-tombol aksi dari HTML beserta handler dan label teksnya
+  const actionButtons: { fnName: string; label: string }[] = [];
+  // Regex yang robust menangani argumen berpetik seperti onclick="cetakSertifikat('SIS-001')"
+  const btnRegex = /<button\b[^>]*\bonclick=["'](?:return\s+)?([a-zA-Z0-9_]+)\s*\((?:[\s\S]*?)\)["'][^>]*>([\s\S]*?)<\/button>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = btnRegex.exec(html)) !== null) {
+    const fnName = match[1];
+    const rawLabel = match[2].replace(/<[^>]*>/g, '').trim();
+    const isNavigationOrModalToggle = /^(showTab|bukaModal|tutupModal|closeModal|openModal|switchTab|loginAs|switchRole|toggleNav|toggleSidebar|bukaModalTambah|bukaModalEdit|bukaModalHapus)$/i.test(fnName);
+    if (!isNavigationOrModalToggle && fnName) {
+      actionButtons.push({ fnName, label: rawLabel || fnName });
+    }
+  }
+
+  // 2. Kumpulkan node fungsi dari AST
+  const fnBodies = new Map<string, { body: string; node?: any }>();
+  if (ast) {
+    function walk(node: any) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'FunctionDeclaration' && node.id?.name) {
+        fnBodies.set(node.id.name, { body: '', node });
+      } else if (node.type === 'VariableDeclarator' && node.id?.name && node.init) {
+        if (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') {
+          fnBodies.set(node.id.name, { body: '', node: node.init });
+        }
+      } else if (node.type === 'AssignmentExpression') {
+        const left = node.left;
+        const right = node.right;
+        if (right && (right.type === 'FunctionExpression' || right.type === 'ArrowFunctionExpression')) {
+          const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
+          if (name) fnBodies.set(name, { body: '', node: right });
+        }
+      }
+      for (const k of Object.keys(node)) {
+        if (k === 'loc' || k === 'range') continue;
+        const child = node[k];
+        if (Array.isArray(child)) {
+          for (const c of child) walk(c);
+        } else if (child && typeof child.type === 'string') {
+          walk(child);
+        }
+      }
+    }
+    walk(ast);
+  }
+
+  // Fallback / suplementasi body teks via regex untuk periksa showToast vs console.log
+  const funcTextRegex = /(?:function\s+([a-zA-Z0-9_]+)|(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:function|\([^)]*\)\s*=>))\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}/g;
+  let textMatch: RegExpExecArray | null;
+  while ((textMatch = funcTextRegex.exec(jsCode)) !== null) {
+    const name = textMatch[1] || textMatch[2];
+    const body = textMatch[3] || '';
+    if (name) {
+      const existing = fnBodies.get(name);
+      if (existing) {
+        existing.body = body;
+      } else {
+        fnBodies.set(name, { body });
+      }
+    }
+  }
+
+  // 3. Periksa setiap tombol aksi
+  const checkedFns = new Set<string>();
+  for (const btn of actionButtons) {
+    if (checkedFns.has(btn.fnName)) continue;
+    checkedFns.add(btn.fnName);
+
+    const fnData = fnBodies.get(btn.fnName);
+    if (!fnData) continue;
+
+    let hasShowToast = false;
+    let hasConsoleLog = false;
+    let hasWindowPrint = false;
+
+    // Periksa via AST CallExpression
+    if (fnData.node) {
+      function searchCalls(n: any) {
+        if (!n || typeof n !== 'object') return;
+        if (n.type === 'CallExpression') {
+          if (n.callee?.type === 'Identifier' && n.callee.name === 'showToast') {
+            hasShowToast = true;
+          }
+          if (n.callee?.type === 'MemberExpression') {
+            if (n.callee.object?.name === 'console') {
+              hasConsoleLog = true;
+            }
+            if (n.callee.property?.name === 'showToast') {
+              hasShowToast = true;
+            }
+            if (n.callee.object?.name === 'window' && n.callee.property?.name === 'print') {
+              hasWindowPrint = true;
+            }
+          }
+        }
+        for (const k of Object.keys(n)) {
+          if (k === 'loc' || k === 'range') continue;
+          const child = n[k];
+          if (Array.isArray(child)) {
+            for (const c of child) searchCalls(c);
+          } else if (child && typeof child.type === 'string') {
+            searchCalls(child);
+          }
+        }
+      }
+      searchCalls(fnData.node);
+    }
+
+    // Suplementasi dari teks regex jika belum ditemukan
+    if (fnData.body) {
+      if (/console\.(?:log|warn|info|debug)\s*\(/i.test(fnData.body)) hasConsoleLog = true;
+      if (/showToast\s*\(/i.test(fnData.body)) hasShowToast = true;
+      if (/window\.print\s*\(/i.test(fnData.body)) hasWindowPrint = true;
+    }
+
+    const isActionKeyword = /^(?:cetak|print|download|unduh|ekspor|export|kirim|send|proses|process|verifikasi|verify|selesaikan|bayar|konfirmasi)/i.test(btn.fnName) ||
+                            /(?:cetak|print|download|unduh|ekspor|kirim|proses|verifikasi|selesai|bayar|konfirmasi)/i.test(btn.label);
+
+    if ((hasConsoleLog && !hasShowToast) || (isActionKeyword && !hasShowToast && !hasWindowPrint)) {
+      issues.push(
+        `MISSING_TOAST_FEEDBACK: Fungsi aksi "${btn.fnName}" (dipanggil tombol "${btn.label}") tidak memberikan feedback showToast(). Dilarang hanya console.log(); WAJIB panggil showToast() untuk memberi notifikasi status aksi kepada pengguna.`
+      );
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Ekstraksi issue MISSING_CREATE_BRANCH untuk pelaporan atau auto-recovery
+ */
+export function extractMissingCreateBranches(issues: string[]): string[] {
+  return (issues || [])
+    .filter((i) => i.startsWith('MISSING_CREATE_BRANCH:'))
+    .map((i) => i.replace(/^MISSING_CREATE_BRANCH:\s*/, ''));
+}
+
+/**
+ * Memeriksa apakah ada fungsi simpan form yang hanya memiliki cabang UPDATE (if editId)
+ * tanpa cabang CREATE yang memasukkan item baru ke array state (Sub-Bug 6a).
+ */
+export function checkMissingCreateBranches(
+  ast: any,
+  html: string,
+  jsCode: string
+): string[] {
+  const issues: string[] = [];
+
+  // Helper untuk mengecek apakah sebuah AST node memuat operasi array push / unshift / splice
+  const hasArrayInsertOperation = (subNode: any): boolean => {
+    let found = false;
+    function check(n: any) {
+      if (found || !n || typeof n !== 'object') return;
+      if (n.type === 'CallExpression') {
+        if (n.callee?.type === 'MemberExpression') {
+          const propName = n.callee.property?.name || n.callee.property?.value;
+          if (propName === 'push' || propName === 'unshift') {
+            found = true;
+            return;
+          }
+          if (propName === 'splice' && n.arguments?.length >= 3) {
+            const secondArg = n.arguments[1];
+            if (secondArg && secondArg.type === 'Literal' && secondArg.value === 0) {
+              found = true;
+              return;
+            }
+          }
+        }
+      }
+      for (const k of Object.keys(n)) {
+        if (k === 'loc' || k === 'range') continue;
+        const child = n[k];
+        if (Array.isArray(child)) {
+          for (const c of child) check(c);
+        } else if (child && typeof child.type === 'string') {
+          check(child);
+        }
+      }
+    }
+    check(subNode);
+    return found;
+  };
+
+  // Helper untuk mengecek apakah kondisi test mengetes editId
+  const isEditCondition = (testNode: any): boolean => {
+    let isEdit = false;
+    function checkTest(n: any) {
+      if (isEdit || !n || typeof n !== 'object') return;
+      if (n.type === 'Identifier') {
+        if (/(?:edit|selected|isEdit|currentId|editing)/i.test(n.name)) {
+          isEdit = true;
+          return;
+        }
+      }
+      if (n.type === 'MemberExpression') {
+        const prop = n.property?.name || n.property?.value;
+        if (prop === 'value' || prop === 'dataset' || /(?:edit|id)/i.test(prop)) {
+          isEdit = true;
+          return;
+        }
+      }
+      if (n.type === 'Literal' && typeof n.value === 'string' && /(?:edit|id)/i.test(n.value)) {
+        isEdit = true;
+        return;
+      }
+      for (const k of Object.keys(n)) {
+        if (k === 'loc' || k === 'range') continue;
+        const child = n[k];
+        if (Array.isArray(child)) {
+          for (const c of child) checkTest(c);
+        } else if (child && typeof child.type === 'string') {
+          checkTest(child);
+        }
+      }
+    }
+    checkTest(testNode);
+    return isEdit;
+  };
+
+  if (ast) {
+    interface FnInfo {
+      name: string;
+      node: any;
+    }
+    const fns: FnInfo[] = [];
+
+    function walk(node: any) {
+      if (!node || typeof node !== 'object') return;
+
+      if (node.type === 'FunctionDeclaration' && node.id?.name) {
+        fns.push({ name: node.id.name, node });
+      } else if (node.type === 'VariableDeclarator' && node.id?.name && node.init) {
+        if (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') {
+          fns.push({ name: node.id.name, node: node.init });
+        }
+      } else if (node.type === 'AssignmentExpression') {
+        const left = node.left;
+        const right = node.right;
+        if (right && (right.type === 'FunctionExpression' || right.type === 'ArrowFunctionExpression')) {
+          const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
+          if (name) fns.push({ name, node: right });
+        }
+      }
+
+      for (const key of Object.keys(node)) {
+        if (key === 'loc' || key === 'range') continue;
+        const child = node[key];
+        if (Array.isArray(child)) {
+          for (const c of child) {
+            if (c && typeof c.type === 'string') walk(c);
+          }
+        } else if (child && typeof child.type === 'string') {
+          walk(child);
+        }
+      }
+    }
+
+    walk(ast);
+
+    // Kumpulkan fungsi yang dipanggil dari form submit / tombol simpan di HTML
+    const formSubmitFns = new Set<string>();
+    const submitMatches = [...html.matchAll(/onsubmit=["'](?:return\s+)?([a-zA-Z0-9_]+)\s*\(/gi)];
+    for (const m of submitMatches) {
+      formSubmitFns.add(m[1]);
+    }
+    const saveBtnMatches = [...html.matchAll(/<button[^>]*onclick=["']([a-zA-Z0-9_]+)\s*\([^"']*["'][^>]*>[\s\S]*?(?:Simpan|Save|Submit|Tambah|Tambahkan)[\s\S]*?<\/button>/gi)];
+    for (const m of saveBtnMatches) {
+      formSubmitFns.add(m[1]);
+    }
+
+    const candidateSaveFns = fns.filter((f) => {
+      if (formSubmitFns.has(f.name)) return true;
+      return /^(?:simpan|save|handlesimpan|handlesubmit|tambah[a-z0-9]|create[a-z0-9]|submittransaksi|submitsiswa)/i.test(f.name);
+    });
+
+    for (const fn of candidateSaveFns) {
+      const fnBody = fn.node.body;
+      if (!fnBody) continue;
+
+      let hasEditIf = false;
+      let hasCreateInAlternate = false;
+
+      function searchIfs(n: any) {
+        if (!n || typeof n !== 'object') return;
+        if (n.type === 'IfStatement') {
+          if (isEditCondition(n.test)) {
+            hasEditIf = true;
+            if (n.alternate && hasArrayInsertOperation(n.alternate)) {
+              hasCreateInAlternate = true;
+            }
+          }
+        }
+        for (const k of Object.keys(n)) {
+          if (k === 'loc' || k === 'range') continue;
+          const child = n[k];
+          if (Array.isArray(child)) {
+            for (const c of child) searchIfs(c);
+          } else if (child && typeof child.type === 'string') {
+            searchIfs(child);
+          }
+        }
+      }
+
+      searchIfs(fnBody);
+      const hasGlobalInsert = hasArrayInsertOperation(fnBody);
+
+      if (hasEditIf && !hasCreateInAlternate && !hasGlobalInsert) {
+        issues.push(
+          `MISSING_CREATE_BRANCH: Fungsi simpan "${fn.name}" memiliki cabang edit/update (if editId), tetapi TIDAK memiliki jalur kode CREATE (tidak ditemukan operasi .push()/.unshift() ke array state). Saat tombol Tambah ditekan dan ID kosong, data baru tidak akan pernah tersimpan.`
+        );
+      }
+    }
+  }
+
+  // Regex fallback jika AST tidak mendeteksi (misal sintaks fungsi inline di luar AST)
+  if (issues.length === 0 && jsCode) {
+    const fnRegex = /(?:function\s+([a-zA-Z0-9_]+)|(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:function|\([^)]*\)\s*=>))\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = fnRegex.exec(jsCode)) !== null) {
+      const fnName = match[1] || match[2];
+      const body = match[3] || '';
+      if (/^(?:simpan|save|handlesimpan|handlesubmit)/i.test(fnName)) {
+        const hasEditConditionRegex = /if\s*\(\s*(?:editId|id|selectedId|currentEditId|isEdit|editingId|[a-zA-Z0-9_]*edit[a-zA-Z0-9_]*)\s*\)/i.test(body) ||
+                                     /if\s*\(\s*document\.getElementById\([^)]*(?:edit|id)[^)]*\)\.(?:value|dataset)\s*\)/i.test(body);
+        const hasPushRegex = /\.(?:push|unshift)\s*\(/i.test(body) || /\.splice\s*\([^,]+,\s*0\s*,/i.test(body);
+        if (hasEditConditionRegex && !hasPushRegex) {
+          issues.push(
+            `MISSING_CREATE_BRANCH: Fungsi simpan "${fnName}" memiliki cabang edit/update (if editId), tetapi TIDAK memiliki jalur kode CREATE (tidak ditemukan operasi .push()/.unshift() ke array state). Saat tombol Tambah ditekan dan ID kosong, data baru tidak akan pernah tersimpan.`
+          );
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Ekstraksi issue MISSING_TYPE_BRANCH untuk pelaporan atau auto-recovery
+ */
+export function extractMissingTypeBranches(issues: string[]): string[] {
+  return (issues || [])
+    .filter((i) => i.startsWith('MISSING_TYPE_BRANCH:'))
+    .map((i) => i.replace(/^MISSING_TYPE_BRANCH:\s*/, ''));
+}
+
+/**
+ * Memeriksa apakah ada fungsi modal/aksi yang dipanggil dengan parameter tipe data yang berbeda
+ * dari UI (misal bukaModal(id, 'sesi') dan bukaModal(id, 'user')), tetapi fungsi target tidak memiliki
+ * percabangan penanganan atau hanya menyembunyikan field tanpa mengisi data/menampilkan konten pengganti (Sub-Bug 6c).
+ */
+export function checkMissingTypeBranches(
+  ast: any,
+  html: string,
+  jsCode: string
+): string[] {
+  const issues: string[] = [];
+
+  // Helper untuk memecah argumen pemanggilan fungsi dengan mempertimbangkan tanda kutip
+  const splitArgs = (str: string): string[] => {
+    const args: string[] = [];
+    let current = '';
+    let inQuote: string | null = null;
+    for (let i = 0; i < str.length; i++) {
+      const char = str[i];
+      if ((char === "'" || char === '"') && (i === 0 || str[i - 1] !== '\\')) {
+        if (!inQuote) inQuote = char;
+        else if (inQuote === char) inQuote = null;
+      }
+      if (char === ',' && !inQuote) {
+        args.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) args.push(current.trim());
+    return args;
+  };
+
+  // 1. Ekstrak pemanggilan fungsi di HTML yang memiliki argumen string literal (seperti 'sesi', 'user')
+  // Map: fnName -> Map<argIndex, Set<stringLiteralValues>>
+  const fnArgTypeCalls = new Map<string, Map<number, Set<string>>>();
+  const isNavOrBuiltin = /^(?:showTab|switchTab|loginAs|switchRole|tutupModal|closeModal|openTab|filterTabsByRole|toggleSidebar|toggleNav|confirm|alert|showToast|console\.(?:log|warn|error)|parseInt|parseFloat|Number|String|Boolean)$/i;
+
+  const onclickRegex = /\bonclick=(["'])([\s\S]*?)\1/gi;
+  let ocMatch: RegExpExecArray | null;
+
+  while ((ocMatch = onclickRegex.exec(html)) !== null) {
+    const rawCode = ocMatch[2];
+    const callRegex = /([a-zA-Z0-9_$]+)\s*\(([\s\S]*?)\)/g;
+    let callMatch: RegExpExecArray | null;
+    while ((callMatch = callRegex.exec(rawCode)) !== null) {
+      const fnName = callMatch[1];
+      if (isNavOrBuiltin.test(fnName)) continue;
+      const rawArgs = callMatch[2].trim();
+      if (!rawArgs) continue;
+
+      const args = splitArgs(rawArgs);
+      for (let idx = 0; idx < args.length; idx++) {
+        const arg = args[idx];
+        const strMatch = arg.match(/^['"]([^'"]+)['"]$/);
+        if (strMatch) {
+          const literalVal = strMatch[1];
+          if (!fnArgTypeCalls.has(fnName)) {
+            fnArgTypeCalls.set(fnName, new Map());
+          }
+          const argMap = fnArgTypeCalls.get(fnName)!;
+          if (!argMap.has(idx)) {
+            argMap.set(idx, new Set());
+          }
+          argMap.get(idx)!.add(literalVal);
+        }
+      }
+    }
+  }
+
+  // 2. Kumpulkan definisi fungsi di JS (AST & body teks)
+  interface FnTarget {
+    name: string;
+    node?: any;
+    bodyText: string;
+  }
+  const fnDefs = new Map<string, FnTarget>();
+
+  if (ast) {
+    function walk(node: any) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'FunctionDeclaration' && node.id?.name) {
+        fnDefs.set(node.id.name, { name: node.id.name, node, bodyText: '' });
+      } else if (node.type === 'VariableDeclarator' && node.id?.name && node.init) {
+        if (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') {
+          fnDefs.set(node.id.name, { name: node.id.name, node: node.init, bodyText: '' });
+        }
+      } else if (node.type === 'AssignmentExpression') {
+        const left = node.left;
+        const right = node.right;
+        if (right && (right.type === 'FunctionExpression' || right.type === 'ArrowFunctionExpression')) {
+          const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
+          if (name) fnDefs.set(name, { name, node: right, bodyText: '' });
+        }
+      }
+      for (const k of Object.keys(node)) {
+        if (k === 'loc' || k === 'range') continue;
+        const child = node[k];
+        if (Array.isArray(child)) {
+          for (const c of child) walk(c);
+        } else if (child && typeof child.type === 'string') {
+          walk(child);
+        }
+      }
+    }
+    walk(ast);
+  }
+
+  // Lengkapi bodyText via regex
+  if (jsCode) {
+    const fnRegex = /(?:function\s+([a-zA-Z0-9_]+)|(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:function|\([^)]*\)\s*=>))\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/g;
+    let textMatch: RegExpExecArray | null;
+    while ((textMatch = fnRegex.exec(jsCode)) !== null) {
+      const name = textMatch[1] || textMatch[2];
+      const body = textMatch[3] || '';
+      if (name) {
+        const existing = fnDefs.get(name);
+        if (existing) {
+          existing.bodyText = body;
+        } else {
+          fnDefs.set(name, { name, bodyText: body });
+        }
+      }
+    }
+  }
+
+  // Helper untuk mengecek apakah sebuah cabang kode memiliki operasi substantif
+  // (mengisi nilai input, innerHTML, textContent, showToast, atau menampilkan kontainer pengganti)
+  const branchHasSubstantiveContent = (branchAst: any, branchText: string): boolean => {
+    let hasSubstantive = false;
+
+    // 1. AST Check
+    if (branchAst) {
+      function checkNode(n: any) {
+        if (hasSubstantive || !n || typeof n !== 'object') return;
+
+        // Assignment ke .value, .innerHTML, .innerText, .textContent
+        if (n.type === 'AssignmentExpression') {
+          if (n.left?.type === 'MemberExpression') {
+            const prop = n.left.property?.name || n.left.property?.value;
+            if (/^(?:value|innerHTML|innerText|textContent)$/i.test(prop)) {
+              hasSubstantive = true;
+              return;
+            }
+            // Assignment ke style.display bukan 'none'
+            if (prop === 'display') {
+              if (n.right?.type === 'Literal' && typeof n.right.value === 'string' && n.right.value !== 'none') {
+                hasSubstantive = true;
+                return;
+              }
+            }
+          }
+        }
+
+        // Pemanggilan showToast atau classList.remove('hidden') atau append/createElement
+        if (n.type === 'CallExpression') {
+          const callee = n.callee;
+          if (callee?.type === 'Identifier') {
+            if (callee.name === 'showToast' || /^(?:render|tampil|buka|load|isi|set)[A-Z0-9_]/i.test(callee.name)) {
+              hasSubstantive = true;
+              return;
+            }
+          }
+          if (callee?.type === 'MemberExpression') {
+            const prop = callee.property?.name || callee.property?.value;
+            if (/^(?:remove|append|appendChild|insertAdjacentHTML)$/i.test(prop)) {
+              hasSubstantive = true;
+              return;
+            }
+            if (callee.object?.name === 'document' && prop === 'createElement') {
+              hasSubstantive = true;
+              return;
+            }
+          }
+        }
+
+        for (const k of Object.keys(n)) {
+          if (k === 'loc' || k === 'range') continue;
+          const child = n[k];
+          if (Array.isArray(child)) {
+            for (const c of child) checkNode(c);
+          } else if (child && typeof child.type === 'string') {
+            checkNode(child);
+          }
+        }
+      }
+
+      checkNode(branchAst);
+    }
+
+    // 2. Text / Regex Check
+    if (!hasSubstantive && branchText) {
+      const hasSubstantiveRegex = /(?:\.(?:value|innerHTML|innerText|textContent)\s*=|\bshowToast\s*\(|\.display\s*=\s*['"](?!none)[a-z]+['"]|\.classList\.remove\s*\(|\.append(?:Child)?\s*\(|createElement\s*\()/i;
+      if (hasSubstantiveRegex.test(branchText)) {
+        hasSubstantive = true;
+      }
+    }
+
+    return hasSubstantive;
+  };
+
+  // Helper untuk mengenali nilai ID rekaman (seperti 'USR-001', 'SES-001', '123') agar tidak salah dianggap tipe
+  const isIdValue = (val: string): boolean => {
+    if (/^\d+$/.test(val)) return true;
+    if (/[-\/]/.test(val)) return true;
+    if (/[0-9]/.test(val) && /[a-zA-Z]/.test(val)) return true;
+    return false;
+  };
+
+  // 3. Evaluasi setiap fungsi yang dipanggil dengan argumen literal di UI
+  for (const [fnName, argMap] of fnArgTypeCalls.entries()) {
+    const fnTarget = fnDefs.get(fnName);
+    if (!fnTarget) continue; // fungsi tidak terdefinisi sudah ditangkap validator lain jika ada
+
+    for (const [argIdx, typeSet] of argMap.entries()) {
+      let paramName = '';
+      if (fnTarget.node?.params && fnTarget.node.params[argIdx]) {
+        paramName = fnTarget.node.params[argIdx].name || '';
+      }
+      if (/^(?:id|[a-zA-Z0-9_]*id)$/i.test(paramName)) {
+        continue; // Parameter ini adalah ID rekaman, bukan tipe discriminator
+      }
+
+      // Pertimbangkan argumen ini jika:
+      // a) Memiliki >= 2 nilai literal berbeda (polymorphic dispatch), ATAU
+      // b) Memiliki 1 nilai literal tapi nama fungsi berkaitan dengan modal/detail/form/aksi data
+      //    atau nama parameter di posisi tersebut mengandung kata kunci tipe
+      const isModalOrDataAction = /^(?:bukaModal|openModal|lihatDetail|bukaDetail|showModal|showDetail|detail|modal|form|edit)[a-zA-Z0-9_]*/i.test(fnName);
+      const isTypeParam = /^(?:type|tipe|mode|entity|kategori|jenis|target)$/i.test(paramName);
+
+      if (typeSet.size < 2 && !isModalOrDataAction && !isTypeParam) {
+        continue;
+      }
+
+      for (const typeVal of typeSet) {
+        // Abaikan string numerik atau format ID rekaman seperti 'USR-001', 'SES-001'
+        if (isIdValue(typeVal)) continue;
+
+        let hasBranch = false;
+        let branchIsSubstantive = false;
+        let fallbackHasSubstantive = false;
+
+        // A. Periksa via AST
+        if (fnTarget.node) {
+          function searchTypeHandling(n: any) {
+            if (!n || typeof n !== 'object') return;
+
+            // 1. IfStatement: if (type === 'sesi')
+            if (n.type === 'IfStatement') {
+              let testMatchesType = false;
+              let testInvolvesOtherType = false;
+
+              function checkTest(tn: any) {
+                if (!tn || typeof tn !== 'object') return;
+                if (tn.type === 'Literal' && typeof tn.value === 'string') {
+                  if (tn.value.toLowerCase() === typeVal.toLowerCase()) {
+                    testMatchesType = true;
+                  } else if (!isIdValue(tn.value)) {
+                    testInvolvesOtherType = true;
+                  }
+                  return;
+                }
+                for (const k of Object.keys(tn)) {
+                  if (k === 'loc' || k === 'range') continue;
+                  const c = tn[k];
+                  if (Array.isArray(c)) {
+                    for (const item of c) checkTest(item);
+                  } else if (c && typeof c.type === 'string') {
+                    checkTest(c);
+                  }
+                }
+              }
+              checkTest(n.test);
+
+              if (testMatchesType) {
+                hasBranch = true;
+                if (branchHasSubstantiveContent(n.consequent, '')) {
+                  branchIsSubstantive = true;
+                }
+              } else if (testInvolvesOtherType && n.alternate) {
+                if (branchHasSubstantiveContent(n.alternate, '')) {
+                  fallbackHasSubstantive = true;
+                }
+              }
+            }
+
+            // 1b. Pola early-return pada BlockStatement: jika if (type === '...') melakukan return,
+            // sisa baris kode di bawahnya bertindak sebagai fallback untuk tipe lainnya
+            if (n.type === 'BlockStatement' && Array.isArray(n.body)) {
+              for (let sIdx = 0; sIdx < n.body.length; sIdx++) {
+                const stmt = n.body[sIdx];
+                if (stmt.type === 'IfStatement' && stmt.consequent) {
+                  let hasReturn = false;
+                  function checkReturn(cn: any) {
+                    if (hasReturn || !cn || typeof cn !== 'object') return;
+                    if (cn.type === 'ReturnStatement') {
+                      hasReturn = true;
+                      return;
+                    }
+                    for (const rk of Object.keys(cn)) {
+                      if (rk === 'loc' || rk === 'range') continue;
+                      const ch = cn[rk];
+                      if (Array.isArray(ch)) {
+                        for (const item of ch) checkReturn(item);
+                      } else if (ch && typeof ch.type === 'string') {
+                        checkReturn(ch);
+                      }
+                    }
+                  }
+                  checkReturn(stmt.consequent);
+
+                  if (hasReturn && sIdx + 1 < n.body.length) {
+                    for (let remIdx = sIdx + 1; remIdx < n.body.length; remIdx++) {
+                      if (branchHasSubstantiveContent(n.body[remIdx], '')) {
+                        fallbackHasSubstantive = true;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // 2. SwitchStatement: case 'sesi':
+            if (n.type === 'SwitchCase') {
+              if (n.test && n.test.type === 'Literal' && typeof n.test.value === 'string') {
+                if (n.test.value.toLowerCase() === typeVal.toLowerCase()) {
+                  hasBranch = true;
+                  if (branchHasSubstantiveContent(n, '')) {
+                    branchIsSubstantive = true;
+                  }
+                }
+              } else if (!n.test) {
+                // Default case
+                if (branchHasSubstantiveContent(n, '')) {
+                  fallbackHasSubstantive = true;
+                }
+              }
+            }
+
+            // 3. Object Property: { sesi: { ... } } atau handlers['sesi']
+            if (n.type === 'Property') {
+              const keyName = n.key?.name || n.key?.value;
+              if (typeof keyName === 'string' && keyName.toLowerCase() === typeVal.toLowerCase()) {
+                hasBranch = true;
+                if (branchHasSubstantiveContent(n.value, '')) {
+                  branchIsSubstantive = true;
+                } else if (n.value?.type === 'ObjectExpression' && n.value.properties?.length > 0) {
+                  branchIsSubstantive = true;
+                }
+              }
+            }
+
+            for (const k of Object.keys(n)) {
+              if (k === 'loc' || k === 'range') continue;
+              const child = n[k];
+              if (Array.isArray(child)) {
+                for (const c of child) searchTypeHandling(c);
+              } else if (child && typeof child.type === 'string') {
+                searchTypeHandling(child);
+              }
+            }
+          }
+
+          searchTypeHandling(fnTarget.node.body || fnTarget.node);
+        }
+
+        // B. Suplementasi via Regex jika AST belum mendeteksi
+        if (!hasBranch && fnTarget.bodyText) {
+          const escapedType = typeVal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const ifRegex = new RegExp(`if\\s*\\([^)]*['"]${escapedType}['"][^)]*\\)\\s*\\{([\\s\\S]*?)\\}`, 'i');
+          const caseRegex = new RegExp(`case\\s*['"]${escapedType}['"]\\s*:([\\s\\S]*?)(?:break;|case\\s|default:|$)`, 'i');
+
+          const ifMatch = ifRegex.exec(fnTarget.bodyText);
+          const caseMatch = caseRegex.exec(fnTarget.bodyText);
+
+          if (ifMatch) {
+            hasBranch = true;
+            if (branchHasSubstantiveContent(null, ifMatch[1])) {
+              branchIsSubstantive = true;
+            }
+          } else if (caseMatch) {
+            hasBranch = true;
+            if (branchHasSubstantiveContent(null, caseMatch[1])) {
+              branchIsSubstantive = true;
+            }
+          } else {
+            const elseMatch = /else\s*\{([\s\S]*?)\}/i.exec(fnTarget.bodyText);
+            if (elseMatch && branchHasSubstantiveContent(null, elseMatch[1])) {
+              fallbackHasSubstantive = true;
+            }
+          }
+        }
+
+        if (!hasBranch && fallbackHasSubstantive) {
+          hasBranch = true;
+          branchIsSubstantive = true;
+        }
+
+        // C. Terbitkan issue jika cabang tidak ada sama sekali atau kosong/hanya hide
+        if (!hasBranch) {
+          issues.push(
+            `MISSING_TYPE_BRANCH: Fungsi "${fnName}" dipanggil dengan tipe "${typeVal}" dari tombol UI, tetapi TIDAK memiliki percabangan kode untuk menangani tipe "${typeVal}". Modal/tampilan akan kosong atau salah data saat tipe ini dibuka.`
+          );
+        } else if (!branchIsSubstantive) {
+          issues.push(
+            `MISSING_TYPE_BRANCH: Fungsi "${fnName}" memiliki percabangan untuk tipe "${typeVal}", namun hanya menyembunyikan elemen tanpa mengisi data atau menampilkan field pengganti. Modal/konten akan kosong total untuk tipe "${typeVal}". WAJIB isi nilai/tampilkan field khusus untuk tipe ini atau berikan informasi via showToast().`
+          );
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Ekstraksi issue MISSING_DELETE_WIRING untuk pelaporan atau auto-recovery
+ */
+export function extractMissingDeleteWiring(issues: string[]): string[] {
+  return (issues || [])
+    .filter((i) => i.startsWith('MISSING_DELETE_WIRING:'))
+    .map((i) => i.replace(/^MISSING_DELETE_WIRING:\s*/, ''));
+}
+
+/**
+ * Ekstraksi issue FAKE_DELETE_ACTION untuk pelaporan atau auto-recovery
+ */
+export function extractFakeDeleteActions(issues: string[]): string[] {
+  return (issues || [])
+    .filter((i) => i.startsWith('FAKE_DELETE_ACTION:'))
+    .map((i) => i.replace(/^FAKE_DELETE_ACTION:\s*/, ''));
+}
+
+/**
+ * Memeriksa integrasi aksi hapus (Sub-Bug 6d):
+ * 1. FAKE_DELETE_ACTION: Fungsi eksekusi hapus hanya menutup modal/showToast tanpa benar-benar memodifikasi array state (.splice() atau .filter()).
+ * 2. MISSING_DELETE_WIRING: Infrastruktur modal konfirmasi hapus / fungsi bukaModalHapus ada, tapi tidak ada tombol yang memanggilnya di tabel/list.
+ */
+export function checkMissingDeleteWiringAndFakeAction(
+  ast: any,
+  html: string,
+  jsCode: string
+): string[] {
+  const issues: string[] = [];
+
+  // -------------------------------------------------------------------------
+  // 1. Kumpulkan seluruh fungsi di JavaScript (AST & body teks)
+  // -------------------------------------------------------------------------
+  interface FnDef {
+    name: string;
+    node?: any;
+    bodyText: string;
+  }
+  const fnDefs = new Map<string, FnDef>();
+
+  if (ast) {
+    function walk(node: any) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'FunctionDeclaration' && node.id?.name) {
+        fnDefs.set(node.id.name, { name: node.id.name, node, bodyText: '' });
+      } else if (node.type === 'VariableDeclarator' && node.id?.name && node.init) {
+        if (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') {
+          fnDefs.set(node.id.name, { name: node.id.name, node: node.init, bodyText: '' });
+        }
+      } else if (node.type === 'AssignmentExpression') {
+        const left = node.left;
+        const right = node.right;
+        if (right && (right.type === 'FunctionExpression' || right.type === 'ArrowFunctionExpression')) {
+          const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
+          if (name) fnDefs.set(name, { name, node: right, bodyText: '' });
+        }
+      }
+      for (const k of Object.keys(node)) {
+        if (k === 'loc' || k === 'range') continue;
+        const child = node[k];
+        if (Array.isArray(child)) {
+          for (const c of child) walk(c);
+        } else if (child && typeof child.type === 'string') {
+          walk(child);
+        }
+      }
+    }
+    walk(ast);
+  }
+
+  if (jsCode) {
+    const fnRegex = /(?:function\s+([a-zA-Z0-9_]+)|(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:function|\([^)]*\)\s*=>))\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = fnRegex.exec(jsCode)) !== null) {
+      const name = match[1] || match[2];
+      const body = match[3] || '';
+      if (name) {
+        const existing = fnDefs.get(name);
+        if (existing) {
+          existing.bodyText = body;
+        } else {
+          fnDefs.set(name, { name, bodyText: body });
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. BAGIAN A: PEMERIKSAAN FAKE_DELETE_ACTION
+  // -------------------------------------------------------------------------
+  // Cari fungsi yang bertugas mengeksekusi hapus data:
+  // e.g. eksekusiHapus, hapusData, hapusSiswa, hapusUser, confirmHapus, doDelete, dsb.
+  const isDeleteExecutionFn = (name: string): boolean => {
+    // Mengecualikan pembuka/penutup modal (bukaModalHapus, tutupModalHapus)
+    if (/^(?:buka|open|tutup|close)modal/i.test(name)) return false;
+    return /^(?:eksekusihapus|hapus|delete|remove|dodelete|actiondelete|confirmdelete|konfirmasihapus)[a-zA-Z0-9_]*/i.test(name);
+  };
+
+  const checkArrayDeletion = (node: any, bodyText: string): boolean => {
+    let hasDeletion = false;
+
+    // 1. AST Check: cari call ke .splice() atau assignment dari .filter()
+    if (node) {
+      function check(n: any) {
+        if (hasDeletion || !n || typeof n !== 'object') return;
+
+        if (n.type === 'CallExpression') {
+          if (n.callee?.type === 'MemberExpression') {
+            const prop = n.callee.property?.name || n.callee.property?.value;
+            // .splice(idx, 1)
+            if (prop === 'splice') {
+              hasDeletion = true;
+              return;
+            }
+          }
+        }
+
+        if (n.type === 'AssignmentExpression') {
+          // data = data.filter(...) atau array = ...
+          let rightHasFilter = false;
+          function checkFilter(rn: any) {
+            if (rightHasFilter || !rn || typeof rn !== 'object') return;
+            if (rn.type === 'CallExpression' && rn.callee?.type === 'MemberExpression') {
+              const p = rn.callee.property?.name || rn.callee.property?.value;
+              if (p === 'filter') {
+                rightHasFilter = true;
+                return;
+              }
+            }
+            for (const rk of Object.keys(rn)) {
+              if (rk === 'loc' || rk === 'range') continue;
+              const ch = rn[rk];
+              if (Array.isArray(ch)) {
+                for (const item of ch) checkFilter(item);
+              } else if (ch && typeof ch.type === 'string') {
+                checkFilter(ch);
+              }
+            }
+          }
+          checkFilter(n.right);
+          if (rightHasFilter) {
+            hasDeletion = true;
+            return;
+          }
+        }
+
+        // delete array[index] atau delete obj[key]
+        if (n.type === 'UnaryExpression' && n.operator === 'delete') {
+          hasDeletion = true;
+          return;
+        }
+
+        for (const k of Object.keys(n)) {
+          if (k === 'loc' || k === 'range') continue;
+          const child = n[k];
+          if (Array.isArray(child)) {
+            for (const c of child) check(c);
+          } else if (child && typeof child.type === 'string') {
+            check(child);
+          }
+        }
+      }
+      check(node);
+    }
+
+    // 2. Regex fallback
+    if (!hasDeletion && bodyText) {
+      if (/\.(?:splice\s*\([^)]+\)|filter\s*\([^)]+\))/i.test(bodyText)) {
+        hasDeletion = true;
+      }
+    }
+
+    return hasDeletion;
+  };
+
+  for (const [fnName, fnData] of fnDefs.entries()) {
+    if (isDeleteExecutionFn(fnName)) {
+      const hasActualDeletion = checkArrayDeletion(fnData.node, fnData.bodyText);
+      if (!hasActualDeletion) {
+        issues.push(
+          `FAKE_DELETE_ACTION: Fungsi eksekusi hapus "${fnName}" tidak memodifikasi array state (tidak ditemukan operasi .splice() atau penugasan kembali .filter()). Fungsi hanya menutup modal atau menampilkan notifikasi tanpa benar-benar menghapus data dari memori aplikasi.`
+        );
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 3. BAGIAN B: PEMERIKSAAN MISSING_DELETE_WIRING
+  // -------------------------------------------------------------------------
+  // Apakah ada infrastruktur modal konfirmasi hapus di HTML / JS?
+  const hasDeleteModalHtml = /id=["'](?:modalHapus|deleteModal|modalKonfirmasiHapus|modalDelete)["']/i.test(html);
+  const deleteModalOpenerFn = [...fnDefs.keys()].find((name) =>
+    /^(?:bukaModalHapus|openDeleteModal|bukaKonfirmasiHapus|openModalDelete|konfirmasiHapus)$/i.test(name)
+  );
+
+  if (hasDeleteModalHtml || deleteModalOpenerFn) {
+    // Infrastruktur modal hapus terdefinisi. Sekarang verifikasi apakah ada pemanggilannya di UI.
+    // Pemanggilan bisa berada di:
+    // 1. Tag HTML static: onclick="bukaModalHapus(...)"
+    // 2. Template string JS di dalam render functions: e.g. `<button ... onclick="bukaModalHapus(...)">`
+    const openerName = deleteModalOpenerFn || 'bukaModalHapus';
+    
+    // Periksa pemanggilan di AST CallExpression
+    let isCalledInAst = false;
+    if (ast) {
+      function checkCall(n: any) {
+        if (isCalledInAst || !n || typeof n !== 'object') return;
+        if (n.type === 'CallExpression') {
+          const calleeName = n.callee?.name || n.callee?.property?.name;
+          if (calleeName && calleeName.toLowerCase() === openerName.toLowerCase()) {
+            isCalledInAst = true;
+            return;
+          }
+        }
+        for (const k of Object.keys(n)) {
+          if (k === 'loc' || k === 'range') continue;
+          const ch = n[k];
+          if (Array.isArray(ch)) {
+            for (const item of ch) checkCall(item);
+          } else if (ch && typeof ch.type === 'string') {
+            checkCall(ch);
+          }
+        }
+      }
+      checkCall(ast);
+    }
+
+    // Bersihkan kontainer modal konfirmasi hapus agar tombol konfirmasi di dalam modal
+    // ("Ya, Hapus") tidak salah dianggap sebagai tombol pemanggil dari tabel
+    const htmlOutsideDeleteModal = html.replace(/<div\b[^>]*\bid=["'](?:modalHapus|deleteModal|modalKonfirmasiHapus|modalDelete)["'][^>]*>[\s\S]*?<\/div>/gi, '');
+
+    // Periksa pemanggilan di atribut onclick HTML statis (di luar modal konfirmasi)
+    const isCalledInHtml = new RegExp(`onclick\\s*=\\s*['"][^'"]*\\b${openerName}\\b`, 'i').test(htmlOutsideDeleteModal);
+
+    // Periksa pemanggilan di template string JS yang me-render baris tabel secara dinamis
+    const isCalledInJsTemplates = new RegExp(`onclick\\s*=\\s*['"\\\\]*[^'"\\\\]*\\b${openerName}\\b`, 'i').test(jsCode);
+
+    // Cek juga apakah ada tombol dengan teks Hapus/Delete yang memanggil fungsi hapus (di luar modal)
+    const hasDeleteButtonInHtml = /<button\b[^>]*\bonclick=["'][^"']*(?:hapus|delete)[^"']*["'][^>]*>[\s\S]*?(?:Hapus|Delete)[\s\S]*?<\/button>/i.test(htmlOutsideDeleteModal);
+    const hasDeleteButtonInJsTemplates = /<button\b[^>]*\bonclick=[\\"]*[^\\"'>]*(?:hapus|delete)[^\\"'>]*[\\"]*[^>]*>[\s\S]*?(?:Hapus|Delete)[\s\S]*?<\/button>/i.test(jsCode);
+
+    if (!isCalledInAst && !isCalledInHtml && !isCalledInJsTemplates && !hasDeleteButtonInHtml && !hasDeleteButtonInJsTemplates) {
+      const targetLabel = deleteModalOpenerFn ? `fungsi "${deleteModalOpenerFn}"` : 'modal #modalHapus';
+      issues.push(
+        `MISSING_DELETE_WIRING: Infrastruktur konfirmasi hapus (${targetLabel}) telah terdefinisi di kode, namun TIDAK ADA tombol "Hapus" di tabel/daftar data yang memanggilnya. Pengguna tidak memiliki akses di antarmuka untuk memicu aksi hapus data.`
+      );
+    }
+  }
+
+  return issues;
+}
+
