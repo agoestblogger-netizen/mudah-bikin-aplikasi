@@ -513,6 +513,9 @@ export async function POST(req: Request) {
       }
     }
 
+    // Resolusi nama role Owner dinamis dari session
+    const ownerRole = incomingSession?.roles?.ownerRole || incomingSession?.roles?.wajib?.[0] || officialRoles[0] || 'Super Admin';
+
     // Ekstraksi RBAC Modul dari session (Bagian B)
     let sessionRbacModul: any[] = [];
     if (incomingSession?.rbac?.modul && Array.isArray(incomingSession.rbac.modul) && incomingSession.rbac.modul.length > 0) {
@@ -1344,10 +1347,14 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
       render();
     }
 
+    const OWNER_ROLE_NAME = '${ownerRole}';
+    window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
+
     function filterTabsByRole(role) {
       document.querySelectorAll('.tab-btn').forEach(btn => {
         const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim().toLowerCase());
-        btn.style.display = (role && allowed.includes(role.toLowerCase())) ? '' : 'none';
+        const isOwner = Boolean(role && String(role).trim().toLowerCase() === OWNER_ROLE_NAME.toLowerCase());
+        btn.style.display = (isOwner || (role && allowed.includes(role.toLowerCase()))) ? '' : 'none';
       });
     }
 
@@ -1374,7 +1381,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
     - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
     - STATE DATA ARRAY WAJIB DIINISIALISASI: Jika fungsi JavaScript merujuk variabel data array (seperti \`items\`, \`data\`, \`list\`), WAJIB deklarasikan secara global di tag <script> dengan 3-5 data awal (misal: \`let items = [...];\` atau \`let data = [...];\`). DILARANG memanggil \`items.find\` atau \`items.push\` tanpa deklarasi variabel \`items\`!
     - KREDENSIAL DEMO DI WINDOW: Selalu lampirkan akun demo ke window: \`window.DEMO_ACCOUNTS = DEMO_ACCOUNTS;\` di dalam tag <script>.
-    - HAK AKSES SUPER ADMIN / ADMIN TERHADAP TAB: Super Admin sebagai pengelola sistem WAJIB memiliki akses untuk memeriksa seluruh modul tab operasional (sertakan 'Super Admin' di atribut data-access-roles setiap tab operasional atau rancang filterTabsByRole agar Admin dapat melihat seluruh tab).
+    - HAK AKSES OWNER TERHADAP TAB: Peran Owner/Pengelola ('${ownerRole}') sebagai pengelola sistem WAJIB memiliki akses untuk memeriksa seluruh modul tab operasional (sertakan '${ownerRole}' di atribut data-access-roles setiap tab operasional atau gunakan filterTabsByRole yang mencocokkan ke OWNER_ROLE_NAME).
     - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`handleLogin\`, \`bukaModalLogin\`, \`tutupModalLogin\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`prosesPenjualan\`, \`prosesTransaksi\`, \`checkout\`, \`bayar\`, \`cetakStruk\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
 
       // Mode Pure AI: Matikan semua template/referensi statis
@@ -1899,7 +1906,7 @@ ${staffLandingGuide}
       const fbHtml = extractHtmlFromMessage(msg);
       if (!fbHtml) return false;
 
-      const fbValidated = validateAndRepairGeneratedCode(fbHtml, '', '', officialRoles);
+      const fbValidated = validateAndRepairGeneratedCode(fbHtml, '', '', officialRoles, ownerRole);
       if (fbValidated && fbValidated.isValid) {
         htmlCode = fbHtml;
         assistantMessage = msg;
@@ -2263,7 +2270,7 @@ ${staffLandingGuide}
     }
 
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan pada mode generate kode)
-    validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles) : null;
+    validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole) : null;
 
     // NFR-10b: Pemeriksaan Integritas, Kelengkapan Tag, Sintaks JavaScript, & Keselarasan DOM Otomatis (Hanya pada mode generate kode)
     const isCodeIncomplete = !htmlCode || !htmlCode.includes('</html>') || !htmlCode.includes('</script>');
@@ -2315,12 +2322,12 @@ INSTRUKSI PERBAIKAN WAJIB:
           if (repairMatch) {
             htmlCode = cleanConversationalLeaks(repairMatch[1]);
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
             htmlCode = cleanConversationalLeaks(repairMsg.split('```html')[1].replace(/```[\s\S]*$/, ''));
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
             repairSuccess = true;
           }
         } catch (e) {
@@ -2378,12 +2385,12 @@ INSTRUKSI PERBAIKAN WAJIB:
           if (repairMatch) {
             htmlCode = cleanConversationalLeaks(repairMatch[1]);
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
             htmlCode = cleanConversationalLeaks(repairMsg.split('```html')[1].replace(/```[\s\S]*$/, ''));
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
             repairSuccess = true;
           }
         }
@@ -2504,7 +2511,7 @@ INSTRUKSI MUTLAK:
                     const insertPos = htmlCode.lastIndexOf('</script>');
                     if (insertPos !== -1) {
                       const candidateHtml = htmlCode.slice(0, insertPos) + '\n' + sanitizedJs.trim() + '\n' + htmlCode.slice(insertPos);
-                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles);
+                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles, ownerRole);
 
                       const hasNewSyntaxError = candidateValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
                       const hasNewRoleContamination = candidateValidated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
@@ -2554,7 +2561,7 @@ INSTRUKSI MUTLAK:
                     const insertPos = htmlCode.lastIndexOf('</script>');
                     if (insertPos !== -1) {
                       const candidateHtml = htmlCode.slice(0, insertPos) + '\n' + sanitizedJs.trim() + '\n' + htmlCode.slice(insertPos);
-                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles);
+                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles, ownerRole);
 
                       const hasNewSyntaxError = candidateValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
                       const hasNewRoleContamination = candidateValidated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
@@ -2586,7 +2593,7 @@ INSTRUKSI MUTLAK:
             partialWarningFunctions = missingHandlers;
             console.warn(`[Targeted Repair] Rollback ke kode asal. ${missingHandlers.length} handler masih hilang: ${missingHandlers.join(', ')}`);
             // Re-validasi untuk memastikan verified.repairedCode yang mutakhir dan bersih dari kontaminasi
-            const finalValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles);
+            const finalValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
             validated = finalValidated;
           }
         } else {

@@ -130,32 +130,35 @@ export function injectMissingHandlerStubs(html: string, issues: string[]): strin
 }
 
 /**
- * Auto-inject area "Manajemen Sistem" untuk Super Admin bila tidak ada.
+ * Auto-inject area "Manajemen Sistem" untuk Owner/Super Admin bila tidak ada.
  * Idempotent (ditandai data-od-auto), aman dari MISMATCH_HANDLER (tanpa onclick),
- * dan hanya diberi data-access-roles="Super Admin" agar tidak bocor ke role lain.
+ * dan hanya diberi data-access-roles sesuai nama peran Owner dinamis agar tidak bocor ke role lain.
  */
-function injectSuperAdminManagementSection(html: string): string {
+function injectOwnerManagementSection(html: string, ownerRoleName: string = 'Super Admin'): string {
   if (!html || /data-od-auto=["']superadmin-management["']/i.test(html)) return html;
 
   const card = `
-<div class="card" data-od-auto="superadmin-management" data-access-roles="Super Admin" style="margin-top:16px;">
+<div class="card" data-od-auto="superadmin-management" data-access-roles="${ownerRoleName}" style="margin-top:16px;">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
     <h3 class="title" style="font-size:16px; margin:0;">Manajemen Sistem</h3>
-    <span class="badge badge-info">Super Admin</span>
+    <span class="badge badge-info">${ownerRoleName}</span>
   </div>
   <div style="display:flex; flex-wrap:wrap; gap:8px;">
-    <button type="button" class="btn-primary" data-access-roles="Super Admin">Tambah Akun Staf</button>
-    <button type="button" class="btn-secondary" data-access-roles="Super Admin">Atur Hak Akses</button>
-    <button type="button" class="btn-danger" data-access-roles="Super Admin">Nonaktifkan Akun Staf</button>
+    <button type="button" class="btn-primary" data-access-roles="${ownerRoleName}">Tambah Akun Staf</button>
+    <button type="button" class="btn-secondary" data-access-roles="${ownerRoleName}">Atur Hak Akses</button>
+    <button type="button" class="btn-danger" data-access-roles="${ownerRoleName}">Nonaktifkan Akun Staf</button>
   </div>
 </div>`;
 
-  // 1. Coba sisipkan ke dalam tab khusus Super Admin.
+  // 1. Coba sisipkan ke dalam tab khusus Owner.
   const buttonTags = [...html.matchAll(/<button\b[^>]*>/gi)].map((m) => m[0]);
+  const escapedOwner = ownerRoleName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ownerPattern = new RegExp(escapedOwner, 'i');
+
   for (const tag of buttonTags) {
     if (!/tab-btn/i.test(tag)) continue;
     const access = tag.match(/data-access-roles=["']([^"']+)["']/i)?.[1] || '';
-    if (!/super\s*admin/i.test(access)) continue;
+    if (!ownerPattern.test(access)) continue;
     const tabId = tag.match(/showTab\(\s*['"]([^'"]+)['"]\s*\)/i)?.[1];
     if (!tabId) continue;
     const escaped = tabId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -174,11 +177,25 @@ export function validateAndRepairGeneratedCode(
   html: string,
   css: string,
   js: string,
-  expectedRoles?: string[]
+  expectedRoles?: string[],
+  ownerRoleName?: string
 ): ValidationReport {
   const issues: string[] = [];
   let repairedHtml = cleanConversationalLeaks(html);
   let repairedJs = js || '';
+
+  // Resolusi nama role Owner dinamis dari session/expectedRoles tanpa keyword matching kaku
+  let resolvedOwner = (ownerRoleName || '').trim();
+  if (!resolvedOwner && expectedRoles && expectedRoles.length > 0) {
+    resolvedOwner = expectedRoles[0].trim();
+  }
+  if (!resolvedOwner) {
+    const matchOwner = html.match(/(?:const|var|let|window\.)OWNER_ROLE_NAME\s*=\s*['"]([^'"]+)['"]/i);
+    if (matchOwner) resolvedOwner = matchOwner[1].trim();
+  }
+  if (!resolvedOwner) {
+    resolvedOwner = 'Super Admin';
+  }
 
   // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown
   if (repairedHtml.includes('<!DOCTYPE')) {
@@ -257,14 +274,19 @@ function showTab(tabId) {
 
   if (hasTabs && !definedFunctions.has('filterTabsByRole')) {
     plumbingToInject.push(`
+// Scaffold Plumbing Deterministik (Pilar 1)
+var OWNER_ROLE_NAME = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
+if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
+
 function filterTabsByRole(role) {
   try {
+    const ownerName = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : OWNER_ROLE_NAME;
     document.querySelectorAll('.tab-btn').forEach(btn => {
       const roles = btn.getAttribute('data-access-roles');
       if (!roles) return;
       const allowed = roles.split(',').map(r => r.trim().toLowerCase());
-      const isAdmin = String(role).toLowerCase().includes('admin') || String(role).toLowerCase().includes('owner') || String(role).toLowerCase().includes('pemilik');
-      if (isAdmin || (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all')))) {
+      const isOwner = Boolean(ownerName && role && String(role).trim().toLowerCase() === String(ownerName).trim().toLowerCase());
+      if (isOwner || (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all')))) {
         btn.style.display = 'inline-flex';
       } else {
         btn.style.display = 'none';
@@ -365,6 +387,12 @@ var data = typeof data !== 'undefined' ? data : [
 if (typeof DEMO_ACCOUNTS !== 'undefined' && typeof window !== 'undefined') {
   window.DEMO_ACCOUNTS = DEMO_ACCOUNTS;
 }`);
+  }
+  const alreadyHasOwnerRole = /(?:const|let|var|window\.)OWNER_ROLE_NAME\s*=/.test(combinedJs) || plumbingToInject.some(p => p.includes('OWNER_ROLE_NAME'));
+  if (!alreadyHasOwnerRole) {
+    plumbingToInject.push(`
+var OWNER_ROLE_NAME = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
+if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;`);
   }
 
   if (plumbingToInject.length > 0) {
@@ -610,11 +638,13 @@ function loginAs(role) {
           fallbackFn = `
 function filterTabsByRole(role) {
   try {
+    var ownerName = typeof window.OWNER_ROLE_NAME !== 'undefined' ? window.OWNER_ROLE_NAME : (typeof OWNER_ROLE_NAME !== 'undefined' ? OWNER_ROLE_NAME : '${resolvedOwner}');
     document.querySelectorAll('.tab-btn').forEach(btn => {
       const roles = btn.getAttribute('data-access-roles');
       if (!roles) return;
       const allowed = roles.split(',').map(r => r.trim().toLowerCase());
-      if (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all'))) {
+      const isOwner = Boolean(ownerName && role && String(role).trim().toLowerCase() === String(ownerName).trim().toLowerCase());
+      if (isOwner || (role && (allowed.includes(String(role).toLowerCase()) || allowed.includes('*') || allowed.includes('all')))) {
         btn.style.display = 'inline-flex';
       } else {
         btn.style.display = 'none';
@@ -834,6 +864,7 @@ function showToast(msg, type = 'info') {
       // "💳 Anggota" -> "🪪 Kartu Anggota Digital", "📈 Menu Manajer" -> "📈 Monitoring & Persetujuan")
       const functionalTabLabel = (role: string): { emoji: string; label: string } => {
         const r = role.trim().toLowerCase();
+        if (r === resolvedOwner.toLowerCase()) return { emoji: '⚙️', label: 'Kelola Sistem' };
         if (/super\s*admin|admin$|^admin|pengelola/.test(r)) return { emoji: '⚙️', label: 'Kelola Sistem' };
         if (/anggota|member|user|pelanggan|penyewa|pasien|siswa|customer|buyer|nasabah|donatur|penerima|warga|tamu/.test(r)) {
           return { emoji: '🪪', label: 'Pesanan & Kartu Saya' };
@@ -979,9 +1010,11 @@ function showToast(msg, type = 'info') {
       roleGatingRepairParts.push(`
 /* data-od-auto="role-gating" */
 function filterTabsByRole(role) {
+  var ownerName = typeof window.OWNER_ROLE_NAME !== 'undefined' ? window.OWNER_ROLE_NAME : (typeof OWNER_ROLE_NAME !== 'undefined' ? OWNER_ROLE_NAME : '${resolvedOwner}');
   document.querySelectorAll('.tab-btn').forEach(function(btn) {
     var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
-    btn.style.display = (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1) ? '' : 'none';
+    var isOwner = Boolean(ownerName && role && String(role).trim().toLowerCase() === String(ownerName).trim().toLowerCase());
+    btn.style.display = (isOwner || (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1)) ? '' : 'none';
   });
 }`);
       hasFilterTabsByRole = true;
@@ -1115,35 +1148,36 @@ function loginAs(role) {
 
       const allFoundRoles = [...new Set([...loginAsCalls, ...jsLoginAsCalls, ...demoAccountRoles, ...tabAccessRoles])];
 
-      // Manajemen akun staf adalah capability eksklusif Super Admin.
-      if (hasRequiredSuperAdmin) {
+      // Manajemen akun staf adalah capability eksklusif Owner/Super Admin.
+      if (hasRequiredSuperAdmin || Boolean(resolvedOwner)) {
         const accountManagementTerms = /akun\s+staf|kelola\s+(?:akun|pengguna|user)|manajemen\s+(?:akun|pengguna|user)|role\s*&\s*permission|hak\s+akses|tambah\s+staf|hapus\s+staf|nonaktifkan\s+akun/i;
         const gatedButtons = [...repairedHtml.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)];
         let managementButtons = gatedButtons.filter((match) => accountManagementTerms.test(match[2].replace(/<[^>]+>/g, ' ')));
 
         if (managementButtons.length === 0 || !accountManagementTerms.test(repairedHtml)) {
           // Auto-inject area manajemen sistem agar tidak memblokir generation.
-          repairedHtml = injectSuperAdminManagementSection(repairedHtml);
+          repairedHtml = injectOwnerManagementSection(repairedHtml, resolvedOwner);
           const rescanned = [...repairedHtml.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)];
           managementButtons = rescanned.filter((match) => accountManagementTerms.test(match[2].replace(/<[^>]+>/g, ' ')));
 
           // Jika auto-inject pun gagal, baru catat sebagai issue.
           if (managementButtons.length === 0) {
             issues.push(
-              'SUPER_ADMIN_MANAGEMENT_MISSING: Aplikasi wajib menyediakan area manajemen akun staf, role, dan permission untuk role Super Admin.'
+              `SUPER_ADMIN_MANAGEMENT_MISSING: Aplikasi wajib menyediakan area manajemen akun staf, role, dan permission untuk role ${resolvedOwner}.`
             );
           }
         }
 
+        const isOwnerRole = (r: string) => r.toLowerCase() === resolvedOwner.toLowerCase() || isSuperAdminRole(r);
         for (const match of managementButtons) {
           const access = match[1].match(/data-access-roles\s*=\s*["']([^"']+)["']/i)?.[1] || '';
           // Tombol tanpa data-access-roles diasumsikan berada di dalam tab yang
-          // sudah digate Super Admin; hanya periksa yang punya atribut eksplisit.
+          // sudah digate Owner; hanya periksa yang punya atribut eksplisit.
           if (!access) continue;
           const accessRoles = access.split(',').map((role) => role.trim()).filter(Boolean);
-          if (!accessRoles.some(isSuperAdminRole) || accessRoles.some((role) => !isSuperAdminRole(role))) {
+          if (!accessRoles.some(isOwnerRole) || accessRoles.some((role) => !isOwnerRole(role))) {
             issues.push(
-              `STAFF_ACCOUNT_ACCESS_LEAK: Tombol manajemen akun staf/permission hanya boleh memiliki data-access-roles="Super Admin" (saat ini: "${access}").`
+              `STAFF_ACCOUNT_ACCESS_LEAK: Tombol manajemen akun staf/permission hanya boleh memiliki data-access-roles="${resolvedOwner}" (saat ini: "${access}").`
             );
           }
         }

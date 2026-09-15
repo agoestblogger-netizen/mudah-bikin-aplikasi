@@ -821,10 +821,11 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
 
       var _origFilterTabs = window.filterTabsByRole;
       window.filterTabsByRole = function(role) {
+        var ownerName = typeof window.OWNER_ROLE_NAME !== 'undefined' ? window.OWNER_ROLE_NAME : (typeof OWNER_ROLE_NAME !== 'undefined' ? OWNER_ROLE_NAME : '');
         document.querySelectorAll('.tab-btn').forEach(function(btn) {
           var allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(function(r) { return r.trim().toLowerCase(); });
-          var isAdmin = String(role).toLowerCase().indexOf('admin') !== -1 || String(role).toLowerCase().indexOf('owner') !== -1;
-          btn.style.display = (isAdmin || (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1)) ? '' : 'none';
+          var isOwner = Boolean(ownerName && role && String(role).trim().toLowerCase() === String(ownerName).trim().toLowerCase());
+          btn.style.display = (isOwner || (role && allowed.indexOf(String(role).trim().toLowerCase()) !== -1)) ? '' : 'none';
         });
         if (typeof _origFilterTabs === 'function' && _origFilterTabs !== window.filterTabsByRole) {
           try { _origFilterTabs(role); } catch(e){}
