@@ -53,7 +53,7 @@ async function verifySchemaImprovements() {
   ];
 
   console.log('Raw input JSON structure (Array langsung):', JSON.stringify(rawArrayJson).slice(0, 100) + '...');
-  const extracted = extractTablesAndCorrelationFromParsed(rawArrayJson, 'murid terhubung ke pendaftaran');
+  const extracted = await extractTablesAndCorrelationFromParsed(rawArrayJson, 'murid terhubung ke pendaftaran');
   if (extracted && extracted.tables.length === 2) {
     console.log('✅ [PASS] Parser berhasil mengekstrak 2 tabel dari Array JSON langsung!');
     console.log('Tabel diekstrak:', extracted.tables.map(t => t.nama));

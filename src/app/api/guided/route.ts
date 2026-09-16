@@ -48,6 +48,8 @@ import {
   repairRelasiSimulasiDb,
   validateContohDataVsSchema,
   detectTargetRoleForField,
+  detectTargetRoleForFieldAsync,
+  type SemanticRoleMatcher,
   type SimulasiContohData,
   type SimulasiContohTabel,
   renderReviewFinalMarkdown,
@@ -2201,10 +2203,63 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
   };
 }
 
-export function extractTablesAndCorrelationFromParsed(
+export async function detectTargetRoleSemanticAI(
+  stem: string,
+  kata: string,
+  officialRoles: string[],
+  opts?: {
+    provider?: string;
+    apiKey?: string;
+    model?: string;
+  }
+): Promise<string | null> {
+  if (!officialRoles || officialRoles.length === 0) return null;
+  const rolesList = officialRoles.join(', ');
+  const systemInstruction = `Anda adalah Analis Semantik Peran Sistem Aplikasi Bisnis.
+Tugas Anda: Menilai apakah suatu kata/istilah field database secara semantik merujuk pada salah satu Peran Resmi pengguna yang tersedia.
+Daftar Peran Resmi Tersedia: ${rolesList}.
+
+Aturan Evaluasi:
+1. Evaluasi apakah istilah field (misal: "pembimbing", "pengawas", "pendamping", "konselor", "pelatih") secara makna tugas atau wewenang merujuk ke salah satu Peran Resmi di atas.
+2. Jika ada SATU peran resmi yang paling tepat dan cocok dengan keyakinan tinggi, balas HANYA dengan nama persis peran tersebut dari daftar peran resmi.
+3. Jika TIDAK ADA yang cocok atau ragu-ragu, balas HANYA: TIDAK_COCOK.
+4. DILARANG menambahkan penjelasan atau tanda baca apapun.`;
+
+  const userPrompt = `Istilah field: "${stem}". Keterangan: "${kata}".\nManakah peran resmi yang paling cocok dari: [${rolesList}]?`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 500,
+      provider: opts?.provider,
+      userApiKey: opts?.apiKey,
+      userModel: opts?.model
+    });
+
+    if (!raw) return null;
+    const clean = raw.trim().replace(/^[`'"]+|[`'"]+$/g, '').trim();
+    if (clean.toUpperCase() === 'TIDAK_COCOK' || clean.toLowerCase().includes('tidak cocok')) {
+      return null;
+    }
+
+    const matched = officialRoles.find(
+      (r) => r.toLowerCase() === clean.toLowerCase() || clean.toLowerCase().includes(r.toLowerCase())
+    );
+    return matched || null;
+  } catch (err) {
+    console.warn('[AI-SEMANTIC-ROLE] Gagal evaluasi semantik peran:', err);
+    return null;
+  }
+}
+
+export async function extractTablesAndCorrelationFromParsed(
   parsed: any,
-  fallbackCorrelation?: string
-): { tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[]; korelasiRingkas?: string } | null {
+  fallbackCorrelation?: string,
+  officialRoles?: string[],
+  semanticAiMatcher?: SemanticRoleMatcher
+): Promise<{ tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[] }[]; korelasiRingkas?: string } | null> {
   if (!parsed) return null;
   const rawTables = Array.isArray(parsed)
     ? parsed
@@ -2215,7 +2270,7 @@ export function extractTablesAndCorrelationFromParsed(
   const validatedTables: {
     nama: string;
     keterangan?: string;
-    field: { nama: string; tipe: string; keterangan: string }[];
+    field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[];
   }[] = [];
 
   for (const t of rawTables) {
@@ -2232,7 +2287,7 @@ export function extractTablesAndCorrelationFromParsed(
           if (f.targetRole && typeof f.targetRole === 'string' && f.targetRole.trim()) {
             fieldObj.targetRole = f.targetRole.trim();
           } else {
-            const detected = detectTargetRoleForField(fieldObj);
+            const detected = await detectTargetRoleForFieldAsync(fieldObj, officialRoles, semanticAiMatcher);
             if (detected) {
               fieldObj.targetRole = detected;
             }
@@ -2406,11 +2461,19 @@ ${rbacModul.map((m) => `- ${m.nama}: ${m.deskripsiFungsional || ''}`).join('\n')
 
 Rancang skema tabel data dan relasi dalam format JSON:`;
 
-  const parseAndValidateDataSchema = (rawText: string | null): DataSchemaResult | null => {
+  const semanticAiMatcher: SemanticRoleMatcher = (stem, kata, roles) =>
+    detectTargetRoleSemanticAI(stem, kata, roles, { provider, apiKey, model });
+
+  const parseAndValidateDataSchema = async (rawText: string | null): Promise<DataSchemaResult | null> => {
     if (!rawText) return null;
     try {
       const parsed = robustJsonParse<any>(rawText);
-      const extracted = extractTablesAndCorrelationFromParsed(parsed);
+      const extracted = await extractTablesAndCorrelationFromParsed(
+        parsed,
+        undefined,
+        session.roles?.selected,
+        semanticAiMatcher
+      );
       if (extracted && extracted.tables.length >= 2) {
         const markdownTable = renderDataSchemaMarkdown(extracted.tables, extracted.korelasiRingkas);
         return {
@@ -2435,7 +2498,7 @@ Rancang skema tabel data dan relasi dalam format JSON:`;
     userModel: model
   });
 
-  let parsedSchema = parseAndValidateDataSchema(raw);
+  let parsedSchema = await parseAndValidateDataSchema(raw);
 
   // Format retry jika parse gagal
   if (!parsedSchema && (provider || apiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY)) {
@@ -2453,7 +2516,7 @@ WAJIB keluarkan HANYA JSON murni yang valid tanpa komentar, tanpa trailing comma
       userApiKey: apiKey,
       userModel: model
     });
-    parsedSchema = parseAndValidateDataSchema(raw);
+    parsedSchema = await parseAndValidateDataSchema(raw);
   }
 
   // Validasi Grounding Kata Benda Alur (Bagian A.2)
@@ -2476,7 +2539,7 @@ Kembalikan JSON lengkap seluruh tabel yang telah diperbarui:`;
         userApiKey: apiKey,
         userModel: model
       });
-      const retryParsed = parseAndValidateDataSchema(retryRaw);
+      const retryParsed = await parseAndValidateDataSchema(retryRaw);
       if (retryParsed) {
         parsedSchema = retryParsed;
       }
@@ -2548,7 +2611,14 @@ Perbarui dan kembalikan JSON lengkap:`;
   if (raw) {
     try {
       const parsed = robustJsonParse<any>(raw);
-      const extracted = extractTablesAndCorrelationFromParsed(parsed, session.dataSchema?.korelasiRingkas);
+      const semanticAiMatcher: SemanticRoleMatcher = (stem, kata, roles) =>
+        detectTargetRoleSemanticAI(stem, kata, roles, { provider, apiKey, model });
+      const extracted = await extractTablesAndCorrelationFromParsed(
+        parsed,
+        session.dataSchema?.korelasiRingkas,
+        session.roles?.selected,
+        semanticAiMatcher
+      );
       if (extracted && extracted.tables.length > 0) {
         const markdownTable = renderDataSchemaMarkdown(extracted.tables, extracted.korelasiRingkas);
         return {

@@ -2529,6 +2529,110 @@ export function isTablePengguna(tableName: string): boolean {
   );
 }
 
+export type SemanticRoleMatcher = (
+  stem: string,
+  kata: string,
+  officialRoles: string[]
+) => Promise<string | null>;
+
+export async function detectTargetRoleForFieldAsync(
+  fld: { nama: string; tipe?: string; keterangan?: string; targetRole?: string },
+  officialRoles?: string[],
+  semanticAiMatcher?: SemanticRoleMatcher
+): Promise<string | null> {
+  if (fld.targetRole && fld.targetRole.trim()) {
+    return fld.targetRole.trim();
+  }
+
+  const fName = (fld.nama || '').toLowerCase().replace(/[\s_]+/g, '_');
+  const fType = (fld.tipe || '').toLowerCase();
+  const kata = (fld.keterangan || '').toLowerCase();
+
+  // Hanya periksa jika field merupakan relasi atau menunjuk ID/user
+  const isRelasiLike =
+    fType.includes('relasi ke') ||
+    fName.endsWith('_id') ||
+    fName.startsWith('id_') ||
+    fName.includes('pengguna') ||
+    fName.includes('user') ||
+    /^(instruktur|siswa|murid|pelanggan|kasir|mekanik|dokter|pasien|penyewa|warga|anggota|staf|petugas|admin|pemilik)/.test(fName);
+
+  if (!isRelasiLike) return null;
+
+  const roles = (officialRoles || []).filter(Boolean);
+  if (roles.length === 0) {
+    console.warn(
+      `[ROLE-RELATION-WARN] detectTargetRoleForField dipanggil tanpa officialRoles untuk field "${fld.nama}". Pencocokan dinamis Lapis 1 & 2 dinonaktifkan!`
+    );
+  }
+  const sortedRoles = [...roles].sort((a, b) => b.length - a.length);
+
+  // LAPIS 1: Cek kecocokan langsung dari keterangan dengan official roles
+  for (const r of sortedRoles) {
+    const rLower = r.toLowerCase();
+    const regex = new RegExp(`\\b${rLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(kata)) {
+      return r;
+    }
+  }
+
+  // LAPIS 2: Ekstrak stem dari nama field: misal "instruktur_id" -> "instruktur", "id_siswa" -> "siswa"
+  const stem = fName.replace(/_(id|fk)$/i, '').replace(/^id_/i, '').replace(/_/g, ' ').trim();
+  for (const r of sortedRoles) {
+    const rLower = r.toLowerCase();
+    if (stem === rLower || rLower.includes(stem) || stem.includes(rLower)) {
+      return r;
+    }
+  }
+
+  // LAPIS 3 (BARU): Penilaian Semantik Berbasis AI jika Lapis 1 & 2 gagal
+  if (semanticAiMatcher && sortedRoles.length > 0) {
+    try {
+      const aiResult = await semanticAiMatcher(stem, kata, sortedRoles);
+      if (aiResult) {
+        const cleanAi = aiResult.trim().toLowerCase();
+        const matched = sortedRoles.find(
+          (r) => r.toLowerCase() === cleanAi || cleanAi.includes(r.toLowerCase()) || r.toLowerCase().includes(cleanAi)
+        );
+        if (matched) {
+          return matched;
+        }
+      }
+    } catch (err) {
+      console.warn(`[ROLE-RELATION-AI] Evaluasi semantik gagal untuk field "${fld.nama}":`, err);
+    }
+  }
+
+  // LAPIS 4 (TERAKHIR): Mapping sinonim umum antar istilah role (fallback kamus tetap)
+  const ROLE_SYNONYMS: Record<string, string[]> = {
+    siswa: ['murid', 'peserta', 'pelajar', 'kursus'],
+    instruktur: ['pengajar', 'guru', 'tutor', 'trainer', 'pelatih'],
+    staf: ['admin', 'administrasi', 'petugas', 'operator'],
+    pemilik: ['owner', 'pimpinan', 'kepala', 'bos', 'manager'],
+    pelanggan: ['customer', 'konsumen', 'klien', 'pembeli'],
+    anggota: ['member', 'nasabah', 'peserta'],
+    penyewa: ['renter', 'tenant', 'peminjam'],
+    pasien: ['klien', 'pasien']
+  };
+
+  for (const r of sortedRoles) {
+    const rLower = r.toLowerCase();
+    for (const [canonical, syns] of Object.entries(ROLE_SYNONYMS)) {
+      const matchRole = rLower.includes(canonical) || syns.some((s) => rLower.includes(s));
+      const matchStem =
+        stem.includes(canonical) ||
+        syns.some((s) => stem.includes(s)) ||
+        kata.includes(canonical) ||
+        syns.some((s) => kata.includes(s));
+      if (matchRole && matchStem) {
+        return r;
+      }
+    }
+  }
+
+  return null;
+}
+
 export function detectTargetRoleForField(
   fld: { nama: string; tipe?: string; keterangan?: string; targetRole?: string },
   officialRoles?: string[]
@@ -2553,6 +2657,11 @@ export function detectTargetRoleForField(
   if (!isRelasiLike) return null;
 
   const roles = (officialRoles || []).filter(Boolean);
+  if (roles.length === 0) {
+    console.warn(
+      `[ROLE-RELATION-WARN] detectTargetRoleForField dipanggil tanpa officialRoles untuk field "${fld.nama}". Pencocokan dinamis Lapis 1 & 2 dinonaktifkan!`
+    );
+  }
   // Urutkan roles descending by length agar lebih spesifik dicocokkan lebih dulu (misal "Staf Administrasi" sebelum "Staf")
   const sortedRoles = [...roles].sort((a, b) => b.length - a.length);
 
@@ -2576,7 +2685,7 @@ export function detectTargetRoleForField(
     }
   }
 
-  // 3. Mapping sinonim umum antar istilah role
+  // 4 (TERAKHIR): Mapping sinonim umum antar istilah role (fallback kamus tetap)
   const ROLE_SYNONYMS: Record<string, string[]> = {
     siswa: ['murid', 'peserta', 'pelajar', 'kursus'],
     instruktur: ['pengajar', 'guru', 'tutor', 'trainer', 'pelatih'],
@@ -2704,11 +2813,21 @@ export function repairRelasiSimulasiDb(
                 .filter(Boolean);
             }
           }
+        } else {
+          // JARING PENGAMAN 2b (Poin 10 & 11):
+          // Jika targetRole gagal dipastikan untuk tabel pengguna, JANGAN ambil ID sembarang!
+          // Biarkan kosong / menunggu konfirmasi peran agar tidak menyesatkan user.
+          t.baris.forEach((row) => {
+            row[f.nama] = '';
+          });
+          continue;
         }
       }
 
       if (validIds.length === 0) {
-        validIds = tgtTabel.baris.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean);
+        if (!isTablePengguna(tgt.nama)) {
+          validIds = tgtTabel.baris.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean);
+        }
       }
       if (validIds.length === 0) continue;
 
@@ -2924,6 +3043,9 @@ export function generateDeterministicSimulasiDb(
               return ids[chosenRoleIdx % ids.length];
             }
           }
+          // JARING PENGAMAN 2b (Poin 10 & 11):
+          // Jika targetRole tidak pasti, JANGAN return ID sembarang dari tabel pengguna!
+          return '';
         }
         const ids = idValuesOf(tgt);
         return ids[rowIdx % ids.length];
@@ -3417,37 +3539,45 @@ export function validateContohDataVsSchema(
       // Validasi Role-Aware jika relasi menunjuk ke tabel pengguna (Langkah 4)
       if (isTablePengguna(tgt.nama)) {
         const targetRole = detectTargetRoleForField(fld, officialRoles);
-        if (targetRole && tgtTabel.baris.length > 0) {
-          const roleCol = Object.keys(tgtTabel.baris[0] || {}).find((k) =>
-            /^(peran|role|jabatan)$/i.test(k)
-          );
-          if (roleCol) {
-            const matchingUsers = tgtTabel.baris.filter((r) => {
-              const actual = String(r[roleCol] ?? '').trim().toLowerCase();
-              const target = targetRole.toLowerCase();
-              return actual === target || actual.includes(target) || target.includes(actual);
-            });
+        if (targetRole) {
+          if (tgtTabel.baris.length > 0) {
+            const roleCol = Object.keys(tgtTabel.baris[0] || {}).find((k) =>
+              /^(peran|role|jabatan)$/i.test(k)
+            );
+            if (roleCol) {
+              const matchingUsers = tgtTabel.baris.filter((r) => {
+                const actual = String(r[roleCol] ?? '').trim().toLowerCase();
+                const target = targetRole.toLowerCase();
+                return actual === target || actual.includes(target) || target.includes(actual);
+              });
 
-            if (matchingUsers.length === 0) {
-              masalah.push(
-                `"${t.nama}.${fld.nama}" membutuhkan relasi ke pengguna dengan peran "${targetRole}", namun tabel "${tgt.nama}" belum memiliki data pengguna dengan peran tersebut.`
-              );
-            } else {
-              const matchingIds = new Set(
-                matchingUsers.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean)
-              );
-              for (const row of t.baris) {
-                const v = String(row[fld.nama] ?? '').trim();
-                if (v && !matchingIds.has(v)) {
-                  const actualUser = tgtTabel.baris.find((r) => String(r[tgt.idField] ?? '').trim() === v);
-                  const actualRole = actualUser ? String(actualUser[roleCol] ?? '').trim() : 'tidak diketahui';
-                  masalah.push(
-                    `"${t.nama}.${fld.nama}" = "${v}" merujuk ke pengguna dengan peran "${actualRole}", seharusnya peran "${targetRole}"`
-                  );
+              if (matchingUsers.length === 0) {
+                masalah.push(
+                  `"${t.nama}.${fld.nama}" membutuhkan relasi ke pengguna dengan peran "${targetRole}", namun tabel "${tgt.nama}" belum memiliki data pengguna dengan peran tersebut.`
+                );
+              } else {
+                const matchingIds = new Set(
+                  matchingUsers.map((r) => String(r[tgt.idField] ?? '').trim()).filter(Boolean)
+                );
+                for (const row of t.baris) {
+                  const v = String(row[fld.nama] ?? '').trim();
+                  if (v && !matchingIds.has(v)) {
+                    const actualUser = tgtTabel.baris.find((r) => String(r[tgt.idField] ?? '').trim() === v);
+                    const actualRole = actualUser ? String(actualUser[roleCol] ?? '').trim() : 'tidak diketahui';
+                    masalah.push(
+                      `"${t.nama}.${fld.nama}" = "${v}" merujuk ke pengguna dengan peran "${actualRole}", seharusnya peran "${targetRole}"`
+                    );
+                  }
                 }
               }
             }
           }
+        } else {
+          // JARING PENGAMAN 2b (Poin 10):
+          // Target role tidak dapat dipastikan otomatis dari officialRoles maupun kamus
+          masalah.push(
+            `⚠️ PERINGATAN [POIN A]: Target role untuk field relasi "${t.nama}.${fld.nama}" tidak dapat dipastikan secara otomatis dari daftar peran aktif (${(officialRoles || []).join(', ') || '-'}). Mohon konfirmasi manual peran pengguna yang berelasi dengan field ini sebelum data simulasi final digunakan.`
+          );
         }
       }
     }
