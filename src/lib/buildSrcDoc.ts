@@ -892,13 +892,14 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <!-- Lucide Icons (Pure DOM SVG Parser) -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
-    // Runtime Safety Bridge untuk Pilar 1 Vue Scaffold
+    // Runtime Safety Bridge untuk Pilar 1 Vue Scaffold (Fase 2 & Fase 3)
     window.Pilar1VueScaffoldMixin = {
       data() {
         return {
           currentRole: '',
+          isLoggedIn: false,
           activeTab: 'tabDasbor',
-          toast: { show: false, message: '', type: 'info' }
+          toast: { show: false, visible: false, message: '', type: 'info' }
         };
       },
       methods: {
@@ -908,9 +909,15 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           if (this.currentRole === owner) return true;
           return roles.includes(this.currentRole) || roles.includes('*');
         },
+        canEditCurrentTab() {
+          if (!this.currentTableConfig) return false;
+          var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+          return this.isRoleAllowed(allowed);
+        },
         showTab(tabId) { this.activeTab = tabId; },
         loginAs(role) {
           this.currentRole = role;
+          this.isLoggedIn = true;
           var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
           if (acc && acc.landingTab) this.showTab(acc.landingTab);
           else if (this.tabs && this.tabs.length) {
@@ -918,14 +925,58 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
             if (first) this.showTab(first.id);
           }
         },
-        logout() { this.currentRole = ''; this.activeTab = ''; },
+        logout() {
+          this.currentRole = '';
+          this.isLoggedIn = false;
+          this.activeTab = '';
+          this.showToast('Berhasil keluar.', 'info');
+        },
         showToast(message, type) {
-          this.toast = { show: true, message: message, type: type || 'info' };
+          type = type || 'info';
+          this.toast = { show: true, visible: true, message: message, type: type };
           var self = this;
-          setTimeout(function() { if (self.toast) self.toast.show = false; }, 3000);
+          setTimeout(function() {
+            if (self.toast) {
+              self.toast.show = false;
+              self.toast.visible = false;
+            }
+          }, 3000);
+        },
+        bukaModalTambahStaf() {
+          if (this.openCreate && this.tablesConfig && this.tablesConfig.pengguna) {
+            this.openCreate('pengguna');
+          } else {
+            this.showToast('Membuka formulir pendaftaran akun staf', 'info');
+          }
+        },
+        bukaModalAturHakAkses() {
+          this.showToast('Panel konfigurasi hak akses modul operasional dibuka', 'info');
+        },
+        nonaktifkanAkunStaf() {
+          this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
         }
       }
     };
+
+    // Auto-hook Vue.createApp agar Pilar 1 Mixin selalu terpasang tanpa bergantung kode AI
+    (function() {
+      if (typeof Vue !== 'undefined' && Vue.createApp && !Vue.__pilar1Patched) {
+        var _origCreateApp = Vue.createApp;
+        Vue.createApp = function(rootComp, rootProps) {
+          rootComp = rootComp || {};
+          rootComp.mixins = rootComp.mixins || [];
+          if (window.Pilar1VueScaffoldMixin && !rootComp.mixins.includes(window.Pilar1VueScaffoldMixin)) {
+            rootComp.mixins.unshift(window.Pilar1VueScaffoldMixin);
+          }
+          var app = _origCreateApp(rootComp, rootProps);
+          if (window.Pilar1VueScaffoldMixin && app && typeof app.mixin === 'function') {
+            app.mixin(window.Pilar1VueScaffoldMixin);
+          }
+          return app;
+        };
+        Vue.__pilar1Patched = true;
+      }
+    })();
   </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }

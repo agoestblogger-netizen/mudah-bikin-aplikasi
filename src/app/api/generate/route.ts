@@ -1132,115 +1132,96 @@ ${schemaMarkdownBlock}
 ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
 ================================================================================
 
-⚠️ ATURAN MUTLAK SINKRONISASI PROTOTIPE, ISOLASI PERAN & LARANGAN ROLE SWITCHER:
+⚠️ ATURAN MUTLAK SINKRONISASI PROTOTIPE VUE 3, ISOLASI PERAN & LARANGAN ROLE SWITCHER:
 1. PERGANTIAN PERAN 100% HANYA LEWAT LAYAR LOGIN (#loginScreen):
    - DILARANG KERAS membuat tombol switcher peran (seperti tombol berjejer [Admin] [Anggota] atau dropdown switch role) di dalam halaman aplikasi (#appContainer)!
-   - Pergantian peran SELURUHNYA HANYA dilakukan melalui tombol "🚪 Keluar / Ganti Akun" (onclick="logout()") di header aplikasi.
-   - Saat tombol logout() ditekan, #appContainer disembunyikan dan kartu login #loginScreen ditampilkan kembali di tengah layar.
+   - Pergantian peran SELURUHNYA HANYA dilakukan melalui tombol "🚪 Keluar / Ganti Akun" (@click="logout") di header aplikasi.
+   - Saat tombol logout ditekan, state reaktif diperbarui: this.currentRole = ''; this.isLoggedIn = false;
+   - Tampilan dikontrol 100% via reaktivitas Vue: v-if="!isLoggedIn" pada #loginScreen dan v-if="isLoggedIn" pada #appContainer. DILARANG manipulasi DOM manual!
    - Dari layar login itulah pengguna memilih/masuk sebagai akun peran lain.
 
 2. LABEL TOMBOL TAB ADALAH NAMA FITUR, BUKAN NAMA PERAN:
    - DILARANG KERAS menamai tombol tab dengan nama peran mentah (misal: tombol tab bertuliskan "Super Admin" atau "Anggota")!
    - Tombol tab di dalam aplikasi adalah NAVIGASI FITUR sesuai Job Description di Brief Kebutuhan:
-      * Contoh Tab Super Admin: <button class="tab-btn" data-access-roles="Super Admin" onclick="showTab('tab-anggota')">👥 Data Anggota</button>, <button class="tab-btn" data-access-roles="Super Admin" onclick="showTab('tab-laporan')">📊 Laporan & Kas</button>
-     * Contoh Tab Anggota: <button class="tab-btn" data-access-roles="Anggota" onclick="showTab('tab-profil')">🪪 Kartu Anggota Digital</button>, <button class="tab-btn" data-access-roles="Anggota" onclick="showTab('tab-iuran')">💳 Riwayat Iuran</button>
+      * Navigasi tab dirender melalui loop:
+        <button v-for="tab in tabs" :key="tab.id" v-show="isRoleAllowed(tab.roles)" @click="showTab(tab.id)" :class="activeTab === tab.id ? 'border-b-2 border-indigo-600 text-indigo-600 font-bold' : 'text-gray-500 hover:text-gray-700'" class="tab-btn px-4 py-2.5 text-sm font-medium transition whitespace-nowrap">{{ tab.label }}</button>
 
 3. ISOLASI TOTAL HAK AKSES PER ROLE (ZERO ROLE LEAKAGE):
-   - Setiap tombol tab WAJIB memiliki atribut \`data-access-roles="NamaPeran"\` (contoh: data-access-roles="${officialRoles[0] || 'Super Admin'}").
-   - Fungsi filterTabsByRole(role) WAJIB menyembunyikan (display: none) seluruh tab yang data-access-roles-nya TIDAK mencantumkan peran aktif!
-   - Saat pengguna login sebagai "Anggota", tab-tab milik "Admin" WAJIB 100% TERSEMBUNYI! Pengguna "Anggota" HANYA melihat tab fitur miliknya (misal: Kartu Digital, Profil Pribadi, Iuran Saya).
-   - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Tambah/Edit/Hapus seluruh anggota) pada tampilan Anggota!
+   - Seluruh tab navigasi digate via v-show="isRoleAllowed(tab.roles)".
+   - Konten tab ditampilkan deklaratif via v-show="activeTab === tab.id".
+   - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Tambah/Edit/Hapus seluruh pengguna/staf) pada tampilan non-admin!
 
-4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS (WAJIB MUTLAK — BAGIAN A):
-   - Fungsi loginAs(role) WAJIB memanggil filterTabsByRole(role) untuk menampilkan HANYA tab yang memiliki data-access-roles sesuai peran aktif.
-   - SETELAH filterTabsByRole(role), loginAs(role) WAJIB MEMANGGIL showTab(matched.landingTab) (atau klik tab pertama yang terlihat).
-   - DILARANG KERAS membiarkan tab Super Admin tetap aktif/terbuka saat peran lain (seperti Kasir, Barber, Pelanggan) login! Setiap peran WAJIB langsung disambut oleh halaman/tab landing miliknya sendiri.
-   - Navigasi tab WAJIB memiliki styling CSS modern (.tab-nav dan .tab-btn dengan border-radius, background, dan warna tegas, bukan button polos HTML bawaan).
+4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS:
+   - Method loginAs(role) menetapkan this.currentRole = role; this.isLoggedIn = true; lalu mengaktifkan matched.landingTab.
+   - DILARANG KERAS membiarkan tab Super Admin tetap aktif/terbuka saat peran lain login! Setiap peran WAJIB langsung disambut oleh landingTab miliknya sendiri.
 
-5. ISOLASI KONTEN TAB DALAM CSS (WAJIB MUTLAK — ANTI-TUMPUK HALAMAN):
-   - Di dalam tag <style>, WAJIB menyertakan aturan CSS untuk menyembunyikan konten tab tidak aktif:
-     .tab-content, .tab-pane { display: none; }
-     .tab-content.active, .tab-pane.active { display: block; }
-   - DILARANG KERAS membiarkan .tab-content tanpa aturan CSS di atas! Tanpa display: none, seluruh halaman role akan tampil menumpuk di satu layar.
-   - Fungsi showTab(tabId) di tag <script> WAJIB menyembunyikan seluruh .tab-content (t.classList.remove('active') dan t.style.display = 'none') dan mengaktifkan HANYA tab target (target.classList.add('active') dan target.style.display = 'block').
-
-6. PEMISAHAN DATA, TABEL & FORM PER ROLE (NORMALISASI TAMPILAN):
+5. PEMISAHAN DATA, TABEL & FORM PER ROLE:
    - SETIAP ROLE WAJIB MEMILIKI KONTEN/HALAMAN YANG BERBEDA SECARA FISIK SESUAI BRIEF:
-     * Role Super Admin: HANYA berisi tabel akun staf, hak akses / permission, dan audit log sistem.
-     * Role Operasional (misal: Petugas Rental, Kasir, Washer): Berisi katalog/tabel operasional, form transaksi/alur kerja (serah terima, cek fisik, hitung denda, perbaikan/status).
-     * Role Eksternal (misal: Penyewa, Pelanggan, Pasien): Berisi katalog ketersediaan mandiri, form pemesanan/booking mandiri, atau kartu identitas/status pesanan pribadi. DILARANG memuat tabel akun staf atau tombol aksi manajemen staf!
-   - DILARANG KERAS menampilkan data, tabel, atau formulir yang sama persis di semua role!
+     * Role Super Admin: Berisi dasbor manajerial, pengaturan sistem, dan akun staf.
+     * Role Operasional: Berisi katalog/tabel operasional dan alur kerja transaksi.
+     * Role Eksternal: Berisi katalog ketersediaan mandiri, booking, atau kartu status pribadi. DILARANG memuat tabel akun staf atau tombol aksi manajemen staf!
 
-7. PANDUAN PENERJEMAHAN MATRIKS RBAC KE ANTARMUKA (ACTION-LEVEL RBAC UI GATING — BAGIAN B):
-   - Membatasi akses tab navigasi saja TIDAK CUKUP. Di dalam halaman/tab yang diakses, setiap peran WAJIB mendapatkan hak aksi (tombol, formulir, kolom mutasi, filter data) yang SELARAS dengan wewenang mereka pada matriks RBAC!
-   - PRINSIP INTERPRETASI KONSEPTUAL / SEMANTIK (BUKAN KEYWORD MATCHING KAKU):
-     Wewenang pada matriks RBAC dirumuskan dalam bahasa proses bisnis nyata. Interpretasikan maksud wewenangnya secara kontekstual per modul sesuai domain aplikasi, dengan 4 pola umum (misalnya, bukan daftar tertutup):
-     a. POLA "TANPA AKSES" (misalnya: "-", "Tidak Ada Akses", "None"):
-        * Sembunyikan tab atau section modul ini sepenuhnya untuk peran tersebut (display: none atau tidak di-render).
-     b. POLA "PANTAU / MILIK SENDIRI / TERBATAS" (misalnya: "Lihat Status Sendiri", "Riwayat Pengerjaan Milik Sendiri", "Pantau Antrean", "Self-Service", "Read-Only"):
-        * Tampilkan data dalam mode pantau/baca saja (read-only table/card).
-        * SEMBUNYIKAN tombol aksi mutasi global (seperti "➕ Tambah Data Baru", tombol "Edit", tombol "Hapus").
-        * Jika wewenang menyebutkan "milik sendiri", filter data di JavaScript agar HANYA menampilkan entri milik pengguna tersebut (contoh: item.pelangganId === currentUserId || item.barberId === currentUserId).
-     c. POLA "EKSEKUSI / OPERASIONAL / KERJA LAPANGAN" (misalnya: "Kerjakan Servis", "Verifikasi Berkas", "Mulai Pengerjaan", "Check-in Unit", "Input Hasil Cek", "Proses Transaksi"):
-        * Sediakan tombol aksi operasional yang relevan di baris tabel atau kartu (misalnya: tombol "Mulai Pengerjaan", "Selesai", "Verifikasi", "Check-out").
-        * Jangan beri tombol manajemen sistem tingkat tinggi atau otorisasi manajerial.
-     d. POLA "SUPERVISI / MANAJERIAL / KONTROL PENUH" (misalnya: "Otorisasi Transaksi", "Supervisi Mutu", "Setujui/Tolak Pengajuan", "Audit & Laporan Global", "Kelola Tarif & Master"):
-        * Sediakan tombol persetujuan manajerial (Approve/Reject), tombol pembatalan, pengaturan tarif/master data, atau ekspor laporan menyeluruh.
+6. PANDUAN PENERJEMAHAN MATRIKS RBAC KE ANTARMUKA (ACTION-LEVEL RBAC UI GATING):
+   - Di dalam toolbar tabel dan baris aksi:
+     Gunakan pengecekan this.isRoleAllowed(...) untuk menentukan visibilitas tombol Tambah / Edit / Hapus.
+   - ⚠️ ATURAN KETAT canEditCurrentTab() & ANTI-HARDCODED ROLE CHECK:
+     DILARANG KERAS meng-hardcode nama peran literal (seperti roles.includes('Super Admin') || roles.includes('Staf ...')) di dalam method/computed mana pun (khususnya canEditCurrentTab).
+     WAJIB selalu mendelegasikan ke this.isRoleAllowed(...) agar semua role yang berhak pada tabel tersebut dapat menambah/mengedit data:
+     \`\`\`javascript
+     canEditCurrentTab() {
+       if (!this.currentTableConfig) return false;
+       const allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+       return this.isRoleAllowed(allowed);
+     }
+     \`\`\`
 
-   ⚠️ PENEGASAN EKSPLISIT:
-   Contoh di atas cuma ilustrasi pola umum — nilai izin di RBAC bisa berbentuk kalimat lain yang maknanya setara, jangan menolak menginterpretasikan wewenang hanya karena kata persisnya tidak cocok dengan contoh.
-
-   - PENERAPAN TEKNIS DI KODE HTML & JAVASCRIPT:
-     * Di dalam loop render data (misalnya: renderOrders(), renderAntrean(), renderTabel()):
-       Gunakan pengecekan currentRole (atau currentUserId) untuk menentukan tombol aksi apa yang di-render di kolom "Aksi" tabel atau kartu.
-     * Tombol Tambah Data di Toolbar Tab:
-       Tombol seperti "➕ Tambah Data" HANYA boleh muncul jika peran yang sedang aktif login memiliki wewenang membuat data di modul tersebut.
-     * Modal dan Formulir:
-       Field input atau opsi tertentu yang hanya boleh diubah oleh manajer/supervisi harus dinonaktifkan atau disembunyikan untuk peran staf operasional biasa.
+7. ⚠️ ATURAN PANEL MANAJEMEN SISTEM (ANTI-LEAK & ANTI-DEAD BUTTONS):
+   - SEMUA elemen UI, kartu, panel (termasuk panel Manajemen Sistem / Akun Staf Super Admin), modal, dan toast WAJIB berada di DALAM template Vue <div id="app">. DILARANG KERAS menempatkan elemen UI apa pun di luar <div id="app">!
+   - Panel 'Manajemen Sistem' khusus Super Admin WAJIB berada di dalam #appContainer dengan proteksi v-if="isRoleAllowed(['Super Admin'])" (atau v-if="currentRole === 'Super Admin'").
+   - Setiap tombol di panel ini WAJIB memiliki @click yang memanggil method Vue nyata (@click="bukaModalTambahStaf", @click="bukaModalAturHakAkses", @click="nonaktifkanAkunStaf") yang benar-benar memunculkan modal/form, memutasi data, atau menampilkan toast feedback (DILARANG tombol mati / tanpa @click).
 
 ================================================================================
-⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI (POIN 44, 45, 52, 53):
+⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI:
 Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
 ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES PUBLIK - TAMPILAN AWAL)' : '(PERAN STAF/INTERNAL)'}`).join('\n')}
 
-ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK (WAJIB DIPATUHI — POIN 52):
+ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK:
 1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
-2. DILARANG KERAS menambahkan role generic (Admin, Kasir, Washer, Petugas, Owner, Manager) jika TIDAK ADA di daftar resmi di atas. Role "Super Admin" adalah pengecualian wajib dan selalu ada!
-3. DILARANG KERAS MENYINGKAT NAMA PERAN DALAM KODE MAUPUN DATA (contoh: "Staf Administrasi" DILARANG disingkat jadi "Staf", "Super Admin" DILARANG disingkat jadi "Admin"). Semua pengecekan role di JavaScript (misal: currentUser.role === 'Staf Administrasi') WAJIB MENGGUNAKAN NAMA PERAN LENGKAP PERSIS SESUAI DAFTAR DI ATAS.
-4. TAMPILAN AWAL: LAYAR LOGIN DI TENGAH LAYAR (#loginScreen — WAJIB PERSIS GAMBAR 2):
-   - Aplikasi WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN (#loginScreen) di tengah layar saat pertama kali dibuka (PERSIS SEPERTI GAMBAR 2).
-   - Container aplikasi (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
-   - DILARANG KERAS langsung menampilkan dashboard aplikasi dengan tombol "Login Staf" di header!
+2. DILARANG KERAS menambahkan role generic jika TIDAK ADA di daftar resmi di atas. Role "Super Admin" adalah pengecualian wajib dan selalu ada!
+3. DILARANG KERAS MENYINGKAT NAMA PERAN DALAM KODE MAUPUN DATA. Semua pengecekan role di JavaScript WAJIB MENGGUNAKAN NAMA PERAN LENGKAP PERSIS SESUAI DAFTAR DI ATAS.
+4. TAMPILAN AWAL: LAYAR LOGIN DI TENGAH LAYAR (#loginScreen DENGAN REAKTIVITAS VUE):
+   - State data() Vue WAJIB menyertakan:
+     isLoggedIn: false,
+     currentRole: '',
+     loginForm: { username: '', password: '' },
+     toast: { visible: false, show: false, message: '', type: 'info' }
+   - Template: #loginScreen menggunakan v-if="!isLoggedIn" (atau v-show="!isLoggedIn") dan #appContainer menggunakan v-if="isLoggedIn" (atau v-show="isLoggedIn").
+   - DILARANG KERAS manipulasi DOM manual seperti document.getElementById('loginScreen').style.display atau document.getElementById('appContainer').style.display!
    - Di kartu login #loginScreen:
-     * Icon aplikasi di dalam box rounded biru lembut (Gunakan emoji yang 100% RELEVAN dengan bisnis pengguna, contoh 🐱 atau 🐾 untuk penitipan kucing, 🧺 untuk laundry; DILARANG memakai icon hotel 🏨 jika bisnisnya bukan perhotelan!)
-     * Judul aplikasi spesifik (contoh: "Aplikasi Penitipan Kucing", DILARANG memakai judul template umum seperti "Aplikasi Perhotelan & Pariwisata"!) + subjudul "Masuk ke Akun Anda untuk Memulai"
-     * Input Username (id="loginUsername" placeholder="Masukkan username")
-     * Input Kata Sandi (id="loginPassword" type="password" placeholder="Masukkan kata sandi")
-     * Tombol "➔] Masuk" (onclick="handleLogin()")
-     * Kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk yang mencantumkan daftar peran resmi dan kredensialnya (dengan onclick quickLogin(u, p)).
-${publicRole ? `     * Di bawah kotak Akun Demo Staf, sediakan link sekunder: "Atau lanjut tanpa login sebagai ${publicRole} ➔" (onclick="loginAs('${publicRole}')").` : ''}
-4. PERLINDUNGAN KEAMANAN TAB STAF (POIN 52):
-   - Seluruh tab manajemen data staf (Edit, Hapus, Ubah Status) HANYA boleh diakses setelah login staf.
-5. LOGOUT HANDLER:
-   function logout() {
-     currentRole = '';
-     const loginEl = document.getElementById('loginScreen');
-     const appEl = document.getElementById('appContainer');
-     if (appEl) appEl.style.display = 'none';
-     if (loginEl) loginEl.style.display = 'flex';
-     showToast('Berhasil keluar. Silakan login kembali.', 'info');
+     * Icon aplikasi di dalam box rounded biru lembut yang 100% RELEVAN dengan bisnis pengguna.
+     * Judul aplikasi spesifik + subjudul "Masuk ke Akun Anda untuk Memulai".
+     * Input Username (id="loginUsername" v-model="loginForm.username" placeholder="Masukkan username").
+     * Input Kata Sandi (id="loginPassword" type="password" v-model="loginForm.password" placeholder="Masukkan kata sandi").
+     * Tombol "➔] Masuk" (@click="handleLogin" atau form @submit.prevent="handleLogin").
+     * Kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk yang mencantumkan daftar peran resmi dan kredensialnya (@click="quickLogin(acc.username, acc.password)").
+${publicRole ? `     * Di bawah kotak Akun Demo Staf, sediakan link sekunder: "Atau lanjut tanpa login sebagai ${publicRole} ➔" (@click="loginAs('${publicRole}')").` : ''}
+5. LOGOUT HANDLER REAKTIF:
+   \`\`\`javascript
+   logout() {
+     this.currentRole = '';
+     this.isLoggedIn = false;
+     this.activeTab = '';
+     this.showToast('Berhasil keluar. Silakan login kembali.', 'info');
    }
-6. FORM LOGIN GAYA PRODUKSI: Form WAJIB memiliki <input type="text" id="loginUsername" placeholder="Username / Email"> dan <input type="password" id="loginPassword" placeholder="Kata Sandi"> serta tombol <button type="button" onclick="handleLogin()">Masuk</button>. DILARANG membuat tombol "Masuk sebagai [Role]" berjejer di form login!
-7. KREDENSIAL SIMULASI & DEFAULT LANDING TAB PER ROLE (WAJIB — POIN 53):
-   Cocokkan login di fungsi handleLogin() dengan array DEMO_ACCOUNTS PERSIS seperti ini:
-   const DEMO_ACCOUNTS = [
+   \`\`\`
+6. KREDENSIAL SIMULASI & DEFAULT LANDING TAB PER ROLE:
+   Array demoAccounts di data Vue:
+   demoAccounts: [
 ${credentialsList.map(c => `     ${c}`).join(',\n')}
-   ];
-   ⚠️ KRITIS (POIN 53 & BAGIAN A — DEFAULT LANDING TAB): Setiap entry peran (baik staf maupun publik) WAJIB punya field \`landingTab\` yang diisi dengan ID HTML (id="...") dari TAB PERTAMA/DEFAULT role tersebut sesuai Brief Kebutuhan:
+   ],
+   ⚠️ DEFAULT LANDING TAB: Setiap entry peran WAJIB punya field \`landingTab\` yang diisi dengan ID tab default role tersebut:
 ${staffLandingGuide}
-   PENTING: "landingTab" adalah ID tab HTML peran spesifik. Jika login sebagai Kasir, harus langsung ke tab Kasir; jika login sebagai Barber, harus langsung ke tab Barber; jika login sebagai Pelanggan, ke tab Pelanggan/Antrean — BUKAN tab Super Admin!
-   Jika gagal login, panggil showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error').
-8. SETIAP tombol tab (<button class="tab-btn">) WAJIB menggunakan atribut data-access-roles yang HANYA berisi nama peran resmi di atas.
+   Jika gagal login di handleLogin(), panggil this.showToast('Username atau kata sandi tidak cocok! Silakan cek petunjuk akun demo.', 'error').
 ================================================================================`;
       }
 

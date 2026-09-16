@@ -185,6 +185,40 @@ function injectBeforeLastScriptClose(html: string, code: string): string {
   return sanitizedHtml + `\n<script>\n${code}\n</script>\n</body>\n</html>`;
 }
 
+export function injectAtFirstScriptStart(html: string, code: string): string {
+  const match = html.match(/<script\b(?![^>]*\bsrc\s*=)[^>]*>/i);
+  if (match && typeof match.index === 'number') {
+    const insertIdx = match.index + match[0].length;
+    return html.slice(0, insertIdx) + '\n' + code + '\n' + html.slice(insertIdx);
+  }
+  return injectBeforeLastScriptClose(html, code);
+}
+
+export function transformInlineScripts(html: string, transformFn: (js: string) => string): string {
+  return html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (match, openTag, scriptContent, closeTag) => {
+    if (/\bsrc\s*=/i.test(openTag)) return match;
+    return openTag + transformFn(scriptContent) + closeTag;
+  });
+}
+
+export function injectVueMixinIntoCreateApp(code: string): string {
+  if (!code) return code;
+  if (/mixins\s*:\s*\[[^\]]*Pilar1VueScaffoldMixin/.test(code)) return code;
+
+  if (/mixins\s*:\s*\[/.test(code)) {
+    return code.replace(/(mixins\s*:\s*\[)/, `$1typeof Pilar1VueScaffoldMixin !== 'undefined' ? Pilar1VueScaffoldMixin : (window.Pilar1VueScaffoldMixin || {}), `);
+  }
+
+  const createAppRegex = /((?:Vue\s*\.\s*)?createApp\s*\(\s*\{)/;
+  if (createAppRegex.test(code)) {
+    return code.replace(
+      createAppRegex,
+      `$1\n    mixins: [typeof Pilar1VueScaffoldMixin !== 'undefined' ? Pilar1VueScaffoldMixin : (window.Pilar1VueScaffoldMixin || {})],`
+    );
+  }
+  return code;
+}
+
 /**
  * Ekstrak nama-nama fungsi yang hilang (MISMATCH_HANDLER) dari issues array.
  * Di-export agar route.ts bisa menggunakannya untuk targeted AI repair call
@@ -238,9 +272,112 @@ export function injectMissingHandlerStubs(html: string, issues: string[]): strin
  * Idempotent (ditandai data-od-auto), aman dari MISMATCH_HANDLER (tanpa onclick),
  * dan hanya diberi data-access-roles sesuai nama peran Owner dinamis agar tidak bocor ke role lain.
  */
-function injectOwnerManagementSection(html: string, ownerRoleName: string = 'Super Admin'): string {
-  if (!html || /data-od-auto=["']superadmin-management["']/i.test(html)) return html;
+export function findClosingDivIndex(html: string, startIdx: number): number {
+  let depth = 0;
+  const tagRegex = /<\/?div\b[^>]*>/gi;
+  tagRegex.lastIndex = startIdx;
+  let match;
+  while ((match = tagRegex.exec(html)) !== null) {
+    if (match[0].startsWith('</')) {
+      depth--;
+      if (depth === 0) {
+        return match.index;
+      }
+    } else {
+      depth++;
+    }
+  }
+  return -1;
+}
 
+export function removeOutsideSuperadminPanel(html: string): string {
+  const marker = 'data-od-auto="superadmin-management"';
+  const appIdx = html.search(/<div[^>]*id=["']app["']/i);
+  if (appIdx === -1) return html;
+  const appCloseIdx = findClosingDivIndex(html, appIdx);
+  if (appCloseIdx === -1) return html;
+
+  let panelIdx = html.indexOf(marker);
+  while (panelIdx !== -1) {
+    if (panelIdx > appCloseIdx || panelIdx < appIdx) {
+      const divStart = html.lastIndexOf('<div', panelIdx);
+      if (divStart !== -1) {
+        const divClose = findClosingDivIndex(html, divStart);
+        if (divClose !== -1) {
+          const divEnd = divClose + '</div>'.length;
+          html = html.slice(0, divStart) + html.slice(divEnd);
+          return removeOutsideSuperadminPanel(html);
+        }
+      }
+    }
+    panelIdx = html.indexOf(marker, panelIdx + marker.length);
+  }
+  return html;
+}
+
+export function injectOwnerManagementSection(html: string, ownerRoleName: string = 'Super Admin'): string {
+  if (!html) return html;
+
+  const isVue = /Vue\.createApp\s*\(/.test(html) || /<div[^>]*id=["']app["']/.test(html);
+
+  if (isVue) {
+    // 1. Bersihkan seluruh kartu superadmin-management yang diletakkan di luar <div id="app">
+    html = removeOutsideSuperadminPanel(html);
+
+    // 2. Jika sudah ada di dalam <div id="app">, tidak perlu diduplikasi
+    if (/data-od-auto=["']superadmin-management["']/i.test(html)) {
+      return html;
+    }
+
+    const vueCard = `
+    <!-- Panel Manajemen Sistem Khusus ${ownerRoleName} (Auto-Injected Ramah Vue) -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mt-6" data-od-auto="superadmin-management" v-if="isRoleAllowed(['${ownerRoleName}'])">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+          <i class="fas fa-shield-alt text-blue-600"></i> Manajemen Sistem
+        </h3>
+        <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">${ownerRoleName}</span>
+      </div>
+      <p class="text-xs text-gray-500 mb-4">Pengaturan master data, akun staf operasional, dan hak akses modul.</p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" @click="bukaModalTambahStaf" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm transition">
+          + Tambah Akun Staf
+        </button>
+        <button type="button" @click="bukaModalAturHakAkses" class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition">
+          Atur Hak Akses
+        </button>
+        <button type="button" @click="nonaktifkanAkunStaf" class="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold rounded-lg transition">
+          Nonaktifkan Akun Staf
+        </button>
+      </div>
+    </div>`;
+
+    // 1. Prioritas: Masukkan ke dalam container utama aplikasi (appContainer) sebelum penutupnya
+    const appContainerIdx = html.search(/<div[^>]*id=["']appContainer["']/i);
+    if (appContainerIdx !== -1) {
+      const containerCloseIdx = findClosingDivIndex(html, appContainerIdx);
+      if (containerCloseIdx !== -1) {
+        return html.slice(0, containerCloseIdx) + vueCard + '\n' + html.slice(containerCloseIdx);
+      }
+    }
+
+    // 2. Masukkan sebelum penutup <div id="app">
+    const appIdx = html.search(/<div[^>]*id=["']app["']/i);
+    if (appIdx !== -1) {
+      const appCloseIdx = findClosingDivIndex(html, appIdx);
+      if (appCloseIdx !== -1) {
+        return html.slice(0, appCloseIdx) + vueCard + '\n' + html.slice(appCloseIdx);
+      }
+    }
+
+    // 3. Fallback Vue: sebelum script
+    const scriptIdx = html.indexOf('<script');
+    if (scriptIdx !== -1) {
+      return html.slice(0, scriptIdx) + vueCard + '\n' + html.slice(scriptIdx);
+    }
+  }
+
+  // Vanilla Fallback
   const card = `
 <div class="card" data-od-auto="superadmin-management" data-access-roles="${ownerRoleName}" style="margin-top:16px;">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -254,25 +391,6 @@ function injectOwnerManagementSection(html: string, ownerRoleName: string = 'Sup
   </div>
 </div>`;
 
-  // 1. Coba sisipkan ke dalam tab khusus Owner.
-  const buttonTags = [...html.matchAll(/<button\b[^>]*>/gi)].map((m) => m[0]);
-  const escapedOwner = ownerRoleName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const ownerPattern = new RegExp(escapedOwner, 'i');
-
-  for (const tag of buttonTags) {
-    if (!/tab-btn/i.test(tag)) continue;
-    const access = tag.match(/data-access-roles=["']([^"']+)["']/i)?.[1] || '';
-    if (!ownerPattern.test(access)) continue;
-    const tabId = tag.match(/showTab\(\s*['"]([^'"]+)['"]\s*\)/i)?.[1];
-    if (!tabId) continue;
-    const escaped = tabId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const idPattern = new RegExp(`(<[a-zA-Z][^>]*id=["']${escaped}["'][^>]*>)`, 'i');
-    if (idPattern.test(html)) {
-      return html.replace(idPattern, `$1\n${card}`);
-    }
-  }
-
-  // 2. Fallback: sisipkan sebelum </body>.
   if (html.includes('</body>')) return html.replace('</body>', `${card}\n</body>`);
   return html + card;
 }
@@ -361,7 +479,7 @@ export function validateAndRepairGeneratedCode(
     // =========================================================================
     if (!combinedJs.includes('Pilar1VueScaffoldMixin')) {
       plumbingToInject.push(`
-// Auto-Injected Pilar 1 Vue Scaffold Mixin (Fase 2)
+// Auto-Injected Pilar 1 Vue Scaffold Mixin (Fase 2 & Fase 3)
 var OWNER_ROLE_NAME = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
 if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
 
@@ -369,8 +487,9 @@ var Pilar1VueScaffoldMixin = {
   data() {
     return {
       currentRole: this.currentRole || '',
+      isLoggedIn: false,
       activeTab: this.activeTab || 'tabDasbor',
-      toast: this.toast || { show: false, message: '', type: 'info' }
+      toast: this.toast || { show: false, visible: false, message: '', type: 'info' }
     };
   },
   methods: {
@@ -380,11 +499,17 @@ var Pilar1VueScaffoldMixin = {
       if (this.currentRole === owner) return true;
       return roles.includes(this.currentRole) || roles.includes('*');
     },
+    canEditCurrentTab() {
+      if (!this.currentTableConfig) return false;
+      var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+      return this.isRoleAllowed(allowed);
+    },
     showTab(tabId) {
       this.activeTab = tabId;
     },
     loginAs(role) {
       this.currentRole = role;
+      this.isLoggedIn = true;
       var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
       if (acc && acc.landingTab) {
         this.showTab(acc.landingTab);
@@ -395,17 +520,57 @@ var Pilar1VueScaffoldMixin = {
     },
     logout() {
       this.currentRole = '';
+      this.isLoggedIn = false;
       this.activeTab = '';
+      this.showToast('Berhasil keluar.', 'info');
     },
     showToast(message, type) {
       type = type || 'info';
-      this.toast = { show: true, message: message, type: type };
+      this.toast = { show: true, visible: true, message: message, type: type };
       var self = this;
-      setTimeout(function() { if (self.toast) self.toast.show = false; }, 3000);
+      setTimeout(function() {
+        if (self.toast) {
+          self.toast.show = false;
+          self.toast.visible = false;
+        }
+      }, 3000);
+    },
+    bukaModalTambahStaf() {
+      if (typeof this.openCreate === 'function' && this.tablesConfig && this.tablesConfig.pengguna) {
+        this.openCreate('pengguna');
+      } else {
+        this.showToast('Membuka formulir pendaftaran akun staf', 'info');
+      }
+    },
+    bukaModalAturHakAkses() {
+      this.showToast('Panel konfigurasi hak akses modul operasional dibuka', 'info');
+    },
+    nonaktifkanAkunStaf() {
+      this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
     }
   }
 };
 if (typeof window !== 'undefined') window.Pilar1VueScaffoldMixin = Pilar1VueScaffoldMixin;
+
+// Auto-hook monkey patch Vue.createApp
+(function() {
+  if (typeof Vue !== 'undefined' && Vue.createApp && !Vue.__pilar1Patched) {
+    var _origCreateApp = Vue.createApp;
+    Vue.createApp = function(rootComp, rootProps) {
+      rootComp = rootComp || {};
+      rootComp.mixins = rootComp.mixins || [];
+      if (typeof Pilar1VueScaffoldMixin !== 'undefined' && !rootComp.mixins.includes(Pilar1VueScaffoldMixin)) {
+        rootComp.mixins.unshift(Pilar1VueScaffoldMixin);
+      }
+      var app = _origCreateApp(rootComp, rootProps);
+      if (typeof Pilar1VueScaffoldMixin !== 'undefined' && app && typeof app.mixin === 'function') {
+        app.mixin(Pilar1VueScaffoldMixin);
+      }
+      return app;
+    };
+    Vue.__pilar1Patched = true;
+  }
+})();
 `);
     }
 
@@ -415,6 +580,10 @@ if (typeof window !== 'undefined') window.Pilar1VueScaffoldMixin = Pilar1VueScaf
     definedFunctions.add('loginAs');
     definedFunctions.add('showToast');
     definedFunctions.add('isRoleAllowed');
+    definedFunctions.add('canEditCurrentTab');
+    definedFunctions.add('bukaModalTambahStaf');
+    definedFunctions.add('bukaModalAturHakAkses');
+    definedFunctions.add('nonaktifkanAkunStaf');
   } else {
     // VANILLA DOM DETERMINISTIC PLUMBING
     if (hasTabs && !definedFunctions.has('showTab')) {
@@ -567,8 +736,32 @@ if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;`);
 
   if (plumbingToInject.length > 0) {
     const codeChunk = plumbingToInject.join('\n');
-    repairedHtml = injectBeforeLastScriptClose(repairedHtml, codeChunk);
+    if (isVueApp) {
+      repairedHtml = injectAtFirstScriptStart(repairedHtml, codeChunk);
+    } else {
+      repairedHtml = injectBeforeLastScriptClose(repairedHtml, codeChunk);
+    }
     combinedJs = (combinedJs + '\n' + codeChunk).trim();
+  }
+
+  if (isVueApp) {
+    // 1. Perbaikan manipulasi DOM manual pada loginScreen/appContainer (Bug 2)
+    const domRepair = repairVueManualDomManipulation(repairedHtml, repairedJs);
+    repairedHtml = domRepair.html;
+    repairedJs = domRepair.js;
+
+    // 2. Perbaikan role-check hardcode pada canEditCurrentTab (Bug 3)
+    repairedJs = repairVueHardcodedRoleChecks(repairedJs);
+
+    // 3. Transformasi script inline di HTML (Bug 2, Bug 3, Bug 4)
+    repairedHtml = transformInlineScripts(repairedHtml, (s) => {
+      let script = repairVueManualDomManipulation('', s).js;
+      script = repairVueHardcodedRoleChecks(script);
+      script = injectVueMixinIntoCreateApp(script);
+      return script;
+    });
+
+    repairedJs = injectVueMixinIntoCreateApp(repairedJs);
   }
 
   // 2. Pemeriksaan Keselarasan Event Handler (onclick="..." vs JS Function Definitions)
@@ -1349,11 +1542,28 @@ function loginAs(role) {
 
       // Manajemen akun staf adalah capability eksklusif Owner/Super Admin.
       if (hasRequiredSuperAdmin || Boolean(resolvedOwner)) {
+        if (isVueApp) {
+          repairedHtml = removeOutsideSuperadminPanel(repairedHtml);
+        }
+
         const accountManagementTerms = /akun\s+staf|kelola\s+(?:akun|pengguna|user)|manajemen\s+(?:akun|pengguna|user)|role\s*&\s*permission|hak\s+akses|tambah\s+staf|hapus\s+staf|nonaktifkan\s+akun/i;
-        const gatedButtons = [...repairedHtml.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)];
+        
+        // Pada aplikasi Vue, tombol manajemen WAJIB berada di dalam <div id="app">
+        let htmlToScan = repairedHtml;
+        if (isVueApp) {
+          const appMatch = repairedHtml.search(/<div[^>]*id=["']app["']/i);
+          if (appMatch !== -1) {
+            const appEnd = findClosingDivIndex(repairedHtml, appMatch);
+            if (appEnd !== -1) {
+              htmlToScan = repairedHtml.slice(appMatch, appEnd);
+            }
+          }
+        }
+
+        const gatedButtons = [...htmlToScan.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)];
         let managementButtons = gatedButtons.filter((match) => accountManagementTerms.test(match[2].replace(/<[^>]+>/g, ' ')));
 
-        if (managementButtons.length === 0 || !accountManagementTerms.test(repairedHtml)) {
+        if (managementButtons.length === 0 || !accountManagementTerms.test(htmlToScan)) {
           // Auto-inject area manajemen sistem agar tidak memblokir generation.
           repairedHtml = injectOwnerManagementSection(repairedHtml, resolvedOwner);
           const rescanned = [...repairedHtml.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)];
@@ -1650,6 +1860,25 @@ function loginAs(role) {
     issues.push(...twReport.warnings);
   }
 
+  // =========================================================================
+  // 18. VALIDASI REAKTIVITAS VUE & ANTI-DOM MANIPULATION (Bug 2)
+  // =========================================================================
+  if (isVueApp) {
+    let jsAst: any = null;
+    try {
+      jsAst = acorn.parse(combinedJs, { ecmaVersion: 'latest', sourceType: 'script' });
+    } catch {}
+
+    const domIssues = checkVueManualDomManipulation(jsAst, repairedHtml, combinedJs);
+    issues.push(...domIssues);
+
+    // =========================================================================
+    // 19. VALIDASI ANTI-HARDCODED ROLE CHECK (Bug 3)
+    // =========================================================================
+    const roleCheckIssues = checkVueHardcodedRoleCheck(jsAst, repairedHtml, combinedJs, expectedRoles || []);
+    issues.push(...roleCheckIssues);
+  }
+
   repairedHtml = cleanConversationalLeaks(repairedHtml);
 
   return {
@@ -1661,6 +1890,229 @@ function loginAs(role) {
       js: repairedJs
     }
   };
+}
+
+/**
+ * Ekstraksi issue VUE_MANUAL_DOM_MANIPULATION untuk pelaporan atau auto-recovery
+ */
+export function extractVueManualDomIssues(issues: string[]): string[] {
+  return (issues || []).filter(i => i.startsWith('VUE_MANUAL_DOM_MANIPULATION:'));
+}
+
+/**
+ * Ekstraksi issue VUE_HARDCODED_ROLE_CHECK untuk pelaporan atau auto-recovery
+ */
+export function extractVueHardcodedRoleIssues(issues: string[]): string[] {
+  return (issues || []).filter(i => i.startsWith('VUE_HARDCODED_ROLE_CHECK:'));
+}
+
+/**
+ * Memeriksa apakah terdapat manipulasi DOM manual seperti document.getElementById(...).style.display
+ * di dalam method / fungsi Vue (Bug 2).
+ */
+export function checkVueManualDomManipulation(ast: any, html: string, jsCode: string): string[] {
+  const issues: string[] = [];
+  const isVue = /Vue\.createApp\s*\(/.test(jsCode) || /<div[^>]*id=["']app["']/.test(html);
+  if (!isVue) return issues;
+
+  let hasManualDom = false;
+  if (ast) {
+    function walk(node: any) {
+      if (!node || typeof node !== 'object' || hasManualDom) return;
+
+      // document.getElementById(...).style.display = ...
+      if (node.type === 'AssignmentExpression' && node.left?.type === 'MemberExpression') {
+        const left = node.left;
+        if (left.property?.name === 'display') {
+          if (left.object?.type === 'MemberExpression' && left.object.property?.name === 'style') {
+            const grandObj = left.object.object;
+            if (grandObj?.type === 'CallExpression' && grandObj.callee?.type === 'MemberExpression') {
+              const calleeProp = grandObj.callee.property?.name;
+              if (calleeProp === 'getElementById' || calleeProp === 'querySelector') {
+                hasManualDom = true;
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      for (const key of Object.keys(node)) {
+        if (key === 'parent') continue;
+        const child = node[key];
+        if (Array.isArray(child)) {
+          for (const c of child) walk(c);
+        } else if (child && typeof child === 'object') {
+          walk(child);
+        }
+      }
+    }
+    walk(ast);
+  }
+
+  if (!hasManualDom) {
+    const regex = /document\s*\.\s*(?:getElementById|querySelector)\s*\(\s*['"][^'"]*['"]\s*\)\s*\.\s*style\s*\.\s*display/i;
+    if (regex.test(jsCode)) {
+      hasManualDom = true;
+    }
+  }
+
+  if (hasManualDom) {
+    issues.push(
+      `VUE_MANUAL_DOM_MANIPULATION: DILARANG memanipulasi DOM manual (document.getElementById(...).style.display) di dalam method Vue. WAJIB menggunakan reaktivitas Vue (state isLoggedIn dan direktif v-if/v-show).`
+    );
+  }
+
+  return issues;
+}
+
+export function repairVueManualDomManipulation(html: string, js: string): { html: string; js: string } {
+  let repairedJs = js || '';
+  let repairedHtml = html || '';
+
+  // 1. Bersihkan manipulasi style.display di loginScreen / appContainer pada JS
+  repairedJs = repairedJs.replace(
+    /(?:const|let|var)\s+[a-zA-Z_$0-9]*\s*=\s*document\.(?:getElementById|querySelector)\s*\(\s*['"][^'"]*(?:loginScreen|appContainer)[^'"]*['"]\s*\);?/gi,
+    ''
+  );
+  repairedJs = repairedJs.replace(
+    /if\s*\(\s*(?:loginEl|appEl)\s*\)\s*(?:loginEl|appEl)\.style\.display\s*=\s*['"][^'"]*['"];?/gi,
+    ''
+  );
+  repairedJs = repairedJs.replace(
+    /document\.(?:getElementById|querySelector)\s*\(\s*['"][^'"]*(?:loginScreen|appContainer)[^'"]*['"]\s*\)\.style\.display\s*=\s*['"][^'"]*['"];?/gi,
+    ''
+  );
+
+  // 2. Pastikan loginAs/handleLogin menyetel this.isLoggedIn = true, dan logout menyetel this.isLoggedIn = false
+  if (/logout\s*\([^)]*\)\s*\{/i.test(repairedJs) && !/this\.isLoggedIn\s*=\s*false/i.test(repairedJs)) {
+    repairedJs = repairedJs.replace(/(logout\s*\([^)]*\)\s*\{)/i, '$1\n      this.isLoggedIn = false;');
+  }
+  if (/loginAs\s*\([^)]*\)\s*\{/i.test(repairedJs) && !/this\.isLoggedIn\s*=\s*true/i.test(repairedJs)) {
+    repairedJs = repairedJs.replace(/(loginAs\s*\([^)]*\)\s*\{)/i, '$1\n      this.isLoggedIn = true;');
+  }
+  if (/handleLogin\s*\([^)]*\)\s*\{/i.test(repairedJs) && !/this\.isLoggedIn\s*=\s*true/i.test(repairedJs)) {
+    repairedJs = repairedJs.replace(/(handleLogin\s*\([^)]*\)\s*\{)/i, '$1\n      this.isLoggedIn = true;');
+  }
+
+  // 3. Pastikan data() mendefinisikan isLoggedIn: false
+  if (/createApp\s*\(\s*\{[\s\S]*?data\s*\(\s*\)\s*\{[\s\S]*?return\s*\{/i.test(repairedJs)) {
+    const createAppMatch = repairedJs.match(/(createApp\s*\(\s*\{[\s\S]*?data\s*\(\s*\)\s*\{[\s\S]*?return\s*\{)/i);
+    if (createAppMatch) {
+      const rest = repairedJs.slice(createAppMatch.index! + createAppMatch[0].length);
+      const returnEnd = rest.indexOf('}');
+      const returnBody = returnEnd !== -1 ? rest.slice(0, returnEnd) : rest.slice(0, 200);
+      if (!/\bisLoggedIn\b/.test(returnBody)) {
+        repairedJs = repairedJs.replace(
+          /(createApp\s*\(\s*\{[\s\S]*?data\s*\(\s*\)\s*\{[\s\S]*?return\s*\{)/i,
+          '$1\n        isLoggedIn: false,'
+        );
+      }
+    }
+  } else if (/data\s*\(\s*\)\s*\{[\s\S]*?return\s*\{/i.test(repairedJs) && !/return\s*\{[\s\S]*?\bisLoggedIn\b/i.test(repairedJs)) {
+    repairedJs = repairedJs.replace(/(data\s*\(\s*\)\s*\{[\s\S]*?return\s*\{)/i, '$1\n        isLoggedIn: false,');
+  }
+
+  // 4. Di HTML, pastikan #loginScreen dan #appContainer menggunakan v-if/v-show reaktif
+  if (repairedHtml.includes('id="loginScreen"')) {
+    repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']loginScreen["'][^>]*)style=["'][^"']*["']/gi, '$1');
+    if (!/<div[^>]*id=["']loginScreen["'][^>]*v-(?:if|show)/i.test(repairedHtml)) {
+      repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']loginScreen["'])/i, '$1 v-if="!isLoggedIn"');
+    }
+  }
+
+  if (repairedHtml.includes('id="appContainer"')) {
+    repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']appContainer["'][^>]*)style=["'][^"']*["']/gi, '$1');
+    if (!/<div[^>]*id=["']appContainer["'][^>]*v-(?:if|show|else)/i.test(repairedHtml)) {
+      repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']appContainer["'])/i, '$1 v-if="isLoggedIn"');
+    }
+  }
+
+  return { html: repairedHtml, js: repairedJs };
+}
+
+/**
+ * Memeriksa apakah terdapat pengecekan role hardcode di luar isRoleAllowed (Bug 3).
+ * Khususnya di canEditCurrentTab() atau method/computed lainnya.
+ */
+export function checkVueHardcodedRoleCheck(ast: any, html: string, jsCode: string, roles: string[] = []): string[] {
+  const issues: string[] = [];
+  const isVue = /Vue\.createApp\s*\(/.test(jsCode) || /<div[^>]*id=["']app["']/.test(html);
+  if (!isVue) return issues;
+
+  const knownRolePatterns = ['Super Admin', 'Admin', 'Staf', 'Kasir', 'Instruktur', 'Siswa', 'Murid', 'Pelanggan', 'User', ...roles];
+  const knownLower = new Set(knownRolePatterns.map(r => r.toLowerCase().trim()));
+
+  let hardcodedFn: string | null = null;
+  let hardcodedRole: string | null = null;
+
+  if (ast) {
+    function walk(node: any, currentFnName: string | null = null) {
+      if (!node || typeof node !== 'object' || hardcodedFn) return;
+
+      let fnName = currentFnName;
+      if (node.type === 'Property' && node.key?.name && (node.value?.type === 'FunctionExpression' || node.value?.type === 'ArrowFunctionExpression')) {
+        fnName = node.key.name;
+      } else if (node.type === 'MethodDefinition' && node.key?.name) {
+        fnName = node.key.name;
+      } else if (node.type === 'FunctionDeclaration' && node.id?.name) {
+        fnName = node.id.name;
+      }
+
+      if (fnName && fnName !== 'isRoleAllowed' && fnName !== 'filterTabsByRole') {
+        if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression' && node.callee.property?.name === 'includes') {
+          const arg0 = node.arguments?.[0];
+          if (arg0 && (arg0.type === 'Literal' || typeof arg0.value === 'string')) {
+            const val = String(arg0.value || '').toLowerCase().trim();
+            if (knownLower.has(val) || val.includes('admin') || val.includes('staf') || val.includes('kasir')) {
+              hardcodedFn = fnName;
+              hardcodedRole = String(arg0.value);
+              return;
+            }
+          }
+        }
+      }
+
+      for (const key of Object.keys(node)) {
+        if (key === 'parent') continue;
+        const child = node[key];
+        if (Array.isArray(child)) {
+          for (const c of child) walk(c, fnName);
+        } else if (child && typeof child === 'object') {
+          walk(child, fnName);
+        }
+      }
+    }
+    walk(ast);
+  }
+
+  if (!hardcodedFn) {
+    const canEditMatch = jsCode.match(/canEditCurrentTab\s*\([^)]*\)\s*\{([\s\S]*?)\}/);
+    if (canEditMatch && /roles\.includes\s*\(\s*['"][^'"]+['"]\s*\)/i.test(canEditMatch[1])) {
+      hardcodedFn = 'canEditCurrentTab';
+      hardcodedRole = 'literal role';
+    }
+  }
+
+  if (hardcodedFn) {
+    issues.push(
+      `VUE_HARDCODED_ROLE_CHECK: Terdeteksi pengecekan role literal (${hardcodedRole}) di dalam method '${hardcodedFn}'. DILARANG meng-hardcode nama peran di luar isRoleAllowed. WAJIB menggunakan this.isRoleAllowed(roles) agar dinamis untuk seluruh peran.`
+    );
+  }
+
+  return issues;
+}
+
+export function repairVueHardcodedRoleChecks(js: string): string {
+  if (!js) return js;
+  return js.replace(
+    /canEditCurrentTab\s*\([^)]*\)\s*\{[\s\S]*?\n\s*\}/g,
+    `canEditCurrentTab() {
+        if (!this.currentTableConfig) return false;
+        const allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+        return this.isRoleAllowed(allowed);
+      }`
+  );
 }
 
 /**

@@ -65,6 +65,12 @@ const testFiles = [
     name: 'Multi-Schema Execution & State Isolation',
     file: 'tests/multi_schema_isolation.test.ts',
     desc: 'Verifikasi 0 kebocoran tablesConfig, 0 cross-contamination db, & isolasi total antar 3 domain'
+  },
+  {
+    id: 11,
+    name: 'Four Real Vue Bugs Fixes & Fallback Safety',
+    file: 'tests/four_vue_bugs_fix.test.ts',
+    desc: 'Verifikasi perbaikan 4 bug nyata (panel luar app, DOM manual, canEditCurrentTab, mixin registration)'
   }
 ];
 
@@ -73,7 +79,7 @@ let failed = 0;
 const startTime = Date.now();
 
 for (const t of testFiles) {
-  process.stdout.write(`[${t.id}/10] Menjalankan: ${t.name}... `);
+  process.stdout.write(`[${t.id}/${testFiles.length}] Menjalankan: ${t.name}... `);
   const startT = Date.now();
   try {
     execSync(`npx tsx ${t.file}`, {
