@@ -107,6 +107,12 @@ const testFiles = [
     name: 'Fitur Baru: Pertanyaan Variasi Produk/Layanan & Nilai Katalog Simulasi DB',
     file: 'tests/product_variant_question.test.ts',
     desc: 'Pertanyaan variasi produk di awal alur (SEBELUM klarifikasi aktor), append narasi untuk heuristik Bagian D (3 Lapis), default Tunggal, skip transaksional/CRM, & nilai varian riil di Simulasi DB'
+  },
+  {
+    id: 18,
+    name: 'Skema Laundry Tab Repair (& chars) & Tailwind active: Variant Cleanup',
+    file: 'tests/laundry_schema_tabs_and_tailwind_active.test.ts',
+    desc: 'Auto-repair non-blocking untuk peran dengan karakter khusus (&, /, -, ()), bracket depth balancing, dan pembersihan otomatis variant active:*/disabled:* dengan alternatif CSS :active'
   }
 ];
 

@@ -953,6 +953,14 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
    - DILARANG KERAS menggunakan arbitrary value syntax [...] (misal: w-[350px], top-[10px], bg-[#4f46e5], h-[80vh]). Selalu gunakan utility class standar bawaan (misal: w-80, max-w-md, top-2, bg-indigo-600, h-64). Arbitrary value TIDAK AKAN memiliki efek visual pada stylesheet precompiled v2 (gagal-diam / silent visual fail)!
    - DILARANG KERAS menggunakan kelas utility Tailwind v3+ yang TIDAK ADA di v2 (misal: aspect-*, columns-*, break-inside-*, accent-*, scroll-m-*, touch-*, text-wrap, text-balance, snap-*).
    - DILARANG KERAS menggunakan pseudo-class variants v3+ (misal: has:, group-has:, peer-has:, open:, backdrop:, peer-*).
+   - DILARANG KERAS menggunakan variant yang TIDAK DIAKTIFKAN pada build precompiled Tailwind v2.2.19 CDN:
+     * DILARANG variant \`active:*\` (misal: \`active:scale-95\`, \`active:bg-*\`, \`active:text-*\`). Variant \`active:\` TIDAK TERSEDIA di tailwind.min.css CDN bawaan!
+     * DILARANG variant \`group-active:*\`, \`disabled:*\`, \`focus-visible:*\`.
+     * SATU-SATUNYA variant interaktif yang aktif di CDN v2.2.19 adalah: \`hover:*\`, \`focus:*\`, \`focus-within:*\`, dan \`group-hover:*\`.
+     * ALTERNATIF FEEDBACK TOMBOL SAAT DITEKAN (KLIK): Tuliskan CSS murni sederhana di dalam tag <style>:
+       \`\`\`css
+       button:active, .btn:active { transform: scale(0.97); }
+       \`\`\`
    - ALTERNATIF CSS CUSTOM UNTUK KEBUTUHAN KHUSUS (MISAL SEMBUNYIKAN SCROLLBAR):
      Untuk menyembunyikan scrollbar pada container scrollable (seperti tab horizontal, tabel lebar, panel kartu), JANGAN gunakan class plugin \`scrollbar-hide\`! Tulis aturan CSS sederhana di dalam tag <style> di <head>:
      \`\`\`css
@@ -2006,11 +2014,21 @@ ${staffLandingGuide}
 
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan pada mode generate kode)
     validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole) : null;
+    if (validated?.repairedCode?.html) {
+      htmlCode = validated.repairedCode.html;
+      // Jika validator melakukan auto-repair (misalnya menginjeksi tab peran yang hilang atau membersihkan variant Tailwind tak didukung),
+      // konfirmasi perbaikan dengan validasi ulang terhadap kode hasil perbaikan.
+      const recheck = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+      if (recheck.isValid || recheck.issues.length < validated.issues.length) {
+        validated = recheck;
+        if (recheck.repairedCode?.html) htmlCode = recheck.repairedCode.html;
+      }
+    }
 
     // NFR-10b: Pemeriksaan Integritas, Kelengkapan Tag, Sintaks JavaScript, & Keselarasan DOM Otomatis (Hanya pada mode generate kode)
     const isCodeIncomplete = !htmlCode || !htmlCode.includes('</html>') || !htmlCode.includes('</script>');
     const hasScriptTag = Boolean(htmlCode && (htmlCode.includes('<script>') || htmlCode.includes('<script ')));
-    const hasRenderFunction = Boolean(htmlCode && (htmlCode.includes('function render') || htmlCode.includes('render()')));
+    const hasRenderFunction = Boolean(htmlCode && (htmlCode.includes('function render') || htmlCode.includes('render()') || htmlCode.includes('Vue.createApp') || htmlCode.includes('createApp(')));
     const hasMismatchesOrSyntaxErrors = Boolean(validated && validated.issues && validated.issues.length > 0);
     
     // Jika terdeteksi kode tidak lengkap, SyntaxError JS, ketidakselarasan handler/ID, atau script hilang, picu AI auto-recovery (NFR-10b)
@@ -2052,7 +2070,7 @@ INSTRUKSI PERBAIKAN WAJIB:
 12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
 13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
 14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!
-15. PERBAIKAN TAILWIND V2 & ANTI-PLUGIN: Jika ada peringatan TAILWIND_V2_NOT_IN_WHITELIST atau TAILWIND_V2_ARBITRARY_VALUE (misal \`scrollbar-hide\`, \`form-input\`, arbitrary \`w-[...]\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core v2 standar atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).` }] }
+15. PERBAIKAN TAILWIND V2 & ANTI-PLUGIN: Jika ada peringatan TAILWIND_V2_NOT_IN_WHITELIST atau TAILWIND_V2_ARBITRARY_VALUE (misal \`scrollbar-hide\`, \`form-input\`, arbitrary \`w-[...]\`, variant \`active:scale-95\`, \`active:*\`, \`disabled:*\`, dsb), HAPUS kelas tersebut segera! Varian active: TIDAK ADA di Tailwind v2 CDN bawaan. Untuk feedback tombol klik/aktif, gunakan aturan CSS di tag <style>: \`button:active { transform: scale(0.97); }\`.` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
@@ -2104,7 +2122,7 @@ INSTRUKSI PERBAIKAN WAJIB:
 12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
 13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
 14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!
-15. PERBAIKAN TAILWIND V2 & ANTI-PLUGIN: Jika ada peringatan TAILWIND_V2_NOT_IN_WHITELIST atau TAILWIND_V2_ARBITRARY_VALUE (misal \`scrollbar-hide\`, \`form-input\`, arbitrary \`w-[...]\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core v2 standar atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).` }
+15. PERBAIKAN TAILWIND V2 & ANTI-PLUGIN: Jika ada peringatan TAILWIND_V2_NOT_IN_WHITELIST atau TAILWIND_V2_ARBITRARY_VALUE (misal \`scrollbar-hide\`, \`form-input\`, arbitrary \`w-[...]\`, variant \`active:scale-95\`, \`active:*\`, \`disabled:*\`, dsb), HAPUS kelas tersebut segera! Varian active: TIDAK ADA di Tailwind v2 CDN bawaan. Untuk feedback tombol klik/aktif, gunakan aturan CSS di tag <style>: \`button:active { transform: scale(0.97); }\`.` }
         ];
 
         const repairReqBody: Record<string, any> = {

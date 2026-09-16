@@ -37,6 +37,52 @@ export interface ValidationReport {
 }
 
 /**
+ * Mencari indeks kurung siku tutup `]` yang berpasangan dengan `[` pembuka array,
+ * dengan memperhitungkan kedalaman (nesting) dan mengabaikan kurung di dalam string.
+ */
+export function findMatchingArrayBracket(code: string, openBracketIndex: number): number {
+  let depth = 0;
+  let inString = false;
+  let stringChar = '';
+  for (let i = openBracketIndex; i < code.length; i++) {
+    const ch = code[i];
+    if (inString) {
+      if (ch === stringChar && code[i - 1] !== '\\') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Normalisasi nama peran untuk pencocokan tab navigasi yang toleran terhadap karakter khusus:
+ * - Mengubah '&', '&amp;' menjadi 'dan'
+ * - Menghilangkan tanda baca kurung, strip, slash
+ * - Menyeragamkan whitespace dan lowercase
+ */
+export function normalizeRoleForTabMatch(r: string): string {
+  return (r || '')
+    .toLowerCase()
+    .replace(/&amp;/g, ' dan ')
+    .replace(/&/g, ' dan ')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Ekstraksi seluruh nama fungsi yang didefinisikan di JavaScript menggunakan AST traversal.
  * Mendukung: FunctionDeclaration, VariableDeclaration (FunctionExpression & ArrowFunction),
  * AssignmentExpression (window.xyz = ..., xyz = ...), dan fungsi bersarang di dalam block/event.
@@ -1101,6 +1147,13 @@ function showToast(msg, type = 'info') {
           repairedHtml += `\n<div id="modalHapus" class="modal" style="display:none;"></div>`;
         }
         existingHtmlIds.add(elemId);
+      } else if (elemId === 'currentRoleBadge' || elemId === 'userRoleBadge') {
+        if (repairedHtml.includes('</body>')) {
+          repairedHtml = repairedHtml.replace('</body>', `  <span id="${elemId}" style="display:none;"></span>\n</body>`);
+        } else {
+          repairedHtml += `\n<span id="${elemId}" style="display:none;"></span>`;
+        }
+        existingHtmlIds.add(elemId);
       } else {
         issues.push(`MISMATCH_DOM_ID: JavaScript memanggil document.getElementById('${elemId}'), tetapi elemen dengan id="${elemId}" TIDAK ditemukan di struktur HTML.`);
       }
@@ -1218,8 +1271,11 @@ function showToast(msg, type = 'info') {
         }
 
         const missingRoleTabs = expectedRoles!.filter(role => {
-          const roleLower = role.trim().toLowerCase();
-          return !tabRolesFromJs.some(ar => ar === roleLower || ar.includes(roleLower) || roleLower.includes(ar));
+          const roleNorm = normalizeRoleForTabMatch(role);
+          return !tabRolesFromJs.some(ar => {
+            const arNorm = normalizeRoleForTabMatch(ar);
+            return arNorm === roleNorm || arNorm.includes(roleNorm) || roleNorm.includes(arNorm);
+          });
         });
 
         if (missingRoleTabs.length > 0) {
@@ -1234,6 +1290,7 @@ function showToast(msg, type = 'info') {
             if (/super\s*admin|admin$|^admin|pengelola/.test(r)) return { emoji: '⚙️', label: 'Kelola Sistem' };
             if (/anggota|member|user|pelanggan|penyewa|pasien|siswa|customer|buyer|nasabah|donatur|penerima|warga|tamu/.test(r)) return { emoji: '🪪', label: 'Pesanan & Info Saya' };
             if (/kasir|cashier/.test(r)) return { emoji: '🛒', label: 'Transaksi Penjualan' };
+            if (/laundry|cuci|setrika|wash/.test(r)) return { emoji: '🧺', label: 'Operasional Cuci & Setrika' };
             if (/dokter|doctor|hewan/.test(r)) return { emoji: '🐾', label: 'Pemeriksaan & Perawatan' };
             if (/perawat|nurse|bidan|apoteker|farmasi|petugas/.test(r)) return { emoji: '💊', label: 'Operasional & Tugas Harian' };
             if (/resepsionis|front\s*office|receptionist|loket/.test(r)) return { emoji: '📋', label: 'Pendaftaran & Antrian' };
@@ -1247,22 +1304,48 @@ function showToast(msg, type = 'info') {
             return { emoji: '📌', label: `Kelola ${role.trim()}` };
           };
 
+          const successfullyInjectedRoles: string[] = [];
+
           for (const missingRole of missingRoleTabs) {
-            const roleId = missingRole.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const roleId = missingRole.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
             const { emoji, label } = functionalTabLabelInner(missingRole);
             const newTabEntry = `{ id: 'tab_${roleId}', label: '${emoji} ${label}', roles: ['${missingRole}'], icon: '${emoji}' }`;
 
-            // Cari array tabs: [ ... ] di dalam data() dan tambahkan entry baru sebelum ]
-            const tabsArrayMatch = repairedHtml.match(/(tabs\s*:\s*\[)([\s\S]*?)(\])/);
-            if (tabsArrayMatch) {
-              const fullMatch = tabsArrayMatch[0];
-              const prefix = tabsArrayMatch[1];
-              const content = tabsArrayMatch[2];
-              const suffix = tabsArrayMatch[3];
-              const trimmedContent = content.trimEnd();
-              const separator = trimmedContent.length > 0 && !trimmedContent.endsWith(',') ? ',\n            ' : '\n            ';
-              const newContent = `${prefix}${content}${separator}${newTabEntry}\n          ${suffix}`;
-              repairedHtml = repairedHtml.replace(fullMatch, newContent);
+            let injected = false;
+            // Cari array tabs: [ ... ] di dalam data() dan tambahkan entry baru sebelum penutup ] array tabs yang sebenarnya
+            const tabsIdx = repairedHtml.search(/\btabs\s*:\s*\[/);
+            if (tabsIdx !== -1) {
+              const openBracket = repairedHtml.indexOf('[', tabsIdx);
+              const closeBracket = findMatchingArrayBracket(repairedHtml, openBracket);
+              if (openBracket !== -1 && closeBracket !== -1) {
+                const inner = repairedHtml.slice(openBracket + 1, closeBracket);
+                const trimmedInner = inner.trimEnd();
+                const sep = trimmedInner.length > 0 && !trimmedInner.endsWith(',') ? ',\n            ' : '\n            ';
+                repairedHtml =
+                  repairedHtml.slice(0, openBracket + 1) +
+                  inner +
+                  sep +
+                  newTabEntry +
+                  '\n          ' +
+                  repairedHtml.slice(closeBracket);
+                injected = true;
+              }
+            }
+
+            // Pastikan template memiliki container untuk tab yang diinjeksi jika belum ada
+            if (!repairedHtml.includes(`tab_${roleId}`)) {
+              if (repairedHtml.includes('id="appContainer"') || repairedHtml.includes("id='appContainer'")) {
+                const containerMatch = repairedHtml.match(/<div\b[^>]*id=["']appContainer["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+                if (containerMatch) {
+                  const tabPaneContent = `\n        <!-- Tab Auto-Injected: ${label} -->\n        <div v-show="activeTab === 'tab_${roleId}'" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">\n          <div class="flex justify-between items-center border-b pb-4">\n            <h2 class="text-xl font-bold text-gray-800">${emoji} ${label}</h2>\n            <span class="text-xs px-2.5 py-1 bg-blue-100 text-blue-800 font-semibold rounded-full">${missingRole}</span>\n          </div>\n          <p class="text-gray-600 text-sm">Area kerja dan modul operasional untuk peran ${missingRole}.</p>\n        </div>`;
+                  const insertPos = containerMatch.index! + containerMatch[0].lastIndexOf('</div>');
+                  repairedHtml = repairedHtml.slice(0, insertPos) + tabPaneContent + '\n      ' + repairedHtml.slice(insertPos);
+                }
+              }
+            }
+
+            if (injected) {
+              successfullyInjectedRoles.push(missingRole);
             }
           }
         }
@@ -1297,16 +1380,12 @@ function showToast(msg, type = 'info') {
         .filter((r) => r && !/\$\{|%\{|\{\{|<%|<%=|\bcurrentRole\b/i.test(r));
 
       const missingRoleTabs = expectedRoles!.filter(role => {
-        const roleLower = role.trim().toLowerCase();
-        return !tabAccessRoles.some(ar => ar === roleLower || ar.includes(roleLower) || roleLower.includes(ar));
+        const roleNorm = normalizeRoleForTabMatch(role);
+        return !tabAccessRoles.some(ar => {
+          const arNorm = normalizeRoleForTabMatch(ar);
+          return arNorm === roleNorm || arNorm.includes(roleNorm) || roleNorm.includes(arNorm);
+        });
       });
-
-      if (missingRoleTabs.length > 0) {
-        issues.push(
-          `ROLE_MISSING_TAB_NAVIGATION: Peran [${missingRoleTabs.join(', ')}] TIDAK memiliki tab khusus dengan data-access-roles="${missingRoleTabs.join(',')}". ` +
-          `Setiap peran dalam Brief Kebutuhan WAJIB memiliki tab dan tampilan UI yang relevan dengan Job Description-nya!`
-        );
-      }
 
       // Auto-repair cerdas: Ubah label tab peran mentah (misal: "⚙️ Super Admin" -> "⚙️ Kelola Sistem",
       // "💳 Anggota" -> "🪪 Kartu Anggota Digital", "📈 Menu Manajer" -> "📈 Monitoring & Persetujuan")
@@ -1318,6 +1397,7 @@ function showToast(msg, type = 'info') {
           return { emoji: '🪪', label: 'Pesanan & Kartu Saya' };
         }
         if (/kasir|cashier/.test(r)) return { emoji: '🛒', label: 'Transaksi Penjualan' };
+        if (/laundry|cuci|setrika|wash/.test(r)) return { emoji: '🧺', label: 'Operasional Cuci & Setrika' };
         if (/dokter|doctor/.test(r)) return { emoji: '🩺', label: 'Pemeriksaan Pasien' };
         if (/perawat|nurse|bidan|apoteker|farmasi/.test(r)) return { emoji: '💊', label: 'Asuhan & Obat' };
         if (/petugas\s*perawat|petugas.*hewan|klinik\s*hewan|drh|veteriner|vet\b/.test(r)) return { emoji: '🐾', label: 'Perawatan & Pemeriksaan Hewan' };
@@ -1337,6 +1417,46 @@ function showToast(msg, type = 'info') {
         if (/agen|sales|marketing|fundraiser/.test(r)) return { emoji: '🤝', label: 'Prospek & Penjualan' };
         return { emoji: '📌', label: `Kelola ${role.trim()}` };
       };
+
+      if (missingRoleTabs.length > 0) {
+        issues.push(
+          `ROLE_MISSING_TAB_NAVIGATION: Peran [${missingRoleTabs.join(', ')}] TIDAK memiliki tab khusus dengan data-access-roles="${missingRoleTabs.join(',')}". ` +
+          `Setiap peran dalam Brief Kebutuhan WAJIB memiliki tab dan tampilan UI yang relevan dengan Job Description-nya!`
+        );
+
+        const successfullyInjectedVanilla: string[] = [];
+
+        for (const missingRole of missingRoleTabs) {
+          const roleId = missingRole.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+          const { emoji, label } = functionalTabLabel(missingRole);
+
+          let injected = false;
+          // Cari tombol tab-btn terakhir dan sisipkan tombol baru setelahnya
+          const lastTabBtnMatch = [...repairedHtml.matchAll(/<button[^>]*class=[^>]*tab-btn[^>]*>[\s\S]*?<\/button>/gi)].pop();
+          if (lastTabBtnMatch && lastTabBtnMatch.index !== undefined) {
+            const insertPos = lastTabBtnMatch.index + lastTabBtnMatch[0].length;
+            const newBtn = `\n        <button type="button" class="tab-btn px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border-b-2 border-transparent" data-tab="tab_${roleId}" data-access-roles="${missingRole}" onclick="showTab('tab_${roleId}')">${emoji} ${label}</button>`;
+            repairedHtml = repairedHtml.slice(0, insertPos) + newBtn + repairedHtml.slice(insertPos);
+            injected = true;
+          }
+
+          // Injeksi container tab-pane jika belum ada
+          if (!repairedHtml.includes(`id="tab_${roleId}"`) && !repairedHtml.includes(`id='tab_${roleId}'`)) {
+            const appContainerMatch = repairedHtml.match(/<div\b[^>]*id=["']appContainer["'][^>]*>([\s\S]*?)<\/body>/i);
+            if (appContainerMatch) {
+              const tabPane = `\n      <!-- Tab Auto-Injected: ${label} -->\n      <div id="tab_${roleId}" class="tab-pane tab-content p-6 space-y-4" style="display: none;">\n        <div class="flex justify-between items-center border-b pb-4">\n          <h2 class="text-xl font-bold text-gray-800">${emoji} ${label}</h2>\n          <span class="text-xs px-2.5 py-1 bg-blue-100 text-blue-800 font-semibold rounded-full">${missingRole}</span>\n        </div>\n        <p class="text-gray-600 text-sm">Area kerja dan modul operasional untuk peran ${missingRole}.</p>\n      </div>`;
+              const insertPos = repairedHtml.lastIndexOf('</div>', repairedHtml.indexOf('</body>'));
+              if (insertPos !== -1) {
+                repairedHtml = repairedHtml.slice(0, insertPos) + tabPane + '\n    ' + repairedHtml.slice(insertPos);
+              }
+            }
+          }
+
+          if (injected) {
+            successfullyInjectedVanilla.push(missingRole);
+          }
+        }
+      }
 
       for (const role of expectedRoles!) {
         const { emoji: defaultEmoji, label: functionalLabel } = functionalTabLabel(role);
@@ -1479,7 +1599,7 @@ function loginAs(role) {
   if (loginEl) loginEl.style.display = 'none';
   if (appEl) appEl.style.display = 'block';
   if (typeof filterTabsByRole === 'function') filterTabsByRole(role);
-  var badge = document.getElementById('currentRoleBadge');
+  var badge = typeof document !== 'undefined' && document.querySelector ? document.querySelector('#currentRoleBadge, #userRoleBadge, .role-badge') : null;
   if (badge) badge.innerText = role;
   var matched = (typeof DEMO_ACCOUNTS !== 'undefined' ? DEMO_ACCOUNTS : []).find(function(a) { return a.role === role; });
   if (matched && matched.landingTab && typeof showTab === 'function') {
@@ -1928,6 +2048,26 @@ function loginAs(role) {
 
     const deleteIssues = checkMissingDeleteWiringAndFakeAction(jsAst, repairedHtml, combinedJs);
     issues.push(...deleteIssues);
+  }
+
+  // 16.5 AUTO-REPAIR: Bersihkan variant pseudo-class yang tidak diaktifkan di Tailwind v2.2.19 CDN precompiled
+  // (misal: active:scale-95, active:bg-*, group-active:*, disabled:*, focus-visible:*)
+  if (/\b(?:active|group-active|disabled|focus-visible):[a-zA-Z0-9_-]+/i.test(repairedHtml)) {
+    repairedHtml = repairedHtml.replace(/(?<![:\w-])class=["']([^"']+)["']/gi, (match, classStr) => {
+      if (/\b(?:active|group-active|disabled|focus-visible):/i.test(classStr)) {
+        const cleaned = classStr
+          .split(/\s+/)
+          .filter((cls: string) => !/^(?:active|group-active|disabled|focus-visible):/i.test(cls))
+          .join(' ');
+        return `class="${cleaned}"`;
+      }
+      return match;
+    });
+
+    // Pertahankan feedback aktif melalui aturan CSS murni di <style> jika ada tombol
+    if (!repairedHtml.includes('button:active') && repairedHtml.includes('<style>')) {
+      repairedHtml = repairedHtml.replace('<style>', '<style>\n    button:active { transform: scale(0.97); }');
+    }
   }
 
   // 17. VALIDASI KESESUAIAN TAILWIND V2 (Whitelist & Constraint Tailwind v2)
