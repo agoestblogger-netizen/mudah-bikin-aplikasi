@@ -17,7 +17,7 @@ Master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mu
 
 ### Menjalankan Test Individual
 ```bash
-npx tsx tests/tailwind_v2_whitelist.test.ts
+npx tsx tests/tailwind_v4_lightweight_validator.test.ts
 npx tsx tests/vue_validators_6a_6b_6d.test.ts
 npx tsx tests/kursus_mobil_skema_asli.test.ts
 npx tsx tests/owner_role_dynamic.test.ts
@@ -34,19 +34,20 @@ npx tsx tests/tw_plugin_and_simulasi_db.test.ts
 npx tsx tests/actor_classification_and_owner_role.test.ts
 npx tsx tests/bug1a_and_1b_fix.test.ts
 npx tsx tests/product_variant_question.test.ts
+npx tsx tests/laundry_schema_tabs_and_tailwind_active.test.ts
 ```
 
 > Catatan: `npx tsx` (bukan `npx`) dipakai karena seluruh suite ditulis sebagai TypeScript dan mengimpor modul `src/` secara langsung.
 
 ---
 
-## 2. Daftar 17 Test Suite Aktif & Cakupan Pengujian
+## 2. Daftar 18 Test Suite Aktif & Cakupan Pengujian
 
-Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests) berisi **18 file** total: 17 file `*.test.ts` (terdaftar di bawah) + 1 master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/run_all.ts).
+Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests) berisi **19 file** total: 18 file `*.test.ts` (terdaftar di bawah) + 1 master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/run_all.ts).
 
 | No | File Test | Fokus & Cakupan Pengujian | Status |
 |---|---|---|---|
-| **1** | [`tests/tailwind_v2_whitelist.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/tailwind_v2_whitelist.test.ts) | **Tailwind CSS v2 Whitelist Enforcement**<br>Memverifikasi 39.062 kelas precompiled dari `tailwind.min.css` v2.2.19. Memastikan arbitrary values `[...]` (misal `min-h-[70vh]`, `grid-cols-[1fr_2fr]`) dan utility Tailwind v3+/v4+ (seperti `file:*`, `aspect-*`, `columns-*`) langsung ditolak dan dilaporkan sebagai pelanggaran whitelist. | ✅ PASS |
+| **1** | [`tests/tailwind_v4_lightweight_validator.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/tailwind_v4_lightweight_validator.test.ts) | **Tailwind CSS v4 Lightweight Anti-Plugin Validator**<br>Memverifikasi validator modern Tailwind v4 Browser Build. Memastikan arbitrary values `[...]` (misal `w-[calc(100%-2rem)]`, `min-h-[70vh]`), modern utility v4 (`columns-3`, `aspect-square`), dan modern variants (`active:scale-95`, `disabled:opacity-50`, `focus-visible:ring-2`) **LOLOS** tanpa halangan whitelist statis, sementara kelas plugin non-core yang tidak ada di CDN browser (`scrollbar-hide`, `@tailwindcss/forms` `form-*`, `@tailwindcss/typography` `prose*`, `aspect-w-*`) **DITOLAK**. | ✅ PASS |
 | **2** | [`tests/vue_validators_6a_6b_6d.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/vue_validators_6a_6b_6d.test.ts) | **Vue AST Parameterized CRUD & Safety Mixin**<br>Menguji validasi AST pada blok `methods: {}` komponen Vue 3 Options API. Menguji generic branch untuk Create (`openCreate`, `saveModalData`), Edit (`openEdit`), dan Delete (`confirmDelete`, `executeDelete`), serta auto-repair mixin bridge. | ✅ PASS |
 | **3** | [`tests/kursus_mobil_skema_asli.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/kursus_mobil_skema_asli.test.ts) | **End-to-End Skema Kursus Menyetir Mobil**<br>Menguji skema asli dari sesi guided interview (4 roles: Super Admin, Admin Pendaftaran, Instruktur Mengemudi, Murid; 4 tables: pengguna, paket_kursus, jadwal_sesi, laporan_sesi). Memastikan 0 SYNTAX_ERROR, 0 MISMATCH_HANDLER, 0 TAILWIND_V2_VIOLATION, dan efisiensi token ~70% lebih ringkas dibanding Vanilla JS lama. | ✅ PASS |
 | **4** | [`tests/owner_role_dynamic.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/owner_role_dynamic.test.ts) | **Dynamic Owner Role Resolution**<br>Menguji resolusi dinamis peran utama (Owner) non-Super Admin (seperti `Ketua Koperasi`, `Dokter`, `Admin Bengkel`, dll). Memastikan generator dan validator tidak bergantung pada hardcoded string 'Super Admin'. | ✅ PASS |
@@ -63,6 +64,7 @@ Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-apli
 | **15** | [`tests/actor_classification_and_owner_role.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/actor_classification_and_owner_role.test.ts) | **Actor Classification & Semantic Owner Role Resolution**<br>Klasifikasi Pelaku (`PENGGUNA_SISTEM` vs `ENTITAS_DATA`), sub-step klarifikasi aktor Bagian A, filter Bagian B, resolusi `ownerRole` berbasis AI alur, Skema Data entitas tanpa kredensial, & Simulasi DB tanpa akun demo untuk entitas. | ✅ PASS |
 | **16** | [`tests/bug1a_and_1b_fix.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/bug1a_and_1b_fix.test.ts) | **Bug 1a (Dangling Config Reference) & Bug 1b (ownerRole Priority)**<br>**Bug 1a:** deteksi `DANGLING_CONFIG_REFERENCE` dan repair menghasilkan `canEditCurrentTab` multi-role yang resilien. **Bug 1b:** eliminasi pelimpahan tugas salah (`tugasDilimpahkan`) pada `ENTITAS_DATA`, serta kepastian `ownerRole` diisi tepat pada field `terdaftar_oleh` (Simulasi DB = ID pegawai administrasi, bukan Instruktur). | ✅ PASS |
 | **17** | [`tests/product_variant_question.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/product_variant_question.test.ts) | **Fitur Baru: Pertanyaan Variasi Produk/Layanan & Nilai Katalog Simulasi DB**<br>Pertanyaan variasi produk di awal alur (**SEBELUM** klarifikasi aktor), append penanda `[Variasi Produk: ...]` ke narasi untuk heuristik Bagian D (3 Lapis), default Tunggal, skip untuk bisnis transaksional jelas (bengkel, warung, laundry kiloan) & operasional internal (CRM), TANPA allowlist domain (studio tato/bimbel/ternak tetap ditanya), serta nilai varian riil user dipakai di tabel katalog Simulasi DB. | ✅ PASS |
+| **18** | [`tests/laundry_schema_tabs_and_tailwind_active.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/laundry_schema_tabs_and_tailwind_active.test.ts) | **Regresi Role Tab Ampersand & Tailwind v4 Native Variants**<br>Verifikasi penanganan karakter khusus (`&`) pada nama role seperti `Staf Pencuci & Setrika` agar tidak memicu `ROLE_MISSING_TAB_NAVIGATION`, serta memastikan variant modern (`active:scale-95`, `active:bg-blue-700`, dsb) dipertahankan dan lolos validasi tanpa dipangkas regex. | ✅ PASS |
 
 ---
 
@@ -75,8 +77,14 @@ Seluruh artefak kode HTML lengkap yang digunakan sebagai referensi pengujian dis
 
 ---
 
-## 4. Keputusan Mengenai Legacy Vanilla Tests (Suite 7-10 Lama)
+## 4. Keputusan Mengenai Pensiunnya Modul / Test Legacy
 
+### 4.1. Pensiunnya Test Suite #1 Lama (`tailwind_v2_whitelist.test.ts`) & Kamus 39k Kelas
+1. **Latar Belakang**: Pada implementasi awal Tailwind v2 precompiled (`tailwindcss@2.2.19`), sebuah kamus JSON raksasa berisi 39.062 kelas (`tailwindV2Classes.json`) dan whitelist validator digunakan untuk mencegah kelas v3+/arbitrary values.
+2. **Migrasi ke Tailwind v4 Browser Build**: Codebase telah bermigrasi ke `@tailwindcss/browser@4` (JIT in-browser) yang mendukung arbitrary values (`w-[...]`), kalkulasi dinamis, dan variant modern (`active:`, `disabled:`, `focus-visible:`, dsb) secara native dalam lingkungan sandbox iframe tanpa `localStorage`.
+3. **Pensiun Resmi**: File `tailwindV2Classes.json` dihapus (~400KB dead weight), dan `tests/tailwind_v2_whitelist.test.ts` resmi dipensiunkan (dead code) digantikan oleh `tests/tailwind_v4_lightweight_validator.test.ts`. Validator baru ini hanya melarang kelas plugin non-core yang memang tidak didukung browser build (`scrollbar-hide`, `@tailwindcss/forms` `form-*`, `@tailwindcss/typography` `prose*`, dsb).
+
+### 4.2. Pensiunnya Legacy Vanilla Tests (Suite 7-10 Lama)
 Sesuai Keputusan Arsitektur Besar **FULL REPLACEMENT** (bukan hybrid):
 1. Seluruh generator kode baru di `/api/generate/route.ts` 100% menghasilkan aplikasi Vue 3 Options API + Parameterized CRUD.
 2. Tidak ada jalur di codebase yang menghasilkan atau memerlukan Vanilla JS AST walker untuk DOM event handlers statis (`onclick="..."` manual pada ratusan fungsi inline).

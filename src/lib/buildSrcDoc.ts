@@ -885,8 +885,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <!-- Tailwind CSS v2.2.19 Precompiled (Zero JS, Zero eval, Sandbox Safe) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <!-- Tailwind CSS v4 Browser Build (JIT In-Browser, Zero-Config, Sandbox Safe) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   <!-- Vue 3 CDN (Full In-DOM Compiler Build) -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <!-- Lucide Icons (Pure DOM SVG Parser) -->
@@ -1055,8 +1055,10 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       cleanDoc += '\n</html>';
     }
 
-    // Ganti script Tailwind Play CDN jika ada dengan precompiled Tailwind v2.2.19 agar tidak memicu SecurityError
-    cleanDoc = cleanDoc.replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">');
+    // Normalisasi script Tailwind lama (v3 Play CDN / v2 precompiled link) ke Tailwind v4 Browser build
+    cleanDoc = cleanDoc
+      .replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>')
+      .replace(/<link[^>]*tailwindcss@2\.2\.19[^>]*>/gi, '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>');
 
     // Masukkan Google Fonts dan Base Resets ke dalam <head> jika belum ada
     if (!cleanDoc.includes('Plus+Jakarta+Sans')) {

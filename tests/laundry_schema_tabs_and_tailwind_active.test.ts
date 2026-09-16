@@ -100,19 +100,14 @@ const hasStafLabel = repaired1.includes('Operasional Cuci & Setrika') || repaire
 assert(hasStafLabel, 'FAILED: Label operasional laundry harus ada');
 console.log('  ✅ Label tab fungsional laundry berhasil');
 
-// C. Verifikasi pembersihan variant Tailwind v2 yang tidak aktif
+// C. Verifikasi dukungan native variant di Tailwind v4 (active:scale-95, disabled:opacity-50 dipertahankan)
 const hasActiveScale = repaired1.includes('active:scale-95');
 const hasActiveBg = repaired1.includes('active:bg-blue-700');
 const hasDisabled = repaired1.includes('disabled:opacity-50');
-assert(!hasActiveScale, 'FAILED: active:scale-95 harus dibersihkan dari HTML');
-assert(!hasActiveBg, 'FAILED: active:bg-blue-700 harus dibersihkan dari HTML');
-assert(!hasDisabled, 'FAILED: disabled:opacity-50 harus dibersihkan dari HTML');
-console.log('  ✅ Seluruh variant yang tidak aktif (active:*, disabled:*) berhasil dibersihkan');
-
-// D. Verifikasi alternatif CSS :active diinjeksi ke <style>
-const hasButtonActiveStyle = repaired1.includes('button:active');
-assert(hasButtonActiveStyle, 'FAILED: Aturan button:active harus diinjeksi ke tag <style>');
-console.log('  ✅ Aturan button:active berhasil diinjeksi ke tag <style>');
+assert(hasActiveScale, 'FAILED: active:scale-95 harus didukung native di HTML Tailwind v4');
+assert(hasActiveBg, 'FAILED: active:bg-blue-700 harus didukung native di HTML Tailwind v4');
+assert(hasDisabled, 'FAILED: disabled:opacity-50 harus didukung native di HTML Tailwind v4');
+console.log('  ✅ Seluruh variant modern (active:*, disabled:*) dipertahankan & didukung native oleh Tailwind v4');
 
 // E. Verifikasi Re-validasi hasil repair: lolos tanpa blocking issue
 const recheck1 = validateAndRepairGeneratedCode(repaired1, '', '', laundryRoles, 'Super Admin');

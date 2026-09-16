@@ -8,9 +8,9 @@ console.log('===================================================================
 const testFiles = [
   {
     id: 1,
-    name: 'Tailwind CSS v2 Whitelist Enforcement',
-    file: 'tests/tailwind_v2_whitelist.test.ts',
-    desc: 'Memvalidasi 39.062 kelas precompiled, menolak arbitrary values [...] dan utility v3+'
+    name: 'Tailwind v4 Lightweight Validator (Anti-Plugin & JIT Compat)',
+    file: 'tests/tailwind_v4_lightweight_validator.test.ts',
+    desc: 'Menolak kelas plugin non-core (scrollbar-hide, form-input, prose), meloloskan arbitrary values & modern variants v4'
   },
   {
     id: 2,

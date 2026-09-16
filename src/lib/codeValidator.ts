@@ -6,25 +6,6 @@
 import { cleanConversationalLeaks } from './cleanLeaks';
 import { isSuperAdminRole } from './rolePolicy';
 import * as acorn from 'acorn';
-import tailwindV2ClassesData from './tailwindV2Classes.json';
-
-const tailwindV2ClassesSet = new Set<string>(tailwindV2ClassesData as string[]);
-
-const ALLOWED_NON_TAILWIND_CLASSES = new Set([
-  'tab-btn', 'tab-content', 'tab-pane', 'nav-tabs', 'active',
-  'modal', 'modal-open', 'modal-backdrop', 'modal-content',
-  'badge', 'badge-info', 'badge-success', 'badge-warning', 'badge-danger',
-  'toast', 'toast-success', 'toast-error', 'toast-warning', 'toast-info',
-  'card', 'btn', 'btn-primary', 'btn-secondary', 'btn-danger', 'btn-success',
-  'title', 'table-auto'
-]);
-
-function isAllowedNonTailwindClass(cls: string): boolean {
-  if (ALLOWED_NON_TAILWIND_CLASSES.has(cls)) return true;
-  // FontAwesome icon classes: fa, fas, far, fab, fad, fal, fat, fa-*, etc.
-  if (/^(?:fa[srlbtd]?|fa-[a-z0-9-]+)$/i.test(cls)) return true;
-  return false;
-}
 
 export interface ValidationReport {
   isValid: boolean;
@@ -146,10 +127,21 @@ export function extractFunctionsFromAst(ast: any): Set<string> {
 
 /**
  * Memeriksa kesesuaian kelas utility terhadap Tailwind CSS v2.2.19 Precompiled.
- * Menggunakan WHITELIST terhadap seluruh 39.000+ kelas resmi di tailwind.min.css v2.2.19.
- * Menandai arbitrary values ([...]) dan utilitas yang tidak terdaftar di stylesheet v2.2.19 (fail-silent).
+ * Memeriksa kesesuaian kelas utility terhadap Tailwind CSS v4 Browser Build (JIT).
+ * Tailwind v4 mendukung seluruh utility modern bawaan, arbitrary values ([...]),
+ * dan seluruh variants (active:, disabled:, focus-visible:, group-active:, aspect-*, dll).
+ *
+ * VALIDATOR INI HANYA MELARANG KELAS DARI PLUGIN NON-CORE yang tidak terpasang di CDN bawaan:
+ * 1. Plugin scrollbar non-standar: scrollbar-hide, scrollbar-default, scrollbar-none, scrollbar-thin
+ * 2. Plugin @tailwindcss/forms: form-input, form-textarea, form-select, form-multiselect, form-checkbox, form-radio
+ * 3. Plugin @tailwindcss/typography: prose, prose-sm, prose-lg, prose-xl, prose-2xl, prose-*
+ * 4. Plugin aspect-ratio legacy: aspect-w-*, aspect-h-*
  */
 export function checkTailwindV2Syntax(html: string): { warnings: string[]; invalidClasses: string[] } {
+  return checkTailwindSyntax(html);
+}
+
+export function checkTailwindSyntax(html: string): { warnings: string[]; invalidClasses: string[] } {
   const warnings: string[] = [];
   const invalidClasses: string[] = [];
 
@@ -182,15 +174,36 @@ export function checkTailwindV2Syntax(html: string): { warnings: string[]; inval
     }
   }
 
-  const arbitraryPattern = /^[a-zA-Z0-9_-]+-\[[^\]]+\]$/;
+  // Pola kelas plugin non-core yang DILARANG:
+  const FORBIDDEN_PLUGIN_PATTERNS = [
+    {
+      pattern: /^scrollbar-(?:hide|default|none|thin|thumb|track)/i,
+      desc: 'plugin scrollbar (misal: scrollbar-hide). Gunakan aturan CSS di tag <style>: .overflow-x-auto::-webkit-scrollbar { display: none; }'
+    },
+    {
+      pattern: /^form-(?:input|textarea|select|multiselect|checkbox|radio)$/i,
+      desc: 'plugin @tailwindcss/forms (misal: form-input). Gunakan styling utility core standar Tailwind'
+    },
+    {
+      pattern: /^prose(?:-[a-z0-9]+)?$/i,
+      desc: 'plugin @tailwindcss/typography (misal: prose, prose-lg). Gunakan utility core untuk styling teks'
+    },
+    {
+      pattern: /^aspect-[wh]-\d+$/i,
+      desc: 'plugin legacy aspect-ratio (misal: aspect-w-16). Gunakan utility aspect-video, aspect-square, atau arbitrary aspect-[16/9]'
+    }
+  ];
 
   for (const cls of classesFound) {
-    if (arbitraryPattern.test(cls)) {
-      invalidClasses.push(cls);
-      warnings.push(`TAILWIND_V2_ARBITRARY_VALUE: Kelas "${cls}" menggunakan arbitrary value [...] yang TIDAK didukung oleh Tailwind CSS v2.2.19.`);
-    } else if (!tailwindV2ClassesSet.has(cls) && !isAllowedNonTailwindClass(cls)) {
-      invalidClasses.push(cls);
-      warnings.push(`TAILWIND_V2_NOT_IN_WHITELIST: Kelas "${cls}" TIDAK terdaftar di stylesheet Tailwind CSS v2.2.19 precompiled (berpotensi silent visual failure).`);
+    // Abaikan varian prefix (misal md:scrollbar-hide -> periksa 'scrollbar-hide')
+    const baseClass = cls.includes(':') ? cls.split(':').pop() || cls : cls;
+
+    for (const fp of FORBIDDEN_PLUGIN_PATTERNS) {
+      if (fp.pattern.test(baseClass)) {
+        invalidClasses.push(cls);
+        warnings.push(`TAILWIND_NON_CORE_PLUGIN: Kelas "${cls}" berasal dari ${fp.desc}.`);
+        break;
+      }
     }
   }
 
@@ -2050,28 +2063,8 @@ function loginAs(role) {
     issues.push(...deleteIssues);
   }
 
-  // 16.5 AUTO-REPAIR: Bersihkan variant pseudo-class yang tidak diaktifkan di Tailwind v2.2.19 CDN precompiled
-  // (misal: active:scale-95, active:bg-*, group-active:*, disabled:*, focus-visible:*)
-  if (/\b(?:active|group-active|disabled|focus-visible):[a-zA-Z0-9_-]+/i.test(repairedHtml)) {
-    repairedHtml = repairedHtml.replace(/(?<![:\w-])class=["']([^"']+)["']/gi, (match, classStr) => {
-      if (/\b(?:active|group-active|disabled|focus-visible):/i.test(classStr)) {
-        const cleaned = classStr
-          .split(/\s+/)
-          .filter((cls: string) => !/^(?:active|group-active|disabled|focus-visible):/i.test(cls))
-          .join(' ');
-        return `class="${cleaned}"`;
-      }
-      return match;
-    });
-
-    // Pertahankan feedback aktif melalui aturan CSS murni di <style> jika ada tombol
-    if (!repairedHtml.includes('button:active') && repairedHtml.includes('<style>')) {
-      repairedHtml = repairedHtml.replace('<style>', '<style>\n    button:active { transform: scale(0.97); }');
-    }
-  }
-
-  // 17. VALIDASI KESESUAIAN TAILWIND V2 (Whitelist & Constraint Tailwind v2)
-  const twReport = checkTailwindV2Syntax(repairedHtml);
+  // 17. VALIDASI KESESUAIAN TAILWIND (Anti-Plugin Non-Core untuk v4 JIT)
+  const twReport = checkTailwindSyntax(repairedHtml);
   if (twReport.warnings.length > 0) {
     console.warn('[Tailwind v2 Linter]', twReport.warnings);
     issues.push(...twReport.warnings);
