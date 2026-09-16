@@ -83,6 +83,18 @@ const testFiles = [
     name: '3-Tier Schema Pattern & Relation Integrity',
     file: 'tests/schema_pattern_and_relation_integrity.test.ts',
     desc: 'Verifikasi pola katalog master + tabel pendaftaran penghubung + tabel turunan, deteksi relasi tabel tidak ada, dan auto-repair peran'
+  },
+  {
+    id: 14,
+    name: 'Tailwind Plugin Whitelist & Simulasi DB Quality',
+    file: 'tests/tw_plugin_and_simulasi_db.test.ts',
+    desc: 'Bug A: larangan plugin class (scrollbar-hide dll) & alternatif CSS custom. Bug B: perbaikan semantik kerusakan fisik (bukan jalan) & konsistensi skala nominal deposit vs tagihan'
+  },
+  {
+    id: 15,
+    name: 'Actor Classification & Semantic Owner Role Resolution',
+    file: 'tests/actor_classification_and_owner_role.test.ts',
+    desc: 'Klasifikasi Pelaku (Pengguna Sistem vs Entitas Data), sub-step klarifikasi Bagian A, filter Bagian B, resolusi ownerRole AI alur, Skema Data tanpa kredensial, & Simulasi DB tanpa akun demo entitas'
   }
 ];
 

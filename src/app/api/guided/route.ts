@@ -28,6 +28,11 @@ import {
   REQUIRED_ROLE,
   isSuperAdminRole,
   isExternalRole,
+  isActorEntityData,
+  isActorSystemUser,
+  getEntityOwnerRole,
+  analyzeActorClassification,
+  type ActorClassification,
   isNavigationActionId,
   getRoleNarrativeAndResponsibilities,
   calculateConceptualSimilarity,
@@ -1649,6 +1654,324 @@ Perbarui dan kembalikan JSON lengkap:`;
   return applyDeterministicFlowCorrection(currentFlow, userCorrection, session);
 }
 
+export interface ResolveOwnerRoleResult {
+  ownerRole: string;
+  confidence: 'high' | 'low';
+  reason?: string;
+  actionOwners?: { action: string; role: string }[];
+}
+
+export async function resolveEntityOwnerRoleWithAI(
+  entityName: string,
+  activeRoles: string[],
+  flowData: {
+    alurInti?: { step: number; pelaku: string; aksi: string }[];
+    alurPendukung?: { nama: string; steps: { pelaku: string; aksi: string }[] }[];
+  },
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<ResolveOwnerRoleResult> {
+  const alurInti = flowData.alurInti || [];
+  const alurPendukung = flowData.alurPendukung || [];
+
+  const flowSummary = [
+    'Alur Inti:',
+    ...alurInti.map((s) => `${s.step}. [${s.pelaku}] ${s.aksi}`),
+    ...(alurPendukung.length > 0 ? ['\nAlur Pendukung:'] : []),
+    ...alurPendukung.flatMap((ap) => [
+      `- ${ap.nama}:`,
+      ...ap.steps.map((s) => `  * [${s.pelaku}] ${s.aksi}`)
+    ])
+  ].join('\n');
+
+  const systemInstruction = `Anda adalah analis proses bisnis perangkat lunak yang bertugas menganalisis tanggung jawab peran (role pengguna sistem) terhadap entitas data.
+Tugas Anda: Menentukan peran (dari daftar peran pengguna sistem aktif) yang bertugas mencatat, mengelola, atau melayani entitas data "${entityName}" berdasarkan alur kerja operasional.
+
+ATURAN WAJIB:
+1. Analisis alur kerja nyata: Peran pengguna sistem mana yang melayani, menginput data, mencatat transaksi, atau berinteraksi langsung dengan ${entityName}?
+2. Pilih SATU peran yang PERSIS sama dengan salah satu dari daftar peran aktif berikut:
+${activeRoles.map((r) => `- "${r}"`).join('\n')}
+3. PENTING — LARANGAN MENEBAK:
+   Jika konteks alur kerja TIDAK secara jelas menyebutkan atau mengimplikasikan siapa yang mencatat/mengelola ${entityName}, atau jika Anda ragu/ambigu:
+   Anda WAJIB mengisi "ownerRole": "tidak jelas" dan "confidence": "low".
+   JANGAN MENEBAK! JANGAN ASAL PILIH!
+4. Jika alur menyebutkan aksi lain terhadap entitas tersebut (misal: memeriksa kelayakan, menyelesaikan status, membatalkan), cantumkan pada array "actionOwners".
+
+Format keluaran WAJIB JSON valid murni:
+{
+  "ownerRole": "Nama Peran Aktif ATAU 'tidak jelas'",
+  "confidence": "high" | "low",
+  "reason": "Penjelasan singkat dari alur kerja",
+  "actionOwners": [
+    { "action": "deskripsi aksi", "role": "Nama Peran" }
+  ]
+}`;
+
+  const userPrompt = `Entitas Data yang dicari pengelolanya: "${entityName}"
+
+Daftar Peran Pengguna Sistem Aktif:
+${activeRoles.map((r) => `- ${r}`).join('\n')}
+
+Teks Lengkap Alur Kerja Operasional:
+${flowSummary}
+
+Tentukan peran pengelola/pencatat untuk "${entityName}":`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.2,
+      maxTokens: 1000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        const ownerRoleRaw = String(parsed.ownerRole || '').trim();
+        const matchedRole = activeRoles.find(
+          (r) => r.toLowerCase() === ownerRoleRaw.toLowerCase()
+        );
+
+        if (matchedRole && parsed.confidence === 'high') {
+          return {
+            ownerRole: matchedRole,
+            confidence: 'high',
+            reason: parsed.reason,
+            actionOwners: Array.isArray(parsed.actionOwners) ? parsed.actionOwners : []
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[resolveEntityOwnerRoleWithAI] Error invoking AI:', err);
+  }
+
+  // Fallback semantik alur: periksa apakah ada langkah di alur kerja yang secara eksplisit
+  // menyebutkan aktor staf aktif melakukan aksi terhadap nama entitas ini
+  const explicitStep = alurInti.find((s) => {
+    const isStaff = activeRoles.some((r) => r.toLowerCase() === s.pelaku.toLowerCase() && !isSuperAdminRole(r));
+    return isStaff && new RegExp(`\\b${entityName}\\b`, 'i').test(s.aksi);
+  });
+
+  if (explicitStep) {
+    const matchedRole = activeRoles.find((r) => r.toLowerCase() === explicitStep.pelaku.toLowerCase());
+    if (matchedRole) {
+      return {
+        ownerRole: matchedRole,
+        confidence: 'high',
+        reason: `Langkah alur kerja "${explicitStep.aksi}" dilakukan oleh ${matchedRole}`
+      };
+    }
+  }
+
+  // Jika alur kerja tidak menyebutkan siapa pencatatnya:
+  return {
+    ownerRole: 'tidak jelas',
+    confidence: 'low',
+    reason: `Alur kerja tidak menyebutkan peran spesifik yang mencatat atau mengelola data ${entityName}`
+  };
+}
+
+export interface ClassifyActorResult {
+  category: 'PENGGUNA_SISTEM' | 'ENTITAS_DATA';
+  confidence: 'high' | 'low';
+  reason: string;
+}
+
+let _lapis2CallCount = 0;
+export function getLapis2CallCount(): number {
+  return _lapis2CallCount;
+}
+export function resetLapis2CallCount(): void {
+  _lapis2CallCount = 0;
+}
+
+export type MockAiClassifier = (
+  actor: string,
+  storyline: NonNullable<MockupSessionState['storyline']>
+) => Promise<ClassifyActorResult | null>;
+
+let _mockAiClassifier: MockAiClassifier | null = null;
+export function setMockAiClassifierForTesting(fn: MockAiClassifier | null) {
+  _mockAiClassifier = fn;
+}
+
+/**
+ * LAPIS 2: Penilaian Semantik Berbasis AI untuk Klasifikasi Pelaku (Pengguna Sistem vs Entitas Data).
+ * Mengevaluasi peran pelaku berdasarkan makna kalimat tanggung jawab dan konteks narasi alur,
+ * bukan semata-mata dari pencocokan nama aktor ke daftar kamus.
+ */
+export async function classifyActorWithAI(
+  actor: string,
+  storyline: NonNullable<MockupSessionState['storyline']>,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<ClassifyActorResult> {
+  const clean = actor.trim();
+  if (isSuperAdminRole(clean)) {
+    return {
+      category: 'PENGGUNA_SISTEM',
+      confidence: 'high',
+      reason: 'Pemilik usaha / Super Admin pemegang kendali utama aplikasi'
+    };
+  }
+
+  _lapis2CallCount++;
+  console.log(
+    `[LAPIS-2-AI-CALL] classifyActorWithAI dipanggil untuk "${clean}" (Total pemanggilan: ${_lapis2CallCount})`
+  );
+
+  if (_mockAiClassifier) {
+    const mockRes = await _mockAiClassifier(clean, storyline);
+    if (mockRes) return mockRes;
+  }
+
+  const detailAktor = storyline.detailAktor || {};
+  const detail = detailAktor[clean];
+  const detailText = detail
+    ? `Tanggung Jawab: ${(detail.tanggungJawab || []).join(', ')}. Narasi: ${detail.narasi || '-'}`
+    : '';
+
+  const systemInstruction = `Anda adalah analis arsitektur sistem informasi enterprise.
+Tugas Anda: Mengevaluasi peran pelaku "${clean}" dalam proses bisnis: apakah bertindak sebagai "PENGGUNA_SISTEM" atau "ENTITAS_DATA".
+
+DEFINISI KATEGORI:
+1. PENGGUNA_SISTEM: Pelaku (pemilik, staf, petugas operasional) yang memegang komputer/perangkat, login dengan akun mandiri, dan mengoperasikan aplikasi (menginput, memverifikasi, mengelola data).
+2. ENTITAS_DATA: Pelaku pihak luar (pelanggan, pasien, siswa, penyewa, donatur, kontributor riset, pemesan khusus, partisipan uji coba, dsb.) yang TIDAK membuka aplikasi sendiri. Keberadaannya hanya DICATAT, DILAYANI, atau DIPERIKSA oleh staf/pengguna sistem lain.
+
+ATURAN EVALUASI:
+- Periksa kalimat narasi dan alur: Siapa yang melakukan aksi terhadap "${clean}"? Jika data "${clean}" dicatat atau dilayani oleh peran staf lain, maka "${clean}" adalah ENTITAS_DATA.
+- Jika alur menyebut "${clean}" login mandiri atau membuka portal mandiri, maka PENGGUNA_SISTEM.
+- Berikan alasan penalaran yang spesifik dan mengutip alur cerita bisnis (bukan alasan template).
+
+Format keluaran WAJIB JSON murni:
+{
+  "category": "PENGGUNA_SISTEM" | "ENTITAS_DATA",
+  "confidence": "high" | "low",
+  "reason": "Penjelasan penalaran spesifik berdasarkan narasi proses bisnis"
+}`;
+
+  const userPrompt = `Pelaku yang dievaluasi: "${clean}"
+
+Narasi Proses Bisnis:
+${storyline.narasi || '-'}
+
+Alur Operasional:
+${storyline.asumsiAlurUtama || '-'}
+${detailText ? `\nDetail Aktor:\n${detailText}` : ''}
+
+Tentukan kategori "${clean}" (PENGGUNA_SISTEM atau ENTITAS_DATA):`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 500,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        const cat = String(parsed.category || '').trim().toUpperCase();
+        if (cat === 'PENGGUNA_SISTEM' || cat === 'ENTITAS_DATA') {
+          return {
+            category: cat,
+            confidence: parsed.confidence === 'high' ? 'high' : 'low',
+            reason: parsed.reason || `🤖 Hasil penalaran alur bisnis: ${clean} berposisi sebagai ${cat === 'ENTITAS_DATA' ? 'Entitas Data' : 'Pengguna Sistem'}.`
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[classifyActorWithAI] Gagal memanggil AI untuk "${clean}":`, err);
+  }
+
+  // Fallback ke Lapis 1 Heuristik jika AI tidak merespons
+  const baseClassification = analyzeActorClassification({
+    step: 'STORYTELLING',
+    storyline
+  });
+  const fallback = baseClassification.classifications.find(
+    (c: ActorClassification) => c.actor.toLowerCase() === clean.toLowerCase()
+  );
+  return {
+    category: fallback?.category || 'PENGGUNA_SISTEM',
+    confidence: 'low',
+    reason: fallback?.reason || `🤖 Saran: ${clean} diklasifikasikan sebagai Pengguna Sistem.`
+  };
+}
+
+export async function analyzeActorClassificationWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<{
+  classifications: ActorClassification[];
+  hasCandidateEntity: boolean;
+}> {
+  // 1. Jalankan Lapis 1 (Heuristik Narasi & Tindakan Kalimat)
+  const lapis1 = analyzeActorClassification(session);
+  const classifications: ActorClassification[] = [];
+  let hasCandidateEntity = false;
+
+  for (const c of lapis1.classifications) {
+    // Jalur cepat: Jika Lapis 1 sudah confident (Owner, Jabatan Staf Baku, atau Predicate Semantic Match):
+    // Gunakan hasil Lapis 1 tanpa perlu memanggil AI tambahan (hemat latensi & biaya)
+    if (c.confidence === 'high') {
+      classifications.push(c);
+      if (c.category === 'ENTITAS_DATA') {
+        hasCandidateEntity = true;
+      }
+      continue;
+    }
+
+    // 2. LAPIS 2: Pemicu eksplisit jika Lapis 1 INCONCLUSIVE (confidence: low, source: INCONCLUSIVE_FALLBACK)
+    console.log(
+      `[LAPIS-2-AI-TRIGGERED] classifyActorWithAI dipanggil untuk "${c.actor}" karena Lapis 1 inconclusive (confidence: low, source: ${c.matchSource}).`
+    );
+
+    if (session.storyline) {
+      const aiResult = await classifyActorWithAI(
+        c.actor,
+        session.storyline,
+        provider,
+        apiKey,
+        model
+      );
+      classifications.push({
+        actor: c.actor,
+        category: aiResult.category,
+        confidence: aiResult.confidence,
+        matchSource: 'AI_SEMANTIC',
+        reason: aiResult.reason
+      });
+      if (aiResult.category === 'ENTITAS_DATA') {
+        hasCandidateEntity = true;
+      }
+    } else {
+      classifications.push(c);
+      if (c.category === 'ENTITAS_DATA') {
+        hasCandidateEntity = true;
+      }
+    }
+  }
+
+  return { classifications, hasCandidateEntity };
+}
+
 export interface RbacMatrixResult {
   modul: {
     nama: string;
@@ -1669,7 +1992,7 @@ export function generateFallbackRbacMatrix(session: MockupSessionState): RbacMat
   const alurPendukung = flowData.alurPendukung || [];
   const delegated = session.roles?.tugasDilimpahkan || [];
   const ownerRole = activeRoles.find((r) => isSuperAdminRole(r)) || activeRoles[0] || 'Super Admin';
-  const customerRole = activeRoles.find((r) => isExternalRole(r));
+  const customerRole = activeRoles.find((r) => isActorEntityData(session, r));
   const domain = ((session as any).domain || session.match?.businessCategory || 'Layanan').trim();
 
   const modul: {
@@ -2132,8 +2455,30 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
     return `ID atau nama ${defaultActor} yang memproses data`;
   };
 
-  const operationalRole = activeRoles.find((r) => !isSuperAdminRole(r) && !isExternalRole(r)) || 'Staf Operasional';
-  const customerRole = activeRoles.find((r) => isExternalRole(r));
+  const operationalRole = activeRoles.find((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r)) || 'Staf Operasional';
+  const customerRole = activeRoles.find((r) => isActorEntityData(session, r));
+
+  // Tabel khusus untuk setiap ENTITAS_DATA yang dikelola oleh ownerRole (tanpa field kredensial)
+  const entityDataActors = (session.actorsClassification || []).filter((a) => a.category === 'ENTITAS_DATA');
+  for (const ent of entityDataActors) {
+    const tableName = ent.actor.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const alreadyExists = tabel.some((t) => t.nama === tableName);
+    if (!alreadyExists) {
+      const managerRole = ent.ownerRole || operationalRole;
+      tabel.push({
+        nama: tableName,
+        keterangan: `Mencatat data profil dan riwayat ${ent.actor} yang dikelola oleh ${managerRole}`,
+        field: [
+          { nama: 'id', tipe: 'text', keterangan: `Identitas unik data ${ent.actor}` },
+          { nama: `nama_${tableName}`, tipe: 'text', keterangan: `Nama lengkap ${ent.actor}` },
+          { nama: 'kontak_telepon', tipe: 'text', keterangan: `Nomor telepon atau kontak ${ent.actor}` },
+          { nama: 'alamat_identitas', tipe: 'text', keterangan: `Alamat atau identitas pengenal ${ent.actor}` },
+          { nama: 'status_verifikasi', tipe: 'text', keterangan: 'Status verifikasi data (Terverifikasi / Menunggu Verifikasi)' },
+          { nama: 'dicatat_oleh', tipe: 'relasi ke pengguna', keterangan: `Staf yang mencatat dan mengelola data (${managerRole})` }
+        ]
+      });
+    }
+  }
 
   // Tabel 2: Transaksi / Permohonan Utama (disarikan dari modul mandiri / alur inti)
   const selfServiceModul = rbacModul.find((m) => /mandiri|pemesanan|pengajuan|pendaftaran|booking/i.test(m.nama));
@@ -2146,7 +2491,7 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
     keterangan: 'Mencatat data transaksi permohonan atau pemesanan utama dari pengguna',
     field: [
       { nama: 'id', tipe: 'text', keterangan: 'Kode transaksi unik' },
-      { nama: customerRole ? `${customerRole.toLowerCase().replace(/\s+/g, '_')}_id` : 'pelanggan_id', tipe: 'relasi ke pengguna', keterangan: 'ID akun pihak pemohon / pelanggan' },
+      { nama: customerRole ? `${customerRole.toLowerCase().replace(/\s+/g, '_')}_id` : 'pelanggan_id', tipe: customerRole ? 'relasi ke pengguna' : (entityDataActors.length > 0 ? `relasi ke ${entityDataActors[0].actor.toLowerCase().replace(/[^a-z0-9]+/g, '_')}` : 'relasi ke pengguna'), keterangan: 'ID pihak pemohon / pelanggan' },
       { nama: 'tanggal_pengajuan', tipe: 'tanggal', keterangan: 'Waktu permohonan atau pemesanan dibuat' },
       { nama: 'rincian_kebutuhan', tipe: 'text', keterangan: 'Deskripsi permohonan, item, atau layanan yang diminta' },
       { nama: 'status_transaksi', tipe: 'text', keterangan: 'Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan)' },
@@ -2440,8 +2785,24 @@ ${delegated.map((d) => `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan se
   * Setiap field pencatat/pemroses yang secara normal dikerjakan oleh "${d.dariRole}" (misal: dicatat_oleh, diverifikasi_oleh, kasir_id) WAJIB diberi keterangan: "Selalu diisi oleh ${d.keRole} — peran ${d.dariRole} telah dialihkan ke ${d.keRole} karena perampingan organisasi."`).join('\n')}`
     : '';
 
+  const entityDataActors = (session.actorsClassification || []).filter((a) => a.category === 'ENTITAS_DATA');
+  const entityDataRulesPrompt = entityDataActors.length > 0
+    ? `\n⚠️ ATURAN KHUSUS ENTITAS DATA (BUKAN PENGGUNA SISTEM YANG LOGIN):
+${entityDataActors
+  .map(
+    (e) =>
+      `- "${e.actor}" adalah ENTITAS DATA yang dicatat dan dilayani oleh "${e.ownerRole || 'Staf Operasional'}", BUKAN akun pengguna login.
+  * WAJIB dibuatkan tabel data tersendiri (misal: "${e.actor.toLowerCase()}") untuk mencatat profil dan riwayat bisnisnya.
+  * DILARANG KERAS menyertakan field kredensial (username, password, pin, token) pada tabel "${e.actor.toLowerCase()}".
+  * Field relasi dari tabel transaksi ke ${e.actor} merujuk ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}"), dan field pencatatnya merujuk ke pengguna dengan targetRole "${e.ownerRole || 'Staf Operasional'}".`
+  )
+  .join('\n')}`
+    : '';
+
   const systemInstruction = `Anda adalah Analis Basis Data & Perancang Skema Data Aplikasi Bisnis Nyata.
 Tugas Anda: Menyusun Skema Tabel Data dan Relasi Entitas yang SANGAT PRESISI, MURNI DIGROUNDING pada alur proses bisnis nyata, peran pengguna yang aktif, dan matriks hak akses (RBAC) yang telah disepakati.
+${entityDataRulesPrompt}
+${delegationRulesPrompt}
 
 ATURAN WAJIB & STRICT PRINCIPLES:
 1. PENYISIRAN KATA BENDA & ATRIBUT PILIHAN (GROUNDING MUTLAK):
@@ -3035,6 +3396,10 @@ ATURAN KETAT:
 }
 2. Sertakan SEMUA tabel dan SEMUA field yang terdaftar di bawah, masing-masing PERSIS 3 nilai berbeda yang masuk akal dan realistis untuk 3 baris data.
 3. Nilai HARUS sangat kontekstual dengan domain bisnis dan KETERANGAN field:
+   - BACA KETERANGAN FIELD LENGKAP SECARA SEMANTIK (ANTI-SALAH TAFSIR LOKASI):
+     * Jika field berisi lokasi kerusakan/cacat/kondisi bagian fisik unit/barang (misal: "Lokasi kerusakan spesifik pada rangka atau ban", "Kondisi fisik barang"): nilai HARUS berupa deskripsi fisik komponen unit barang (misal sepeda: "Rantai kendor & lecet rangka", "Rem belakang aus", "Velg sedikit oleng"; kendaraan: "Baret pada bumper depan", "Lampu sen redup"; barang/alat: "Baret pemakaian wajar", "Komponen aus").
+     * DILARANG KERAS menafsirkan kata "lokasi" pada kerusakan/kondisi barang sebagai alamat jalan atau alamat geografis ("Jl. Merdeka...", "Jl. Sudirman...")!
+     * Alamat jalan ("Jl. ...", nomor jalan) HANYA untuk field tempat tinggal pelanggan/warga atau alamat outlet/cabang bisnis.
    - Jika field produk/barang/layanan/varian: gunakan nama produk/layanan nyata sesuai domain (misal distro/pakaian: "Kemeja Flannel Tartan", "Kaos Polos Cotton Combed", "Jaket Denim Trucker"; klinik hewan: "Kucing Persia", "Anjing Golden Retriever", "Kelinci Holland Lop"; es krim: "Vanilla Classic", "Dark Chocolate", "Strawberry Swirl").
    - Jika field ukuran baju/produk: gunakan ukuran industri nyata ("S", "M", "L", "XL").
    - Jika field warna: gunakan warna nyata ("Hitam Solid", "Navy Blue", "Olive Green", "Maroon").
@@ -3043,7 +3408,10 @@ ATURAN KETAT:
    - Untuk field peran/role pada tabel pengguna: nilai HARUS PERSIS SAMA (exact match) dengan salah satu nama peran resmi: [${(session.roles?.selected || []).join(', ')}]. DILARANG KERAS menyingkat nama peran (misal "Staf Administrasi" disingkat jadi "Staf", atau "Super Admin" jadi "Admin").
    - JANGAN PERNAH menaruh nama orang di field nama barang/produk/varian/status/ukuran/warna/spesifikasi.
    - Nama orang HANYA boleh dipakai untuk field nama pelanggan, nama staf, nama dokter, nama peminjam (gunakan nama orang Indonesia: "Budi Santoso", "Siti Rahma", "Ahmad Hidayat").
-4. Untuk tipe "angka": kembalikan angka murni (number) dalam rentang nominal wajar (misal harga: 25000, 75000, 150000; stok: 10, 25, 50; bobot kg: 2.5, 4.0, 7.5).
+4. Untuk tipe "angka": kembalikan angka murni (number) dalam rentang nominal wajar:
+   - KONSISTENSI SKALA FINANSIAL SATU BARIS (MUTLAK): Seluruh field nominal uang (seperti harga, tarif, biaya, tagihan, total_tagihan, deposit, jaminan, uang_muka, denda) dalam satu tabel HARUS menggunakan satuan skala nominal Rupiah penuh yang seragam (BUKAN sebagian Rupiah penuh dan sebagian singkatan ribuan).
+   - Nilai field deposit/jaminan HARUS proporsional terhadap biaya/tagihan di baris yang sama (misal total tagihan rental 150.000 -> deposit 50.000 s.d. 100.000; DILARANG KERAS deposit bernilai 15 sementara total tagihan bernilai 150.000).
+   - Tulis angka murni tanpa titik/koma (misal: harga/tagihan: 150000, 250000, 500000; deposit: 50000, 100000, 200000; stok: 10, 25, 50; bobot kg: 2.5, 4.0, 7.5).
 5. Untuk tipe "tanggal": format "YYYY-MM-DD" (misal "2026-09-10", "2026-09-11", "2026-09-12").
 6. DILARANG memakai placeholder seperti "Contoh Data", "Item 1", "Dummy", "...", "-", atau mengulang-ulang nama field.`;
 
@@ -3062,6 +3430,8 @@ ${opts.masalahDariValidasi.map((m) => `- ${m}`).join('\n')}
 INSTRUKSI KHUSUS PERBAIKAN:
 - Perbaiki setiap field di atas agar nilainya bervariasi, realistis, dan kontekstual sesuai skema.
 - Untuk field yang memiliki pilihan di keterangan, pilih HANYA salah satu nilai dari daftar pilihan tersebut.
+- Pastikan field kerusakan fisik barang TIDAK diisi alamat jalan ("Jl. ..."), melainkan bagian fisik yang rusak/kondisinya (misal 'rantai kendor', 'rem aus').
+- Pastikan seluruh field nominal uang (deposit, total_tagihan, biaya) berskala Rupiah penuh dan proporsional (dilarang jomplang seperti deposit 15 vs tagihan 150.000).
 - DILARANG membuat nilai increment rata (seperti 10, 20, 30); berikan skor/nilai natural yang bervariasi.
 - DILARANG menggunakan placeholder generik ("Hasil A", "Data 1", dsb).`
       : '';
@@ -4263,6 +4633,39 @@ export async function POST(req: Request) {
           });
         }
 
+        // Sub-handler: Jawaban klarifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+        if (session.storyline?.pendingActorClarification) {
+          const updated = applyGuidedAnswer(session, 'STORYTELLING', selected, other);
+          if (updated.step === 'STORYTELLING' && updated.storyline?.pendingActorClarification) {
+            const guidedStep = buildGuidedStep(updated);
+            const pend = updated.storyline.pendingActorClarification;
+            const curActor = pend.actors[pend.currentIndex || 0];
+            const narration =
+              `Sip, klarifikasi tersimpan!\n\n` +
+              `Berikutnya untuk **${curActor?.actor}**: apakah membuka aplikasi sendiri atau dicatat staf?`;
+            return NextResponse.json({
+              success: true,
+              action,
+              session: updated,
+              guidedStep,
+              narration
+            });
+          }
+
+          // Semua aktor selesai diklarifikasi -> lanjut ke ROLE
+          await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
+          const guidedStep = buildGuidedStep(updated);
+          const narration =
+            'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nMantap! Klasifikasi pihak terlibat sudah beres. Sekarang, yuk kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updated,
+            guidedStep,
+            narration
+          });
+        }
+
         const existingStory = session.storyline || {
           narasi: '',
           asumsiMasalah: '',
@@ -4437,16 +4840,55 @@ export async function POST(req: Request) {
           });
         }
 
-        // 4. Konfirmasi langsung ("Sudah sesuai, lanjut ke Role") -> lanjut ke ROLE
-        const updated: MockupSessionState = {
-          ...session,
-          step: 'ROLE',
-          storyline: {
-            ...existingStory,
-            statusKonfirmasi: 'disetujui',
-            modeKlarifikasiBertahap: false
+        // 4. Konfirmasi langsung ("Sudah sesuai, lanjut ke Role") -> evaluasi sub-step klarifikasi peran pelaku
+        let updated = applyGuidedAnswer(session, 'STORYTELLING', body.selected || [], body.other);
+
+        // LAPIS 2: Penilaian Semantik Berbasis AI untuk mengevaluasi peran pelaku non-owner
+        if (updated.storyline?.asumsiAktor && updated.storyline.asumsiAktor.length > 0) {
+          const aiClassifications = await analyzeActorClassificationWithAI(
+            updated,
+            provider,
+            userApiKey,
+            userModel
+          );
+          updated.actorsClassification = aiClassifications.classifications;
+
+          if (aiClassifications.hasCandidateEntity) {
+            updated.step = 'STORYTELLING';
+            updated.storyline = {
+              ...updated.storyline,
+              statusKonfirmasi: 'disetujui',
+              pendingActorClarification: {
+                actors: aiClassifications.classifications.filter((c) => c.category === 'ENTITAS_DATA'),
+                ownerActor:
+                  aiClassifications.classifications.find((c) => isSuperAdminRole(c.actor))?.actor ||
+                  REQUIRED_ROLE,
+                currentIndex: 0
+              }
+            };
+          } else {
+            delete updated.storyline.pendingActorClarification;
+            updated.step = 'ROLE';
           }
-        };
+        }
+
+        if (updated.step === 'STORYTELLING' && updated.storyline?.pendingActorClarification) {
+          const guidedStep = buildGuidedStep(updated);
+          const pend = updated.storyline.pendingActorClarification;
+          const curActor = pend.actors[pend.currentIndex || 0];
+          const narration =
+            `Alur cerita proses bisnis sudah disetujui!\n\n` +
+            `Sebelum kita memilih peran sistem, mari pastikan dulu klasifikasi pihak yang terlibat:\n` +
+            `Apakah **${curActor?.actor}** akan membuka aplikasi sendiri dengan akun login mandiri, atau sekadar data yang dicatat oleh staf?`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updated,
+            guidedStep,
+            narration
+          });
+        }
+
         await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
         const guidedStep = buildGuidedStep(updated);
         const narration =
@@ -4928,6 +5370,77 @@ export async function POST(req: Request) {
 
         // Normal: persetujuan alur -> lanjut ke RBAC (POIN 5)
         let updated = applyGuidedAnswer(session, 'ALUR', body.selected || [], body.other);
+
+        // PENELUSURAN SEMANTIK ownerRole untuk setiap ENTITAS_DATA:
+        // Jika ada entitas data yang belum memiliki ownerRole, telusuri secara semantik dari alur.
+        // Jika AI tidak yakin / mengembalikan 'tidak jelas', hentikan transisi dan munculkan klarifikasi pilihan peran.
+        const unassignedEntities = (updated.actorsClassification || []).filter(
+          (a) => a.category === 'ENTITAS_DATA' && !a.ownerRole
+        );
+
+        if (unassignedEntities.length > 0) {
+          const activeRoles =
+            updated.roles?.selected && updated.roles.selected.length > 0
+              ? updated.roles.selected
+              : [REQUIRED_ROLE];
+
+          let blockedEntity: string | null = null;
+          let blockedReason = '';
+
+          for (const ent of unassignedEntities) {
+            const resolution = await resolveEntityOwnerRoleWithAI(
+              ent.actor,
+              activeRoles,
+              updated.flow || {},
+              provider,
+              userApiKey,
+              userModel
+            );
+
+            if (
+              resolution.confidence === 'high' &&
+              resolution.ownerRole &&
+              resolution.ownerRole !== 'tidak jelas' &&
+              activeRoles.some((r) => r.toLowerCase() === resolution.ownerRole.toLowerCase())
+            ) {
+              ent.ownerRole =
+                activeRoles.find((r) => r.toLowerCase() === resolution.ownerRole.toLowerCase()) ||
+                resolution.ownerRole;
+            } else {
+              // Blokir transisi ke RBAC dan tanyakan ke pengguna
+              blockedEntity = ent.actor;
+              blockedReason =
+                resolution.reason ||
+                `Dalam alur kerja saat ini, belum jelas peran internal mana yang bertanggung jawab mencatat data ${ent.actor}.`;
+              break;
+            }
+          }
+
+          if (blockedEntity) {
+            updated.step = 'ALUR';
+            updated.pendingOwnerRoleClarification = {
+              entity: blockedEntity,
+              suggestedOwnerRoles: activeRoles,
+              actionDescriptions: [blockedReason]
+            };
+
+            const guidedStep = buildGuidedStep(updated);
+            const narration =
+              `Sebelum kita melangkah ke pembagian hak akses (RBAC), ada hal penting yang perlu dipastikan:\n\n` +
+              `Entitas **${blockedEntity}** diklasifikasikan sebagai **Entitas Data** (bukan pemegang akun login sistem).\n\n` +
+              `💡 *${blockedReason}*\n\n` +
+              `**Pertanyaan:** Siapa pengguna sistem (staf/petugas) yang bertugas mencatat dan mengelola data **${blockedEntity}** ini di aplikasi?\n\n` +
+              `Silakan pilih peran pengelola di bawah ini agar pembagian hak akses (RBAC) dan skema database dapat dirancang secara akurat.`;
+
+            return NextResponse.json({
+              success: true,
+              action,
+              session: updated,
+              guidedStep,
+              narration
+            });
+          }
+        }
 
         // Syarat 1: Generate RBAC segar jika belum ada atau baru dibersihkan dari cache
         if (!updated.rbac || !updated.rbac.modul || updated.rbac.modul.length === 0) {

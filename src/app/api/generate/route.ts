@@ -943,11 +943,24 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
    - WAJIB gunakan Vue 3 CDN (Full build dengan in-DOM template compiler) di <head>:
      <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
    - DILARANG KERAS menggunakan compiler JavaScript eksternal seperti cdn.tailwindcss.com (karena diblokir di sandbox iframe akibat eval / new Function).
-3. ATURAN KETAT KELAS UTILITY TAILWIND v2 (ANTI-SILENT FAILURE):
-   - AI HANYA BOLEH menggunakan kelas utility standar yang tersedia di Tailwind CSS v2.2.19.
+3. ATURAN KETAT KELAS UTILITY TAILWIND v2 (ANTI-SILENT FAILURE & ANTI-PLUGIN NON-CORE):
+   - AI HANYA BOLEH menggunakan kelas utility standar bawaan Tailwind CSS v2.2.19 (core utilities).
+   - DILARANG KERAS menggunakan kelas dari PLUGIN TAMBAHAN / NON-CORE yang TIDAK TERSEDIA di stylesheet v2 CDN bawaan:
+     * DILARANG kelas plugin scrollbar: \`scrollbar-hide\`, \`scrollbar-default\`, \`scrollbar-none\`, \`scrollbar-thin\`, \`scrollbar-thumb-*\`, \`scrollbar-track-*\`.
+     * DILARANG kelas plugin \`@tailwindcss/forms\`: \`form-input\`, \`form-textarea\`, \`form-select\`, \`form-multiselect\`, \`form-checkbox\`, \`form-radio\`. Gunakan styling form biasa dengan utility Tailwind v2 (misal: \`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500\`).
+     * DILARANG kelas plugin \`@tailwindcss/typography\`: \`prose\`, \`prose-sm\`, \`prose-lg\`, \`prose-xl\`, \`prose-2xl\`, \`prose-*\`.
+     * DILARANG kelas plugin aspect-ratio/line-clamp: \`aspect-w-*\`, \`aspect-h-*\`, \`line-clamp-*\`.
    - DILARANG KERAS menggunakan arbitrary value syntax [...] (misal: w-[350px], top-[10px], bg-[#4f46e5], h-[80vh]). Selalu gunakan utility class standar bawaan (misal: w-80, max-w-md, top-2, bg-indigo-600, h-64). Arbitrary value TIDAK AKAN memiliki efek visual pada stylesheet precompiled v2 (gagal-diam / silent visual fail)!
-   - DILARANG KERAS menggunakan kelas utility Tailwind v3+ yang TIDAK ADA di v2 (misal: aspect-*, columns-*, break-inside-*, accent-*, scroll-m-*, touch-*, text-wrap, text-balance).
+   - DILARANG KERAS menggunakan kelas utility Tailwind v3+ yang TIDAK ADA di v2 (misal: aspect-*, columns-*, break-inside-*, accent-*, scroll-m-*, touch-*, text-wrap, text-balance, snap-*).
    - DILARANG KERAS menggunakan pseudo-class variants v3+ (misal: has:, group-has:, peer-has:, open:, backdrop:, peer-*).
+   - ALTERNATIF CSS CUSTOM UNTUK KEBUTUHAN KHUSUS (MISAL SEMBUNYIKAN SCROLLBAR):
+     Untuk menyembunyikan scrollbar pada container scrollable (seperti tab horizontal, tabel lebar, panel kartu), JANGAN gunakan class plugin \`scrollbar-hide\`! Tulis aturan CSS sederhana di dalam tag <style> di <head>:
+     \`\`\`css
+     .overflow-x-auto::-webkit-scrollbar, .overflow-y-auto::-webkit-scrollbar { display: none; }
+     .overflow-x-auto, .overflow-y-auto { -ms-overflow-style: none; scrollbar-width: none; }
+     \`\`\`
+     Atau gunakan inline style: style="scrollbar-width: none; -ms-overflow-style: none;".
+     Karena \`.overflow-x-auto\` adalah kelas resmi Tailwind v2, AI tidak perlu menambahkan kelas asing ke HTML.
 4. ARSITEKTUR CRUD GENERIK PARAMETERIZED (SINGLE-MODAL & DECLARATIVE SCHEMA):
    - AI DILARANG menulis ulang boilerplate tabel, modal, dan handler DOM manual secara berulang per entitas!
    - Definisikan konfigurasi seluruh tabel data secara deklaratif di objek \`tablesConfig\` di data Vue:
@@ -2028,7 +2041,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 11. JALUR KODE CREATE PADA FORMULIR: Setiap fungsi simpan data (seperti simpanSiswa, simpanTransaksi, simpanForm, handleSubmit) WAJIB memiliki cabang 'else' untuk CREATE (menambahkan item baru dengan .push() ke array state) saat ID edit kosong. DILARANG KERAS hanya memiliki cabang UPDATE (if editId) tanpa cabang CREATE!
 12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
 13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
-14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!` }] }
+14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!
+15. PERBAIKAN TAILWIND V2 & ANTI-PLUGIN: Jika ada peringatan TAILWIND_V2_NOT_IN_WHITELIST atau TAILWIND_V2_ARBITRARY_VALUE (misal \`scrollbar-hide\`, \`form-input\`, arbitrary \`w-[...]\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core v2 standar atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
@@ -2079,7 +2093,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 11. JALUR KODE CREATE PADA FORMULIR: Setiap fungsi simpan data (seperti simpanSiswa, simpanTransaksi, simpanForm, handleSubmit) WAJIB memiliki cabang 'else' untuk CREATE (menambahkan item baru dengan .push() ke array state) saat ID edit kosong. DILARANG KERAS hanya memiliki cabang UPDATE (if editId) tanpa cabang CREATE!
 12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
 13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
-14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!` }
+14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!
+15. PERBAIKAN TAILWIND V2 & ANTI-PLUGIN: Jika ada peringatan TAILWIND_V2_NOT_IN_WHITELIST atau TAILWIND_V2_ARBITRARY_VALUE (misal \`scrollbar-hide\`, \`form-input\`, arbitrary \`w-[...]\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core v2 standar atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).` }
         ];
 
         const repairReqBody: Record<string, any> = {

@@ -6,6 +6,7 @@ import {
 import { getMasterTemplateById } from '../masterTemplates';
 import { getRoleCategory } from '../../rolePolicy';
 import type {
+  ActorClassification,
   GuidedStepOption,
   GuidedStepPayload,
   GuidedStepId,
@@ -387,18 +388,169 @@ export function isGovernanceRole(
   return /\b(pengurus|pengawas|direksi|direktur|komite|dewan|pembina|yayasan|board|governance)\b/i.test(clean);
 }
 
-export function isExternalRole(label: string): boolean {
+/**
+ * Pengecekan apakah sebuah aktor merupakan ENTITAS_DATA dalam sesi (Single Source of Truth).
+ * Menggantikan isExternalRole() dengan prioritas penuh pada session.actorsClassification.
+ */
+export function isActorEntityData(session?: MockupSessionState | null, label?: string): boolean {
+  if (!label) return false;
+  return isExternalRole(label, session);
+}
+
+export function isActorSystemUser(session?: MockupSessionState | null, label?: string): boolean {
+  if (!label) return false;
+  return !isActorEntityData(session, label);
+}
+
+export function getEntityOwnerRole(session?: MockupSessionState | null, entityName?: string): string | undefined {
+  if (!session?.actorsClassification || !entityName) return undefined;
+  const clean = entityName.trim().toLowerCase();
+  const found = session.actorsClassification.find((a) => a.actor.trim().toLowerCase() === clean);
+  return found?.ownerRole;
+}
+
+/**
+ * @deprecated Gunakan isActorEntityData(session, label) yang membaca session.actorsClassification sebagai single source of truth.
+ */
+export function isExternalRole(label: string, session?: MockupSessionState | null): boolean {
   const clean = label.trim();
-  if (/^(petugas|staf|staff|admin|tim|team|koordinator|operator|kolektor|penaksir|kasir|teller|mekanik|montir)\b/i.test(clean)) {
+
+  // 1. Single Source of Truth jika session.actorsClassification tersedia:
+  if (session?.actorsClassification && session.actorsClassification.length > 0) {
+    const found = session.actorsClassification.find(
+      (a) => a.actor.trim().toLowerCase() === clean.toLowerCase()
+    );
+    if (found) {
+      return found.category === 'ENTITAS_DATA';
+    }
+  }
+
+  // 2. Fallback kamus (hanya jika session.actorsClassification belum terbentuk, misal awal alur atau unit test independen)
+  console.warn(
+    `[ACTOR-CLASSIFICATION-FALLBACK] isExternalRole("${clean}") jatuh ke fallback dictionary lama karena session.actorsClassification belum tersedia/terinisialisasi.`
+  );
+
+  if (/^(petugas|staf|staff|admin|tim|team|koordinator|operator|kolektor|penaksir|kasir|teller|mekanik|montir|sales|marketing|manager|supervisor|instruktur|dokter|penguji|teknisi|kurir|sopir)\b/i.test(clean)) {
     return false;
   }
   if (
-    /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|anggota|nasabah|konsumen)$/i.test(clean) ||
-    /\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa|warga|masyarakat|anggota|nasabah)\b/i.test(clean)
+    /^(pelanggan|customer|buyer|pembeli|klien|client|pasien|patient|siswa|student|murid|warga|tamu|guest|member|subscriber|penyewa|tenant|penerima\s*manfaat|pemohon|penumpang|participant|peserta|orang\s*tua|anggota|nasabah|konsumen|prospek)$/i.test(clean) ||
+    /\b(pelanggan|penyewa|pasien|klien|konsumen|tamu|murid|siswa|warga|masyarakat|anggota|nasabah|prospek)\b/i.test(clean)
   ) {
     return true;
   }
   return canonicalRoleKey(label) === 'customer';
+}
+
+/**
+ * Analisis heuristik awal untuk mengklasifikasikan pelaku di Storytelling:
+ * Owner SELALU Pengguna Sistem.
+ * Non-owner diklasifikasikan dengan rekomendasi default dan alasan transparan.
+ */
+export function analyzeActorClassification(session: Partial<MockupSessionState>): {
+  classifications: ActorClassification[];
+  hasCandidateEntity: boolean;
+} {
+  const actors = session.storyline?.asumsiAktor || session.match?.contextualRoles || [];
+  const detailAktor = session.storyline?.detailAktor || {};
+  const fullNarasi = session.storyline?.narasi || '';
+  const alurUtama = session.storyline?.asumsiAlurUtama || '';
+
+  const classifications: ActorClassification[] = [];
+  let hasCandidateEntity = false;
+
+  for (const actor of actors) {
+    const clean = actor.trim();
+    if (!clean) continue;
+
+    // 1. Owner / Super Admin SELALU Pengguna Sistem
+    if (isSuperAdminRole(clean)) {
+      classifications.push({
+        actor: clean,
+        category: 'PENGGUNA_SISTEM',
+        confidence: 'high',
+        matchSource: 'EXPLICIT_OWNER',
+        reason: 'Pemilik usaha / Super Admin pemegang kendali utama aplikasi'
+      });
+      continue;
+    }
+
+    const detail = detailAktor[clean];
+    const respText = (detail?.tanggungJawab || []).join(' ');
+    const actorNarasi = detail?.narasi || '';
+
+    // Ekstrak potongan kalimat yang menyebut pelaku ini dari narasi & alur cerita bisnis
+    const actorEscaped = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sentences = `${fullNarasi}. ${alurUtama}. ${actorNarasi}`
+      .split(/[.\n;]+/)
+      .map((s) => s.trim())
+      .filter((s) => new RegExp(`\\b${actorEscaped}\\b`, 'i').test(s));
+    const combinedContext = `${respText} ${sentences.join(' ')}`.toLowerCase();
+
+    // 2. Evaluasi Tindakan Semantik dalam Kalimat Narasi & Tanggung Jawab
+    // A. Indikator Pasif / Target Layanan / Entitas yang Datanya Dicatat:
+    const isTargetOfAction = new RegExp(
+      `(mencatat|menginput|merekap|menerima|mengumpulkan|menampung|menyimpan|memverifikasi|menagih|menghubungi|mengirim\\s*ke|menyerahkan.*ke|melayani|memeriksa|menilai|menguji)\\s+([^.,;]+\\s+)?${actorEscaped}`,
+      'i'
+    ).test(combinedContext) ||
+      new RegExp(`${actorEscaped}\\s+(menyumbang|menyerahkan|mengirim|memesan|menyewa|mendaftar|berobat|belajar|les|meminta|mengajukan|datang|berkunjung|hanya\\s*dicatat)`, 'i').test(combinedContext) ||
+      /\b(menerima\s*(layanan|produk|servis|paket)|target\s*(pencatatan|pemeriksaan|penilaian|survei|riset)|dilayani|diperiksa|dinilai|membayar\s*lalu|sewa\s*unit|meminjam|berobat|belajar|les|pihak\s*luar|subjek\s*data)\b/i.test(combinedContext);
+
+    // B. Indikator Aktif Operator / Pengguna Sistem:
+    const hasActiveSystemAction = new RegExp(
+      `${actorEscaped}\\s+(menginput|mencatat|mengelola|memproses|memeriksa|menyetujui|mengonfirmasi|membuka\\s*aplikasi|melihat\\s*dashboard|login|mengatur|menetapkan)`,
+      'i'
+    ).test(combinedContext) ||
+      /\b(input\s*mandiri|menginput\s*data\s*sendiri|kelola\s*mandiri|buka\s*aplikasi\s*sendiri|portal\s*mandiri|dashboard\s*sendiri|login\s*mandiri)\b/i.test(combinedContext);
+
+    const isExplicitStaffTitle = /^(petugas|staf|staff|admin|kasir|sales|marketing|manager|supervisor|operator|mekanik|montir|teknisi|kurir|sopir|penguji|instruktur|dokter|analis|teller|peneliti|guru|dosen|arsiparis)\b/i.test(clean);
+
+    let category: 'PENGGUNA_SISTEM' | 'ENTITAS_DATA' = 'PENGGUNA_SISTEM';
+    let confidence: 'high' | 'low' = 'low';
+    let matchSource: 'EXPLICIT_STAFF_TITLE' | 'PREDICATE_SEMANTIC_MATCH' | 'INCONCLUSIVE_FALLBACK' = 'INCONCLUSIVE_FALLBACK';
+    let reason = `🤖 Saran: Pengguna Sistem — berdasarkan alur, ${clean} memiliki tugas operasional untuk menginput atau mengelola data langsung di aplikasi.`;
+
+    if (isExplicitStaffTitle) {
+      category = 'PENGGUNA_SISTEM';
+      confidence = 'high';
+      matchSource = 'EXPLICIT_STAFF_TITLE';
+      reason = `🤖 Saran: Pengguna Sistem — karena ${clean} merupakan peran staf operasional yang bertugas menjalankan fungsi aplikasi.`;
+    } else if (hasActiveSystemAction) {
+      category = 'PENGGUNA_SISTEM';
+      confidence = 'high';
+      matchSource = 'PREDICATE_SEMANTIC_MATCH';
+      reason = `🤖 Saran: Pengguna Sistem — berdasarkan alur, ${clean} secara aktif mengoperasikan atau menginput data ke aplikasi.`;
+    } else if (isTargetOfAction) {
+      category = 'ENTITAS_DATA';
+      confidence = 'high';
+      matchSource = 'PREDICATE_SEMANTIC_MATCH';
+      reason = `🤖 Saran: Entitas Data — berdasarkan narasi alur, ${clean} berposisi sebagai pihak luar/subjek data yang dilayani atau dicatat oleh staf, bukan pemegang login aplikasi.`;
+      hasCandidateEntity = true;
+    } else {
+      // INCONCLUSIVE: Lapis 1 tidak dapat menemukan predikat tindakan aktif maupun pasif
+      confidence = 'low';
+      matchSource = 'INCONCLUSIVE_FALLBACK';
+      const isDictionaryFallbackCandidate = isExternalRole(clean, session as MockupSessionState | null);
+      if (isDictionaryFallbackCandidate) {
+        category = 'ENTITAS_DATA';
+        reason = `🤖 Saran sementara (Heuristik Lapis 1): ${clean} terindikasi sebagai Entitas Data (perlu diverifikasi AI semantik Lapis 2).`;
+        hasCandidateEntity = true;
+      } else {
+        category = 'PENGGUNA_SISTEM';
+        reason = `🤖 Saran sementara (Heuristik Lapis 1): ${clean} belum terdeteksi spesifik di alur, diasumsikan sebagai Pengguna Sistem (perlu diverifikasi AI semantik Lapis 2).`;
+      }
+    }
+
+    classifications.push({
+      actor: clean,
+      category,
+      confidence,
+      matchSource,
+      reason
+    });
+  }
+
+  return { classifications, hasCandidateEntity };
 }
 
 function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
@@ -406,6 +558,45 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
   if (session.storyline?.pendingNonBusinessClarification) {
     const pend = session.storyline.pendingNonBusinessClarification;
     return buildNonBusinessClarificationCard(pend.pesanKlarifikasi);
+  }
+
+  // Jika sedang menunggu klarifikasi klasifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+  if (session.storyline?.pendingActorClarification) {
+    const pend = session.storyline.pendingActorClarification;
+    const curIdx = pend.currentIndex || 0;
+    const actorToClarify = pend.actors[curIdx];
+
+    if (actorToClarify) {
+      const isEntitas = actorToClarify.category === 'ENTITAS_DATA';
+      return {
+        stepId: 'STORYTELLING',
+        title: `Klarifikasi Pelaku: Bagaimana peran "${actorToClarify.actor}" di aplikasi?`,
+        multi: false,
+        allowOther: true,
+        options: [
+          {
+            id: 'confirm_actor_recommendation',
+            label: isEntitas
+              ? `📦 Entitas Data (Data yang dicatat & dikelola staf)`
+              : `👤 Pengguna Sistem (Punya akun login & akses mandiri)`,
+            recommended: true,
+            description: actorToClarify.reason || (isEntitas
+              ? `🤖 Saran: Entitas Data — karena ${actorToClarify.actor} tercatat sebagai pihak yang menerima layanan/target pencatatan, bukan yang mengoperasikan aplikasi.`
+              : `🤖 Saran: Pengguna Sistem — karena ${actorToClarify.actor} bertugas menginput/mengelola data operasional langsung di aplikasi.`)
+          },
+          {
+            id: 'switch_actor_category',
+            label: isEntitas
+              ? `👤 Pengguna Sistem (Punya akun login & akses mandiri)`
+              : `📦 Entitas Data (Hanya dicatat & dikelola pihak lain)`,
+            recommended: false,
+            description: isEntitas
+              ? `Pilih ini jika ${actorToClarify.actor} membuka aplikasi sendiri lewat portal/login mandiri.`
+              : `Pilih ini jika ${actorToClarify.actor} tidak pernah membuka aplikasi, melainkan hanya datanya yang dicatat.`
+          }
+        ]
+      };
+    }
   }
 
   // Jika sedang menunggu klarifikasi arah bisnis sebelum narasi dibuat
@@ -493,11 +684,11 @@ export interface RoleDetailDefinition {
 
 export function detectCoreOperationalRole(session: MockupSessionState): string {
   // 1. Dari aktor cerita bisnis (asumsiAktor) - Prioritas tunggal dari hasil AI cerita
-  const actors = session.storyline?.asumsiAktor || session.match.contextualRoles || [];
+  const actors = session.storyline?.asumsiAktor || session.match?.contextualRoles || [];
   for (const a of actors) {
     const clean = a.trim();
     const key = canonicalRoleKey(clean);
-    if (key !== 'super-admin' && key !== 'customer' && !isExternalRole(clean) && !GENERIC_ROLE_RE.test(clean)) {
+    if (key !== 'super-admin' && key !== 'customer' && !isActorEntityData(session, clean) && !GENERIC_ROLE_RE.test(clean)) {
       return EN_ROLE_LABEL_MAP[clean.toLowerCase()] || clean;
     }
   }
@@ -880,8 +1071,14 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
     const key = canonicalRoleKey(clean);
     if (seen.has(key)) return;
 
+    // Filter keluar jika pelaku diklasifikasikan sebagai ENTITAS_DATA (bukan pengguna sistem yang login)
+    if (isActorEntityData(session, clean)) {
+      return;
+    }
+
     // Grounding check: pastikan peran relevan secara konseptual dengan narasi/domain
-    if (!isRoleSemanticallyGrounded(clean, fullStory, session.match.businessCategory || '')) {
+    const bizCat = session.match?.businessCategory || (session as any).domain?.businessCategory || '';
+    if (!isRoleSemanticallyGrounded(clean, fullStory, bizCat)) {
       return;
     }
 
@@ -901,11 +1098,12 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   const roleKasusA = pemisahanRole?.roleKasusA?.toLowerCase();
   const roleKasusB = pemisahanRole?.roleKasusB?.toLowerCase();
   const coreRole = detectCoreOperationalRole(session);
+  const bizCategory = session.match?.businessCategory || (session as any).domain?.businessCategory || '';
 
   const options: GuidedStepOption[] = [];
 
   // Super Admin (Owner) selalu wajib & locked
-  const ownerDetails = getRoleNarrativeAndResponsibilities(REQUIRED_ROLE, session.match.businessCategory, session.storyline, session.roles);
+  const ownerDetails = getRoleNarrativeAndResponsibilities(REQUIRED_ROLE, bizCategory, session.storyline, session.roles);
   options.push({
     id: REQUIRED_ROLE,
     label: REQUIRED_ROLE,
@@ -918,18 +1116,21 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
 
   // Tambahkan role lainnya murni dari kandidat cerita yang lolos grounding
   for (const label of candidateLabels) {
+    if (isActorEntityData(session, label)) {
+      continue;
+    }
     const lowerLabel = label.toLowerCase();
     const isCore = isDualSeparated
       ? (Boolean(roleKasusA) && (lowerLabel.includes(roleKasusA!) || roleKasusA!.includes(lowerLabel))) ||
         (Boolean(roleKasusB) && (lowerLabel.includes(roleKasusB!) || roleKasusB!.includes(lowerLabel)))
       : label === coreRole;
-    const details = getRoleNarrativeAndResponsibilities(label, session.match.businessCategory, session.storyline, session.roles);
+    const details = getRoleNarrativeAndResponsibilities(label, bizCategory, session.storyline, session.roles);
     options.push({
       id: label,
       label: label,
       description: details.narasi,
       responsibilities: details.tanggungJawab,
-      recommended: isCore || !isExternalRole(label),
+      recommended: isCore || isActorSystemUser(session, label),
       roleStatus: isCore ? 'WAJIB_INTI' : 'TAMBAHAN'
     });
   }
@@ -1334,7 +1535,7 @@ export function getDomainFlowDetails(
 
     // 2. Jika mencari peran eksternal/pelanggan, cari peran eksternal apa pun yang ada di selected
     if (/pelanggan|customer|warga|pasien|penyewa|klien|member/i.test(pattern.source)) {
-      const extInSelected = selected.find((r) => isExternalRole(r));
+      const extInSelected = selected.find((r) => isActorEntityData(session, r));
       if (extInSelected) {
         return extInSelected;
       }
@@ -1597,11 +1798,11 @@ export function getDomainFlowDetails(
       actor = resolveActorForStep(actor, session.roles);
     }
     if (!validSelectedRoles.includes(actor)) {
-      if (isExternalRole(actor)) {
-        const ext = validSelectedRoles.find((r) => isExternalRole(r));
+      if (isActorEntityData(session, actor)) {
+        const ext = validSelectedRoles.find((r) => isActorEntityData(session, r));
         actor = ext || REQUIRED_ROLE;
       } else {
-        const staff = validSelectedRoles.find((r) => !isSuperAdminRole(r) && !isExternalRole(r));
+        const staff = validSelectedRoles.find((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r));
         actor = staff || REQUIRED_ROLE;
       }
     }
@@ -1649,7 +1850,7 @@ export function reconcileCoreOperationalRole(
       return (
         k === 'super-admin' ||
         k === 'owner' ||
-        isExternalRole(actor) ||
+        isActorEntityData(session, actor) ||
         k === 'customer' ||
         k === 'guest' ||
         /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien|anggota|nasabah|warga)\b/i.test(actor)
@@ -1728,7 +1929,7 @@ export function reconcileCoreOperationalRole(
     const isCust =
       key === 'customer' ||
       key === 'guest' ||
-      isExternalRole(actor) ||
+      isActorEntityData(session, actor) ||
       /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien|anggota|nasabah|warga)\b/i.test(actor);
 
     if (isOwner || isCust) continue;
@@ -2167,7 +2368,7 @@ export function buildKasusGandaFromSession(
       ...(session.storyline?.asumsiAktor || [])
     ];
     for (const c of candidates) {
-      if (isSuperAdminRole(c) || isExternalRole(c)) continue;
+      if (isSuperAdminRole(c) || isActorEntityData(session, c)) continue;
       if (isGovernanceRole(c, session.storyline?.detailAktor)) {
         return resolveActorForStep(c, session.roles);
       }
@@ -2182,9 +2383,9 @@ export function buildKasusGandaFromSession(
     const selected = session.roles?.selected || [];
     const wajib = session.roles?.wajib || [];
     const allCandidates = [
-      ...wajib.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r)),
-      ...selected.filter((r) => !isSuperAdminRole(r) && !isExternalRole(r)),
-      ...(session.storyline?.asumsiAktor || []).filter((r) => !isSuperAdminRole(r) && !isExternalRole(r))
+      ...wajib.filter((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r)),
+      ...selected.filter((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r)),
+      ...(session.storyline?.asumsiAktor || []).filter((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r))
     ];
 
     if (preferredName) {
@@ -2202,7 +2403,7 @@ export function buildKasusGandaFromSession(
     }
 
     const detected = detectCoreOperationalRole(session);
-    if (!isExternalRole(detected) && !isSuperAdminRole(detected) && !isGovernanceRole(detected, session.storyline?.detailAktor)) {
+    if (!isActorEntityData(session, detected) && !isSuperAdminRole(detected) && !isGovernanceRole(detected, session.storyline?.detailAktor)) {
       return resolveActorForStep(detected, session.roles);
     }
 
@@ -2211,7 +2412,7 @@ export function buildKasusGandaFromSession(
 
   const findCustomerActor = (): string => {
     const selected = session.roles?.selected || [];
-    const extInSelected = selected.find((c) => isExternalRole(c));
+    const extInSelected = selected.find((c) => isActorEntityData(session, c));
     if (extInSelected) return extInSelected;
 
     const candidates = [
@@ -2220,7 +2421,7 @@ export function buildKasusGandaFromSession(
     ];
     for (const c of candidates) {
       if (/\b(petugas|staf|staff|kasir|sales|admin|montir|mekanik|appraisal|teller)\b/i.test(c)) continue;
-      if (isExternalRole(c)) {
+      if (isActorEntityData(session, c)) {
         return resolveActorForStep(c, session.roles);
       }
     }
@@ -2243,10 +2444,10 @@ export function buildKasusGandaFromSession(
   }
 
   // Jaminan anti-tabrakan: actorA dan actorB TIDAK BOLEH sama dengan customerActor atau merupakan pihak eksternal
-  if (isExternalRole(actorA) || actorA.toLowerCase() === customerActor.toLowerCase()) {
+  if (isActorEntityData(session, actorA) || actorA.toLowerCase() === customerActor.toLowerCase()) {
     actorA = findOperationalStaff();
   }
-  if (isExternalRole(actorB) || actorB.toLowerCase() === customerActor.toLowerCase()) {
+  if (isActorEntityData(session, actorB) || actorB.toLowerCase() === customerActor.toLowerCase()) {
     actorB = findOperationalStaff();
   }
 
@@ -2343,12 +2544,12 @@ export function buildKasusGandaFromSession(
     // 1. Cek kalimat self-referential yang mustahil:
     // Jika pelaku adalah pihak eksternal, tapi aksinya mengarah kepada/dari pihak yang sama
     const targetPattern = new RegExp(`\\b(kepada|ke|dari|untuk|bersama)\\s+${pelaku.toLowerCase()}\\b`, 'i');
-    if ((isExternalRole(pelaku) || pelaku.toLowerCase() === customerActor.toLowerCase()) && targetPattern.test(aksi)) {
+    if ((isActorEntityData(session, pelaku) || pelaku.toLowerCase() === customerActor.toLowerCase()) && targetPattern.test(aksi)) {
       pelaku = operActor;
     }
 
     // 2. Jika pelaku eksternal melakukan tugas operasional staf internal:
-    if (isExternalRole(pelaku) || pelaku.toLowerCase() === customerActor.toLowerCase()) {
+    if (isActorEntityData(session, pelaku) || pelaku.toLowerCase() === customerActor.toLowerCase()) {
       const isStaffAction = /\b(memeriksa\s+kelengkapan|menganalisis\s+kelayakan|mencairkan\s+dana|menghitung\s+jumlah|mencatat\s+transaksi|memverifikasi\s+data|menyerahkan\s+(?:bukti|uang|lembaran|item|pembayaran|nota)|menaksir\s+nilai|mencetak\s+(?:pembaruan|bukti|nota))\b/i.test(aksi);
       if (isStaffAction) {
         pelaku = operActor;
@@ -2356,7 +2557,7 @@ export function buildKasusGandaFromSession(
     }
 
     // 3. Jika pelaku operasional staf tertukar melakukan tindakan pemicu awal customer
-    if (!isExternalRole(pelaku) && !isSuperAdminRole(pelaku)) {
+    if (!isActorEntityData(session, pelaku) && !isSuperAdminRole(pelaku)) {
       const isCustomerTrigger = /\b(membawa\s+buku\s+tabungan|mengajukan\s+permohonan\s+pinjaman|membawa\s+mata\s+uang\s+asing|mengajukan\s+kebutuhan\s+pecahan|mengajukan\s+permintaan|membawa\s+item)\b/i.test(aksi);
       if (isCustomerTrigger) {
         pelaku = customerActor;
@@ -2376,6 +2577,25 @@ export function buildKasusGandaFromSession(
 }
 
 function buildAlurStep(session: MockupSessionState): GuidedStepPayload {
+  // Jika sedang menunggu klarifikasi ownerRole untuk ENTITAS_DATA yang belum jelas
+  if (session.pendingOwnerRoleClarification) {
+    const pend = session.pendingOwnerRoleClarification;
+    const activeRoles = session.roles?.selected && session.roles.selected.length > 0 ? session.roles.selected : [REQUIRED_ROLE];
+    const choices = pend.suggestedOwnerRoles && pend.suggestedOwnerRoles.length > 0 ? pend.suggestedOwnerRoles : activeRoles;
+    return {
+      stepId: 'ALUR',
+      title: `Klarifikasi Pengelola Data: Siapa yang mencatat data ${pend.entity}?`,
+      multi: false,
+      allowOther: true,
+      options: choices.map((r, idx) => ({
+        id: `owner_role:${r}`,
+        label: `👤 ${r}`,
+        description: `Peran ${r} yang akan bertanggung jawab mencatat dan mengelola data ${pend.entity} di sistem.`,
+        recommended: idx === 0
+      }))
+    };
+  }
+
   const flowData = getDomainFlowDetails(session);
   const isRevising = Boolean(session.flow?.other || session.flow?.alurInti);
 
@@ -3060,13 +3280,22 @@ export function generateDeterministicSimulasiDb(
       fType === 'angka' ||
       /^(angka|number|integer|nominal|harga|tarif|biaya|total|jumlah|stok|berat|durasi|tenor|kilometer|km)$/i.test(fType)
     ) {
-      if (/harga|tarif|biaya|nominal|bayar|total|omset|pinjaman/i.test(fName)) {
+      if (/deposit|jaminan|uang_muka|dp/i.test(fName) || (/deposit|jaminan|uang_muka|dp/i.test(kata) && !/total|tagihan/i.test(fName))) {
+        return [50000, 100000, 200000][rowIdx];
+      }
+      if (/total|tagihan|harga|tarif|biaya|nominal|bayar|omset|pinjaman|saldo|iuran|gaji|subtotal/i.test(fName)) {
+        return [150000, 250000, 500000][rowIdx];
+      }
+      if (/denda|pinalti|ongkir|ongkos_kirim|diskon|potongan/i.test(fName) || /denda|pinalti|ongkir|diskon/i.test(kata)) {
+        return [15000, 25000, 50000][rowIdx];
+      }
+      if (/harga|tarif|biaya|tagihan|nominal|rupiah|bayar/i.test(kata)) {
         return [150000, 250000, 500000][rowIdx];
       }
       if (/berat|bobot|kg|timbangan/i.test(fName)) {
         return [25, 40, 65][rowIdx];
       }
-      if (/durasi|hari|bulan|tenor|hari_sewa/i.test(fName)) {
+      if (/durasi|hari|bulan|tenor|hari_sewa|minggu|tahun/i.test(fName)) {
         return [1, 3, 7][rowIdx];
       }
       if (/km|kilometer|odometer/i.test(fName)) {
@@ -3098,6 +3327,21 @@ export function generateDeterministicSimulasiDb(
       return enumParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1))[rowIdx % enumParts.length];
     }
 
+    // 1b-pre) Penanganan kerusakan / kondisi fisik barang (Mencegah salah tafsir "lokasi kerusakan" menjadi nama jalan)
+    const isPhysicalDamageOrCondition =
+      /kerusakan|cacat|kondisi_fisik|rangka|ban|mesin|bodi|komponen|part|keluhan|inspeksi/i.test(fName) ||
+      (/kerusakan|cacat|kondisi|fisik|rangka|ban|mesin|bodi|komponen|spesifik/i.test(kata) && !/alamat|tempat_tinggal|domisili/i.test(kata));
+
+    if (isPhysicalDamageOrCondition) {
+      if (/sepeda/i.test(meta.table.nama) || /rangka|ban|rantai|rem|velg|stang/i.test(kata) || /rangka|ban|rantai|rem|velg|stang/i.test(fName)) {
+        return pick(['Rantai kendor & lecet rangka', 'Rem belakang aus', 'Velg roda depan sedikit oleng']);
+      }
+      if (/mobil|motor|kendaraan/i.test(meta.table.nama) || /mobil|motor|kendaraan|bodi|mesin|oli|spion|lecet|penyok/i.test(kata) || /bodi|mesin|oli|spion/i.test(fName)) {
+        return pick(['Baret wajar pada bumper depan', 'Lampu sen kanan redup', 'Tekanan ban kurang']);
+      }
+      return pick(['Baret pemakaian wajar', 'Komponen berfungsi normal', 'Perlu pembersihan & servis ringan']);
+    }
+
     // 1b) Hint keyword pada keterangan
     if (/aktif|nonaktif|tersedia|ketersediaan/i.test(kata)) {
       return pick(['Aktif', 'Nonaktif', 'Aktif']);
@@ -3119,7 +3363,9 @@ export function generateDeterministicSimulasiDb(
     }
     if (/warna/i.test(kata)) return pick(['Merah', 'Biru', 'Hijau']);
     if (/ukuran|size/i.test(kata)) return pick(['S', 'M', 'L']);
-    if (/alamat|lokasi/i.test(kata)) return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
+    if (/alamat|domisili|tempat_tinggal/i.test(kata) || (/lokasi/i.test(kata) && /cabang|toko|kantor|penjemputan|pengantaran|posko|outlet/i.test(kata))) {
+      return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
+    }
     if (/kota|domisili/i.test(kata)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
     if (/jenis kelamin|gender/i.test(kata)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
     if (/telepon|whatsapp|kontak|nomor hp|no.?hp/i.test(kata)) return pick(['081234567890', '081298765432', '085712345678']);
@@ -3147,7 +3393,9 @@ export function generateDeterministicSimulasiDb(
     if (/kategori|jenis/i.test(fName)) return pick(['Utama', 'Tambahan', 'Topping']);
     if (/warna/i.test(fName)) return pick(['Merah', 'Biru', 'Hijau']);
     if (/ukuran|size/i.test(fName)) return pick(['S', 'M', 'L']);
-    if (/alamat|lokasi/i.test(fName)) return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
+    if (/alamat|domisili|tempat_tinggal/i.test(fName) || (/lokasi/i.test(fName) && !/kerusakan|cacat|kondisi/i.test(fName))) {
+      return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
+    }
     if (/kota|domisili/i.test(fName)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
     if (/kelamin|gender/i.test(fName)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
     if (/telepon|whatsapp|kontak|hp|wa_/i.test(fName)) return pick(['081234567890', '081298765432', '085712345678']);
@@ -3156,7 +3404,10 @@ export function generateDeterministicSimulasiDb(
     if (/rosok|besi|tua|tembaga|kardus/i.test(fName)) return pick(['Kardus Bekas', 'Besi Tua', 'Tembaga Super']);
     if (/merk|tipe|model|mobil|motor|kendaraan/i.test(fName)) return ['Toyota Avanza', 'Honda Brio', 'Mitsubishi Xpander'][rowIdx];
     if (/produk|barang|item|suku_cadang|sparepart/i.test(fName)) return pick(['Indomie Goreng', 'Susu Kotak', 'Kopi Sachet']);
-    if (/catatan|keterangan|deskripsi|keluhan|gejala/i.test(fName)) {
+    if (/catatan|keterangan|deskripsi|keluhan|gejala|kerusakan/i.test(fName)) {
+      if (/kerusakan|cacat/i.test(fName)) {
+        return pick(['Rantai kendor & lecet rangka', 'Rem belakang aus', 'Velg sedikit oleng']);
+      }
       return pick(['Kondisi baik & lengkap', 'Perlu penanganan lanjutan', 'Selesai tepat waktu']);
     }
     if (/petugas|diperiksa_oleh|mekanik|pengumpul|kasir|admin/i.test(fName)) {
@@ -3373,6 +3624,16 @@ function checkKontenSimulasi(
   if (isNameField && NAMA_PRODUK_SIMULASI.includes(vLower)) {
     masalah.push(`"${t.nama}.${fld.nama}" (nama orang) berisi nama produk: "${v}"`);
   }
+
+  // Deteksi field kerusakan fisik barang yang diisi alamat jalan (Bug B1)
+  const isDamageField =
+    /kerusakan|cacat|kondisi_fisik|rangka|ban|mesin/i.test(`${fLower} ${kata}`) &&
+    !/alamat|tempat_tinggal|domisili/i.test(`${fLower} ${kata}`);
+  if (isDamageField && /(?:^jl\.|\bjalan\b|\bgg\.|\bblok\b|\brt\/?rw\b|\bkelurahan\b|\bkecamatan\b|\bno\.\s*\d+)/i.test(v)) {
+    masalah.push(
+      `"${t.nama}.${fld.nama}" (kerusakan fisik barang) berisi alamat jalan: "${v}" (seharusnya deskripsi fisik seperti 'rantai kendor', 'velg penyok', 'baret rangka')`
+    );
+  }
 }
 
 /**
@@ -3504,6 +3765,39 @@ export function validateContohDataVsSchema(
                 );
               }
             }
+          }
+        }
+      }
+    }
+
+    // Deteksi Anomali Skala Finansial Antar-Field dalam Satu Tabel (Bug B2)
+    // Contoh: deposit: 15 vs total_tagihan: 150000 (rasio >= 100x di mana satu field < 100 dan yang lain >= 10.000)
+    const financialFields = schema.field.filter((f) => {
+      const fn = f.nama.toLowerCase();
+      const ft = (f.tipe || '').toLowerCase();
+      const fk = (f.keterangan || '').toLowerCase();
+      const isNum = /angka|number|integer/i.test(ft);
+      const isMoneyName = /harga|tarif|biaya|nominal|bayar|total|tagihan|deposit|jaminan|uang_muka|dp|denda|saldo|iuran|gaji|ongkir|subtotal/i.test(fn);
+      const isMoneyDesc = /rupiah|rp|nominal|biaya|harga|uang|tarif|deposit/i.test(fk);
+      return isNum && (isMoneyName || isMoneyDesc);
+    });
+
+    if (financialFields.length >= 2) {
+      for (const row of t.baris) {
+        const moneyVals = financialFields.map((f) => {
+          const raw = row[f.nama];
+          const n = typeof raw === 'number' ? raw : parseFloat(String(raw));
+          return { field: f.nama, val: n };
+        }).filter((x) => !isNaN(x.val) && x.val > 0);
+
+        if (moneyVals.length >= 2) {
+          const minItem = moneyVals.reduce((a, b) => (a.val < b.val ? a : b));
+          const maxItem = moneyVals.reduce((a, b) => (a.val > b.val ? a : b));
+          if (minItem.val < 100 && maxItem.val >= 10000 && (maxItem.val / minItem.val) >= 100) {
+            masalah.push(
+              `"${t.nama}": anomali skala finansial antar-field pada baris data: "${minItem.field}" (${minItem.val}) jomplang terhadap "${maxItem.field}" (${maxItem.val}). Seluruh field keuangan harus menggunakan skala Rupiah penuh yang proporsional.`
+            );
+            break;
           }
         }
       }
@@ -3982,6 +4276,59 @@ export function applyGuidedAnswer(
 
   if (stepId === 'STORYTELLING') {
     const feedbackText = (other || '').trim();
+
+    // 0. Jika sedang dalam sub-step klarifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+    const existingStory = next.storyline || {
+      narasi: other || cleanSelected.join(' '),
+      asumsiMasalah: '',
+      asumsiAktor: next.match.contextualRoles || ['Super Admin', 'Staf', 'Pelanggan'],
+      asumsiAlurUtama: '',
+      statusKonfirmasi: 'disetujui',
+      revisiCount: 0,
+      riwayatKoreksi: []
+    };
+
+    if (existingStory.pendingActorClarification) {
+      const pend = existingStory.pendingActorClarification;
+      const curIdx = pend.currentIndex || 0;
+      const targetActorClass = pend.actors[curIdx];
+
+      if (targetActorClass) {
+        const isSwitch =
+          cleanSelected.includes('switch_actor_category') ||
+          (Boolean(feedbackText) && /^(ubah|ganti|bukan|pengguna|sistem|login|portal|mandiri)\b/i.test(feedbackText) && targetActorClass.category === 'ENTITAS_DATA') ||
+          (Boolean(feedbackText) && /^(ubah|ganti|bukan|entitas|data|catat|hanya)\b/i.test(feedbackText) && targetActorClass.category === 'PENGGUNA_SISTEM');
+
+        if (isSwitch) {
+          targetActorClass.category = targetActorClass.category === 'ENTITAS_DATA' ? 'PENGGUNA_SISTEM' : 'ENTITAS_DATA';
+          targetActorClass.reason = `Disesuaikan pengguna menjadi ${targetActorClass.category === 'PENGGUNA_SISTEM' ? 'Pengguna Sistem (Akses Login Mandiri)' : 'Entitas Data (Hanya Dicatat)'}`;
+        }
+
+        const existingClass = next.actorsClassification || [];
+        const filtered = existingClass.filter((a) => a.actor.toLowerCase() !== targetActorClass.actor.toLowerCase());
+        filtered.push(targetActorClass);
+        next.actorsClassification = filtered;
+
+        const nextIdx = curIdx + 1;
+        if (nextIdx < pend.actors.length) {
+          next.storyline = {
+            ...existingStory,
+            pendingActorClarification: {
+              ...pend,
+              currentIndex: nextIdx
+            }
+          };
+          next.step = 'STORYTELLING';
+          return next;
+        } else {
+          // Semua aktor dalam antrean sudah selesai diklarifikasi
+          delete next.storyline!.pendingActorClarification;
+          next.step = 'ROLE';
+          return next;
+        }
+      }
+    }
+
     const hasSpecificDetails =
       feedbackText.length >= 25 ||
       /\b(bayar|pembayaran|tunai|transfer|harga|timbang|timbangan|berat|nominal|nota|struk|kwitansi|warga|pelanggan|gudang|pengepul|pengumpul|sopir|kurir|kasir|staf|admin|jemput|setor|pilah|sortir|kirim|jadwal|waktu|langsung|di tempat|lokasi|alur|tahap|langkah)\b/i.test(
@@ -4006,21 +4353,12 @@ export function applyGuidedAnswer(
         !hasSpecificDetails &&
         /^(ya|oke|ok|sudah|pas|lanjut|benar|betul|sesuai|setuju|mantap|sip)\b/i.test(feedbackText));
 
-    const existingStory = next.storyline || {
-      narasi: other || cleanSelected.join(' '),
-      asumsiMasalah: '',
-      asumsiAktor: next.match.contextualRoles || ['Super Admin', 'Staf', 'Pelanggan'],
-      asumsiAlurUtama: '',
-      statusKonfirmasi: 'disetujui',
-      revisiCount: 0,
-      riwayatKoreksi: []
-    };
-
     const currentRevisi = existingStory.revisiCount || 0;
     const prevRiwayat = existingStory.riwayatKoreksi || [];
     const newRiwayat = feedbackText ? [...prevRiwayat, feedbackText] : prevRiwayat;
 
     if (isMismatch) {
+      delete next.actorsClassification;
       next.storyline = {
         ...existingStory,
         statusKonfirmasi: 'dikoreksi',
@@ -4028,6 +4366,7 @@ export function applyGuidedAnswer(
         revisiCount: currentRevisi + 1,
         riwayatKoreksi: newRiwayat
       };
+      delete next.storyline.pendingActorClarification;
       next.step = 'STORYTELLING';
       return next;
     }
@@ -4041,12 +4380,33 @@ export function applyGuidedAnswer(
         revisiCount: currentRevisi,
         riwayatKoreksi: newRiwayat
       };
+
+      // Inisialisasi klasifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+      if (!next.actorsClassification || next.actorsClassification.length === 0) {
+        const { classifications, hasCandidateEntity } = analyzeActorClassification(next);
+        next.actorsClassification = classifications;
+
+        if (hasCandidateEntity) {
+          next.storyline = {
+            ...next.storyline,
+            pendingActorClarification: {
+              actors: classifications.filter((c) => c.category === 'ENTITAS_DATA'),
+              ownerActor: classifications.find((c) => isSuperAdminRole(c.actor))?.actor || REQUIRED_ROLE,
+              currentIndex: 0
+            }
+          };
+          next.step = 'STORYTELLING';
+          return next;
+        }
+      }
+
       next.step = 'ROLE';
       return next;
     }
 
     // Jika koreksi kecil (minor_adjust / other):
     // Sesi TETAP berada di step STORYTELLING untuk ditampilkan ulang!
+    delete next.actorsClassification;
     next.storyline = {
       ...existingStory,
       narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
@@ -4055,6 +4415,7 @@ export function applyGuidedAnswer(
       revisiCount: currentRevisi + 1,
       riwayatKoreksi: newRiwayat
     };
+    delete next.storyline.pendingActorClarification;
     next.step = 'STORYTELLING';
     return next;
   } else if (stepId === 'ROLE') {
@@ -4065,75 +4426,45 @@ export function applyGuidedAnswer(
     const isConfirm = isPureConfirmationText(other || '');
     const defaultRoles = [
       REQUIRED_ROLE,
-      ...offeredStep.options.filter((o) => o.recommended && !isNavigationActionId(o.id)).map((o) => o.id),
       ...coreRoles
     ];
-    const fallbackRoles = session.roles?.selected && session.roles.selected.length > 0
-      ? session.roles.selected
-      : defaultRoles;
+    const pickedRoles = cleanSelected.length > 0 ? cleanSelected : defaultRoles;
+    const finalSelected = Array.from(new Set([REQUIRED_ROLE, ...pickedRoles]));
 
-    let selectedRoles = dedupeRoleLabels(cleanSelected.length > 0 ? cleanSelected : fallbackRoles)
-      .filter((r) => !isNavigationActionId(r));
-    if (!selectedRoles.includes(REQUIRED_ROLE)) {
-      selectedRoles = [REQUIRED_ROLE, ...selectedRoles];
-    }
-    // JANGAN tambahkan kata konfirmasi murni ("Lanjut", "Oke", dll) sebagai nama peran baru!
-    if (
-      other &&
-      other.trim() &&
-      !isConfirm &&
-      !selectedRoles.includes(other.trim()) &&
-      !isNavigationActionId(other.trim())
-    ) {
-      selectedRoles.push(other.trim());
-    }
+    const wajibRoles = Array.from(new Set([REQUIRED_ROLE, ...coreRoles]));
+    const tambahanRoles = finalSelected.filter((r) => !wajibRoles.includes(r));
 
-    const wajib = [REQUIRED_ROLE];
-    for (const cr of coreRoles) {
-      if (cr && cr !== REQUIRED_ROLE && !wajib.includes(cr)) {
-        wajib.push(cr);
-      }
-    }
+    next.roles = {
+      selected: finalSelected,
+      wajib: wajibRoles,
+      tambahan: tambahanRoles,
+      ...(other && !isNavigationActionId(other.trim()) && !isConfirm ? { other } : {})
+    };
 
-    const tambahan = selectedRoles.filter((r) => !wajib.includes(r));
+    // POIN REVISI 3: Pelimpahan tugas eksplisit saat peran dihapus
+    const initialCandidates = session.storyline?.asumsiAktor || session.match?.contextualRoles || [];
+    const removedRoles = initialCandidates.filter((r) => !finalSelected.includes(r) && !isSuperAdminRole(r));
+    if (removedRoles.length > 0 && session.storyline?.detailAktor) {
+      const tugasDilimpahkan: { dariRole: string; keRole: string; daftarTugas: string[] }[] = [];
+      const coreDelegate = detectCoreOperationalRole(session);
+      const fallbackDelegate = finalSelected.includes(coreDelegate) ? coreDelegate : REQUIRED_ROLE;
 
-    // Cek role yang ditawarkan tapi tidak dipilih (dihapus/dideselect oleh user)
-    // WAJIB KECUALIKAN aksi navigasi (back_to_previous dan sejenisnya)
-    const offeredRoles = offeredStep.options.map((o) => o.id).filter((id) => !isNavigationActionId(id));
-    const removedRoles = offeredRoles.filter((r) => !selectedRoles.includes(r) && r !== REQUIRED_ROLE && !isNavigationActionId(r));
-
-    const tugasDilimpahkan: { dariRole: string; keRole: string; daftarTugas: string[] }[] = [];
-    const removedExternalRoles: string[] = [];
-
-    for (const r of removedRoles) {
-      if (isNavigationActionId(r)) continue;
-      if (isExternalRole(r)) {
-        // Peran eksternal (Pelanggan, Warga, Penyewa, Pasien, dll) adalah pihak yang dilayani
-        // Tindakan transaksi mereka TIDAK dilimpahkan ke Owner/Admin
-        removedExternalRoles.push(r);
-      } else {
-        // Peran operasional / staf internal dilimpahkan ke Owner jika dihapus
-        const details = getRoleNarrativeAndResponsibilities(r, session.match.businessCategory, session.storyline);
-        if (details.tanggungJawab.length > 0) {
+      for (const rem of removedRoles) {
+        const detail = session.storyline.detailAktor[rem];
+        if (detail && detail.tanggungJawab && detail.tanggungJawab.length > 0) {
           tugasDilimpahkan.push({
-            dariRole: r,
-            keRole: REQUIRED_ROLE,
-            daftarTugas: details.tanggungJawab
+            dariRole: rem,
+            keRole: fallbackDelegate,
+            daftarTugas: detail.tanggungJawab
           });
         }
       }
+      if (tugasDilimpahkan.length > 0) {
+        next.roles.tugasDilimpahkan = tugasDilimpahkan;
+      }
     }
 
-    next.roles = {
-      selected: selectedRoles,
-      wajib,
-      tambahan,
-      tugasDilimpahkan,
-      removedExternalRoles,
-      ...(other && !isNavigationActionId(other.trim()) ? { other } : {})
-    };
-
-    // Simpan snapshot perubahan sebelum membersihkan cache alur, rbac, skema, dan simulasi
+    // Simpan snapshot peran sebelum membersihkan cache alur, rbac, skema, dan simulasi
     next.changeSnapshots = {
       ...next.changeSnapshots,
       lastModifiedStep: 'ROLE',
@@ -4147,9 +4478,9 @@ export function applyGuidedAnswer(
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
 
-    // Bersihkan seluruh cache alur lama agar saat masuk ke ALUR, alur kerja
-    // dan atribusi pelaku di-generate ulang secara menyeluruh dari peran terkini
+    // SYARAT TAMBAHAN 1: Bersihkan cache Alur Kerja saat daftar role berubah
     if (next.flow) {
+      delete next.flow.selectedId;
       delete next.flow.alurInti;
       delete next.flow.alurPendukung;
       delete next.flow.fiturPendukung;
@@ -4160,6 +4491,28 @@ export function applyGuidedAnswer(
     delete next.dataSchema;
     delete next.simulasiDb;
   } else if (stepId === 'ALUR') {
+    // 0. Jika sedang menunggu klarifikasi pengelola peran untuk entitas data
+    if (session.pendingOwnerRoleClarification) {
+      const pend = session.pendingOwnerRoleClarification;
+      const chosenRoleRaw = cleanSelected[0]?.replace('owner_role:', '') || other || '';
+      const activeRoles = session.roles?.selected || [REQUIRED_ROLE];
+      const matchedRole = activeRoles.find(
+        (r) => r.toLowerCase() === chosenRoleRaw.trim().toLowerCase()
+      ) || activeRoles[0];
+
+      if (next.actorsClassification) {
+        const targetEntity = next.actorsClassification.find(
+          (a) => a.actor.toLowerCase() === pend.entity.toLowerCase()
+        );
+        if (targetEntity) {
+          targetEntity.ownerRole = matchedRole;
+        }
+      }
+      delete next.pendingOwnerRoleClarification;
+      next.step = 'RBAC';
+      return next;
+    }
+
     const flowData = getDomainFlowDetails(session);
 
     // Alur inti selalu disertakan (tidak bisa dihapus)

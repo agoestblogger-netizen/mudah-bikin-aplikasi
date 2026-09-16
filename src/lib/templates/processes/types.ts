@@ -201,6 +201,16 @@ export interface AnalisisArahResult {
   };
 }
 
+export interface ActorClassification {
+  actor: string;
+  category: 'PENGGUNA_SISTEM' | 'ENTITAS_DATA';
+  reason?: string;
+  ownerRole?: string; // hanya untuk ENTITAS_DATA — role yang mencatat/mengelolanya
+  actionOwners?: { action: string; role: string }[]; // aksi lain selain create, kalau disebutkan di alur
+  confidence?: 'high' | 'low';
+  matchSource?: 'EXPLICIT_OWNER' | 'EXPLICIT_STAFF_TITLE' | 'PREDICATE_SEMANTIC_MATCH' | 'AI_SEMANTIC' | 'INCONCLUSIVE_FALLBACK';
+}
+
 export interface MockupSessionState {
   step: SessionStep;
   match: {
@@ -211,6 +221,12 @@ export interface MockupSessionState {
     businessCategory?: string;
     contextualPainPoints?: string[];
     contextualRoles?: string[];
+  };
+  actorsClassification?: ActorClassification[];
+  pendingOwnerRoleClarification?: {
+    entity: string;
+    suggestedOwnerRoles: string[];
+    actionDescriptions?: string[];
   };
   storyline?: {
     narasi: string;
@@ -229,6 +245,14 @@ export interface MockupSessionState {
      * Jika false/undefined, kartu konfirmasi narasi standar yang ditampilkan.
      */
     modeKlarifikasiBertahap?: boolean;
+    /**
+     * Menyimpan sub-step klarifikasi peran pelaku (Pengguna Sistem vs Entitas Data).
+     */
+    pendingActorClarification?: {
+      actors: ActorClassification[];
+      ownerActor: string;
+      currentIndex?: number;
+    };
     /**
      * Hasil analisis konseptual arah bisnis dari AI (SATU_ARAH, DUA_ARAH, atau AMBIGU).
      */
