@@ -1209,6 +1209,44 @@ function showToast(msg, type = 'info') {
             `ROLE_MISSING_TAB_NAVIGATION: Peran [${missingRoleTabs.join(', ')}] TIDAK memiliki tab khusus dengan hak akses role di array tabs. ` +
             `Setiap peran dalam Brief Kebutuhan WAJIB memiliki tab dan tampilan UI yang relevan dengan Job Description-nya!`
           );
+
+          // Auto-repair: Injeksi tab yang hilang langsung ke dalam array tabs di data() Vue
+          const functionalTabLabelInner = (role: string): { emoji: string; label: string } => {
+            const r = role.trim().toLowerCase();
+            if (/super\s*admin|admin$|^admin|pengelola/.test(r)) return { emoji: '⚙️', label: 'Kelola Sistem' };
+            if (/anggota|member|user|pelanggan|penyewa|pasien|siswa|customer|buyer|nasabah|donatur|penerima|warga|tamu/.test(r)) return { emoji: '🪪', label: 'Pesanan & Info Saya' };
+            if (/kasir|cashier/.test(r)) return { emoji: '🛒', label: 'Transaksi Penjualan' };
+            if (/dokter|doctor|hewan/.test(r)) return { emoji: '🐾', label: 'Pemeriksaan & Perawatan' };
+            if (/perawat|nurse|bidan|apoteker|farmasi|petugas/.test(r)) return { emoji: '💊', label: 'Operasional & Tugas Harian' };
+            if (/resepsionis|front\s*office|receptionist|loket/.test(r)) return { emoji: '📋', label: 'Pendaftaran & Antrian' };
+            if (/manajer|manager|supervisor|pengawas|kepala/.test(r)) return { emoji: '📈', label: 'Monitoring & Persetujuan' };
+            if (/pemilik|owner|direktur|director|pengurus/.test(r)) return { emoji: '📊', label: 'Laporan & Bisnis' };
+            if (/gudang|warehouse|stok|inventory/.test(r)) return { emoji: '📦', label: 'Stok & Gudang' };
+            if (/mekanik|montir|teknisi|operator|maintenance/.test(r)) return { emoji: '🔧', label: 'Pengerjaan & Servis' };
+            if (/kurir|driver|sopir|logistik/.test(r)) return { emoji: '🚚', label: 'Pengiriman' };
+            if (/terapis|trainer|instruktur|guru|pengajar|tutor/.test(r)) return { emoji: '🎓', label: 'Jadwal & Sesi' };
+            if (/agen|sales|marketing/.test(r)) return { emoji: '🤝', label: 'Prospek & Penjualan' };
+            return { emoji: '📌', label: `Kelola ${role.trim()}` };
+          };
+
+          for (const missingRole of missingRoleTabs) {
+            const roleId = missingRole.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+            const { emoji, label } = functionalTabLabelInner(missingRole);
+            const newTabEntry = `{ id: 'tab_${roleId}', label: '${emoji} ${label}', roles: ['${missingRole}'], icon: '${emoji}' }`;
+
+            // Cari array tabs: [ ... ] di dalam data() dan tambahkan entry baru sebelum ]
+            const tabsArrayMatch = repairedHtml.match(/(tabs\s*:\s*\[)([\s\S]*?)(\])/);
+            if (tabsArrayMatch) {
+              const fullMatch = tabsArrayMatch[0];
+              const prefix = tabsArrayMatch[1];
+              const content = tabsArrayMatch[2];
+              const suffix = tabsArrayMatch[3];
+              const trimmedContent = content.trimEnd();
+              const separator = trimmedContent.length > 0 && !trimmedContent.endsWith(',') ? ',\n            ' : '\n            ';
+              const newContent = `${prefix}${content}${separator}${newTabEntry}\n          ${suffix}`;
+              repairedHtml = repairedHtml.replace(fullMatch, newContent);
+            }
+          }
         }
       }
     }
@@ -1264,6 +1302,8 @@ function showToast(msg, type = 'info') {
         if (/kasir|cashier/.test(r)) return { emoji: '🛒', label: 'Transaksi Penjualan' };
         if (/dokter|doctor/.test(r)) return { emoji: '🩺', label: 'Pemeriksaan Pasien' };
         if (/perawat|nurse|bidan|apoteker|farmasi/.test(r)) return { emoji: '💊', label: 'Asuhan & Obat' };
+        if (/petugas\s*perawat|petugas.*hewan|klinik\s*hewan|drh|veteriner|vet\b/.test(r)) return { emoji: '🐾', label: 'Perawatan & Pemeriksaan Hewan' };
+        if (/petugas/.test(r)) return { emoji: '💊', label: 'Operasional & Tugas Harian' };
         if (/resepsionis|front\s*office|receptionist|loket/.test(r)) return { emoji: '📋', label: 'Pendaftaran & Antrian' };
         if (/manajer|manager|supervisor|pengawas|kepala/.test(r)) return { emoji: '📈', label: 'Monitoring & Persetujuan' };
         if (/pemilik|owner|direktur|director|pengurus/.test(r)) return { emoji: '📊', label: 'Laporan & Bisnis' };
@@ -1638,8 +1678,27 @@ function loginAs(role) {
 
       if (detectedPublicRole) {
         // 1. Verifikasi apakah gerbang loginScreen aktif atau filterTabsByRole dipanggil saat inisialisasi awal publik (di luar loginAs)
-        const hasLoginScreenGate = /id\s*=\s*['"]loginScreen['"]/i.test(repairedHtml) &&
+        
+        // Gate Vanilla JS: appContainer dengan style="display:none" di markup awal
+        const hasVanillaJsGate = /id\s*=\s*['"]loginScreen['"]/i.test(repairedHtml) &&
                                    /id\s*=\s*['"]appContainer['"][^>]*style\s*=\s*['"][^'"]*display\s*:\s*none/i.test(repairedHtml);
+
+        // Gate Vue 3 Reaktif: v-if="!isLoggedIn" atau v-show="!isLoggedIn" pada loginScreen
+        // dikombinasikan dengan v-else atau v-if="isLoggedIn" pada appContainer.
+        // Ini sudah aman secara reaktif — seluruh DOM staf tidak pernah terrender saat belum login.
+        const hasVueLoginScreenVif = /id\s*=\s*['"]loginScreen['"][^>]*v-(?:if|show)\s*=\s*["']!(?:currentRole|isLoggedIn)["']/i.test(repairedHtml) ||
+                                      /v-(?:if|show)\s*=\s*["']!(?:currentRole|isLoggedIn)["'][^>]*id\s*=\s*['"]loginScreen['"]/i.test(repairedHtml);
+        const hasVueAppContainerVif = /id\s*=\s*['"]appContainer['"][^>]*v-(?:if|show|else)\b/i.test(repairedHtml) ||
+                                       /v-(?:else|if\s*=\s*["'](?:currentRole|isLoggedIn)["'])[^>]*id\s*=\s*['"]appContainer['"]/i.test(repairedHtml);
+        const hasVueReactiveGate = isVueApp && (hasVueLoginScreenVif || hasVueAppContainerVif);
+
+        // Gate Vue tab-level: isRoleAllowed() digunakan di v-show/v-if pada navigasi tab —
+        // tab staf hanya muncul kalau currentRole cocok. Saat currentRole = '' (belum login), semua tab staf tersembunyi.
+        const hasVueIsRoleAllowedTabGate = isVueApp &&
+          /v-(?:if|show)\s*=\s*["'][^"']*isRoleAllowed\s*\(/i.test(repairedHtml);
+
+        const hasLoginScreenGate = hasVanillaJsGate || hasVueReactiveGate || hasVueIsRoleAllowedTabGate;
+
         const hasInitialFilterCall = hasLoginScreenGate ||
                                      new RegExp(`filterTabsByRole\\s*\\(\\s*['"]?${detectedPublicRole}['"]?\\s*\\)`, 'i').test(combinedJs) ||
                                      /DOMContentLoaded[\s\S]*?filterTabsByRole/i.test(combinedJs) ||
@@ -1652,8 +1711,8 @@ function loginAs(role) {
             `TIDAK dipanggil saat inisialisasi awal (di luar loginAs). Akibatnya seluruh tab staf terbuka tanpa login!`
           );
 
-          // Auto-repair: Sisipkan pemanggilan filterTabsByRole awal jika fungsi tersebut ada di script
-          if (repairedHtml.includes('function filterTabsByRole') || repairedJs.includes('function filterTabsByRole')) {
+          // Auto-repair: Sisipkan pemanggilan filterTabsByRole awal jika fungsi tersebut ada di script (khusus Vanilla JS)
+          if (!isVueApp && (repairedHtml.includes('function filterTabsByRole') || repairedJs.includes('function filterTabsByRole'))) {
             if (repairedHtml.includes('document.addEventListener(\'DOMContentLoaded\'') || repairedHtml.includes('document.addEventListener("DOMContentLoaded"')) {
               repairedHtml = repairedHtml.replace(/(document\.addEventListener\(\s*['"]DOMContentLoaded['"]\s*,\s*(?:\(\)|\w+)?\s*=>?\s*\{)/i, `$1\n      if (typeof filterTabsByRole === 'function') filterTabsByRole('${detectedPublicRole}');`);
             } else if (repairedHtml.includes('</script>')) {
@@ -2014,19 +2073,21 @@ export function repairVueManualDomManipulation(html: string, js: string): { html
   }
 
   // 4. Di HTML, pastikan #loginScreen dan #appContainer menggunakan v-if/v-show reaktif
-  if (repairedHtml.includes('id="loginScreen"')) {
-    repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']loginScreen["'][^>]*)style=["'][^"']*["']/gi, '$1');
-    if (!/<div[^>]*id=["']loginScreen["'][^>]*v-(?:if|show)/i.test(repairedHtml)) {
-      repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']loginScreen["'])/i, '$1 v-if="!isLoggedIn"');
+  repairedHtml = repairedHtml.replace(/<div\b(?=[^>]*\bid=["']loginScreen["'])([^>]*)>/gi, (match, attrs) => {
+    let cleanAttrs = attrs.replace(/\s*style=["'][^"']*["']/gi, '');
+    if (!/\bv-(?:if|show|else)\b/i.test(cleanAttrs)) {
+      cleanAttrs += ' v-if="!isLoggedIn"';
     }
-  }
+    return `<div${cleanAttrs}>`;
+  });
 
-  if (repairedHtml.includes('id="appContainer"')) {
-    repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']appContainer["'][^>]*)style=["'][^"']*["']/gi, '$1');
-    if (!/<div[^>]*id=["']appContainer["'][^>]*v-(?:if|show|else)/i.test(repairedHtml)) {
-      repairedHtml = repairedHtml.replace(/(<div[^>]*id=["']appContainer["'])/i, '$1 v-if="isLoggedIn"');
+  repairedHtml = repairedHtml.replace(/<div\b(?=[^>]*\bid=["']appContainer["'])([^>]*)>/gi, (match, attrs) => {
+    let cleanAttrs = attrs.replace(/\s*style=["'][^"']*["']/gi, '');
+    if (!/\bv-(?:if|show|else)\b/i.test(cleanAttrs)) {
+      cleanAttrs += ' v-if="isLoggedIn"';
     }
-  }
+    return `<div${cleanAttrs}>`;
+  });
 
   return { html: repairedHtml, js: repairedJs };
 }

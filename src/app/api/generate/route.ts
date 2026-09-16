@@ -1185,6 +1185,12 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
 Aplikasi ini TELAH DISETUJUI dengan daftar peran resmi berikut:
 ${officialRoles.map((r, i) => `  ${i + 1}. "${r}" ${r === publicRole ? '(AKSES PUBLIK - TAMPILAN AWAL)' : '(PERAN STAF/INTERNAL)'}`).join('\n')}
 
+🔴 KEWAJIBAN TAB PER PERAN — NON-NEGOTIABLE (VALIDATOR AKTIF):
+Array tabs di data() Vue WAJIB MEMILIKI ENTRI UNTUK SETIAP PERAN DI BAWAH INI — tanpa terkecuali:
+${officialRoles.map(r => `  - "${r}" → WAJIB ADA minimal 1 entri di tabs[] dengan roles: ['${r}'] atau roles yang mencakup '${r}'`).join('\n')}
+DILARANG KERAS menghilangkan atau melewatkan satu pun peran dari daftar di atas saat mendefinisikan array tabs!
+Jika sebuah peran tidak memiliki tab, validator akan menolak kode ini dan meminta regenerasi ulang.
+
 ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK:
 1. DAFTAR PERAN RESMI DI ATAS ADALAH SATU-SATUNYA SUMBER PERAN UNTUK KODE APLIKASI INI.
 2. DILARANG KERAS menambahkan role generic jika TIDAK ADA di daftar resmi di atas. Role "Super Admin" adalah pengecualian wajib dan selalu ada!

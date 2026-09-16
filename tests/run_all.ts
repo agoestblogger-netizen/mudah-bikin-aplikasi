@@ -71,6 +71,18 @@ const testFiles = [
     name: 'Four Real Vue Bugs Fixes & Fallback Safety',
     file: 'tests/four_vue_bugs_fix.test.ts',
     desc: 'Verifikasi perbaikan 4 bug nyata (panel luar app, DOM manual, canEditCurrentTab, mixin registration)'
+  },
+  {
+    id: 12,
+    name: 'Role Tab Navigation & Public Role Security Gate',
+    file: 'tests/role_tab_and_public_role.test.ts',
+    desc: 'Bug 1: deteksi & auto-repair ROLE_MISSING_TAB_NAVIGATION (Petugas Perawat Hewan dll). Bug 2: fix false positive PUBLIC_ROLE_UNFILTERED_ON_LOAD di Vue reactive gate app'
+  },
+  {
+    id: 13,
+    name: '3-Tier Schema Pattern & Relation Integrity',
+    file: 'tests/schema_pattern_and_relation_integrity.test.ts',
+    desc: 'Verifikasi pola katalog master + tabel pendaftaran penghubung + tabel turunan, deteksi relasi tabel tidak ada, dan auto-repair peran'
   }
 ];
 

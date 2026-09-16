@@ -55,7 +55,8 @@ import {
   renderReviewFinalMarkdown,
   buildBackNavigationStep,
   generateChangeNote,
-  isPureConfirmationText
+  isPureConfirmationText,
+  isTablePengguna
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -2307,11 +2308,63 @@ export async function extractTablesAndCorrelationFromParsed(
 
   if (validatedTables.length === 0) return null;
 
+  // Normalisasi otomatis dan verifikasi integritas relasi (Bug 1 Fix)
+  const tableNames = new Set(validatedTables.map((t) => t.nama.toLowerCase()));
+  const userTable = validatedTables.find((t) => isTablePengguna(t.nama))?.nama || 'pengguna';
+
+  for (const t of validatedTables) {
+    for (const f of t.field) {
+      const relMatch = f.tipe.match(/^relasi ke\s+([a-zA-Z0-9_]+)/i);
+      if (relMatch) {
+        const targetRaw = relMatch[1].toLowerCase();
+        if (!tableNames.has(targetRaw)) {
+          // Cek apakah targetRaw adalah nama/alias peran atau sinonim pengguna
+          const isRoleOrUser =
+            isTablePengguna(targetRaw) ||
+            (officialRoles && officialRoles.some((r) => r.toLowerCase().replace(/\s+/g, '_') === targetRaw || r.toLowerCase().includes(targetRaw) || targetRaw.includes(r.toLowerCase()))) ||
+            (f.targetRole && officialRoles && officialRoles.includes(f.targetRole));
+
+          if (isRoleOrUser && tableNames.has(userTable)) {
+            console.log(`[AI-DATA-SCHEMA] Auto-repair field relasi "${t.nama}.${f.nama}": tipe "${f.tipe}" dinormalisasi ke "relasi ke ${userTable}"`);
+            f.tipe = `relasi ke ${userTable}`;
+            if (!f.targetRole && officialRoles) {
+              const matchedRole = officialRoles.find((r) => r.toLowerCase().replace(/\s+/g, '_') === targetRaw || r.toLowerCase().includes(targetRaw) || targetRaw.includes(r.toLowerCase()));
+              if (matchedRole) {
+                f.targetRole = matchedRole;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   const korelasi = (parsed.korelasiRingkas || parsed.korelasi || parsed.summary)
     ? String(parsed.korelasiRingkas || parsed.korelasi || parsed.summary).trim()
     : fallbackCorrelation;
 
   return { tables: validatedTables, korelasiRingkas: korelasi };
+}
+
+export function detectInvalidSchemaRelations(
+  tables: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] }[]
+): string[] {
+  const tableNames = new Set(tables.map((t) => t.nama.toLowerCase()));
+  const errors: string[] = [];
+
+  for (const t of tables) {
+    for (const f of t.field) {
+      const relMatch = (f.tipe || '').match(/^relasi ke\s+([a-zA-Z0-9_]+)/i);
+      if (relMatch) {
+        const target = relMatch[1].toLowerCase();
+        if (!tableNames.has(target)) {
+          errors.push(`Field "${t.nama}.${f.nama}" bertipe "relasi ke ${target}", namun tabel "${target}" tidak ada di dalam skema.`);
+        }
+      }
+    }
+  }
+
+  return errors;
 }
 
 export function detectMissingCoreTermsFromSchema(
@@ -2394,9 +2447,42 @@ ATURAN WAJIB & STRICT PRINCIPLES:
 1. PENYISIRAN KATA BENDA & ATRIBUT PILIHAN (GROUNDING MUTLAK):
    - SETIAP kata benda konkret, pilihan opsi, jenis, paket, tipe, kategori, instrumen, durasi, ruangan, tarif, atau metode yang disebutkan di Alur Inti, Alur Pendukung, maupun Fitur (misalnya: 'paket kursus', 'paket cuci', 'jenis layanan', 'ruangan studio', 'metode pembayaran') WAJIB diekstrak menjadi field nyata di tabel terkait!
    - DILARANG menyatukan atau mengaburkan pilihan konkret ini menjadi field generik seperti 'keterangan' atau 'catatan' semata.
-   - Jika pengguna memilih atau mencatat suatu entitas (misal: 'memilih paket kursus'), tabel transaksi/pendaftaran WAJIB memiliki field konkret seperti 'paket_kursus' (atau 'jenis_kursus', 'pilihan_paket').
+   - Jika alur memuat pemilihan produk/paket:
+     * Pada pola Katalog + Penghubung: tabel katalog memuat nama & rincian paket, sedangkan tabel penghubung memuat field relasi ke paket tersebut (misal: 'paket_id' atau 'kursus_id' dengan tipe 'relasi ke [tabel_katalog]').
+     * Pada pola Relasi Langsung: tabel transaksi memuat field konkret seperti 'paket_kursus' atau 'jenis_layanan'.
 
-2. REFERENSI POLA SKEMA UMUM INDUSTRI (MURNI PENALARAN AI - SEBAGAI PERTIMBANGAN PELENGKAP):
+2. POLA STRUKTUR DATA: HUBUNGAN LANGSUNG VS KATALOG PRODUK + PENDAFTARAN PENGHUBUNG (HEURISTIK PENALARAN ALUR):
+   Evaluasi secara objektif isi Gambaran Proses, Alur Inti, dan Alur Pendukung yang SUDAH DIKONFIRMASI pengguna. Tentukan pola skema data yang tepat berdasarkan indikasi nyata berikut (BUKAN berdasarkan template atau pencocokan kata kunci nama domain):
+
+   A. HEURISTIK PEMICU POLA "KATALOG PRODUK + PENDAFTARAN PENGHUBUNG":
+      Terapkan pola Katalog + Penghubung JIKA narasi alur yang dikonfirmasi menunjukkan SALAH SATU dari kondisi berikut:
+      1) Entitas (pelanggan/siswa/anggota/klien/pasien/pengguna) dapat mengambil lebih dari satu jenis produk/layanan yang sama-sama tercatat di sistem (bukan hanya satu opsi sekali pakai).
+      2) Entitas dapat mengambil produk/layanan yang sama secara berulang kali (misal: mengambil paket baru setelah paket pertama selesai, menyewa unit lagi di waktu berbeda, langganan multi-periode).
+      3) Terdapat indikasi eksplisit mengenai "riwayat" / "histori pembelian atau pendaftaran" / "riwayat transaksi" per entitas di alur operasional.
+
+      JIKA HEURISTIK INI TERPICU, WAJIB SUSUN STRUKTUR DENGAN POLA 3 LAPIS:
+      - LAPIS 1: TABEL KATALOG PRODUK/LAYANAN (Master Data)
+        * Berisi daftar produk, paket, atau layanan dengan field deskriptif (misal: nama_paket/nama_layanan, tarif/harga, durasi/kapasitas, deskripsi, status_aktif).
+        * DILARANG memiliki field relasi ke entitas pelanggan/pengguna (ini katalog master yang independen).
+      - LAPIS 2: TABEL PENDAFTARAN / TRANSAKSI PENGHUBUNG (Connector / Bridge)
+        * Berfungsi sebagai jembatan pencatatan antara entitas pengguna/pelanggan dan produk/layanan yang diambil.
+        * WAJIB MEMILIKI DUA FIELD RELASI KUNCI (DILARANG KERAS MELEWATKAN SALAH SATUNYA):
+          1) Field relasi ke entitas akun pengguna: WAJIB bertipe 'relasi ke pengguna' dengan targetRole diisi nama peran terkait (contoh: 'relasi ke pengguna' dengan targetRole 'Klien Perusahaan' atau 'Siswa'). DILARANG KERAS membuat nama tipe relasi ke nama peran seperti 'relasi ke klien', 'relasi ke siswa', atau 'relasi ke pelanggan' jika akun mereka tersimpan di tabel 'pengguna'!
+          2) Field relasi ke tabel katalog produk/layanan yang dipilih: WAJIB 'relasi ke [nama_tabel_katalog_nyata]', contoh: 'relasi ke paket_kursus', 'relasi ke katalog_parameter_uji', 'relasi ke katalog_alat'.
+          3) Tanggal transaksi/pendaftaran, status proses (misal: 'Menunggu Verifikasi' / 'Aktif' / 'Selesai' / 'Dibatalkan'), dan nomor/kode registrasi transaksi.
+      - LAPIS 3: TABEL TRANSAKSIONAL TURUNAN (Jadwal, Evaluasi/Progres, Pembayaran/Angsuran, Presensi, Pelaksanaan Tugas, dsb)
+        * Jika alur membutuhkan pencatatan turunan (misal sesi belajar/jadwal pertemuan, catatan perkembangan/evaluasi, bukti/angsuran pembayaran, progres pengerjaan):
+        * Field relasi pada tabel turunan WAJIB MERUJUK KE TABEL PENDAFTARAN/TRANSAKSI PENGHUBUNG (misal: 'relasi ke pendaftaran_kursus', 'relasi ke transaksi_sewa', 'relasi ke pendaftaran_pengujian_sampel'), BUKAN langsung ke entitas pelanggan atau ke tabel katalog produk secara terpisah!
+
+   B. POLA HUBUNGAN LANGSUNG (BISNIS TRANSAKSI TUNGGAL / SEKALI SELESAI):
+      JIKA TIDAK ADA tanda-tanda multi-layanan berulang, histori pendaftaran per entitas, atau langganan berkelanjutan di narasi alur (misal: servis motor sekali datang langsung beres, cuci mobil reguler sekali datang langsung selesai):
+      - TETAP GUNAKAN POLA SEDERHANA: Tabel transaksi/pencatatan langsung menghubungkan pelanggan dengan layanan atau pengerjaan saat itu.
+      - JANGAN OVER-ENGINEER! Dilarang memaksakan pembuatan tabel katalog master dan tabel pendaftaran terpisah jika alurnya murni transaksi langsung sekali selesai.
+
+   C. PRINSIP GENERALITAS PENALARAN (ZERO HARDCODED DOMAIN):
+      Keputusan pola di atas MURNI HASIL PENALARAN ATAS DINAMIKA ALUR, BUKAN daftar kata kunci domain (jangan otomatis memicu hanya karena kata "kursus", dan jangan menolak hanya karena domain tidak umum). Evaluasi apakah relasi entitas ke produk bersifat transaksi langsung 1-kali-selesai atau multi-transaksi/berulang/histori.
+
+3. REFERENSI POLA SKEMA UMUM INDUSTRI (MURNI PENALARAN AI - SEBAGAI PERTIMBANGAN PELENGKAP):
    - Gunakan pemahaman Anda tentang pola skema data yang LAZIM untuk jenis bisnis yang sedang dibangun:
      * Bisnis kursus / edukasi: lazim mencatat jenis/paket kursus, instrumen/mata pelajaran, level kemahiran, ruangan, jadwal sesi.
      * Bisnis servis / bengkel / klinik: lazim mencatat jenis layanan/tindakan, keluhan awal, diagnosa, suku cadang/obat.
@@ -2404,28 +2490,28 @@ ATURAN WAJIB & STRICT PRINCIPLES:
      * Bisnis retail / inventaris: lazim mencatat kategori produk, satuan unit, harga modal/jual, stok minimum.
    - Seluruh field tambahan dari referensi umum ini TETAP harus masuk akal untuk alur spesifik dan tunduk pada prinsip "tanpa kuota artifisial" (tidak dipaksakan jika tidak relevan).
 
-3. PEMETAAN DARI MODUL RBAC & ALUR KERJA:
+4. PEMETAAN DARI MODUL RBAC & ALUR KERJA:
    - Gunakan matriks modul RBAC sebagai petunjuk utama entitas data. Setiap modul fungsional umumnya membutuhkan setidaknya satu tabel data transaksi/pencatatan.
    - Jika proses bisnis membutuhkan struktur master-detail atau log tersendiri (misal: rincian item, angsuran cicilan, riwayat servis), sediakan tabel terkait secara proporsional.
    - Tabel akun pengguna / peran (misal: "pengguna") WAJIB ada untuk mendukung otorisasi RBAC peran-peran aktif: ${activeRoles.join(', ')}.
 
-4. TANPA KUOTA ARTIFISIAL (3 HINGGA 6 TABEL PROPORSIONAL):
+5. TANPA KUOTA ARTIFISIAL (3 HINGGA 6 TABEL PROPORSIONAL):
    - Rancang skema dengan jumlah tabel yang pas dan proporsional (biasanya 3 sampai 6 tabel).
    - Jangan membuat tabel kembung atau tabel dummy yang tidak ada kaitannya dengan alur kerja pengguna.
 
-5. TIPE DATA MANUSIAWI (LEVEL PENGGUNA AWAM - ZERO TECH JARGON):
+6. TIPE DATA MANUSIAWI & INTEGRITAS RELASI KE TABEL NYATA:
    - DILARANG KERAS memakai istilah teknis SQL seperti VARCHAR, INT, BIGINT, BOOLEAN, ENUM, TIMESTAMP, FOREIGN KEY!
    - Gunakan HANYA 4 tipe data yang mudah dipahami orang awam:
      a. "text" (untuk nama, catatan, kode, status, nomor surat, alamat, jenis, kategori)
      b. "angka" (untuk nominal uang, tarif, harga, durasi waktu, jumlah item, persentase)
      c. "tanggal" (untuk tanggal pengajuan, batas waktu, jadwal pelaksanaan, jam transaksi)
-     d. "relasi ke [Nama Tabel]" (untuk hubungan antar-entitas, contoh: "relasi ke pengguna", "relasi ke kursus")
+     d. "relasi ke [Nama Tabel]" (INTEGRITAS MUTLAK: [Nama Tabel] WAJIB merupakan NAMA TABEL NYATA yang tercantum dalam skema JSON Anda! Dilarang menaruh nama peran jika tabel fisiknya tidak dibuat. Semua relasi ke akun pengguna/pelanggan/siswa/klien/staf WAJIB bertipe "relasi ke pengguna").
 
-6. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
+7. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
    - Di akhir, berikan 2-3 kalimat penjelasan korelasi ringkas yang menggambarkan aliran data antar-tabel dari hulu ke hilir.
 ${delegationRulesPrompt}
 
-7. FORMAT OUTPUT JSON WAJIB:
+8. FORMAT OUTPUT JSON WAJIB:
 {
   "tabel": [
     {
@@ -2544,6 +2630,33 @@ Kembalikan JSON lengkap seluruh tabel yang telah diperbarui:`;
         parsedSchema = retryParsed;
       }
     }
+
+    const invalidRelations = detectInvalidSchemaRelations(parsedSchema.tabel);
+    if (invalidRelations.length > 0) {
+      console.log(`[AI-DATA-SCHEMA] Terdeteksi relasi menunjuk tabel tidak ada: ${invalidRelations.join('; ')}. Melakukan penegasan integritas relasi...`);
+      const relationRetryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN INTEGRITAS RELASI SKEMA (WAJIB DIPERBAIKI):
+Skema data Anda sebelumnya memuat field relasi yang menunjuk ke tabel yang TIDAK ADA di dalam skema:
+${invalidRelations.map((e) => `- ${e}`).join('\n')}
+
+ATURAN PERBAIKAN MUTLAK:
+1. Seluruh field bertipe "relasi ke [Nama Tabel]" WAJIB menunjuk tabel yang benar-benar ada di daftar tabel Anda!
+2. Jika relasi mengarah ke akun pengguna (misal: pelanggan, siswa, klien, staf, instruktur), gunakan tipe "relasi ke pengguna" dengan targetRole peran tersebut (DILARANG membuat tipe relasi ke nama peran seperti "relasi ke klien" jika tabel fisiknya tidak ada).
+Kembalikan JSON lengkap seluruh tabel yang telah diperbaiki:`;
+
+      const retryRaw = await invokeAIChat({
+        systemInstruction,
+        userPrompt: relationRetryPrompt,
+        temperature: 0.2,
+        maxTokens: 4000,
+        provider,
+        userApiKey: apiKey,
+        userModel: model
+      });
+      const retryParsed = await parseAndValidateDataSchema(retryRaw);
+      if (retryParsed) {
+        parsedSchema = retryParsed;
+      }
+    }
   }
 
   const elapsed = Date.now() - startTime;
@@ -2575,17 +2688,27 @@ export async function reviseDataSchemaWithAI(
   const systemInstruction = `Anda adalah Analis Basis Data & Perancang Skema Data Aplikasi Bisnis.
 Tugas Anda: Memperbaiki dan memperbarui Skema Tabel Data berdasarkan koreksi atau masukan pengguna.
 
-ATURAN REVISI (KONSISTEN & KUMULATIF):
+ATURAN REVISI (KONSISTEN & SESUAI KEBUTUHAN):
 1. Baca koreksi pengguna dengan teliti: sesuaikan tabel, field, atau relasi yang diminta.
-2. PERTAHANKAN seluruh tabel dan kolom lain yang tidak diminta diubah (KUMULATIF).
-3. Pertahankan tipe data manusiawi: "text", "angka", "tanggal", "relasi ke [Tabel]".
-4. Format output JSON WAJIB memuat array "tabel" (dengan "nama", "keterangan", dan "field") serta "korelasiRingkas".`;
+2. PERTAHANKAN tabel dan kolom yang ada secara kumulatif, KECUALI jika koreksi pengguna meminta penyederhanaan proses/penghapusan tabel yang tidak lagi relevan.
+3. HEURISTIK POLA STRUKTUR DATA:
+   - Jika alur bisnis atau koreksi melibatkan entitas yang dapat mengambil beberapa paket/layanan, mengambil layanan secara berulang, atau membutuhkan riwayat/histori pendaftaran: terapkan/pertahankan struktur 3 Lapis: (1) Tabel Katalog Produk/Layanan master tanpa relasi pelanggan, (2) Tabel Pendaftaran/Transaksi penghubung berelasi ke pelanggan DAN katalog, (3) Tabel Transaksional turunan (jadwal, evaluasi, pembayaran) berelasi ke Tabel Pendaftaran penghubung.
+   - Jika koreksi pengguna MENGUBAH dinamika bisnis menjadi transaksi tunggal sekali selesai (misal: hanya 1 paket privat sekali seumur hidup tanpa katalog multi-paket, tanpa pendaftaran berulang, tanpa histori): AI WAJIB menyederhanakan skema menjadi pola relasi langsung (hapus tabel penghubung/katalog yang tidak diperlukan, gabungkan menjadi tabel transaksi/pelaksanaan langsung yang ringkas tanpa over-engineering).
+   - Jika alur bisnis adalah transaksi langsung sekali selesai, pertahankan pola relasi langsung tanpa over-engineering.
+4. INTEGRITAS RELASI KE TABEL NYATA:
+   - Seluruh field bertipe "relasi ke [Nama Tabel]" WAJIB merujuk ke tabel yang benar-benar ada di dalam skema. Jika relasi mengarah ke akun pengguna (siswa, klien, pelanggan), WAJIB bertipe "relasi ke pengguna" dengan targetRole peran tersebut (DILARANG membuat nama tipe seperti "relasi ke klien" jika tabel fisiknya tidak ada).
+5. Pertahankan tipe data manusiawi: "text", "angka", "tanggal", "relasi ke [Tabel]".
+6. Format output JSON WAJIB memuat array "tabel" (dengan "nama", "keterangan", dan "field") serta "korelasiRingkas".`;
 
   const userPrompt = `Skema Tabel Data Saat Ini:
 ${JSON.stringify(currentTables, null, 2)}
 
 Korelasi Saat Ini:
 "${session.dataSchema?.korelasiRingkas || ''}"
+
+Gambaran Bisnis & Alur:
+${session.storyline?.narasi || ''}
+${session.storyline?.asumsiAlurUtama ? `Alur Utama: ${session.storyline.asumsiAlurUtama}` : ''}
 
 Daftar Peran Aktif:
 ${activeRoles.join(', ')}

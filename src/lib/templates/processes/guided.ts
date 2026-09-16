@@ -3519,7 +3519,9 @@ export function validateContohDataVsSchema(
 
       const tgt = resolveRelasiTarget(contohTabel, fld.tipe, fld.nama);
       if (!tgt) {
-        masalah.push(`"${t.nama}.${fld.nama}" relasi tidak menemukan tabel tujuan`);
+        const match = fld.tipe.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
+        const targetName = match ? match[1] : fld.nama;
+        masalah.push(`"${t.nama}.${fld.nama}" bertipe "${fld.tipe}" menunjuk tabel "${targetName}" yang tidak ada di skema data`);
         continue;
       }
       const tgtTabel = contohTabel.find((x) => x.nama === tgt.nama);
