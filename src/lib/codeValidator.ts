@@ -500,9 +500,27 @@ var Pilar1VueScaffoldMixin = {
       return roles.includes(this.currentRole) || roles.includes('*');
     },
     canEditCurrentTab() {
-      if (!this.currentTableConfig) return false;
-      var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-      return this.isRoleAllowed(allowed);
+      if (this.currentTableConfig) {
+        var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+        return this.isRoleAllowed(allowed);
+      }
+      if (this.tablesConfig) {
+        var key = (this.activeTab || '').replace(/^tab_/, '');
+        var cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
+        if (cfg) {
+          var allowedCfg = cfg.roles || cfg.allowRoles || [];
+          return this.isRoleAllowed(allowedCfg);
+        }
+      }
+      if (this.tabs && this.tabs.length) {
+        var curTab = this.tabs.find(function(t) { return t.id === this.activeTab; }.bind(this));
+        if (curTab) {
+          var tabRoles = curTab.roles || curTab.allowRoles || [];
+          return this.isRoleAllowed(tabRoles);
+        }
+      }
+      var owner = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
+      return this.currentRole === owner;
     },
     showTab(tabId) {
       this.activeTab = tabId;
@@ -1936,6 +1954,12 @@ function loginAs(role) {
     // =========================================================================
     const roleCheckIssues = checkVueHardcodedRoleCheck(jsAst, repairedHtml, combinedJs, expectedRoles || []);
     issues.push(...roleCheckIssues);
+
+    // =========================================================================
+    // 20. VALIDASI DANGLING CONFIG REFERENCES (Bug 1a)
+    // =========================================================================
+    const danglingConfigIssues = checkVueDanglingConfigReferences(combinedJs);
+    issues.push(...danglingConfigIssues);
   }
 
   repairedHtml = cleanConversationalLeaks(repairedHtml);
@@ -1949,6 +1973,13 @@ function loginAs(role) {
       js: repairedJs
     }
   };
+}
+
+/**
+ * Ekstraksi issue DANGLING_CONFIG_REFERENCE untuk pelaporan atau auto-recovery
+ */
+export function extractDanglingConfigIssues(issues: string[]): string[] {
+  return (issues || []).filter(i => i.startsWith('DANGLING_CONFIG_REFERENCE:'));
 }
 
 /**
@@ -2164,16 +2195,74 @@ export function checkVueHardcodedRoleCheck(ast: any, html: string, jsCode: strin
   return issues;
 }
 
+export function checkVueDanglingConfigReferences(jsCode: string): string[] {
+  if (!jsCode) return [];
+  const issues: string[] = [];
+
+  const refsCurrentTableConfig = /this\.currentTableConfig\b/.test(jsCode);
+  const refsTablesConfig = /this\.tablesConfig\b/.test(jsCode);
+
+  if (refsCurrentTableConfig || refsTablesConfig) {
+    const hasCurrentTableConfig = /\bcurrentTableConfig\s*[:(]/.test(jsCode);
+    const hasTablesConfig = /\btablesConfig\s*:\s*\{/.test(jsCode);
+
+    if (refsCurrentTableConfig && !hasCurrentTableConfig && !hasTablesConfig) {
+      issues.push(
+        `DANGLING_CONFIG_REFERENCE: Terdeteksi referensi 'currentTableConfig' (misal di canEditCurrentTab) namun 'currentTableConfig' atau 'tablesConfig' tidak pernah didefinisikan di data() maupun computed. Hal ini menyebabkan tombol Tambah/Edit/Hapus mati total.`
+      );
+    }
+  }
+
+  return issues;
+}
+
 export function repairVueHardcodedRoleChecks(js: string): string {
   if (!js) return js;
-  return js.replace(
-    /canEditCurrentTab\s*\([^)]*\)\s*\{[\s\S]*?\n\s*\}/g,
-    `canEditCurrentTab() {
-        if (!this.currentTableConfig) return false;
-        const allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-        return this.isRoleAllowed(allowed);
-      }`
-  );
+  const canonicalCanEdit = `canEditCurrentTab() {
+        if (this.currentTableConfig) {
+          const allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+          return this.isRoleAllowed(allowed);
+        }
+        if (this.tablesConfig) {
+          const key = (this.activeTab || '').replace(/^tab_/, '');
+          const cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
+          if (cfg) {
+            const allowed = cfg.roles || cfg.allowRoles || [];
+            return this.isRoleAllowed(allowed);
+          }
+        }
+        if (this.tabs && this.tabs.length) {
+          const curTab = this.tabs.find(t => t.id === this.activeTab);
+          if (curTab) {
+            const allowed = curTab.roles || curTab.allowRoles || [];
+            return this.isRoleAllowed(allowed);
+          }
+        }
+        const owner = (typeof window !== 'undefined' && window.OWNER_ROLE_NAME) ? window.OWNER_ROLE_NAME : 'Super Admin';
+        return this.currentRole === owner;
+      }`;
+
+  const regex = /canEditCurrentTab\s*\([^)]*\)\s*\{/g;
+  let match: RegExpExecArray | null;
+  let result = '';
+  let lastIndex = 0;
+
+  while ((match = regex.exec(js)) !== null) {
+    result += js.slice(lastIndex, match.index);
+    const startBrace = match.index + match[0].length - 1;
+    let depth = 1;
+    let i = startBrace + 1;
+    while (i < js.length && depth > 0) {
+      if (js[i] === '{') depth++;
+      else if (js[i] === '}') depth--;
+      i++;
+    }
+    result += canonicalCanEdit;
+    lastIndex = i;
+    regex.lastIndex = i;
+  }
+  result += js.slice(lastIndex);
+  return result;
 }
 
 /**

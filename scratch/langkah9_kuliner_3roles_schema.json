@@ -1,0 +1,187 @@
+{
+  "sessionSummary": {
+    "roles": [
+      "Super Admin",
+      "Instruktur",
+      "pegawai administrasi"
+    ],
+    "actorsClassification": [
+      {
+        "actor": "Super Admin",
+        "category": "PENGGUNA_SISTEM"
+      },
+      {
+        "actor": "Instruktur",
+        "category": "PENGGUNA_SISTEM"
+      },
+      {
+        "actor": "pegawai administrasi",
+        "category": "PENGGUNA_SISTEM"
+      },
+      {
+        "actor": "Siswa",
+        "category": "ENTITAS_DATA",
+        "ownerRole": "pegawai administrasi"
+      }
+    ],
+    "narasi": "Pelatihan kuliner membuat roti. [Variasi Produk: Bisnis ini menawarkan beberapa varian pelatihan (contoh varian: Roti Tawar, Roti Gandum, Croissant). Pelanggan dapat memilih dari beberapa opsi yang tersedia.]"
+  },
+  "schema": {
+    "tabel": [
+      {
+        "nama": "pengguna",
+        "keterangan": "Tabel untuk menyimpan data pengguna sistem seperti Super Admin, Instruktur, dan pegawai administrasi.",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Identitas unik pengguna"
+          },
+          {
+            "nama": "nama",
+            "tipe": "text",
+            "keterangan": "Nama lengkap pengguna"
+          },
+          {
+            "nama": "role",
+            "tipe": "text",
+            "keterangan": "Peran pengguna dalam sistem (Super Admin, Instruktur, pegawai administrasi)"
+          }
+        ]
+      },
+      {
+        "nama": "siswa",
+        "keterangan": "Tabel untuk menyimpan data profil siswa yang mendaftar pelatihan.",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Identitas unik siswa"
+          },
+          {
+            "nama": "nama",
+            "tipe": "text",
+            "keterangan": "Nama lengkap siswa"
+          },
+          {
+            "nama": "tanggal_daftar",
+            "tipe": "tanggal",
+            "keterangan": "Tanggal pendaftaran siswa"
+          },
+          {
+            "nama": "terdaftar_oleh",
+            "tipe": "relasi ke pengguna",
+            "keterangan": "Referensi ke pegawai administrasi yang mendaftar siswa",
+            "targetRole": "pegawai administrasi"
+          }
+        ]
+      },
+      {
+        "nama": "program_pelatihan",
+        "keterangan": "Tabel untuk menyimpan data program pelatihan yang ditawarkan.",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Identitas unik program pelatihan"
+          },
+          {
+            "nama": "nama_program",
+            "tipe": "text",
+            "keterangan": "Nama program pelatihan (Roti Tawar, Roti Gandum, Croissant)"
+          },
+          {
+            "nama": "durasi",
+            "tipe": "angka",
+            "keterangan": "Durasi program pelatihan dalam jam"
+          },
+          {
+            "nama": "deskripsi",
+            "tipe": "text",
+            "keterangan": "Deskripsi program pelatihan"
+          }
+        ]
+      },
+      {
+        "nama": "pendaftaran_pelatihan",
+        "keterangan": "Tabel untuk mencatat pendaftaran siswa ke program pelatihan.",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Identitas unik pendaftaran"
+          },
+          {
+            "nama": "siswa_id",
+            "tipe": "relasi ke siswa",
+            "keterangan": "Referensi ke siswa yang mendaftar"
+          },
+          {
+            "nama": "program_id",
+            "tipe": "relasi ke program_pelatihan",
+            "keterangan": "Referensi ke program pelatihan yang dipilih",
+            "targetRole": "Instruktur"
+          },
+          {
+            "nama": "tanggal_pendaftaran",
+            "tipe": "tanggal",
+            "keterangan": "Tanggal pendaftaran program"
+          },
+          {
+            "nama": "status",
+            "tipe": "text",
+            "keterangan": "Status pendaftaran (Menunggu Verifikasi, Aktif, Dibatalkan)"
+          },
+          {
+            "nama": "verifikasi_oleh",
+            "tipe": "relasi ke pengguna",
+            "keterangan": "Referensi ke pegawai administrasi yang memverifikasi pendaftaran",
+            "targetRole": "pegawai administrasi"
+          }
+        ]
+      }
+    ],
+    "korelasiRingkas": "Siswa mendaftar melalui pegawai administrasi yang mencatat data siswa di tabel 'siswa'. Setelah itu, pegawai administrasi mencatat pendaftaran siswa ke program pelatihan di tabel 'pendaftaran_pelatihan', yang menghubungkan siswa dengan program pelatihan yang dipilih. Status pendaftaran kemudian diverifikasi oleh pegawai administrasi yang terdaftar di tabel 'pengguna'.",
+    "markdownTable": "### 📦 Tabel: `pengguna`\n*Tabel untuk menyimpan data pengguna sistem seperti Super Admin, Instruktur, dan pegawai administrasi.*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik pengguna |\n| `nama` | text | Nama lengkap pengguna |\n| `role` | text | Peran pengguna dalam sistem (Super Admin, Instruktur, pegawai administrasi) |\n\n### 📦 Tabel: `siswa`\n*Tabel untuk menyimpan data profil siswa yang mendaftar pelatihan.*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik siswa |\n| `nama` | text | Nama lengkap siswa |\n| `tanggal_daftar` | tanggal | Tanggal pendaftaran siswa |\n| `terdaftar_oleh` | relasi ke pengguna | Referensi ke pegawai administrasi yang mendaftar siswa |\n\n### 📦 Tabel: `program_pelatihan`\n*Tabel untuk menyimpan data program pelatihan yang ditawarkan.*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik program pelatihan |\n| `nama_program` | text | Nama program pelatihan (Roti Tawar, Roti Gandum, Croissant) |\n| `durasi` | angka | Durasi program pelatihan dalam jam |\n| `deskripsi` | text | Deskripsi program pelatihan |\n\n### 📦 Tabel: `pendaftaran_pelatihan`\n*Tabel untuk mencatat pendaftaran siswa ke program pelatihan.*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik pendaftaran |\n| `siswa_id` | relasi ke siswa | Referensi ke siswa yang mendaftar |\n| `program_id` | relasi ke program_pelatihan | Referensi ke program pelatihan yang dipilih |\n| `tanggal_pendaftaran` | tanggal | Tanggal pendaftaran program |\n| `status` | text | Status pendaftaran (Menunggu Verifikasi, Aktif, Dibatalkan) |\n| `verifikasi_oleh` | relasi ke pengguna | Referensi ke pegawai administrasi yang memverifikasi pendaftaran |\n\n> 🔗 **Korelasi Antar-Tabel:**\n> Siswa mendaftar melalui pegawai administrasi yang mencatat data siswa di tabel 'siswa'. Setelah itu, pegawai administrasi mencatat pendaftaran siswa ke program pelatihan di tabel 'pendaftaran_pelatihan', yang menghubungkan siswa dengan program pelatihan yang dipilih. Status pendaftaran kemudian diverifikasi oleh pegawai administrasi yang terdaftar di tabel 'pengguna'."
+  },
+  "simDbAkunLogin": [
+    {
+      "nama": "Pak Bambang (Pemilik)",
+      "role": "Super Admin",
+      "username": "superadmin",
+      "password": "superadmin123"
+    },
+    {
+      "nama": "Pak Hendra (Instruktur)",
+      "role": "Instruktur",
+      "username": "instruktur",
+      "password": "instruktur123"
+    },
+    {
+      "nama": "Siti Rahma (Staf Administrasi)",
+      "role": "pegawai administrasi",
+      "username": "pegawaiadministrasi",
+      "password": "pegawaiadministrasi123"
+    }
+  ],
+  "simDbKatalogRows": [
+    {
+      "id": "IDp-001",
+      "nama_program": "Roti Tawar",
+      "durasi": 1,
+      "deskripsi": "Materi silabus dan praktik intensif untuk Roti Tawar"
+    },
+    {
+      "id": "IDp-002",
+      "nama_program": "Roti Gandum",
+      "durasi": 3,
+      "deskripsi": "Materi silabus dan praktik intensif untuk Roti Gandum"
+    },
+    {
+      "id": "IDp-003",
+      "nama_program": "Croissant",
+      "durasi": 7,
+      "deskripsi": "Materi silabus dan praktik intensif untuk Croissant"
+    }
+  ]
+}

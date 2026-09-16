@@ -254,7 +254,11 @@ async function main() {
   });
 
   // Langkah 3.1: Konfirmasi storytelling -> mendeteksi Pelanggan sebagai kandidat entitas data & memicu sub-step
-  const afterConfirmStory = applyGuidedAnswer(overrideSession, 'STORYTELLING', ['confirm_story'], '');
+  let afterConfirmStory = applyGuidedAnswer(overrideSession, 'STORYTELLING', ['confirm_story'], '');
+  // Jika muncul pertanyaan variasi produk/layanan (Fitur Baru), user memilih 'Tunggal' sesuai alur rental sederhana
+  if (afterConfirmStory.storyline?.pendingProductVariantQuestion) {
+    afterConfirmStory = applyGuidedAnswer(afterConfirmStory, 'STORYTELLING', ['variant_single'], '');
+  }
   console.log('  Pending Actor Clarification:', afterConfirmStory.storyline?.pendingActorClarification);
   assert(afterConfirmStory.storyline?.pendingActorClarification, 'FAILED: pendingActorClarification harus aktif');
 

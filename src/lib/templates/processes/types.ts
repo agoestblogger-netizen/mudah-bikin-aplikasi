@@ -278,6 +278,15 @@ export interface MockupSessionState {
       originalPrompt: string;
       pesanKlarifikasi: string;
     };
+    /**
+     * Sub-step pertanyaan variasi produk/layanan.
+     * Ditampilkan SETELAH klarifikasi aktor selesai, SEBELUM lanjut ke step ROLE.
+     * Jawaban user diappend ke narasi sebagai konteks heuristik skema data.
+     */
+    pendingProductVariantQuestion?: {
+      /** Nama entitas bisnis utama yang ditanyakan variannya (contoh: "kursus", "layanan", "paket") */
+      entityLabel: string;
+    };
   };
   roles: {
     selected: string[];

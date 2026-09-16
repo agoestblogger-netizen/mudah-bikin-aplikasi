@@ -2431,7 +2431,7 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
   const tabel: {
     nama: string;
     keterangan?: string;
-    field: { nama: string; tipe: string; keterangan: string }[];
+    field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[];
   }[] = [];
 
   // Tabel 1: pengguna (selalu ada untuk multi-role RBAC)
@@ -2474,7 +2474,7 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
           { nama: 'kontak_telepon', tipe: 'text', keterangan: `Nomor telepon atau kontak ${ent.actor}` },
           { nama: 'alamat_identitas', tipe: 'text', keterangan: `Alamat atau identitas pengenal ${ent.actor}` },
           { nama: 'status_verifikasi', tipe: 'text', keterangan: 'Status verifikasi data (Terverifikasi / Menunggu Verifikasi)' },
-          { nama: 'dicatat_oleh', tipe: 'relasi ke pengguna', keterangan: `Staf yang mencatat dan mengelola data (${managerRole})` }
+          { nama: 'dicatat_oleh', tipe: 'relasi ke pengguna', keterangan: `Staf yang mencatat dan mengelola data (${managerRole})`, targetRole: managerRole }
         ]
       });
     }
@@ -2486,6 +2486,8 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
     ? selfServiceModul.nama.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
     : 'transaksi_layanan';
 
+  const defaultRecorderRole = entityDataActors[0]?.ownerRole || operationalRole;
+
   tabel.push({
     nama: mainEntityName,
     keterangan: 'Mencatat data transaksi permohonan atau pemesanan utama dari pengguna',
@@ -2495,7 +2497,7 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
       { nama: 'tanggal_pengajuan', tipe: 'tanggal', keterangan: 'Waktu permohonan atau pemesanan dibuat' },
       { nama: 'rincian_kebutuhan', tipe: 'text', keterangan: 'Deskripsi permohonan, item, atau layanan yang diminta' },
       { nama: 'status_transaksi', tipe: 'text', keterangan: 'Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan)' },
-      { nama: 'diverifikasi_oleh', tipe: 'relasi ke pengguna', keterangan: getDelegationNote(operationalRole) }
+      { nama: 'terdaftar_oleh', tipe: 'relasi ke pengguna', keterangan: `Staf yang mencatat dan memproses data (${defaultRecorderRole})`, targetRole: defaultRecorderRole }
     ]
   });
 
@@ -2794,7 +2796,7 @@ ${entityDataActors
       `- "${e.actor}" adalah ENTITAS DATA yang dicatat dan dilayani oleh "${e.ownerRole || 'Staf Operasional'}", BUKAN akun pengguna login.
   * WAJIB dibuatkan tabel data tersendiri (misal: "${e.actor.toLowerCase()}") untuk mencatat profil dan riwayat bisnisnya.
   * DILARANG KERAS menyertakan field kredensial (username, password, pin, token) pada tabel "${e.actor.toLowerCase()}".
-  * Field relasi dari tabel transaksi ke ${e.actor} merujuk ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}"), dan field pencatatnya merujuk ke pengguna dengan targetRole "${e.ownerRole || 'Staf Operasional'}".`
+  * Field relasi dari tabel transaksi ke ${e.actor} merujuk ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}"), dan seluruh field staf pencatat/pendaftar (misal: "terdaftar_oleh", "dicatat_oleh", "didaftarkan_oleh") WAJIB merujuk ke pengguna dengan targetRole "${e.ownerRole || 'Staf Operasional'}". DILARANG melimpahkan pencatatan ke peran lain!`
   )
   .join('\n')}`
     : '';
@@ -3269,7 +3271,7 @@ Perbarui SEMUA tabel di atas dan kembalikan JSON hasil revisi:`;
       if (parsedTables.length > 0 || Array.isArray(parsedAkun)) {
         const contohTabel = buildContohTabelRevisi(tables, parsedTables, dRowsByTable);
         // Pastikan FK pada semua tabel merujuk ID yang benar-benar ada setelah revisi AI
-        repairRelasiSimulasiDb(contohTabel);
+        repairRelasiSimulasiDb(contohTabel, activeRoles, session);
 
         // Validasi akun login
         let validatedAkun = currentSimulasi.akunLogin;

@@ -910,9 +910,27 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           return roles.includes(this.currentRole) || roles.includes('*');
         },
         canEditCurrentTab() {
-          if (!this.currentTableConfig) return false;
-          var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-          return this.isRoleAllowed(allowed);
+          if (this.currentTableConfig) {
+            var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
+            return this.isRoleAllowed(allowed);
+          }
+          if (this.tablesConfig) {
+            var key = (this.activeTab || '').replace(/^tab_/, '');
+            var cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
+            if (cfg) {
+              var allowedCfg = cfg.roles || cfg.allowRoles || [];
+              return this.isRoleAllowed(allowedCfg);
+            }
+          }
+          if (this.tabs && this.tabs.length) {
+            var curTab = this.tabs.find(function(t) { return t.id === this.activeTab; }.bind(this));
+            if (curTab) {
+              var tabRoles = curTab.roles || curTab.allowRoles || [];
+              return this.isRoleAllowed(tabRoles);
+            }
+          }
+          var owner = window.OWNER_ROLE_NAME || 'Super Admin';
+          return this.currentRole === owner;
         },
         showTab(tabId) { this.activeTab = tabId; },
         loginAs(role) {

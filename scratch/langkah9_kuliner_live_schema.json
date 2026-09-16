@@ -1,0 +1,219 @@
+{
+  "narasi": "Pelatihan kuliner membuat roti. [Variasi Produk: Bisnis ini menawarkan beberapa varian pelatihan (contoh varian: Roti Tawar, Roti Gandum, Croissant). Pelanggan dapat memilih dari beberapa opsi yang tersedia.]",
+  "alurInti": [
+    {
+      "step": 1,
+      "pelaku": "Siswa",
+      "aksi": "Mendaftar kelas"
+    },
+    {
+      "step": 2,
+      "pelaku": "Instruktur",
+      "aksi": "Memilih program pelatihan"
+    },
+    {
+      "step": 3,
+      "pelaku": "Instruktur",
+      "aksi": "Mengajar"
+    },
+    {
+      "step": 4,
+      "pelaku": "Super Admin",
+      "aksi": "Mencatat pembayaran."
+    }
+  ],
+  "alurPendukung": [
+    {
+      "id": "alur_pendaftaran_peserta",
+      "nama": "Pendaftaran Peserta Kelas Roti Tawar, Roti Gandum & Croissant",
+      "steps": [
+        {
+          "pelaku": "Siswa",
+          "aksi": "Mengisi formulir pendaftaran kelas pelatihan kuliner secara online"
+        },
+        {
+          "pelaku": "Super Admin",
+          "aksi": "Memverifikasi data pendaftaran dan menyetujui pendaftaran siswa"
+        },
+        {
+          "pelaku": "Siswa",
+          "aksi": "Melakukan pembayaran biaya pelatihan melalui metode yang ditentukan"
+        },
+        {
+          "pelaku": "Super Admin",
+          "aksi": "Mencatat pembayaran dan mengonfirmasi pendaftaran siswa"
+        }
+      ]
+    }
+  ],
+  "fiturPendukung": [
+    {
+      "id": "feat_pendaftaran_online",
+      "label": "Sistem pendaftaran online untuk mempermudah siswa memilih program pelatihan"
+    },
+    {
+      "id": "feat_konfirmasi_pembayaran",
+      "label": "Notifikasi otomatis untuk konfirmasi pembayaran yang diterima"
+    },
+    {
+      "id": "feat_jadwal_kelas",
+      "label": "Dasbor jadwal kelas yang dapat diakses siswa untuk melihat waktu pelatihan"
+    },
+    {
+      "id": "feat_pengelolaan_instruktur",
+      "label": "Fitur untuk Super Admin mengelola dan menjadwalkan instruktur untuk setiap kelas"
+    },
+    {
+      "id": "feat_feedback_siswa",
+      "label": "Sistem pengumpulan umpan balik dari siswa setelah mengikuti kelas"
+    }
+  ],
+  "tabel": [
+    {
+      "nama": "siswa",
+      "keterangan": "Mencatat profil dan riwayat siswa yang mendaftar pelatihan kuliner.",
+      "field": [
+        {
+          "nama": "id",
+          "tipe": "text",
+          "keterangan": "Identitas unik siswa"
+        },
+        {
+          "nama": "nama",
+          "tipe": "text",
+          "keterangan": "Nama lengkap siswa"
+        },
+        {
+          "nama": "email",
+          "tipe": "text",
+          "keterangan": "Email siswa"
+        },
+        {
+          "nama": "nomor_telepon",
+          "tipe": "text",
+          "keterangan": "Nomor telepon siswa"
+        },
+        {
+          "nama": "alamat",
+          "tipe": "text",
+          "keterangan": "Alamat siswa"
+        },
+        {
+          "nama": "tanggal_daftar",
+          "tipe": "tanggal",
+          "keterangan": "Tanggal pendaftaran siswa"
+        }
+      ]
+    },
+    {
+      "nama": "program_pelatihan",
+      "keterangan": "Mencatat varian program pelatihan kuliner yang ditawarkan.",
+      "field": [
+        {
+          "nama": "id",
+          "tipe": "text",
+          "keterangan": "Identitas unik program pelatihan"
+        },
+        {
+          "nama": "nama_program",
+          "tipe": "text",
+          "keterangan": "Nama program pelatihan"
+        },
+        {
+          "nama": "deskripsi",
+          "tipe": "text",
+          "keterangan": "Deskripsi program pelatihan"
+        },
+        {
+          "nama": "tarif",
+          "tipe": "angka",
+          "keterangan": "Tarif biaya pelatihan"
+        },
+        {
+          "nama": "durasi",
+          "tipe": "text",
+          "keterangan": "Durasi program pelatihan"
+        },
+        {
+          "nama": "status_aktif",
+          "tipe": "text",
+          "keterangan": "Status aktif program pelatihan"
+        }
+      ]
+    },
+    {
+      "nama": "pendaftaran_kelas",
+      "keterangan": "Mencatat pendaftaran siswa ke program pelatihan.",
+      "field": [
+        {
+          "nama": "id",
+          "tipe": "text",
+          "keterangan": "Identitas unik pendaftaran"
+        },
+        {
+          "nama": "siswa_id",
+          "tipe": "relasi ke siswa",
+          "keterangan": "Relasi ke siswa yang mendaftar",
+          "targetRole": "Siswa"
+        },
+        {
+          "nama": "program_pelatihan_id",
+          "tipe": "relasi ke program_pelatihan",
+          "keterangan": "Relasi ke program pelatihan yang dipilih",
+          "targetRole": "Instruktur"
+        },
+        {
+          "nama": "tanggal_pendaftaran",
+          "tipe": "tanggal",
+          "keterangan": "Tanggal pendaftaran kelas"
+        },
+        {
+          "nama": "status_pendaftaran",
+          "tipe": "text",
+          "keterangan": "Status pendaftaran (Menunggu Verifikasi, Aktif, Dibatalkan)"
+        },
+        {
+          "nama": "kode_pendaftaran",
+          "tipe": "text",
+          "keterangan": "Kode unik pendaftaran"
+        }
+      ]
+    },
+    {
+      "nama": "pembayaran",
+      "keterangan": "Mencatat pembayaran yang dilakukan oleh siswa untuk program pelatihan.",
+      "field": [
+        {
+          "nama": "id",
+          "tipe": "text",
+          "keterangan": "Identitas unik pembayaran"
+        },
+        {
+          "nama": "pendaftaran_kelas_id",
+          "tipe": "relasi ke pendaftaran_kelas",
+          "keterangan": "Relasi ke pendaftaran kelas yang dibayar"
+        },
+        {
+          "nama": "metode_pembayaran",
+          "tipe": "text",
+          "keterangan": "Metode pembayaran yang digunakan"
+        },
+        {
+          "nama": "tanggal_pembayaran",
+          "tipe": "tanggal",
+          "keterangan": "Tanggal pembayaran dilakukan"
+        },
+        {
+          "nama": "jumlah_pembayaran",
+          "tipe": "angka",
+          "keterangan": "Jumlah uang yang dibayarkan"
+        },
+        {
+          "nama": "status_pembayaran",
+          "tipe": "text",
+          "keterangan": "Status pembayaran (Terverifikasi, Belum Terverifikasi)"
+        }
+      ]
+    }
+  ]
+}

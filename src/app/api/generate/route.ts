@@ -1178,13 +1178,23 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
    - Di dalam toolbar tabel dan baris aksi:
      Gunakan pengecekan this.isRoleAllowed(...) untuk menentukan visibilitas tombol Tambah / Edit / Hapus.
    - ⚠️ ATURAN KETAT canEditCurrentTab() & ANTI-HARDCODED ROLE CHECK:
-     DILARANG KERAS meng-hardcode nama peran literal (seperti roles.includes('Super Admin') || roles.includes('Staf ...')) di dalam method/computed mana pun (khususnya canEditCurrentTab).
-     WAJIB selalu mendelegasikan ke this.isRoleAllowed(...) agar semua role yang berhak pada tabel tersebut dapat menambah/mengedit data:
+     DILARANG KERAS meng-hardcode nama peran literal (seperti roles.includes('Super Admin') || roles.includes('Staf ...')) di dalam method/computed mana pun.
+     WAJIB selalu mendelegasikan ke this.isRoleAllowed(...) dengan implementasi multi-tier fallback tangguh agar seluruh role operasional (seperti pegawai administrasi, instruktur, staf) TIDAK TERKUNCI dari tab mereka meskipun currentTableConfig tidak didefinisikan:
      \`\`\`javascript
      canEditCurrentTab() {
-       if (!this.currentTableConfig) return false;
-       const allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-       return this.isRoleAllowed(allowed);
+       // 1. Cek konfigurasi tabel deklaratif jika ada
+       const config = (this.tablesConfig && this.tablesConfig[this.activeTab]) || this.currentTableConfig;
+       if (config) {
+         const allowed = config.roles || config.allowRoles || [];
+         if (allowed.length > 0) return this.isRoleAllowed(allowed);
+       }
+       // 2. Cek izin role langsung pada definisi array tabs aktif
+       const currentTabDef = (this.tabs || []).find(t => (t.id || t.key) === this.activeTab);
+       if (currentTabDef && (currentTabDef.roles || currentTabDef.allowRoles)) {
+         return this.isRoleAllowed(currentTabDef.roles || currentTabDef.allowRoles);
+       }
+       // 3. Fallback darurat ke Super Admin
+       return this.isRoleAllowed(['Super Admin']);
      }
      \`\`\`
 

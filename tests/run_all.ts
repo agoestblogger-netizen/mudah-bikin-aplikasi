@@ -95,6 +95,18 @@ const testFiles = [
     name: 'Actor Classification & Semantic Owner Role Resolution',
     file: 'tests/actor_classification_and_owner_role.test.ts',
     desc: 'Klasifikasi Pelaku (Pengguna Sistem vs Entitas Data), sub-step klarifikasi Bagian A, filter Bagian B, resolusi ownerRole AI alur, Skema Data tanpa kredensial, & Simulasi DB tanpa akun demo entitas'
+  },
+  {
+    id: 16,
+    name: 'Bug 1a (Dangling Config Reference) & Bug 1b (ownerRole Priority)',
+    file: 'tests/bug1a_and_1b_fix.test.ts',
+    desc: 'Bug 1a: deteksi DANGLING_CONFIG_REFERENCE & resilient canEditCurrentTab multi-role. Bug 1b: eliminasi pelimpahan tugas salah pada ENTITAS_DATA & kepastian ownerRole di terdaftar_oleh'
+  },
+  {
+    id: 17,
+    name: 'Fitur Baru: Pertanyaan Variasi Produk/Layanan & Nilai Katalog Simulasi DB',
+    file: 'tests/product_variant_question.test.ts',
+    desc: 'Pertanyaan variasi produk di awal alur (SEBELUM klarifikasi aktor), append narasi untuk heuristik Bagian D (3 Lapis), default Tunggal, skip transaksional/CRM, & nilai varian riil di Simulasi DB'
   }
 ];
 

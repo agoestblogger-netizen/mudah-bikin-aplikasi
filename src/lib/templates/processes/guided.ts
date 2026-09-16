@@ -553,9 +553,79 @@ export function analyzeActorClassification(session: Partial<MockupSessionState>)
   return { classifications, hasCandidateEntity };
 }
 
+/**
+ * Menarik label entitas produk/layanan dari narasi bisnis.
+ * Mengutamakan kata kunci spesifik domain sebelum fallback generik.
+ * Digunakan untuk mengisi teks kartu pertanyaan variasi produk.
+ */
+function inferProductEntityLabel(session: MockupSessionState): string {
+  const narasi = (session.storyline?.narasi || '').toLowerCase();
+  const alur = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
+  const combined = `${narasi} ${alur}`;
+
+  // Urutan pengecekan: dari paling spesifik ke paling generik
+  const ENTITY_PATTERNS: [RegExp, string][] = [
+    [/\bkursus\b/, 'kursus'],
+    [/\bpelatihan\b/, 'pelatihan'],
+    [/\bprogram\b.*\b(studi|belajar|pendidikan|latih)\b|\b(studi|belajar|pendidikan|latih)\b.*\bprogram\b/, 'program'],
+    [/\bpaket\b/, 'paket'],
+    [/\bproduk\b/, 'produk'],
+    [/\bmenu\b/, 'menu'],
+    [/\blayanan\b/, 'layanan'],
+    [/\bjasa\b/, 'jasa'],
+    [/\bservis\b/, 'servis'],
+    [/\bunit\b.*(sewa|rent|kos|kamar)|\b(sewa|rent|kos|kamar)\b.*unit/, 'unit sewa'],
+    [/\bpengujian\b|\buji\b/, 'jenis pengujian'],
+    [/\bterapi\b/, 'terapi'],
+    [/\btindakan\b/, 'tindakan medis'],
+    [/\bbarang\b/, 'barang'],
+    [/\bitem\b/, 'item'],
+  ];
+
+  for (const [re, label] of ENTITY_PATTERNS) {
+    if (re.test(combined)) return label;
+  }
+
+  return 'produk/layanan';
+}
+
+/**
+ * Menentukan apakah pertanyaan variasi produk perlu ditampilkan.
+ * TIDAK ditampilkan jika:
+ * - Sudah ada jawaban sebelumnya (narasinya sudah mengandung info varian)
+ * - Bisnis jelas merupakan transaksi sekali-selesai tanpa katalog (bengkel, warung, kurir)
+ */
+function shouldAskProductVariant(session: MockupSessionState): boolean {
+  const narasi = (session.storyline?.narasi || '').toLowerCase();
+  const alur = (session.storyline?.asumsiAlurUtama || '').toLowerCase();
+  const businessCat = (session.match?.businessCategory || '').toLowerCase();
+  const fullText = `${narasi} ${alur} ${businessCat}`;
+
+  // Guard: sudah dijawab (narasi sudah memuat penanda variasi yang di-append)
+  if (/\[variasi\s*produk[^\]]*\]|\bpaket\s*(basic|premium|standar|advance)\b/i.test(narasi)) return false;
+
+  // Lapis 1 (fast-path skip): Bisnis yang secara struktural jelas transaksi fisik langsung sekali selesai —
+  // tidak ada konsep "pilih jenis/paket/program" sebelum transaksi.
+  // Heuristik: nama domain bisnis ini secara universal beroperasi pada model "datang → bayar → selesai".
+  const isClearlyTransactional = /\b(warung|toko\s*kelontong|bengkel|cuci.*mobil|cuci.*motor|laundry\s*kiloan|kurir|ekspedisi|ojek|grab|dropship)\b/i.test(fullText);
+  if (isClearlyTransactional) return false;
+
+  // Lapis 2 (fast-path skip): Sistem operasional internal — tidak menjual produk/layanan ke end-customer,
+  // sehingga konsep variasi produk tidak relevan secara struktural.
+  const isInternalOperational = /\b(crm|prospek\s*sales|absensi|payroll|gaji|inventaris\s*internal|aset\s*kantor|surat\s*menyurat|ticketing\s*internal)\b/i.test(fullText);
+  if (isInternalOperational) return false;
+
+  // Default: TANYA — lebih baik tanya dan user menjawab "tidak" daripada tidak tanya dan melewatkan
+  // peluang variasi yang seharusnya ada. Bisnis apapun yang tidak masuk kedua skiplist di atas
+  // (termasuk "studio tato", "bimbel privat", "ternak lele", dll.) mendapat pertanyaan variasi.
+  // TIDAK ADA allowlist domain — penentuan akhir bukan dari nama domain, melainkan dari jawaban user.
+  return true;
+}
+
 function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
   // Jika sedang menunggu klarifikasi ide bisnis (input bukan ide bisnis)
   if (session.storyline?.pendingNonBusinessClarification) {
+
     const pend = session.storyline.pendingNonBusinessClarification;
     return buildNonBusinessClarificationCard(pend.pesanKlarifikasi);
   }
@@ -622,7 +692,37 @@ function buildStorytellingStep(session: MockupSessionState): GuidedStepPayload {
     }
   }
 
+  // Jika sedang menunggu jawaban pertanyaan variasi produk/layanan (SEBELUM klarifikasi aktor)
+  if (session.storyline?.pendingProductVariantQuestion) {
+    const pend = session.storyline.pendingProductVariantQuestion;
+    const label = pend.entityLabel || 'produk/layanan';
+    const bizName = session.match?.businessCategory || 'bisnis ini';
+    return {
+      stepId: 'STORYTELLING',
+      title: `Sepertinya ${bizName} menawarkan satu jenis ${label}. Apakah benar begitu, atau sebenarnya ada beberapa varian/paket berbeda yang ditawarkan?`,
+      multi: false,
+      allowOther: false,
+      options: [
+        {
+          id: 'variant_single',
+          label: `✅ Tunggal — sesuai narasi saat ini`,
+          recommended: true,
+          description: `Semua pelanggan mendapatkan ${label} yang sama. Skema data akan menggunakan relasi langsung tanpa tabel katalog terpisah.`
+        },
+        {
+          id: 'variant_multiple',
+          label: `📦 Ada beberapa varian / paket ${label}`,
+          recommended: false,
+          description: `Pelanggan dapat memilih dari beberapa varian/opsi yang tersedia. Skema data akan menyertakan tabel katalog ${label} dan tabel transaksi/pendaftaran penghubung.`,
+          requiresInput: true,
+          inputPlaceholder: `Sebutkan varian/paketnya (pisahkan dengan koma), misal: Paket Basic, Paket Premium`
+        }
+      ]
+    };
+  }
+
   const revisiCount = session.storyline?.revisiCount || 0;
+
   const isClarifying = Boolean(session.storyline?.modeKlarifikasiBertahap);
 
   if (isClarifying) {
@@ -779,10 +879,10 @@ export function getRoleNarrativeAndResponsibilities(
     let baseTasks = rawDetails?.tanggungJawab && rawDetails.tanggungJawab.length > 0
       ? [...rawDetails.tanggungJawab]
       : [
-          `Memantau ringkasan omzet dan laporan transaksi harian ${cat}`,
-          userManagementTask,
-          'Meninjau performa keseluruhan operasional dan pengaturan aplikasi'
-        ];
+        `Memantau ringkasan omzet dan laporan transaksi harian ${cat}`,
+        userManagementTask,
+        'Meninjau performa keseluruhan operasional dan pengaturan aplikasi'
+      ];
 
     const hasUserTask = baseTasks.some((t) =>
       /\b(user|pengguna|akun\s+staf|akun\s+pengguna|hak\s*akses|peran\s*akses|manajemen\s*pengguna)\b/i.test(t)
@@ -1122,7 +1222,7 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
     const lowerLabel = label.toLowerCase();
     const isCore = isDualSeparated
       ? (Boolean(roleKasusA) && (lowerLabel.includes(roleKasusA!) || roleKasusA!.includes(lowerLabel))) ||
-        (Boolean(roleKasusB) && (lowerLabel.includes(roleKasusB!) || roleKasusB!.includes(lowerLabel)))
+      (Boolean(roleKasusB) && (lowerLabel.includes(roleKasusB!) || roleKasusB!.includes(lowerLabel)))
       : label === coreRole;
     const details = getRoleNarrativeAndResponsibilities(label, bizCategory, session.storyline, session.roles);
     options.push({
@@ -1312,7 +1412,7 @@ function generateSemanticSupportingFlows(
 
   // 1. EKSTRAKSI DETAIL MASALAH OPERASIONAL KONKRET (Untuk Alur Pendukung 1)
   const fullContext = `${domain} ${narrative} ${mainFlow} ${problem}`.toLowerCase();
-  
+
   let cleanProblem = problem
     .replace(/^(masalah|kendala|permasalahan|isu|kesulitan)\s*(utama|operasional)?\s*[:=-]?\s*/i, '')
     .replace(/\b(masih\s+manual|sering\s+terjadi|sulit\s+dipantau|tidak\s+tercatat|kurang\s+efisien|kurang\s+terkoordinasi|menumpuk|sering\s+komplain)\b/gi, '')
@@ -1489,11 +1589,25 @@ export function extractFlowPhasesFromStoryline(session: MockupSessionState): str
     if (splitByConjunction.length >= 2) {
       return splitByConjunction;
     }
+
+    // 2b. Fallback pemisah koma: alur berbentuk rangkaian frasa berkoma
+    // (mis. "Siswa daftar, instruktur mengajar, admin catat pembayaran").
+    const splitByComma = alur
+      .split(/\s*,\s*/)
+      .map((p) => p.trim().replace(/^[-*•\s]+/, ''))
+      .filter((p) => p.length > 5);
+
+    if (splitByComma.length >= 2) {
+      return splitByComma;
+    }
   }
 
   // 3. Jika asumsiAlurUtama tetap tidak bisa dipecah atau kosong, ekstrak langsung dari NARASI!
   if (narasi) {
-    const narasiSentences = narasi
+    // Buang anotasi mesin dalam tanda kurung siku (mis. "[Variasi Produk: ...]") agar
+    // tidak ikut terpecah menjadi langkah alur palsu.
+    const narasiBersih = narasi.replace(/\[[^\]]*\]/g, ' ');
+    const narasiSentences = narasiBersih
       .split(/\s*(?:\.\s+|\n|;\s*)\s*/)
       .map((s) => s.trim().replace(/^[-*•\s]+/, ''))
       .filter((s) => s.length > 8 && !/^(aplikasi|sistem|platform|software)\s+(ini|tersebut)\b/i.test(s));
@@ -2855,7 +2969,8 @@ export async function detectTargetRoleForFieldAsync(
 
 export function detectTargetRoleForField(
   fld: { nama: string; tipe?: string; keterangan?: string; targetRole?: string },
-  officialRoles?: string[]
+  officialRoles?: string[],
+  session?: MockupSessionState | null
 ): string | null {
   if (fld.targetRole && fld.targetRole.trim()) {
     return fld.targetRole.trim();
@@ -2872,7 +2987,7 @@ export function detectTargetRoleForField(
     fName.startsWith('id_') ||
     fName.includes('pengguna') ||
     fName.includes('user') ||
-    /^(instruktur|siswa|murid|pelanggan|kasir|mekanik|dokter|pasien|penyewa|warga|anggota|staf|petugas|admin|pemilik)/.test(fName);
+    /^(instruktur|siswa|murid|pelanggan|kasir|mekanik|dokter|pasien|penyewa|warga|anggota|staf|petugas|admin|pemilik|terdaftar_oleh|dicatat_oleh|didaftarkan_oleh|diinput_oleh)/.test(fName);
 
   if (!isRelasiLike) return null;
 
@@ -2885,7 +3000,25 @@ export function detectTargetRoleForField(
   // Urutkan roles descending by length agar lebih spesifik dicocokkan lebih dulu (misal "Staf Administrasi" sebelum "Staf")
   const sortedRoles = [...roles].sort((a, b) => b.length - a.length);
 
-  // 1. Cek kecocokan langsung dari keterangan dengan official roles
+  // 1. PRIORITAS UTAMA (Bug 1b): Jika field adalah field pencatat/pendaftar entitas data (misal: terdaftar_oleh, dicatat_oleh, didaftarkan_oleh, diinput_oleh)
+  // dan session memiliki ENTITAS_DATA dengan ownerRole yang sah, gunakan ownerRole tersebut!
+  if (/^(terdaftar_oleh|didaftarkan_oleh|dicatat_oleh|diinput_oleh|petugas_pendaftar|staf_pendaftar|admin_pendaftar)/i.test(fName) ||
+    /\b(mencatat|mendaftarkan|menginput|registrasi|pendaftaran)\b/i.test(kata)) {
+    const entityWithTrainer = (session?.actorsClassification || []).find(
+      (a) => a.category === 'ENTITAS_DATA' && a.ownerRole
+    );
+    if (entityWithTrainer && entityWithTrainer.ownerRole) {
+      const targetOwner = entityWithTrainer.ownerRole.toLowerCase();
+      const matchOwner = sortedRoles.find(
+        (r) => r.toLowerCase() === targetOwner || r.toLowerCase().includes(targetOwner) || targetOwner.includes(r.toLowerCase())
+      );
+      if (matchOwner) {
+        return matchOwner;
+      }
+    }
+  }
+
+  // 2. Cek kecocokan langsung dari keterangan dengan official roles
   for (const r of sortedRoles) {
     const rLower = r.toLowerCase();
     const regex = new RegExp(`\\b${rLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
@@ -2994,7 +3127,8 @@ function normalizeContohTabel(contohData: unknown): SimulasiContohTabel[] {
  */
 export function repairRelasiSimulasiDb(
   contohTabel: SimulasiContohTabel[],
-  officialRoles?: string[]
+  officialRoles?: string[],
+  session?: MockupSessionState | null
 ): void {
   for (const t of contohTabel) {
     const allFields =
@@ -3016,7 +3150,7 @@ export function repairRelasiSimulasiDb(
 
       // Jika relasi menunjuk ke tabel pengguna dan ada targetRole
       if (isTablePengguna(tgt.nama)) {
-        const targetRole = detectTargetRoleForField(f, officialRoles);
+        const targetRole = detectTargetRoleForField(f, officialRoles, session);
         if (targetRole) {
           const roleCol = Object.keys(tgtTabel.baris[0] || {}).find((k) =>
             /^(peran|role|jabatan)$/i.test(k)
@@ -3120,6 +3254,17 @@ export function generateDeterministicSimulasiDb(
       password
     };
   });
+
+  // Ekstrak varian eksplisit dari narasi jika ada (Fitur Variasi Produk/Layanan)
+  const explicitVariants: string[] = [];
+  const variantMatch = (session.storyline?.narasi || '').match(/\[Variasi Produk:[^\]]*\(contoh varian:\s*([^)]+)\)/i);
+  if (variantMatch && variantMatch[1]) {
+    variantMatch[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((v) => explicitVariants.push(v));
+  }
 
   interface TableGenMeta {
     table: (typeof schemaTables)[number];
@@ -3247,7 +3392,7 @@ export function generateDeterministicSimulasiDb(
       if (tgt) {
         // Jika relasi ke pengguna dan memiliki targetRole
         if (isTablePengguna(tgt.table.nama)) {
-          const targetRole = detectTargetRoleForField(field, activeRoles);
+          const targetRole = detectTargetRoleForField(field, activeRoles, session);
           if (targetRole) {
             const tgtLower = targetRole.toLowerCase();
             const matchingIndices: number[] = [];
@@ -3315,6 +3460,19 @@ export function generateDeterministicSimulasiDb(
       return [`${pfx}-001`, `${pfx}-002`, `${pfx}-003`][rowIdx];
     }
 
+    // 0c) VARIAN EKSPLISIT DARI FITUR VARIASI PRODUK (Prioritas tertinggi untuk nama produk/paket/katalog)
+    if (explicitVariants.length > 0) {
+      const isCatalogOrProductTable = /katalog|paket|kursus|pelatihan|program|menu|produk|layanan/i.test(meta.table.nama);
+      const isProductTitleField = /nama_paket|nama_kursus|nama_pelatihan|nama_produk|nama_layanan|nama_program|judul_kursus|^nama_item$|^nama$/i.test(fName);
+      if (isCatalogOrProductTable && isProductTitleField) {
+        return explicitVariants[rowIdx % explicitVariants.length];
+      }
+      if (isCatalogOrProductTable && /deskripsi|rincian|keterangan|materi/i.test(fName)) {
+        const v = explicitVariants[rowIdx % explicitVariants.length];
+        return `Materi silabus dan praktik intensif untuk ${v}`;
+      }
+    }
+
     // 1) SEMANTIK DARI KETERANGAN FIELD (paling diandalkan: makna/domain nilai)
     // 1a) Enum eksplisit di keterangan: "(besi/kardus/plastik)" atau "Tersedia / Disewa / Bengkel"
     const parenMatch = kata.match(/\(([^)]+)\)/);
@@ -3369,7 +3527,6 @@ export function generateDeterministicSimulasiDb(
     if (/kota|domisili/i.test(kata)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
     if (/jenis kelamin|gender/i.test(kata)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
     if (/telepon|whatsapp|kontak|nomor hp|no.?hp/i.test(kata)) return pick(['081234567890', '081298765432', '085712345678']);
-    if (/email/i.test(kata)) return pick(['pelanggan1@gmail.com', 'pelanggan2@gmail.com', 'pelanggan3@gmail.com']);
 
     // 2) SEMANTIK BERBASIS NAMA FIELD (jika keterangan tidak memberikan petunjuk)
     if (/varian|rasa|flavor|topping/i.test(fName)) {
@@ -3452,9 +3609,9 @@ export function generateDeterministicSimulasiDb(
         const aiFieldVals =
           !isIdLike && tableNilai
             ? (tableNilai[f.nama] ??
-               Object.entries(tableNilai).find(
-                 ([k]) => k.toLowerCase().replace(/[\s_]+/g, '') === f.nama.toLowerCase().replace(/[\s_]+/g, '')
-               )?.[1])
+              Object.entries(tableNilai).find(
+                ([k]) => k.toLowerCase().replace(/[\s_]+/g, '') === f.nama.toLowerCase().replace(/[\s_]+/g, '')
+              )?.[1])
             : undefined;
 
         row[f.nama] =
@@ -4060,8 +4217,8 @@ export function renderReviewFinalMarkdown(session: MockupSessionState): string {
   const appName =
     session.match?.businessCategory
       ? (session.match.businessCategory.toLowerCase().startsWith('aplikasi')
-          ? session.match.businessCategory
-          : `Aplikasi ${session.match.businessCategory}`)
+        ? session.match.businessCategory
+        : `Aplikasi ${session.match.businessCategory}`)
       : 'Aplikasi Baru';
 
   lines.push(`## 🎯 Ringkasan Final Spesifikasi: **${appName}**\n`);
@@ -4277,7 +4434,7 @@ export function applyGuidedAnswer(
   if (stepId === 'STORYTELLING') {
     const feedbackText = (other || '').trim();
 
-    // 0. Jika sedang dalam sub-step klarifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+    // 0. Jika sedang dalam sub-step pertanyaan variasi produk/layanan
     const existingStory = next.storyline || {
       narasi: other || cleanSelected.join(' '),
       asumsiMasalah: '',
@@ -4288,6 +4445,48 @@ export function applyGuidedAnswer(
       riwayatKoreksi: []
     };
 
+    if (existingStory.pendingProductVariantQuestion) {
+      const pendingQuestion = existingStory.pendingProductVariantQuestion;
+      // Hapus sub-step ini terlepas apapun jawabannya
+      delete next.storyline!.pendingProductVariantQuestion;
+
+      if (cleanSelected.includes('variant_multiple')) {
+        // Append info variasi ke narasi agar heuristik Bagian D mendeteksi pola Katalog + Penghubung
+        const variantNames = feedbackText ? ` (contoh varian: ${feedbackText})` : '';
+        const entityLabel = pendingQuestion.entityLabel || 'produk/layanan';
+        const variantNote = `[Variasi Produk: Bisnis ini menawarkan beberapa varian ${entityLabel}${variantNames}. Pelanggan dapat memilih dari beberapa opsi yang tersedia.]`;
+        next.storyline = {
+          ...next.storyline!,
+          narasi: `${next.storyline!.narasi} ${variantNote}`.trim()
+        };
+      }
+      // variant_single: tidak perlu append apapun — pola relasi langsung sudah default
+
+      // Setelah pertanyaan variasi selesai -> Lanjut ke sub-step klasifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+      if (!next.actorsClassification || next.actorsClassification.length === 0) {
+        const { classifications, hasCandidateEntity } = analyzeActorClassification(next);
+        next.actorsClassification = classifications;
+
+        if (hasCandidateEntity) {
+          next.storyline = {
+            ...existingStory,
+            ...next.storyline,
+            pendingActorClarification: {
+              actors: classifications.filter((c) => c.category === 'ENTITAS_DATA'),
+              ownerActor: classifications.find((c) => isSuperAdminRole(c.actor))?.actor || REQUIRED_ROLE,
+              currentIndex: 0
+            }
+          };
+          next.step = 'STORYTELLING';
+          return next;
+        }
+      }
+
+      next.step = 'ROLE';
+      return next;
+    }
+
+    // 1. Jika sedang dalam sub-step klarifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
     if (existingStory.pendingActorClarification) {
       const pend = existingStory.pendingActorClarification;
       const curIdx = pend.currentIndex || 0;
@@ -4321,7 +4520,7 @@ export function applyGuidedAnswer(
           next.step = 'STORYTELLING';
           return next;
         } else {
-          // Semua aktor dalam antrean sudah selesai diklarifikasi
+          // Semua aktor dalam antrean sudah selesai diklarifikasi -> LANGSUNG KE ROLE
           delete next.storyline!.pendingActorClarification;
           next.step = 'ROLE';
           return next;
@@ -4381,7 +4580,19 @@ export function applyGuidedAnswer(
         riwayatKoreksi: newRiwayat
       };
 
-      // Inisialisasi klasifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
+      // 1. SUB-STEP PERTAMA: Pertanyaan Variasi Produk/Layanan (SEBELUM sub-step klasifikasi aktor)
+      if (shouldAskProductVariant(next)) {
+        next.storyline = {
+          ...next.storyline!,
+          pendingProductVariantQuestion: {
+            entityLabel: inferProductEntityLabel(next)
+          }
+        };
+        next.step = 'STORYTELLING';
+        return next;
+      }
+
+      // 2. SUB-STEP KEDUA (jika tidak ada pertanyaan variasi): Inisialisasi klasifikasi peran pelaku (Pengguna Sistem vs Entitas Data)
       if (!next.actorsClassification || next.actorsClassification.length === 0) {
         const { classifications, hasCandidateEntity } = analyzeActorClassification(next);
         next.actorsClassification = classifications;
@@ -4442,8 +4653,16 @@ export function applyGuidedAnswer(
     };
 
     // POIN REVISI 3: Pelimpahan tugas eksplisit saat peran dihapus
+    // PENTING (Bug 1b): Entitas Data (misal Siswa, Pelanggan, Pasien) BUKAN peran sistem yang dihapus.
+    // Tugas/data entitas data dikelola oleh ownerRole-nya, tidak boleh dilimpahkan ke coreDelegate!
     const initialCandidates = session.storyline?.asumsiAktor || session.match?.contextualRoles || [];
-    const removedRoles = initialCandidates.filter((r) => !finalSelected.includes(r) && !isSuperAdminRole(r));
+    const removedRoles = initialCandidates.filter(
+      (r) =>
+        !finalSelected.includes(r) &&
+        !isSuperAdminRole(r) &&
+        !isActorEntityData(session, r) &&
+        session.actorsClassification?.find((a) => a.actor.toLowerCase() === r.toLowerCase())?.category !== 'ENTITAS_DATA'
+    );
     if (removedRoles.length > 0 && session.storyline?.detailAktor) {
       const tugasDilimpahkan: { dariRole: string; keRole: string; daftarTugas: string[] }[] = [];
       const coreDelegate = detectCoreOperationalRole(session);
@@ -4741,8 +4960,8 @@ export function compileBriefFromSession(
     (meta.appName && meta.appName.trim()) ||
     (session.match?.businessCategory
       ? (session.match.businessCategory.toLowerCase().startsWith('aplikasi')
-          ? session.match.businessCategory
-          : `Aplikasi ${session.match.businessCategory}`)
+        ? session.match.businessCategory
+        : `Aplikasi ${session.match.businessCategory}`)
       : (meta.templateName ? `Aplikasi ${meta.templateName}` : 'Aplikasi Baru'));
 
   const tierLabel = session.match?.tier === 'ADVANCE' ? 'ADVANCE' : 'BASIC';
@@ -4915,8 +5134,8 @@ export function compileBriefFromSession(
           const tName = t.nama.toLowerCase();
           const rName = role.toLowerCase();
           return tName.includes(rName) || rName.includes(tName) ||
-                 (cat === 'external' && /daftar|transaksi|pesan|sewa|booking|murid|pelanggan/i.test(tName)) ||
-                 (cat !== 'external' && !/user|pengguna/i.test(tName));
+            (cat === 'external' && /daftar|transaksi|pesan|sewa|booking|murid|pelanggan/i.test(tName)) ||
+            (cat !== 'external' && !/user|pengguna/i.test(tName));
         });
 
         const targetTable = relevantTables[0] || session.dataSchema?.tabel?.[1];

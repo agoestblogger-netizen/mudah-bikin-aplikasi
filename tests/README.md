@@ -13,6 +13,8 @@ npm test
 npx tsx tests/run_all.ts
 ```
 
+Master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/run_all.ts) mengeksekusi **17 suite** secara berurutan (`execSync('npx tsx <file>')`) dan keluar dengan kode `1` bila ada satu suite pun gagal.
+
 ### Menjalankan Test Individual
 ```bash
 npx tsx tests/tailwind_v2_whitelist.test.ts
@@ -20,16 +22,27 @@ npx tsx tests/vue_validators_6a_6b_6d.test.ts
 npx tsx tests/kursus_mobil_skema_asli.test.ts
 npx tsx tests/owner_role_dynamic.test.ts
 npx tsx tests/vue_scaffold_node.test.ts
-npx tests/vue_wrapper.test.ts
+npx tsx tests/vue_wrapper.test.ts
 npx tsx tests/targeted_repair_integrity.test.ts
 npx tsx tests/rbac_ui_fixes.test.ts
 npx tsx tests/sales_prospek_crm.test.ts
 npx tsx tests/multi_schema_isolation.test.ts
+npx tsx tests/four_vue_bugs_fix.test.ts
+npx tsx tests/role_tab_and_public_role.test.ts
+npx tsx tests/schema_pattern_and_relation_integrity.test.ts
+npx tsx tests/tw_plugin_and_simulasi_db.test.ts
+npx tsx tests/actor_classification_and_owner_role.test.ts
+npx tsx tests/bug1a_and_1b_fix.test.ts
+npx tsx tests/product_variant_question.test.ts
 ```
+
+> Catatan: `npx tsx` (bukan `npx`) dipakai karena seluruh suite ditulis sebagai TypeScript dan mengimpor modul `src/` secara langsung.
 
 ---
 
-## 2. Daftar 10 Test Suite Aktif & Cakupan Pengujian
+## 2. Daftar 17 Test Suite Aktif & Cakupan Pengujian
+
+Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests) berisi **18 file** total: 17 file `*.test.ts` (terdaftar di bawah) + 1 master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/run_all.ts).
 
 | No | File Test | Fokus & Cakupan Pengujian | Status |
 |---|---|---|---|
@@ -43,6 +56,13 @@ npx tsx tests/multi_schema_isolation.test.ts
 | **8** | [`tests/rbac_ui_fixes.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/rbac_ui_fixes.test.ts) | **RBAC Tab Gating & UI Consistency**<br>Memverifikasi isolasi hak akses UI per role menggunakan `v-show="isRoleAllowed(...)"` atau `data-access-roles`, serta memastikan akun demo dan form login berfungsi sesuai matriks hak akses. | ✅ PASS |
 | **9** | [`tests/sales_prospek_crm.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/sales_prospek_crm.test.ts) | **Sales Prospek CRM Domain Regeneration**<br>Regenerasi penuh domain Sales CRM menggunakan pipeline Vue 3: 3 Roles (Sales Manager, Sales Executive, Klien / Prospek), 3 Tables (prospek_leads, aktivitas_kunjungan, penawaran_deals), Check-in GPS (`ambilLokasiGps`), Foto Bukti (`foto_kunjungan_url`), Approval Diskon (`setujuiDiskon`), Cetak Quotation (`cetakQuotation`), Pipeline Funnel, dan Leaderboard Sales. | ✅ PASS |
 | **10** | [`tests/multi_schema_isolation.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/multi_schema_isolation.test.ts) | **Multi-Schema Execution & State Isolation**<br>Menguji eksekusi 3 skema berbeda (Kursus Menyetir Mobil, Sales Prospek CRM, Koperasi Simpan Pinjam) dalam 1 proses runtime berurutan. Membuktikan 0 kebocoran `tablesConfig`, 0 kebocoran `db` keys, dan 0 cross-contamination antar domain. | ✅ PASS |
+| **11** | [`tests/four_vue_bugs_fix.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/four_vue_bugs_fix.test.ts) | **Four Real Vue Bugs Fixes & Fallback Safety**<br>Verifikasi perbaikan 4 bug nyata: (1) panel render di luar root app, (2) manipulasi DOM manual alih-alih reaktivitas Vue, (3) `canEditCurrentTab` tidak konsisten multi-role, (4) registrasi mixin keamanan yang gagal senyap. Memastikan semua punya jalur fallback aman. | ✅ PASS |
+| **12** | [`tests/role_tab_and_public_role.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/role_tab_and_public_role.test.ts) | **Role Tab Navigation & Public Role Security Gate**<br>**Bug 1:** deteksi & auto-repair `ROLE_MISSING_TAB_NAVIGATION` (mis. Petugas Perawat Hewan) sehingga setiap role punya akses ke tab navigasinya. **Bug 2:** perbaikan false positive `PUBLIC_ROLE_UNFILTERED_ON_LOAD` pada gate reaktif `v-if` di root app Vue. | ✅ PASS |
+| **13** | [`tests/schema_pattern_and_relation_integrity.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/schema_pattern_and_relation_integrity.test.ts) | **3-Tier Schema Pattern & Relation Integrity**<br>Memverifikasi pola **LAPIS 1** tabel katalog/master → **LAPIS 2** tabel pendaftaran penghubung (dua field relasi kunci) → **LAPIS 3** tabel turunan. Juga mendeteksi field `relasi ke <tabel>` yang menunjuk tabel tidak ada, serta auto-repair peran yang salah. | ✅ PASS |
+| **14** | [`tests/tw_plugin_and_simulasi_db.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/tw_plugin_and_simulasi_db.test.ts) | **Tailwind Plugin Whitelist & Simulasi DB Quality**<br>**Bug A:** larangan kelas yang butuh plugin Tailwind (`scrollbar-hide`, dsb) + penggantian dengan CSS custom. **Bug B:** perbaikan semantik nilai Simulasi DB — kerusakan fisik (bukan "jalan") & konsistensi skala nominal antara deposit dan tagihan. | ✅ PASS |
+| **15** | [`tests/actor_classification_and_owner_role.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/actor_classification_and_owner_role.test.ts) | **Actor Classification & Semantic Owner Role Resolution**<br>Klasifikasi Pelaku (`PENGGUNA_SISTEM` vs `ENTITAS_DATA`), sub-step klarifikasi aktor Bagian A, filter Bagian B, resolusi `ownerRole` berbasis AI alur, Skema Data entitas tanpa kredensial, & Simulasi DB tanpa akun demo untuk entitas. | ✅ PASS |
+| **16** | [`tests/bug1a_and_1b_fix.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/bug1a_and_1b_fix.test.ts) | **Bug 1a (Dangling Config Reference) & Bug 1b (ownerRole Priority)**<br>**Bug 1a:** deteksi `DANGLING_CONFIG_REFERENCE` dan repair menghasilkan `canEditCurrentTab` multi-role yang resilien. **Bug 1b:** eliminasi pelimpahan tugas salah (`tugasDilimpahkan`) pada `ENTITAS_DATA`, serta kepastian `ownerRole` diisi tepat pada field `terdaftar_oleh` (Simulasi DB = ID pegawai administrasi, bukan Instruktur). | ✅ PASS |
+| **17** | [`tests/product_variant_question.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/product_variant_question.test.ts) | **Fitur Baru: Pertanyaan Variasi Produk/Layanan & Nilai Katalog Simulasi DB**<br>Pertanyaan variasi produk di awal alur (**SEBELUM** klarifikasi aktor), append penanda `[Variasi Produk: ...]` ke narasi untuk heuristik Bagian D (3 Lapis), default Tunggal, skip untuk bisnis transaksional jelas (bengkel, warung, laundry kiloan) & operasional internal (CRM), TANPA allowlist domain (studio tato/bimbel/ternak tetap ditanya), serta nilai varian riil user dipakai di tabel katalog Simulasi DB. | ✅ PASS |
 
 ---
 
@@ -61,3 +81,11 @@ Sesuai Keputusan Arsitektur Besar **FULL REPLACEMENT** (bukan hybrid):
 1. Seluruh generator kode baru di `/api/generate/route.ts` 100% menghasilkan aplikasi Vue 3 Options API + Parameterized CRUD.
 2. Tidak ada jalur di codebase yang menghasilkan atau memerlukan Vanilla JS AST walker untuk DOM event handlers statis (`onclick="..."` manual pada ratusan fungsi inline).
 3. Suite 7-10 lama (`test_step6a_create_branch.mts` s/d `test_step6d_delete_action.mts`) yang menguji regex/AST Vanilla JS lama telah dipensiunkan/dihapus dari test suite aktif karena merupakan *dead code* dan digantikan sepenuhnya oleh `tests/vue_validators_6a_6b_6d.test.ts`.
+
+---
+
+## 5. Catatan: Verifikasi Manual Berbayar (di luar master runner)
+
+`scratch/` berisi skrip verifikasi manual yang **TIDAK** masuk master runner karena memanggil API AI berbayar atau menyentuh lingkungan live. Skrip keluar dengan kode `2` (BLOCKED, bukan gagal palsu) bila API key tidak tersedia.
+
+Contoh yang paling relevan: `scratch/test_langkah9_kuliner_live_pipeline.ts` — membuktikan pipeline end-to-end Pelatihan Kuliner sungguhan dari narasi mentah (tanpa menyebut varian) → sub-step "Ada beberapa varian" → AI `generateDataSchemaWithAI` menghasilkan skema dari nol → assert pola 3 Lapis (katalog + pendaftaran penghubung + turunan) benar-benar terbentuk.
