@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Candidate 3: Precompiled Tailwind CSS v2</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+</head>
+<body class="bg-gray-50 text-gray-900 p-4 font-sans">
+  <div id="app" class="bg-white p-4 rounded-xl shadow border border-gray-200">
+    <h3 class="text-lg font-bold text-indigo-600 mb-2">Candidate 3: Precompiled Tailwind CSS v2</h3>
+    <div id="probe" class="p-3 rounded-lg bg-indigo-600 text-white font-semibold text-center mb-4">
+      Probe Box (bg-indigo-600)
+    </div>
+    <div id="results">Menunggu evaluasi...</div>
+  </div>
+  <script>
+    let errorMsg = null;
+    window.onerror = function(msg, url, line) {
+      errorMsg = msg;
+    };
+    setTimeout(function() {
+      const probe = document.getElementById('probe');
+      const cs = window.getComputedStyle(probe);
+      const bg = cs.backgroundColor;
+      const radius = cs.borderRadius;
+      const pass = (bg === 'rgb(79, 70, 229)');
+      const resEl = document.getElementById('results');
+      if (errorMsg) {
+        resEl.innerHTML = '<span style="color:red;font-weight:bold;">❌ RUNTIME ERROR: ' + errorMsg + '</span>';
+      } else if (pass) {
+        resEl.innerHTML = '<span style="color:green;font-weight:bold;">✅ TAILWIND BERHASIL DITERAPKAN!</span><div style="font-size:12px;color:#64748b;">bg: ' + bg + '</div>';
+      } else {
+        resEl.innerHTML = '<span style="color:red;font-weight:bold;">❌ GAGAL: Class tidak ter-render (bg: ' + bg + ')</span>';
+      }
+    }, 1500);
+
+    Vue.createApp({}).mount('#app');
+  </script>
+</body>
+</html>

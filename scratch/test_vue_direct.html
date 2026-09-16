@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Direct Sandbox Test: Vue 3, Eval, LocalStorage, Tailwind</title>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body style="font-family: sans-serif; padding: 20px; background: #f8fafc; color: #0f172a;">
+  <div id="app" style="max-width: 600px; margin: 0 auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <h1 style="color: #4f46e5; margin-bottom: 12px;">{{ appTitle }}</h1>
+    <p>Status: <strong style="color: green;">{{ statusMessage }}</strong></p>
+    <p>Counter: <strong style="font-size: 18px;">{{ counter }}</strong></p>
+    <button @click="incrementCounter" style="margin-top: 12px; padding: 8px 16px; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer;">
+      + Tambah Counter (Uji Reaktivitas)
+    </button>
+
+    <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+      <h3>Hasil Uji Teknis Diagnostik:</h3>
+      <div v-for="(res, idx) in testResults" :key="idx" :style="{ color: res.pass ? '#16a34a' : '#dc2626', marginBottom: '6px' }">
+        {{ res.pass ? '✅ PASS: ' : '❌ FAIL: ' }} <strong>{{ res.name }}</strong>: {{ res.detail }}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const results = [];
+
+    // Test 1: unsafe-eval / new Function()
+    try {
+      const f = new Function('a', 'b', 'return a * b');
+      const val = f(6, 7);
+      results.push({ name: 'UNSAFE_EVAL (new Function)', pass: val === 42, detail: 'Berhasil mengeksekusi new Function(), hasil: ' + val });
+    } catch (e) {
+      results.push({ name: 'UNSAFE_EVAL (new Function)', pass: false, detail: e.name + ': ' + e.message });
+    }
+
+    // Test 2: LocalStorage di iframe sandbox
+    try {
+      localStorage.setItem('canvas_test', '12345');
+      const read = localStorage.getItem('canvas_test');
+      localStorage.removeItem('canvas_test');
+      results.push({ name: 'LOCAL_STORAGE', pass: read === '12345', detail: 'Berhasil membaca/menulis localStorage' });
+    } catch (e) {
+      results.push({ name: 'LOCAL_STORAGE', pass: false, detail: e.name + ': ' + e.message });
+    }
+
+    // Test 3: Vue 3 Full Build In-DOM Template Compilation
+    try {
+      if (typeof Vue === 'undefined') {
+        results.push({ name: 'VUE_3_LOAD', pass: false, detail: 'window.Vue is undefined' });
+      } else {
+        results.push({ name: 'VUE_3_LOAD', pass: true, detail: 'Vue v' + Vue.version + ' termuat dari unpkg' });
+
+        const app = Vue.createApp({
+          data() {
+            return {
+              appTitle: 'Vue 3 CDN Berhasil Berjalan di Sandbox!',
+              statusMessage: 'In-DOM Template & Reactivity Aktif',
+              counter: 1,
+              testResults: results
+            };
+          },
+          methods: {
+            incrementCounter() {
+              this.counter++;
+            }
+          }
+        });
+        app.mount('#app');
+        results.push({ name: 'VUE_3_IN_DOM_MOUNT', pass: true, detail: 'createApp().mount(\'#app\') sukses tanpa runtime error' });
+      }
+    } catch (e) {
+      results.push({ name: 'VUE_3_IN_DOM_MOUNT', pass: false, detail: e.name + ': ' + e.message });
+    }
+  </script>
+</body>
+</html>

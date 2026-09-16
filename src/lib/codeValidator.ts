@@ -6,6 +6,25 @@
 import { cleanConversationalLeaks } from './cleanLeaks';
 import { isSuperAdminRole } from './rolePolicy';
 import * as acorn from 'acorn';
+import tailwindV2ClassesData from './tailwindV2Classes.json';
+
+const tailwindV2ClassesSet = new Set<string>(tailwindV2ClassesData as string[]);
+
+const ALLOWED_NON_TAILWIND_CLASSES = new Set([
+  'tab-btn', 'tab-content', 'tab-pane', 'nav-tabs', 'active',
+  'modal', 'modal-open', 'modal-backdrop', 'modal-content',
+  'badge', 'badge-info', 'badge-success', 'badge-warning', 'badge-danger',
+  'toast', 'toast-success', 'toast-error', 'toast-warning', 'toast-info',
+  'card', 'btn', 'btn-primary', 'btn-secondary', 'btn-danger', 'btn-success',
+  'title', 'table-auto'
+]);
+
+function isAllowedNonTailwindClass(cls: string): boolean {
+  if (ALLOWED_NON_TAILWIND_CLASSES.has(cls)) return true;
+  // FontAwesome icon classes: fa, fas, far, fab, fad, fal, fat, fa-*, etc.
+  if (/^(?:fa[srlbtd]?|fa-[a-z0-9-]+)$/i.test(cls)) return true;
+  return false;
+}
 
 export interface ValidationReport {
   isValid: boolean;
@@ -47,6 +66,19 @@ export function extractFunctionsFromAst(ast: any): Set<string> {
           }
         }
       }
+    } else if (node.type === 'Property') {
+      // Dukungan Vue Options API methods: { methodName() { ... }, methodName: function() { ... } }
+      if (node.key?.name === 'methods' || node.key?.value === 'methods') {
+        if (node.value?.type === 'ObjectExpression' && Array.isArray(node.value.properties)) {
+          for (const prop of node.value.properties) {
+            const propName = prop.key?.name || prop.key?.value;
+            if (propName) fns.add(propName);
+          }
+        }
+      } else if (node.value?.type === 'FunctionExpression' || node.value?.type === 'ArrowFunctionExpression') {
+        const propName = node.key?.name || node.key?.value;
+        if (propName) fns.add(propName);
+      }
     }
 
     for (const key of Object.keys(node)) {
@@ -64,6 +96,59 @@ export function extractFunctionsFromAst(ast: any): Set<string> {
 
   walk(ast);
   return fns;
+}
+
+/**
+ * Memeriksa kesesuaian kelas utility terhadap Tailwind CSS v2.2.19 Precompiled.
+ * Menggunakan WHITELIST terhadap seluruh 39.000+ kelas resmi di tailwind.min.css v2.2.19.
+ * Menandai arbitrary values ([...]) dan utilitas yang tidak terdaftar di stylesheet v2.2.19 (fail-silent).
+ */
+export function checkTailwindV2Syntax(html: string): { warnings: string[]; invalidClasses: string[] } {
+  const warnings: string[] = [];
+  const invalidClasses: string[] = [];
+
+  // Ekstrak seluruh nilai atribut class="..." (abaikan :class atau v-bind:class)
+  const staticClassRegex = /(?<![:\w-])class=["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  const classesFound = new Set<string>();
+
+  while ((match = staticClassRegex.exec(html)) !== null) {
+    const classStr = match[1];
+    const tokens = classStr.split(/\s+/).filter(Boolean);
+    for (const t of tokens) {
+      classesFound.add(t);
+    }
+  }
+
+  // Ekstrak string literal di dalam :class="..." atau v-bind:class="..."
+  const dynamicClassRegex = /(?::|v-bind:)class=["']([^"']+)["']/gi;
+  while ((match = dynamicClassRegex.exec(html)) !== null) {
+    const expr = match[1];
+    const stringLiteralRegex = /['"]([^'"]+)['"]/g;
+    let strMatch: RegExpExecArray | null;
+    while ((strMatch = stringLiteralRegex.exec(expr)) !== null) {
+      const tokens = strMatch[1].split(/\s+/).filter(Boolean);
+      for (const t of tokens) {
+        if (/^[a-zA-Z0-9_:\-\/\[\]#]+$/.test(t)) {
+          classesFound.add(t);
+        }
+      }
+    }
+  }
+
+  const arbitraryPattern = /^[a-zA-Z0-9_-]+-\[[^\]]+\]$/;
+
+  for (const cls of classesFound) {
+    if (arbitraryPattern.test(cls)) {
+      invalidClasses.push(cls);
+      warnings.push(`TAILWIND_V2_ARBITRARY_VALUE: Kelas "${cls}" menggunakan arbitrary value [...] yang TIDAK didukung oleh Tailwind CSS v2.2.19.`);
+    } else if (!tailwindV2ClassesSet.has(cls) && !isAllowedNonTailwindClass(cls)) {
+      invalidClasses.push(cls);
+      warnings.push(`TAILWIND_V2_NOT_IN_WHITELIST: Kelas "${cls}" TIDAK terdaftar di stylesheet Tailwind CSS v2.2.19 precompiled (berpotensi silent visual failure).`);
+    }
+  }
+
+  return { warnings, invalidClasses };
 }
 
 function injectBeforeLastScriptClose(html: string, code: string): string {
@@ -262,13 +347,78 @@ export function validateAndRepairGeneratedCode(
   // 1.8 KERANGKA PLUMBING DETERMINISTIK (Pilar 1)
   // Menyediakan implementasi standar yang teruji untuk navigasi tab, login role, dan toast
   // jika aplikasi memuat elemen tab (.tab-btn / showTab) atau sistem otentikasi login
-  const hasTabs = repairedHtml.includes('.tab-btn') || repairedHtml.includes('showTab(') || /data-access-roles/i.test(repairedHtml);
-  const hasLogin = repairedHtml.includes('loginScreen') || repairedHtml.includes('loginAs(') || repairedHtml.includes('DEMO_ACCOUNTS');
+  const isVueApp = /Vue\.createApp\s*\(/.test(combinedJs) || /<div[^>]*id=["']app["']/.test(repairedHtml);
+  const hasTabs = repairedHtml.includes('.tab-btn') || repairedHtml.includes('showTab(') || /data-access-roles/i.test(repairedHtml) || /v-for=["'][^"']*tabs/i.test(repairedHtml);
+  const hasLogin = repairedHtml.includes('loginScreen') || repairedHtml.includes('loginAs(') || repairedHtml.includes('DEMO_ACCOUNTS') || /v-model=["']loginForm/i.test(repairedHtml);
 
   const plumbingToInject: string[] = [];
 
-  if (hasTabs && !definedFunctions.has('showTab')) {
-    plumbingToInject.push(`
+  if (isVueApp) {
+    // =========================================================================
+    // VUE 3 CDN DETERMINISTIC SCAFFOLD (PILAR 1)
+    // Sesuai aturan merge Vue 3: Method komponen AI MENANG jika didefinisikan;
+    // Mixin bertindak sebagai fallback safety net anti-MISMATCH_HANDLER.
+    // =========================================================================
+    if (!combinedJs.includes('Pilar1VueScaffoldMixin')) {
+      plumbingToInject.push(`
+// Auto-Injected Pilar 1 Vue Scaffold Mixin (Fase 2)
+var OWNER_ROLE_NAME = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
+if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
+
+var Pilar1VueScaffoldMixin = {
+  data() {
+    return {
+      currentRole: this.currentRole || '',
+      activeTab: this.activeTab || 'tabDasbor',
+      toast: this.toast || { show: false, message: '', type: 'info' }
+    };
+  },
+  methods: {
+    isRoleAllowed(roles) {
+      if (!roles || !roles.length) return true;
+      var owner = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
+      if (this.currentRole === owner) return true;
+      return roles.includes(this.currentRole) || roles.includes('*');
+    },
+    showTab(tabId) {
+      this.activeTab = tabId;
+    },
+    loginAs(role) {
+      this.currentRole = role;
+      var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
+      if (acc && acc.landingTab) {
+        this.showTab(acc.landingTab);
+      } else if (this.tabs && this.tabs.length) {
+        var first = this.tabs.find(function(t) { return this.isRoleAllowed(t.roles); }.bind(this));
+        if (first) this.showTab(first.id);
+      }
+    },
+    logout() {
+      this.currentRole = '';
+      this.activeTab = '';
+    },
+    showToast(message, type) {
+      type = type || 'info';
+      this.toast = { show: true, message: message, type: type };
+      var self = this;
+      setTimeout(function() { if (self.toast) self.toast.show = false; }, 3000);
+    }
+  }
+};
+if (typeof window !== 'undefined') window.Pilar1VueScaffoldMixin = Pilar1VueScaffoldMixin;
+`);
+    }
+
+    definedFunctions.add('showTab');
+    definedFunctions.add('filterTabsByRole');
+    definedFunctions.add('logout');
+    definedFunctions.add('loginAs');
+    definedFunctions.add('showToast');
+    definedFunctions.add('isRoleAllowed');
+  } else {
+    // VANILLA DOM DETERMINISTIC PLUMBING
+    if (hasTabs && !definedFunctions.has('showTab')) {
+      plumbingToInject.push(`
 function showTab(tabId) {
   try {
     document.querySelectorAll('.tab-content, .tab-pane, [data-tab-content]').forEach(t => {
@@ -288,11 +438,11 @@ function showTab(tabId) {
   } catch (e) { console.log('showTab error', e); }
 }
 `);
-    definedFunctions.add('showTab');
-  }
+      definedFunctions.add('showTab');
+    }
 
-  if (hasTabs && !definedFunctions.has('filterTabsByRole')) {
-    plumbingToInject.push(`
+    if (hasTabs && !definedFunctions.has('filterTabsByRole')) {
+      plumbingToInject.push(`
 // Scaffold Plumbing Deterministik (Pilar 1)
 var OWNER_ROLE_NAME = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
 if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
@@ -314,11 +464,11 @@ function filterTabsByRole(role) {
   } catch (e) { console.log('filterTabs error', e); }
 }
 `);
-    definedFunctions.add('filterTabsByRole');
-  }
+      definedFunctions.add('filterTabsByRole');
+    }
 
-  if (hasLogin && !definedFunctions.has('logout')) {
-    plumbingToInject.push(`
+    if (hasLogin && !definedFunctions.has('logout')) {
+      plumbingToInject.push(`
 function logout() {
   try {
     currentRole = '';
@@ -330,11 +480,11 @@ function logout() {
   } catch (e) { console.log('logout error', e); }
 }
 `);
-    definedFunctions.add('logout');
-  }
+      definedFunctions.add('logout');
+    }
 
-  if (hasLogin && !definedFunctions.has('loginAs')) {
-    plumbingToInject.push(`
+    if (hasLogin && !definedFunctions.has('loginAs')) {
+      plumbingToInject.push(`
 function loginAs(role) {
   try {
     currentRole = role;
@@ -362,11 +512,11 @@ function loginAs(role) {
   } catch (e) { console.log('loginAs error', e); }
 }
 `);
-    definedFunctions.add('loginAs');
-  }
+      definedFunctions.add('loginAs');
+    }
 
-  if (!definedFunctions.has('showToast')) {
-    plumbingToInject.push(`
+    if (!definedFunctions.has('showToast')) {
+      plumbingToInject.push(`
 function showToast(msg, type = 'info') {
   try {
     let t = document.getElementById('appToast');
@@ -383,7 +533,8 @@ function showToast(msg, type = 'info') {
   } catch (e) { console.log('showToast', msg); }
 }
 `);
-    definedFunctions.add('showToast');
+      definedFunctions.add('showToast');
+    }
   }
 
   // Inisialisasi state array otomatis jika fungsi CRUD merujuk items / data tanpa deklarasi
@@ -838,21 +989,50 @@ function showToast(msg, type = 'info') {
   if (hasMultiRoleLogic || hasLoginAsFunc || isMultiRoleApp) {
     // Cek apakah ada fungsi filterTabsByRole
     let hasFilterTabsByRole = /filterTabsByRole\s*\(/.test(combinedJs) ||
-                                 /\.getAttribute\s*\(\s*['"]data-access-roles['"]\s*\)/.test(combinedJs);
+                                 /\.getAttribute\s*\(\s*['"]data-access-roles['"]\s*\)/.test(combinedJs) ||
+                                 (isVueApp && /isRoleAllowed\s*\(/.test(combinedJs));
 
-    // Cari semua tab-btn button
+    const isVueTabs = isVueApp && (/v-for=["'][^"']*tabs/i.test(repairedHtml) || repairedHtml.includes('isRoleAllowed('));
+
+    if (isVueTabs) {
+      // TAB GATING PADA VUE 3 CDN (Fase 2)
+      hasFilterTabsByRole = true;
+
+      if (isMultiRoleApp) {
+        const tabRolesFromJs: string[] = [];
+        const rolesArrayMatches = [...combinedJs.matchAll(/roles\s*:\s*\[([^\]]+)\]/gi)];
+        for (const rm of rolesArrayMatches) {
+          const itemRoles = rm[1].split(',').map(s => s.replace(/['"]/g, '').trim().toLowerCase()).filter(Boolean);
+          tabRolesFromJs.push(...itemRoles);
+        }
+
+        const missingRoleTabs = expectedRoles!.filter(role => {
+          const roleLower = role.trim().toLowerCase();
+          return !tabRolesFromJs.some(ar => ar === roleLower || ar.includes(roleLower) || roleLower.includes(ar));
+        });
+
+        if (missingRoleTabs.length > 0) {
+          issues.push(
+            `ROLE_MISSING_TAB_NAVIGATION: Peran [${missingRoleTabs.join(', ')}] TIDAK memiliki tab khusus dengan hak akses role di array tabs. ` +
+            `Setiap peran dalam Brief Kebutuhan WAJIB memiliki tab dan tampilan UI yang relevan dengan Job Description-nya!`
+          );
+        }
+      }
+    }
+
+    // Cari semua tab-btn button (Vanilla DOM)
     const tabBtnMatches = [...repairedHtml.matchAll(/<button[^>]*class=[^>]*tab-btn[^>]*>/gi)];
     const tabBtnsWithoutAccessRoles = tabBtnMatches.filter(m => !m[0].includes('data-access-roles'));
 
     // Poin 54: Jika aplikasi multi-role, WAJIB memiliki navigasi tab untuk memisahkan fitur antar-peran!
-    if (isMultiRoleApp && tabBtnMatches.length === 0) {
+    if (isMultiRoleApp && !isVueTabs && tabBtnMatches.length === 0) {
       issues.push(
         `MULTI_ROLE_MISSING_TABS: Aplikasi multi-role (${expectedRoles!.join(', ')}) WAJIB memiliki navigasi tab (<button class="tab-btn" data-access-roles="...">) untuk masing-masing peran! ` +
         `DILARANG menumpuk seluruh fitur ke dalam satu tampilan statis tanpa pemisahan peran melalui tab.`
       );
     }
 
-    if (tabBtnsWithoutAccessRoles.length > 0) {
+    if (!isVueTabs && tabBtnsWithoutAccessRoles.length > 0) {
       issues.push(
         `ROLE_GATING_MISSING_DATA_ATTR: Ditemukan ${tabBtnsWithoutAccessRoles.length} tombol tab-btn TANPA atribut data-access-roles. ` +
         `WAJIB tambahkan data-access-roles="RoleA,RoleB" pada SETIAP <button class="tab-btn"> ` +
@@ -862,7 +1042,7 @@ function showToast(msg, type = 'info') {
     }
 
     // Poin 55: Pastikan setiap peran resmi memiliki setidaknya 1 tab navigasi khusus
-    if (isMultiRoleApp && tabBtnMatches.length > 0) {
+    if (isMultiRoleApp && !isVueTabs && tabBtnMatches.length > 0) {
       const tabAccessRoles = [...repairedHtml.matchAll(/data-access-roles\s*=\s*['"]([^'"]+)['"]/gi)]
         .flatMap(m => m[1].split(',').map(r => r.trim().toLowerCase()))
         .filter((r) => r && !/\$\{|%\{|\{\{|<%|<%=|\bcurrentRole\b/i.test(r));
@@ -1083,12 +1263,12 @@ function loginAs(role) {
     // 10a.2 Verifikasi Aktivasi Landing Tab Saat Login (Bagian A: Sinkronisasi Tab & Role)
     // Pada aplikasi multi-role bertab, fungsi login WAJIB mengalihkan tab aktif (memanggil showTab/landingTab atau mengklik tab pertama yang terlihat).
     // DILARANG membiarkan tab Super Admin tetap terbuka untuk semua peran yang login!
-    if (isMultiRoleApp && (tabBtnMatches.length > 0 || repairedHtml.includes('tab-content') || repairedHtml.includes('tab-pane'))) {
-      const loginFuncMatch = combinedJs.match(/(?:function\s+(?:loginAs|switchRole|selectRole)\s*\(([^)]*)\)|(?:loginAs|switchRole|selectRole)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)|(?:loginAs|switchRole|selectRole)\s*=\s*\(([^)]*)\)\s*=>)\s*\{([\s\S]*?)\n\s*\}/);
+    if (isMultiRoleApp && (tabBtnMatches.length > 0 || repairedHtml.includes('tab-content') || repairedHtml.includes('tab-pane') || isVueApp)) {
+      const loginFuncMatch = combinedJs.match(/(?:function\s+(?:loginAs|switchRole|selectRole)\s*\(([^)]*)\)|(?:loginAs|switchRole|selectRole)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)|(?:loginAs|switchRole|selectRole)\s*=\s*\(([^)]*)\)\s*=>|(?:\bloginAs|switchRole|selectRole)\s*\(([^)]*)\)\s*\{)\s*\{?([\s\S]*?)\n\s*\}/);
       
       const hasTabSwitchInLogin = loginFuncMatch ? (
-        /showTab\s*\(|switchTab\s*\(|openTab\s*\(|selectTab\s*\(|\.click\s*\(|\.classList\.add\s*\(\s*['"]active['"]\s*\)|landingTab/i.test(loginFuncMatch[4])
-      ) : false;
+        /showTab\s*\(|switchTab\s*\(|openTab\s*\(|selectTab\s*\(|\.click\s*\(|\.classList\.add\s*\(\s*['"]active['"]\s*\)|landingTab|activeTab\s*=/i.test(loginFuncMatch[5] || loginFuncMatch[4] || loginFuncMatch[0])
+      ) : (isVueApp && /activeTab|landingTab|showTab/.test(combinedJs));
 
       if (!hasTabSwitchInLogin) {
         // Cek apakah fungsi showTab/setara ada di script untuk auto-repair
@@ -1217,9 +1397,10 @@ function loginAs(role) {
       // Periksa keberadaan form login produksi (username & password) jika multi-role
       if (expectedRoles.length > 1) {
         const hasUsernameInput = /id\s*=\s*['"](?:loginUsername|username|userEmail|loginEmail)['"]/i.test(repairedHtml) ||
-                                 /type\s*=\s*['"](?:text|email)['"][^>]*id\s*=\s*['"][^'"]*(?:user|login|email)[^'"]*['"]/i.test(repairedHtml);
+                                 /type\s*=\s*['"](?:text|email)['"][^>]*id\s*=\s*['"][^'"]*(?:user|login|email)[^'"]*['"]/i.test(repairedHtml) ||
+                                 /v-model\s*=\s*['"][^'"]*(?:username|user|login)[^'"]*['"]/i.test(repairedHtml);
         const hasPasswordInput = /type\s*=\s*['"]password['"]/i.test(repairedHtml);
-        const hasLoginHandler = /function\s+handleLogin\s*\(/.test(combinedJs) || /handleLogin\s*=\s*(function|\()/.test(combinedJs) || hasLoginAsFunc;
+        const hasLoginHandler = /function\s+handleLogin\s*\(/.test(combinedJs) || /handleLogin\s*=\s*(function|\()/.test(combinedJs) || /\bhandleLogin\s*\(/.test(combinedJs) || hasLoginAsFunc;
 
         if (!hasUsernameInput || !hasPasswordInput) {
           issues.push(
@@ -1462,6 +1643,13 @@ function loginAs(role) {
     issues.push(...deleteIssues);
   }
 
+  // 17. VALIDASI KESESUAIAN TAILWIND V2 (Whitelist & Constraint Tailwind v2)
+  const twReport = checkTailwindV2Syntax(repairedHtml);
+  if (twReport.warnings.length > 0) {
+    console.warn('[Tailwind v2 Linter]', twReport.warnings);
+    issues.push(...twReport.warnings);
+  }
+
   repairedHtml = cleanConversationalLeaks(repairedHtml);
 
   return {
@@ -1473,6 +1661,13 @@ function loginAs(role) {
       js: repairedJs
     }
   };
+}
+
+/**
+ * Ekstraksi issue TAILWIND_V2 violations untuk pelaporan atau auto-recovery
+ */
+export function extractTailwindV2Violations(issues: string[]): string[] {
+  return (issues || []).filter((i) => i.startsWith('TAILWIND_V2_'));
 }
 
 /**
@@ -1495,16 +1690,15 @@ export function checkMissingToastFeedbacks(
 ): string[] {
   const issues: string[] = [];
 
-  // 1. Ekstrak tombol-tombol aksi dari HTML beserta handler dan label teksnya
+  // 1. Ekstrak tombol-tombol aksi dari HTML beserta handler dan label teksnya (mendukung Vanilla onclick dan Vue @click)
   const actionButtons: { fnName: string; label: string }[] = [];
-  // Regex yang robust menangani argumen berpetik seperti onclick="cetakSertifikat('SIS-001')"
-  const btnRegex = /<button\b[^>]*\bonclick=["'](?:return\s+)?([a-zA-Z0-9_]+)\s*\((?:[\s\S]*?)\)["'][^>]*>([\s\S]*?)<\/button>/gi;
+  const btnRegex = /<button\b[^>]*(?:\bonclick|@click|v-on:click)=["'](?:return\s+)?([a-zA-Z0-9_]+)\s*(?:\((?:[\s\S]*?)\))?["'][^>]*>([\s\S]*?)<\/button>/gi;
   let match: RegExpExecArray | null;
 
   while ((match = btnRegex.exec(html)) !== null) {
     const fnName = match[1];
     const rawLabel = match[2].replace(/<[^>]*>/g, '').trim();
-    const isNavigationOrModalToggle = /^(showTab|bukaModal|tutupModal|closeModal|openModal|switchTab|loginAs|switchRole|toggleNav|toggleSidebar|bukaModalTambah|bukaModalEdit|bukaModalHapus)$/i.test(fnName);
+    const isNavigationOrModalToggle = /^(showTab|bukaModal|tutupModal|closeModal|openModal|switchTab|loginAs|logout|quickLogin|switchRole|toggleNav|toggleSidebar|bukaModalTambah|bukaModalEdit|bukaModalHapus|openCreate|openEdit|confirmDelete|closeDeleteModal)$/i.test(fnName);
     if (!isNavigationOrModalToggle && fnName) {
       actionButtons.push({ fnName, label: rawLabel || fnName });
     }
@@ -1527,6 +1721,11 @@ export function checkMissingToastFeedbacks(
         if (right && (right.type === 'FunctionExpression' || right.type === 'ArrowFunctionExpression')) {
           const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
           if (name) fnBodies.set(name, { body: '', node: right });
+        }
+      } else if (node.type === 'Property') {
+        if (node.value?.type === 'FunctionExpression' || node.value?.type === 'ArrowFunctionExpression') {
+          const name = node.key?.name || node.key?.value;
+          if (name) fnBodies.set(name, { body: '', node: node.value });
         }
       }
       for (const k of Object.keys(node)) {
@@ -1738,6 +1937,11 @@ export function checkMissingCreateBranches(
           const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
           if (name) fns.push({ name, node: right });
         }
+      } else if (node.type === 'Property') {
+        if (node.value?.type === 'FunctionExpression' || node.value?.type === 'ArrowFunctionExpression') {
+          const name = node.key?.name || node.key?.value;
+          if (name) fns.push({ name, node: node.value });
+        }
       }
 
       for (const key of Object.keys(node)) {
@@ -1755,13 +1959,13 @@ export function checkMissingCreateBranches(
 
     walk(ast);
 
-    // Kumpulkan fungsi yang dipanggil dari form submit / tombol simpan di HTML
+    // Kumpulkan fungsi yang dipanggil dari form submit / tombol simpan di HTML (Vanilla & Vue)
     const formSubmitFns = new Set<string>();
-    const submitMatches = [...html.matchAll(/onsubmit=["'](?:return\s+)?([a-zA-Z0-9_]+)\s*\(/gi)];
+    const submitMatches = [...html.matchAll(/(?:onsubmit|@submit(?:\.[a-z]+)?|v-on:submit(?:\.[a-z]+)?)=["'](?:return\s+)?([a-zA-Z0-9_]+)\s*(?:\([^"']*\))?["']/gi)];
     for (const m of submitMatches) {
       formSubmitFns.add(m[1]);
     }
-    const saveBtnMatches = [...html.matchAll(/<button[^>]*onclick=["']([a-zA-Z0-9_]+)\s*\([^"']*["'][^>]*>[\s\S]*?(?:Simpan|Save|Submit|Tambah|Tambahkan)[\s\S]*?<\/button>/gi)];
+    const saveBtnMatches = [...html.matchAll(/<button[^>]*(?:onclick|@click|v-on:click)=["']([a-zA-Z0-9_]+)\s*(?:\([^"']*\))?["'][^>]*>[\s\S]*?(?:Simpan|Save|Submit|Tambah|Tambahkan)[\s\S]*?<\/button>/gi)];
     for (const m of saveBtnMatches) {
       formSubmitFns.add(m[1]);
     }
@@ -1852,6 +2056,13 @@ export function checkMissingTypeBranches(
   html: string,
   jsCode: string
 ): string[] {
+  // Arsitektur CRUD Generik Parameterized (Fase 2):
+  // Modal form tunggal me-render kolom secara dinamis dari tablesConfig[activeTable].fields.
+  // Tidak ada cabang if/else hardcoded per entitas; Sub-Bug 6c tereliminasi struktural.
+  if (/tablesConfig|currentTableConfig|v-for=["'][^"']*\bfields\b/i.test(html + jsCode)) {
+    return [];
+  }
+
   const issues: string[] = [];
 
   // Helper untuk memecah argumen pemanggilan fungsi dengan mempertimbangkan tanda kutip
@@ -2315,6 +2526,11 @@ export function checkMissingDeleteWiringAndFakeAction(
           const name = left.type === 'Identifier' ? left.name : (left.type === 'MemberExpression' ? (left.property?.name || left.property?.value) : null);
           if (name) fnDefs.set(name, { name, node: right, bodyText: '' });
         }
+      } else if (node.type === 'Property') {
+        if (node.value?.type === 'FunctionExpression' || node.value?.type === 'ArrowFunctionExpression') {
+          const name = node.key?.name || node.key?.value;
+          if (name) fnDefs.set(name, { name, node: node.value, bodyText: '' });
+        }
       }
       for (const k of Object.keys(node)) {
         if (k === 'loc' || k === 'range') continue;
@@ -2352,9 +2568,10 @@ export function checkMissingDeleteWiringAndFakeAction(
   // Cari fungsi yang bertugas mengeksekusi hapus data:
   // e.g. eksekusiHapus, hapusData, hapusSiswa, hapusUser, confirmHapus, doDelete, dsb.
   const isDeleteExecutionFn = (name: string): boolean => {
-    // Mengecualikan pembuka/penutup modal (bukaModalHapus, tutupModalHapus)
+    // Mengecualikan pembuka/penutup modal (bukaModalHapus, tutupModalHapus, confirmDelete, konfirmasiHapus)
     if (/^(?:buka|open|tutup|close)modal/i.test(name)) return false;
-    return /^(?:eksekusihapus|hapus|delete|remove|dodelete|actiondelete|confirmdelete|konfirmasihapus)[a-zA-Z0-9_]*/i.test(name);
+    if (/^(?:confirmdelete|konfirmasihapus)$/i.test(name)) return false;
+    return /^(?:eksekusihapus|hapus|delete|remove|dodelete|actiondelete|executedelete)[a-zA-Z0-9_]*/i.test(name);
   };
 
   const checkArrayDeletion = (node: any, bodyText: string): boolean => {
@@ -2449,9 +2666,9 @@ export function checkMissingDeleteWiringAndFakeAction(
   // 3. BAGIAN B: PEMERIKSAAN MISSING_DELETE_WIRING
   // -------------------------------------------------------------------------
   // Apakah ada infrastruktur modal konfirmasi hapus di HTML / JS?
-  const hasDeleteModalHtml = /id=["'](?:modalHapus|deleteModal|modalKonfirmasiHapus|modalDelete)["']/i.test(html);
+  const hasDeleteModalHtml = /(?:id=["'](?:modalHapus|deleteModal|modalKonfirmasiHapus|modalDelete)["']|v-(?:if|show)=["'][^"']*deleteModal[^"']*["'])/i.test(html);
   const deleteModalOpenerFn = [...fnDefs.keys()].find((name) =>
-    /^(?:bukaModalHapus|openDeleteModal|bukaKonfirmasiHapus|openModalDelete|konfirmasiHapus)$/i.test(name)
+    /^(?:bukaModalHapus|openDeleteModal|bukaKonfirmasiHapus|openModalDelete|konfirmasiHapus|confirmDelete)$/i.test(name)
   );
 
   if (hasDeleteModalHtml || deleteModalOpenerFn) {
@@ -2490,15 +2707,15 @@ export function checkMissingDeleteWiringAndFakeAction(
     // ("Ya, Hapus") tidak salah dianggap sebagai tombol pemanggil dari tabel
     const htmlOutsideDeleteModal = html.replace(/<div\b[^>]*\bid=["'](?:modalHapus|deleteModal|modalKonfirmasiHapus|modalDelete)["'][^>]*>[\s\S]*?<\/div>/gi, '');
 
-    // Periksa pemanggilan di atribut onclick HTML statis (di luar modal konfirmasi)
-    const isCalledInHtml = new RegExp(`onclick\\s*=\\s*['"][^'"]*\\b${openerName}\\b`, 'i').test(htmlOutsideDeleteModal);
+    // Periksa pemanggilan di atribut onclick/click HTML statis (di luar modal konfirmasi)
+    const isCalledInHtml = new RegExp(`(?:onclick|@click|v-on:click)\\s*=\\s*['"][^'"]*\\b${openerName}\\b`, 'i').test(htmlOutsideDeleteModal);
 
     // Periksa pemanggilan di template string JS yang me-render baris tabel secara dinamis
-    const isCalledInJsTemplates = new RegExp(`onclick\\s*=\\s*['"\\\\]*[^'"\\\\]*\\b${openerName}\\b`, 'i').test(jsCode);
+    const isCalledInJsTemplates = new RegExp(`(?:onclick|@click|v-on:click)\\s*=\\s*['"\\\\]*[^'"\\\\]*\\b${openerName}\\b`, 'i').test(jsCode);
 
     // Cek juga apakah ada tombol dengan teks Hapus/Delete yang memanggil fungsi hapus (di luar modal)
-    const hasDeleteButtonInHtml = /<button\b[^>]*\bonclick=["'][^"']*(?:hapus|delete)[^"']*["'][^>]*>[\s\S]*?(?:Hapus|Delete)[\s\S]*?<\/button>/i.test(htmlOutsideDeleteModal);
-    const hasDeleteButtonInJsTemplates = /<button\b[^>]*\bonclick=[\\"]*[^\\"'>]*(?:hapus|delete)[^\\"'>]*[\\"]*[^>]*>[\s\S]*?(?:Hapus|Delete)[\s\S]*?<\/button>/i.test(jsCode);
+    const hasDeleteButtonInHtml = /<button\b[^>]*(?:onclick|@click|v-on:click)=["'][^"']*(?:hapus|delete)[^"']*["'][^>]*>[\s\S]*?(?:Hapus|Delete)[\s\S]*?<\/button>/i.test(htmlOutsideDeleteModal);
+    const hasDeleteButtonInJsTemplates = /<button\b[^>]*(?:onclick|@click|v-on:click)=[\\"]*[^\\"'>]*(?:hapus|delete)[^\\"'>]*[\\"]*[^>]*>[\s\S]*?(?:Hapus|Delete)[\s\S]*?<\/button>/i.test(jsCode);
 
     if (!isCalledInAst && !isCalledInHtml && !isCalledInJsTemplates && !hasDeleteButtonInHtml && !hasDeleteButtonInJsTemplates) {
       const targetLabel = deleteModalOpenerFn ? `fungsi "${deleteModalOpenerFn}"` : 'modal #modalHapus';

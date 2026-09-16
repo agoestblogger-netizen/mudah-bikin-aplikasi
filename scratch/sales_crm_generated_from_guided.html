@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales Prospek CRM</title>
+  <!-- Tailwind CSS v2 Precompiled -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans p-4 md:p-6 min-h-screen">
+  <div id="app" class="max-w-6xl mx-auto">
+
+    <!-- 1. LOGIN SCREEN -->
+    <div v-if="!currentRole" id="loginScreen" class="max-w-md mx-auto my-12 bg-white p-8 rounded-2xl shadow-lg border border-gray-200">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 mx-auto mb-3 bg-blue-600 text-white rounded-2xl flex items-center justify-center text-3xl font-bold shadow-md">
+          <i class="fas fa-funnel-dollar"></i>
+        </div>
+        <h2 class="text-2xl font-extrabold text-gray-900">Sales Prospek CRM</h2>
+        <p class="text-sm text-gray-500 mt-1">Pipeline Deals, Kunjungan Lapangan & Performance</p>
+      </div>
+
+      <form @submit.prevent="handleLogin" class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+          <input 
+            type="text" 
+            v-model="loginForm.username" 
+            placeholder="Masukkan username" 
+            required 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+          <input 
+            type="password" 
+            v-model="loginForm.password" 
+            placeholder="Masukkan password" 
+            required 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none"
+          />
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow transition">
+          Masuk ke CRM
+        </button>
+      </form>
+
+      <div class="mt-6 pt-6 border-t border-gray-200">
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 text-center">Akun Demo (Klik untuk Masuk):</p>
+        <div class="grid grid-cols-1 gap-2">
+          <button 
+            v-for="acc in demoAccounts" 
+            :key="acc.role"
+            type="button" 
+            @click="quickLogin(acc.username, acc.password)"
+            class="p-2.5 text-left border border-gray-200 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition text-xs flex justify-between items-center"
+          >
+            <div>
+              <div class="font-bold text-gray-800">{{ acc.nama }}</div>
+              <div class="text-blue-600 font-semibold">{{ acc.role }}</div>
+            </div>
+            <span class="text-gray-400 text-xs">➔ Masuk</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MAIN APP CONTAINER -->
+    <div v-else id="appContainer">
+      <!-- Header -->
+      <header class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow">
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-gray-900">Sales Prospek & Pipeline CRM</h1>
+            <div class="text-xs text-gray-500">
+              Role: <span class="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{{ currentRole }}</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button @click="logout" class="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+            Keluar
+          </button>
+        </div>
+      </header>
+
+      <!-- Role-Gated Navigation Tabs -->
+      <nav class="flex flex-wrap gap-2 border-b border-gray-200 mb-6">
+        <button 
+          v-for="tab in tabs" 
+          :key="tab.id"
+          v-show="isRoleAllowed(tab.roles)"
+          @click="showTab(tab.id)"
+          :class="activeTab === tab.id ? 'border-b-2 border-blue-600 text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700'"
+          class="tab-btn px-4 py-2.5 text-sm font-medium transition"
+        >
+          <i :class="tab.icon" class="mr-1"></i> {{ tab.label }}
+        </button>
+      </nav>
+
+      <!-- TAB 1: DASBOR FUNNEL & LEADERBOARD (Sales Manager & Sales Executive) -->
+      <div v-show="activeTab === 'tabDasbor'" class="space-y-6">
+        <!-- Funnel Pipeline Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">1. Leads Baru</div>
+            <div class="text-2xl font-extrabold text-blue-600 mt-1">{{ countLeadsByStage('Lead Baru') }}</div>
+            <div class="text-xs text-gray-400 mt-1">Potensi Awal</div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">2. Kualifikasi / Survey</div>
+            <div class="text-2xl font-extrabold text-yellow-600 mt-1">{{ countLeadsByStage('Kualifikasi') }}</div>
+            <div class="text-xs text-gray-400 mt-1">Sedang Dikunjungi</div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">3. Negosiasi Proposal</div>
+            <div class="text-2xl font-extrabold text-purple-600 mt-1">{{ countLeadsByStage('Negosiasi') }}</div>
+            <div class="text-xs text-gray-400 mt-1">Quotation Terkirim</div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">4. Deals Won (Closing)</div>
+            <div class="text-2xl font-extrabold text-green-600 mt-1">{{ countLeadsByStage('Won') }}</div>
+            <div class="text-xs text-green-600 font-semibold mt-1">Rp {{ totalOmzetWon.toLocaleString('id-ID') }}</div>
+          </div>
+        </div>
+
+        <!-- Leaderboard Sales Reps -->
+        <div class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <i class="fas fa-trophy text-yellow-500"></i> Leaderboard Performa Sales
+            </h2>
+            <span class="text-xs text-gray-500">Update Real-Time</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div v-for="(rep, idx) in leaderboard" :key="rep.nama" class="p-4 rounded-xl border border-gray-100 bg-gray-50 flex items-center gap-4">
+              <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow" :class="idx === 0 ? 'bg-yellow-500' : (idx === 1 ? 'bg-gray-400' : 'bg-yellow-700')">
+                #{{ idx + 1 }}
+              </div>
+              <div class="flex-1">
+                <div class="font-bold text-gray-800 text-sm">{{ rep.nama }}</div>
+                <div class="text-xs text-gray-500">{{ rep.totalClosing }} Deals Closed</div>
+                <div class="text-xs font-bold text-green-600">Rp {{ rep.totalNilai.toLocaleString('id-ID') }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PROSPEK LEADS (Generic Parameterized Table) -->
+      <div v-show="activeTab === 'tabProspek'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Data Prospek & Leads</h2>
+            <p class="text-xs text-gray-500">Kelola akun prospek dan status kualifikasi.</p>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" v-model="searchQuery.prospek_leads" placeholder="Cari prospek..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+            <button v-show="isRoleAllowed(['Sales Manager', 'Sales Executive'])" @click="openCreate('prospek_leads')" class="px-3 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700">
+              + Tambah Prospek
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">ID</th>
+                <th class="p-3">Nama Prospek</th>
+                <th class="p-3">Perusahaan</th>
+                <th class="p-3">Potensi Nilai</th>
+                <th class="p-3">Tahap Funnel</th>
+                <th class="p-3">Kontak HP</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="row in filteredTable('prospek_leads')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-500">{{ row.id }}</td>
+                <td class="p-3 font-semibold text-gray-900">{{ row.nama_prospek }}</td>
+                <td class="p-3">{{ row.perusahaan }}</td>
+                <td class="p-3 font-bold text-blue-600">Rp {{ Number(row.nilai_potensi || 0).toLocaleString('id-ID') }}</td>
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="getStageBadgeClass(row.status_tahap)">
+                    {{ row.status_tahap }}
+                  </span>
+                </td>
+                <td class="p-3 text-gray-500">{{ row.kontak_hp }}</td>
+                <td class="p-3 text-right">
+                  <div class="flex justify-end gap-2">
+                    <button v-show="isRoleAllowed(['Sales Manager', 'Sales Executive'])" @click="openEdit('prospek_leads', row)" class="text-blue-600 hover:text-blue-900 font-semibold text-xs">Edit</button>
+                    <button v-show="isRoleAllowed(['Sales Manager'])" @click="confirmDelete('prospek_leads', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs">Hapus</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 3: KUNJUNGAN LAPANGAN DENGAN CHECK-IN GPS & FOTO -->
+      <div v-show="activeTab === 'tabKunjungan'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+        <div class="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Check-in Kunjungan Lapangan</h2>
+            <p class="text-xs text-gray-500">Log kehadiran sales di lokasi prospek beserta validasi GPS & foto.</p>
+          </div>
+          <button v-show="isRoleAllowed(['Sales Executive', 'Sales Manager'])" @click="openCreate('aktivitas_kunjungan')" class="px-3 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700">
+            + Catat Kunjungan Baru
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">ID</th>
+                <th class="p-3">Prospek</th>
+                <th class="p-3">Tanggal</th>
+                <th class="p-3">Lokasi GPS</th>
+                <th class="p-3">Bukti Foto</th>
+                <th class="p-3">Hasil Kunjungan</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="row in filteredTable('aktivitas_kunjungan')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-500">{{ row.id }}</td>
+                <td class="p-3 font-semibold text-gray-800">{{ row.relasi_ke_prospek }}</td>
+                <td class="p-3 text-xs">{{ row.tanggal_kunjungan }}</td>
+                <td class="p-3">
+                  <span class="inline-flex items-center gap-1 bg-green-50 text-green-700 text-xs px-2 py-0.5 rounded font-mono">
+                    <i class="fas fa-map-marker-alt text-red-500"></i> {{ row.lokasi_gps || '-6.2088, 106.8456' }}
+                  </span>
+                </td>
+                <td class="p-3">
+                  <span class="text-xs text-blue-600 flex items-center gap-1 font-semibold">
+                    <i class="fas fa-camera"></i> {{ row.foto_kunjungan_url || 'foto_meeting.jpg' }}
+                  </span>
+                </td>
+                <td class="p-3 text-xs text-gray-600">{{ row.catatan_hasil }}</td>
+                <td class="p-3 text-right">
+                  <div class="flex justify-end gap-2">
+                    <button v-show="isRoleAllowed(['Sales Manager', 'Sales Executive'])" @click="openEdit('aktivitas_kunjungan', row)" class="text-blue-600 hover:text-blue-900 font-semibold text-xs">Edit</button>
+                    <button v-show="isRoleAllowed(['Sales Manager'])" @click="confirmDelete('aktivitas_kunjungan', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs">Hapus</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 4: PENAWARAN & DEALS (Approval & Cetak Quotation) -->
+      <div v-show="activeTab === 'tabPenawaran'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+        <div class="flex flex-wrap justify-between items-center gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Proposal Penawaran & Deals</h2>
+            <p class="text-xs text-gray-500">Kelola diskon khusus dan cetak dokumen penawaran resmi.</p>
+          </div>
+          <button v-show="isRoleAllowed(['Sales Executive', 'Sales Manager'])" @click="openCreate('penawaran_deals')" class="px-3 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700">
+            + Buat Penawaran
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">No Quotation</th>
+                <th class="p-3">Prospek</th>
+                <th class="p-3">Nilai Deal</th>
+                <th class="p-3">Diskon</th>
+                <th class="p-3">Status Approval</th>
+                <th class="p-3 text-right">Aksi & Dokumen</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="row in filteredTable('penawaran_deals')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono font-bold text-gray-800">{{ row.nomor_quotation }}</td>
+                <td class="p-3 font-semibold">{{ row.relasi_ke_prospek }}</td>
+                <td class="p-3 font-bold text-green-600">Rp {{ Number(row.nominal_penawaran || 0).toLocaleString('id-ID') }}</td>
+                <td class="p-3 text-xs">{{ row.diskon_persen }}%</td>
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="row.status_approval === 'Disetujui' ? 'bg-green-100 text-green-800' : (row.status_approval === 'Ditolak' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800')">
+                    {{ row.status_approval }}
+                  </span>
+                </td>
+                <td class="p-3 text-right">
+                  <div class="flex justify-end items-center gap-2">
+                    <button 
+                      v-show="isRoleAllowed(['Sales Manager']) && row.status_approval === 'Draft'" 
+                      @click="setujuiDiskon(row)" 
+                      class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded shadow-sm"
+                    >
+                      Setujui
+                    </button>
+                    <button 
+                      @click="cetakQuotation(row.nomor_quotation)" 
+                      class="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold rounded border border-blue-200"
+                    >
+                      <i class="fas fa-print"></i> Cetak
+                    </button>
+                    <button v-show="isRoleAllowed(['Sales Manager'])" @click="confirmDelete('penawaran_deals', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs ml-1">Hapus</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 5: PORTAL KLIEN MANDIRI -->
+      <div v-show="activeTab === 'tabPortalKlien'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+        <div class="border-b pb-3">
+          <h2 class="text-lg font-bold text-gray-900">Portal Dokumen Penawaran Anda</h2>
+          <p class="text-xs text-gray-500">Tinjau status penawaran dan konfirmasi kerja sama.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div v-for="deal in db.penawaran_deals" :key="deal.id" class="border border-gray-200 p-4 rounded-xl shadow-sm bg-gray-50">
+            <div class="flex justify-between items-start">
+              <div>
+                <span class="text-xs font-bold text-blue-600">{{ deal.nomor_quotation }}</span>
+                <h3 class="font-bold text-gray-800">{{ deal.relasi_ke_prospek }}</h3>
+              </div>
+              <span class="px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-800">{{ deal.status_approval }}</span>
+            </div>
+            <div class="mt-3 flex justify-between items-center text-sm border-t pt-2">
+              <span class="text-gray-500">Total Investasi:</span>
+              <span class="font-extrabold text-gray-900">Rp {{ Number(deal.nominal_penawaran).toLocaleString('id-ID') }}</span>
+            </div>
+            <button @click="cetakQuotation(deal.nomor_quotation)" class="mt-3 w-full py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition">
+              Download PDF Penawaran
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 3. GENERIC REUSABLE MODAL (CREATE / EDIT) -->
+    <div v-if="modal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-screen overflow-y-auto">
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+          <h3 class="text-lg font-bold text-gray-900">
+            {{ modal.isEdit ? 'Edit Data' : 'Tambah Data' }} {{ currentTableConfig.label }}
+          </h3>
+          <button @click="closeModal" class="text-gray-400 hover:text-gray-600 text-lg font-bold">&times;</button>
+        </div>
+
+        <form @submit.prevent="saveItem" class="space-y-4">
+          <div v-for="field in currentTableConfig.fields" :key="field.key">
+            <label class="block text-xs font-bold text-gray-700 mb-1">
+              {{ field.label }} <span v-if="field.required" class="text-red-500">*</span>
+            </label>
+
+            <!-- Khusus Input Lokasi GPS: Sediakan tombol ambil koordinat GPS -->
+            <div v-if="field.key === 'lokasi_gps'" class="flex gap-2">
+              <input 
+                type="text" 
+                v-model="modal.form[field.key]" 
+                placeholder="-6.2088, 106.8456" 
+                :required="field.required"
+                class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none"
+              />
+              <button 
+                type="button" 
+                @click="ambilLokasiGps" 
+                class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg shadow transition"
+              >
+                📍 Kunci GPS
+              </button>
+            </div>
+
+            <!-- Foto Bukti Upload Input -->
+            <div v-else-if="field.key === 'foto_kunjungan_url'" class="space-y-1">
+              <input 
+                type="file" 
+                accept="image/*"
+                @change="handleUploadFoto($event, field.key)"
+                class="w-full text-xs text-gray-500 border border-gray-200 rounded-lg p-1.5 bg-gray-50"
+              />
+              <input 
+                type="text"
+                v-model="modal.form[field.key]" 
+                placeholder="nama_file_foto.jpg"
+                class="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+              />
+            </div>
+
+            <!-- Standard Text / Number Input -->
+            <input 
+              v-else-if="field.type === 'text' || field.type === 'number' || field.type === 'date'"
+              :type="field.type" 
+              v-model="modal.form[field.key]" 
+              :required="field.required"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none"
+            />
+
+            <!-- Select Input -->
+            <select 
+              v-else-if="field.type === 'select'"
+              v-model="modal.form[field.key]"
+              :required="field.required"
+              class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none bg-white"
+            >
+              <option value="" disabled>Pilih {{ field.label }}</option>
+              <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-4 border-t border-gray-100">
+            <button type="button" @click="closeModal" class="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
+              Batal
+            </button>
+            <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow">
+              Simpan Data
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 4. GENERIC CONFIRMATION DELETE MODAL -->
+    <div v-if="deleteModal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center">
+        <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-xl">
+          <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <h3 class="text-base font-bold text-gray-900 mb-2">Konfirmasi Hapus Data</h3>
+        <p class="text-xs text-gray-500 mb-6">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+        <div class="flex justify-center gap-3">
+          <button @click="deleteModal.isOpen = false" class="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
+            Batal
+          </button>
+          <button @click="executeDelete" class="px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow">
+            Ya, Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. TOAST NOTIFICATION -->
+    <div 
+      v-if="toast.visible" 
+      :class="toast.type === 'success' ? 'bg-green-600' : (toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600')"
+      class="fixed bottom-6 right-6 text-white px-5 py-3 rounded-xl shadow-xl text-sm font-semibold transition z-50 flex items-center gap-2"
+    >
+      <span>{{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '❌' : 'ℹ️') }}</span>
+      <span>{{ toast.message }}</span>
+    </div>
+
+  </div>
+
+  <script>
+    var OWNER_ROLE_NAME = "Sales Manager";
+    if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
+
+    var Pilar1VueScaffoldMixin = {
+      data() {
+        return {
+          ownerRole: typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : 'Sales Manager',
+          toast: { visible: false, message: '', type: 'info' }
+        };
+      },
+      methods: {
+        isRoleAllowed(roles) {
+          if (!this.currentRole) return false;
+          var owner = this.ownerRole || (typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : 'Sales Manager');
+          if (owner && String(this.currentRole).trim().toLowerCase() === String(owner).trim().toLowerCase()) {
+            return true;
+          }
+          if (!roles) return false;
+          var allowed = (Array.isArray(roles) ? roles : String(roles).split(',')).map(function(r) { return String(r).trim().toLowerCase(); });
+          var cur = String(this.currentRole).trim().toLowerCase();
+          return allowed.indexOf(cur) !== -1 || allowed.indexOf('*') !== -1 || allowed.indexOf('all') !== -1;
+        },
+        showTab(tabId) {
+          this.activeTab = tabId;
+        },
+        loginAs(role) {
+          this.currentRole = role;
+          var matched = (this.demoAccounts || []).find(function(a) { return String(a.role).toLowerCase() === String(role).toLowerCase(); });
+          if (matched && matched.landingTab) {
+            this.showTab(matched.landingTab);
+          } else if (this.tabs && this.tabs.length) {
+            var firstAllowed = this.tabs.find(function(t) { return this.isRoleAllowed(t.roles); }.bind(this));
+            if (firstAllowed) this.showTab(firstAllowed.id);
+          }
+          this.showToast('Masuk sebagai ' + role, 'success');
+        },
+        logout() {
+          this.currentRole = '';
+          this.activeTab = '';
+          this.showToast('Berhasil keluar.', 'info');
+        },
+        showToast(msg, type) {
+          this.toast = { visible: true, message: msg, type: type || 'info' };
+          var self = this;
+          setTimeout(function() {
+            if (self.toast && self.toast.message === msg) self.toast.visible = false;
+          }, 3000);
+        }
+      }
+    };
+
+    (function ensureVueAppScaffold() {
+      if (typeof Vue !== 'undefined' && Vue.createApp && !Vue.__pilar1Patched) {
+        var _origCreateApp = Vue.createApp;
+        Vue.createApp = function(rootComp, rootProps) {
+          rootComp = rootComp || {};
+          rootComp.mixins = rootComp.mixins || [];
+          rootComp.mixins.push(Pilar1VueScaffoldMixin);
+          var app = _origCreateApp(rootComp, rootProps);
+          var _origMount = app.mount;
+          app.mount = function(container) {
+            var vm = _origMount.call(app, container);
+            if (typeof window !== 'undefined') window.vueApp = vm;
+            return vm;
+          };
+          return app;
+        };
+        Vue.__pilar1Patched = true;
+      }
+    })();
+
+    const app = Vue.createApp({
+      data() {
+        return {
+          currentRole: '',
+          activeTab: 'tabDasbor',
+          loginForm: { username: '', password: '' },
+          demoAccounts: [
+            { nama: 'Budi Santoso (Manager)', role: 'Sales Manager', username: 'manager', password: 'manager123', landingTab: 'tabDasbor' },
+            { nama: 'Rian Pratama (Executive)', role: 'Sales Executive', username: 'sales', password: 'sales123', landingTab: 'tabProspek' },
+            { nama: 'PT Maju Bersama (Klien)', role: 'Klien / Prospek', username: 'klien', password: 'klien123', landingTab: 'tabPortalKlien' }
+          ],
+          tabs: [
+            { id: 'tabDasbor', label: 'Funnel & Leaderboard', icon: 'fas fa-chart-pie', roles: ['Super Admin', 'Sales Manager', 'Sales Executive'] },
+            { id: 'tabProspek', label: 'Prospek Leads', icon: 'fas fa-users', roles: ['Super Admin', 'Sales Manager', 'Sales Executive'] },
+            { id: 'tabKunjungan', label: 'Check-in Lapangan', icon: 'fas fa-map-marked-alt', roles: ['Super Admin', 'Sales Manager', 'Sales Executive'] },
+            { id: 'tabPenawaran', label: 'Proposal & Deals', icon: 'fas fa-file-contract', roles: ['Super Admin', 'Sales Manager', 'Sales Executive'] },
+            { id: 'tabPortalKlien', label: 'Portal Klien', icon: 'fas fa-briefcase', roles: ['Super Admin', 'Sales Manager', 'Klien / Prospek'] }
+          ],
+          tablesConfig: {
+            prospek_leads: {
+              label: 'Prospek Leads',
+              fields: [
+                { key: 'nama_prospek', label: 'Nama Kontak Prospek', type: 'text', required: true },
+                { key: 'perusahaan', label: 'Nama Perusahaan', type: 'text', required: true },
+                { key: 'nilai_potensi', label: 'Nilai Potensi (Rp)', type: 'number', required: true },
+                { key: 'status_tahap', label: 'Tahapan Funnel', type: 'select', options: ['Lead Baru', 'Kualifikasi', 'Negosiasi', 'Won', 'Lost'], required: true },
+                { key: 'kontak_hp', label: 'Nomor WhatsApp/HP', type: 'text', required: true }
+              ]
+            },
+            aktivitas_kunjungan: {
+              label: 'Log Kunjungan',
+              fields: [
+                { key: 'relasi_ke_prospek', label: 'Perusahaan Prospek', type: 'text', required: true },
+                { key: 'tanggal_kunjungan', label: 'Tanggal Kunjungan', type: 'date', required: true },
+                { key: 'lokasi_gps', label: 'Koordinat GPS Check-in', type: 'text', required: true },
+                { key: 'foto_kunjungan_url', label: 'Nama File Foto Bukti', type: 'text', required: true },
+                { key: 'catatan_hasil', label: 'Catatan Rangkuman Meeting', type: 'text', required: true }
+              ]
+            },
+            penawaran_deals: {
+              label: 'Proposal Penawaran',
+              fields: [
+                { key: 'nomor_quotation', label: 'Nomor Surat Quotation', type: 'text', required: true },
+                { key: 'relasi_ke_prospek', label: 'Perusahaan Prospek', type: 'text', required: true },
+                { key: 'nominal_penawaran', label: 'Nilai Penawaran (Rp)', type: 'number', required: true },
+                { key: 'diskon_persen', label: 'Pengajuan Diskon (%)', type: 'number', required: true },
+                { key: 'status_approval', label: 'Status Approval Diskon', type: 'select', options: ['Draft', 'Disetujui', 'Ditolak'], required: true }
+              ]
+            }
+          },
+          searchQuery: {
+            prospek_leads: '',
+            aktivitas_kunjungan: '',
+            penawaran_deals: ''
+          },
+          db: {
+            prospek_leads: [
+              { id: 'LEAD-001', nama_prospek: 'Irfan Hakim', perusahaan: 'PT Nusantara Jaya', nilai_potensi: 75000000, status_tahap: 'Lead Baru', kontak_hp: '081122334455' },
+              { id: 'LEAD-002', nama_prospek: 'Citra Kirana', perusahaan: 'CV Bintang Timur', nilai_potensi: 40000000, status_tahap: 'Kualifikasi', kontak_hp: '081233445566' },
+              { id: 'LEAD-003', nama_prospek: 'Doni Salman', perusahaan: 'PT Indo Retail', nilai_potensi: 120000000, status_tahap: 'Negosiasi', kontak_hp: '081344556677' },
+              { id: 'LEAD-004', nama_prospek: 'Hendra Gunawan', perusahaan: 'PT Sinar Harapan', nilai_potensi: 95000000, status_tahap: 'Won', kontak_hp: '081455667788' }
+            ],
+            aktivitas_kunjungan: [
+              { id: 'VIS-001', relasi_ke_prospek: 'PT Nusantara Jaya', tanggal_kunjungan: '2026-09-14', lokasi_gps: '-6.2088, 106.8456', foto_kunjungan_url: 'meeting_nusantara.jpg', catatan_hasil: 'Klien butuh solusi 50 lisensi software.' },
+              { id: 'VIS-002', relasi_ke_prospek: 'PT Indo Retail', tanggal_kunjungan: '2026-09-15', lokasi_gps: '-6.1754, 106.8272', foto_kunjungan_url: 'survey_indoretail.jpg', catatan_hasil: 'Presentasi teknis dengan tim IT pusat lancar.' }
+            ],
+            penawaran_deals: [
+              { id: 'QUO-001', nomor_quotation: 'QUO/2026/09/001', relasi_ke_prospek: 'PT Sinar Harapan', nominal_penawaran: 95000000, diskon_persen: 5, status_approval: 'Disetujui' },
+              { id: 'QUO-002', nomor_quotation: 'QUO/2026/09/002', relasi_ke_prospek: 'PT Indo Retail', nominal_penawaran: 120000000, diskon_persen: 15, status_approval: 'Draft' }
+            ]
+          },
+          leaderboard: [
+            { nama: 'Rian Pratama', totalClosing: 4, totalNilai: 245000000 },
+            { nama: 'Dini Savitri', totalClosing: 3, totalNilai: 180000000 },
+            { nama: 'Agus Santoso', totalClosing: 2, totalNilai: 95000000 }
+          ],
+          modal: {
+            isOpen: false,
+            isEdit: false,
+            editId: null,
+            activeTable: '',
+            form: {}
+          },
+          deleteModal: {
+            isOpen: false,
+            activeTable: '',
+            targetId: null
+          }
+        };
+      },
+      computed: {
+        currentTableConfig() {
+          return this.tablesConfig[this.modal.activeTable] || { label: '', fields: [] };
+        },
+        totalOmzetWon() {
+          return (this.db.prospek_leads || [])
+            .filter(l => l.status_tahap === 'Won')
+            .reduce((acc, row) => acc + (Number(row.nilai_potensi) || 0), 0);
+        }
+      },
+      methods: {
+        quickLogin(u, p) {
+          this.loginForm.username = u;
+          this.loginForm.password = p;
+          this.handleLogin();
+        },
+        handleLogin() {
+          const u = this.loginForm.username.toLowerCase().trim();
+          const p = this.loginForm.password.trim();
+          const acc = this.demoAccounts.find(a => a.username.toLowerCase() === u && a.password === p);
+          if (acc) {
+            this.loginAs(acc.role);
+          } else {
+            this.showToast('Username atau password salah!', 'error');
+          }
+        },
+        countLeadsByStage(stage) {
+          return (this.db.prospek_leads || []).filter(l => l.status_tahap === stage).length;
+        },
+        getStageBadgeClass(stage) {
+          switch(stage) {
+            case 'Lead Baru': return 'bg-blue-100 text-blue-800';
+            case 'Kualifikasi': return 'bg-yellow-100 text-yellow-800';
+            case 'Negosiasi': return 'bg-purple-100 text-purple-800';
+            case 'Won': return 'bg-green-100 text-green-800';
+            case 'Lost': return 'bg-red-100 text-red-800';
+            default: return 'bg-gray-100 text-gray-800';
+          }
+        },
+        ambilLokasiGps() {
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                this.modal.form.lokasi_gps = pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4);
+                this.showToast('Lokasi GPS berhasil dikunci!', 'success');
+              },
+              () => {
+                this.modal.form.lokasi_gps = '-6.2088, 106.8456 (Jakarta Pusat)';
+                this.showToast('Koordinat GPS simulasi diterapkan!', 'info');
+              }
+            );
+          } else {
+            this.modal.form.lokasi_gps = '-6.2088, 106.8456 (Simulasi)';
+            this.showToast('GPS simulasi aktif', 'info');
+          }
+        },
+        handleUploadFoto(event, fieldKey) {
+          const file = event.target.files && event.target.files[0];
+          if (file) {
+            this.modal.form[fieldKey] = file.name;
+            this.showToast('Foto ' + file.name + ' siap diunggah!', 'info');
+          }
+        },
+        cetakQuotation(noQuo) {
+          this.showToast('Membuka dialog cetak Quotation ' + noQuo + '...', 'success');
+          if (typeof window !== 'undefined' && typeof window.print === 'function') {
+            window.print();
+          }
+        },
+        setujuiDiskon(row) {
+          row.status_approval = 'Disetujui';
+          this.showToast('Diskon quotation berhasil disetujui!', 'success');
+        },
+        openCreate(table) {
+          this.modal.activeTable = table;
+          this.modal.isEdit = false;
+          this.modal.editId = null;
+          this.modal.form = {};
+          this.modal.isOpen = true;
+        },
+        openEdit(table, row) {
+          this.modal.activeTable = table;
+          this.modal.isEdit = true;
+          this.modal.editId = row.id;
+          this.modal.form = { ...row };
+          this.modal.isOpen = true;
+        },
+        closeModal() {
+          this.modal.isOpen = false;
+        },
+        saveItem() {
+          const table = this.modal.activeTable;
+          if (!table || !this.db[table]) return;
+
+          if (this.modal.isEdit) {
+            const idx = this.db[table].findIndex(item => String(item.id) === String(this.modal.editId));
+            if (idx !== -1) {
+              this.db[table][idx] = { ...this.modal.form };
+              this.showToast('Data berhasil diperbarui!', 'success');
+            }
+          } else {
+            const prefix = table.slice(0, 3).toUpperCase();
+            const newId = prefix + '-' + String(Date.now()).slice(-4);
+            this.db[table].push({ id: newId, ...this.modal.form });
+            this.showToast('Data berhasil ditambahkan!', 'success');
+          }
+          this.closeModal();
+        },
+        confirmDelete(table, id) {
+          this.deleteModal = {
+            isOpen: true,
+            activeTable: table,
+            targetId: id
+          };
+        },
+        executeDelete() {
+          const { activeTable, targetId } = this.deleteModal;
+          if (activeTable && this.db[activeTable]) {
+            this.db[activeTable] = this.db[activeTable].filter(item => String(item.id) !== String(targetId));
+            this.showToast('Data berhasil dihapus!', 'success');
+          }
+          this.deleteModal.isOpen = false;
+        },
+        filteredTable(table) {
+          const q = (this.searchQuery[table] || '').toLowerCase().trim();
+          const rows = this.db[table] || [];
+          if (!q) return rows;
+          return rows.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(q)));
+        }
+      }
+    });
+
+    const vm = app.mount('#app');
+  </script>
+</body>
+</html>

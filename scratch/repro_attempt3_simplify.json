@@ -1,0 +1,4 @@
+{
+  "success": false,
+  "error": "Gemini API failed: [gemini-3.6-flash:generateContent]: * GenerateContentRequest.contents[1].parts[0].data: required oneof field 'data' must have one initialized field\n || [gemini-flash-latest:generateContent]: * GenerateContentRequest.contents[1].parts[0].data: required oneof field 'data' must have one initialized field\n || [gemini-2.5-flash:generateContent]: * GenerateContentRequest.contents[1].parts[0].data: required oneof field 'data' must have one initialized field\n"
+}

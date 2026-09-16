@@ -936,526 +936,152 @@ ATURAN MUTLAK PERCAKAPAN (WAJIB DIPATUHI):
 Tugas Anda adalah memandu pengguna non-programmer melalui seluruh siklus hidup pembuatan aplikasi web fungsional.
 
 PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
-1. ARSITEKTUR STATE & DATA AWAL WAJIB (DILARANG ARRAY KOSONG): Variabel state array DILARANG KERAS diinisialisasi kosong (misal: \`let items = [];\`). State WAJIB langsung memiliki 3-5 item dummy contoh realistis lengkap (contoh: \`let items = [{ id: '1', nama: 'Kopi Susu', kategori: 'Minuman', harga: 15000 }, { id: '2', nama: 'Roti Bakar', kategori: 'Makanan', harga: 12000 }, { id: '3', nama: 'Teh Manis', kategori: 'Minuman', harga: 6000 }];\`). Selalu render tampilan melalui fungsi \`render()\`.
-2. FUNGSIONAL PENUH PADA SETIAP TITIK RILIS / REVISI: Tombol aksi (Tambah, Edit, Hapus) WAJIB berfungsi nyata memanipulasi array state di memori dan memanggil \`render()\` di baris terakhir. Tipe data ID konsisten string.
-3. ANTI-CUTOFF: Render loop .map() pada tabel / kartu list dari 3-5 item dummy tersebut. Jangan hardcode baris tabel secara manual di HTML, render melalui JS loop.
-4. 3 CHECKLIST EKSPLISIT: Data, Tombol/Aksi, Login/Akses.
-  5. FITUR SUPER ADMIN DI-GATE: Fitur Tambah User aktif tetapi hanya terlihat oleh role "Super Admin".
-6. LOGIN TANPA KREDENSIAL DEFAULT: Dilarang pakai admin/123 global.
-7. DILARANG confirm(), alert(), prompt() BAWAAN BROWSER: Wajib gunakan modal/banner HTML kustom.
-8. DUMMY DATA BARRIER: Data contoh mockup tidak dikirim ke Google Sheets sungguhan.
-9. OPTIMISTIC UI DENGAN ROLLBACK: Update instan + rollback jika error.
-10. BACKEND FAILSAFE GAS: Multi-tab setup + LockService + Content-Type: text/plain.
-11. FORMAT KODE: Berikan kode HTML utuh di dalam blok: \`\`\`html ... \`\`\`.
-12. ZERO-DEPENDENCY MODERN DESIGN SYSTEM DI <style> (WAJIB DITERAPKAN):
-    - DILARANG menggunakan compiler JavaScript eksternal seperti cdn.tailwindcss.com (karena diblokir di sandbox iframe).
-    - WAJIB gunakan CSS murni di dalam tag <style> dengan Design Tokens bernilai konkret berikut:
-      \`\`\`css
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body {
-        background-color: #f8fafc;
-        color: #0f172a;
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        min-height: 100vh;
-        padding: 24px;
-      }
-      .container { max-width: 1200px; margin: 0 auto; }
-
-      /* Modern App Header */
-      .app-header {
-        display: flex; justify-content: space-between; align-items: center; background: #ffffff;
-        border-radius: 16px; padding: 18px 24px; border: 1px solid #e2e8f0; margin-bottom: 24px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-      }
-      .brand-box { display: flex; align-items: center; gap: 12px; }
-      .brand-icon {
-        width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-        display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; font-weight: 800;
-        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
-      }
-      .title { font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.2; }
-      .subtitle { font-size: 13px; color: #64748b; margin-top: 2px; }
-      .header-actions { display: flex; align-items: center; gap: 12px; }
-      .user-badge {
-        display: inline-flex; align-items: center; gap: 8px; background: #f0fdf4; border: 1px solid #bbf7d0;
-        padding: 6px 14px; border-radius: 9999px; color: #166534; font-weight: 700; font-size: 12px;
-      }
-
-      /* KPI Metric Cards Grid */
-      .kpi-grid {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;
-      }
-      .kpi-card {
-        background: #ffffff; border-radius: 14px; padding: 18px 20px; border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.03); display: flex; flex-direction: column; gap: 6px;
-        transition: transform 0.15s, box-shadow 0.15s;
-      }
-      .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.06); }
-      .kpi-label { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
-      .kpi-value { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; }
-      .kpi-badge { font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; }
-
-      /* Control Toolbar & Filters */
-      .toolbar {
-        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
-        background: #ffffff; border-radius: 12px; padding: 14px 18px; border: 1px solid #e2e8f0; margin-bottom: 18px;
-      }
-      .search-input {
-        padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;
-        min-width: 240px; font-family: inherit;
-      }
-      .search-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
-      .filter-select {
-        padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; outline: none;
-        background: #fff; font-family: inherit; color: #334155;
-      }
-
-      /* Card & Content Boxes */
-      .card {
-        background: #ffffff;
-        border-radius: 14px;
-        border: 1px solid rgba(226, 232, 240, 0.8);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-        padding: 24px;
-        margin-bottom: 24px;
-      }
-
-      /* Buttons */
-      .btn-primary {
-        background: #4f46e5; color: #ffffff; font-weight: 600; padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
-      }
-      .btn-primary:hover { background: #4338ca; transform: translateY(-1px); }
-      .btn-secondary {
-        background: #ffffff; color: #334155; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
-      }
-      .btn-secondary:hover { background: #f8fafc; border-color: #94a3b8; }
-      .btn-danger {
-        background: #fff1f2; color: #e11d48; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #fecdd3; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
-      }
-      .btn-danger:hover { background: #ffe4e6; }
-      
-      /* Form Controls */
-      .form-group { margin-bottom: 16px; }
-      .form-label { display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 6px; }
-      .form-input {
-        width: 100%; padding: 10px 14px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; color: #0f172a; font-size: 14px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; font-family: inherit;
-      }
-      .form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); }
-      
-      /* Data Table Modern */
-      .table-container {
-        overflow-x: auto; border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03); background: #ffffff; margin-top: 14px;
-      }
-      table { width: 100%; border-collapse: collapse; text-align: left; }
-      th {
-        background: #f8fafc; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
-      }
-      td { color: #334155; font-size: 14px; padding: 14px 18px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-      tr:hover td { background-color: #f8fafc; }
-      tr:last-child td { border-bottom: none; }
-
-      /* Badges */
-      .badge {
-        display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
-      }
-      .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-      .badge-warning { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-      .badge-danger { background: #ffe4e6; color: #b91c1c; border: 1px solid #fecdd3; }
-      .badge-info { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
-
-      /* Tabs */
-      .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px; }
-      .tab-btn {
-        padding: 12px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 14px; font-weight: 600; transition: all 0.15s; margin-bottom: -2px; display: inline-flex; align-items: center; gap: 8px;
-      }
-      .tab-btn:hover { color: #334155; }
-      .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; }
-      .tab-content { display: none; }
-      .tab-content.active { display: block; }
-
-      /* Modals */
-      .modal {
-        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
-      }
-      .modal-box {
-        background: #ffffff; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15); max-width: 500px; width: 100%; padding: 26px;
-      }
-
-      /* Toast */
-      .toast {
-        position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); font-size: 13px;
-      }
-      .toast.error { background: #ef4444; }
-      .toast.success { background: #10b981; }
-      .toast.info { background: #3b82f6; }
-      \`\`\`
-    - Lucide Icons & Google Fonts: Diizinkan di <head> (menggunakan tag <link> font dan <script src="https://unpkg.com/lucide@latest"></script>). Panggil \`if (typeof lucide !== 'undefined' && lucide?.createIcons) lucide.createIcons();\` di fungsi \`render()\`.
-13. SCOPE GLOBAL & ANTI-RELOAD WAJIB:
-    - Semua fungsi handler aksi (seperti \`tambahItem()\`, \`editItem()\`, \`hapusItem()\`, \`showModal()\`, \`closeModal()\`) WAJIB dideklarasikan di SCOPE GLOBAL (langsung di dalam tag \`<script>\`, BUKAN dibungkus di dalam \`document.addEventListener('DOMContentLoaded')\` atau closure function privat lain) agar dapat dipanggil langsung dari atribut \`onclick=""\` di elemen HTML.
-    - Semua tombol form WAJIB menggunakan \`type="button"\` (atau form menggunakan \`onsubmit="event.preventDefault();"\`) agar saat tombol diklik TIDAK terjadi reload halaman yang menghapus memory state.
-14. ATURAN KESELARASAN DOM & EVENT HANDLER WAJIB (100% MATCH):
-    - Nama fungsi di atribut \`onclick="namaFungsi()"\` WAJIB PERSIS SAMA (termasuk besar-kecil huruf) dengan nama fungsi yang didefinisikan di \`<script>\`.
-    - ID elemen yang dipanggil lewat \`document.getElementById('xyz')\` WAJIB PERSIS SAMA dengan atribut \`id="xyz"\` pada elemen HTML terkait.
-    - Selalu gunakan perbandingan ID tipe string (contoh: \`String(item.id) !== String(id)\`) agar tidak terjadi kegagalan penghapusan/edit akibat perbedaan number vs string.
-    - SEBELUM MENYERAHKAN KODE: telusuri ulang satu per satu: setiap atribut onclick punya fungsi yang match di JS, setiap getElementById punya elemen yang match di HTML.
-15. KEPATUHAN POLA UI SPESIFIK & POLA TAB BAKU (CSS + HTML + JS WAJIB):
-    - Jika pengguna meminta navigasi tab (misal: Daftar, Formulir Tambah, Edit), WAJIB gunakan styling tab bernavigasi modern dengan garis highlight bawah aktif (BUKAN tombol kotak aksi biasa).
-    - POLA CSS WAJIB UNTUK TAB:
-      .tab-nav { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; }
-      .tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid transparent; color: #64748b; font-size: 15px; font-weight: 500; transition: all 0.2s; }
-      .tab-btn.active { border-bottom-color: #4f46e5; color: #4f46e5; font-weight: 600; }
-      .tab-content { display: none; }
-      .tab-content.active { display: block; }
-    - POLA HTML WAJIB UNTUK TAB (Kategori/Halaman):
-      <div class="tab-nav">
-        <button type="button" id="tab-btn-semua" class="tab-btn active" onclick="showTab('semua')">Semua Data</button>
-        <button type="button" id="tab-btn-kategori1" class="tab-btn" onclick="showTab('kategori1')">Kategori A</button>
-      </div>
-      <div id="semua" class="tab-content active">...</div>
-      <div id="kategori1" class="tab-content">...</div>
-    - POLA JAVASCRIPT WAJIB UNTUK TAB:
-      function showTab(tabId) {
-        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
-        document.getElementById(tabId)?.classList.add('active');
-        document.getElementById('tab-btn-' + tabId)?.classList.add('active');
-        render();
-      }
-    - DILARANG KERAS membuat formulir Tambah/Edit sebagai tab terpisah (Formulir Tambah & Edit WAJIB menggunakan Modal Popup sesuai Prinsip 19).
-    - DILARANG KERAS menggunakan querySelector pada atribut onclick (seperti \`document.querySelector('.tab[onclick=...]')\`) atau syntax jQuery (\`:contains()\`).
-16. DEFENSIVE DOM ACCESS & NULL-SAFETY WAJIB:
-    - Selalu gunakan pengecekan null atau optional chaining (\`?.\`) saat mengakses dan memanipulasi elemen DOM (contoh: \`document.getElementById(id)?.classList.add('active')\` atau \`const el = document.getElementById(id); if (el) el.classList.add('active');\`).
-    - DILARANG memanggil \`.classList.add()\`, \`.value\`, atau \`.style\` secara langsung tanpa memastikan elemen tersebut ada di DOM.
-17. VALIDASI INPUT FORM WAJIB & NOTIFIKASI TOAST CUSTOM (ANTI-DATA KOSONG):
-    - Pada SEMUA fungsi penambahan atau pengeditan data (seperti \`tambahData()\`, \`tambahItem()\`, \`simpanEdit()\`), WAJIB validasi kelengkapan nilai input (\`.value.trim()\`) sebelum memanipulasi array.
-    - DILARANG KERAS memproses atau menambahkan data baru jika input wajib masih kosong!
-    - POLA CSS TOAST WAJIB:
-      .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; color: #ffffff; font-weight: 600; display: none; z-index: 9999; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-      .toast.error { background: #ef4444; }
-      .toast.success { background: #10b981; }
-    - POLA JS VALIDASI & TOAST WAJIB:
-      function showToast(pesan, tipe = 'error') {
-        let toast = document.getElementById('toastNotification');
-        if (!toast) {
-          toast = document.createElement('div');
-          toast.id = 'toastNotification';
-          document.body.appendChild(toast);
-        }
-        toast.className = 'toast ' + tipe;
-        toast.innerText = pesan;
-        toast.style.display = 'block';
-        setTimeout(() => { toast.style.display = 'none'; }, 3000);
-      }
-      function tambahItem() {
-        const input1 = document.getElementById('nama')?.value.trim();
-        if (!input1) {
-          showToast('Harap lengkapi semua kolom formulir!', 'error');
-          return; // WAJIB BERHENTI, DILARANG MENAMBAHKAN BARIS KOSONG
-        }
-        // lanjut proses penambahan data...
-      }
-    - DILARANG menggunakan alert() bawaan browser untuk notifikasi.
-18. ATURAN PEMETAAN AKSI TABEL KETAT (ANTI-AKSI TERTUKAR & WAJIB STYLING):
-    - Pada baris tabel di dalam fungsi \`render()\`, SETIAP tombol aksi WAJIB dipetakan ke fungsinya secara tepat dan menggunakan class tombol:
-      * Tombol Edit: \`<button type="button" class="btn-secondary" onclick="bukaModalEdit('\${item.id}')">Edit</button>\` (DILARANG KERAS memanggil fungsi hapus di tombol Edit!).
-      * Tombol Hapus: \`<button type="button" class="btn-danger" onclick="bukaModalHapus('\${item.id}')">Hapus</button>\` (DILARANG KERAS memanggil fungsi edit di tombol Hapus!).
-    - DILARANG menulis tombol aksi tabel tanpa class atau membiarkannya polos default HTML.
-19. ARSITEKTUR REUSABLE MODAL/POPUP WAJIB (CRUD POPUP PATTERN):
-    - Form Tambah & Edit DILARANG nempel/inline di halaman. WAJIB menggunakan MODAL FORM yang dipakai ulang (reusable) untuk Tambah & Edit, serta 1 MODAL KONFIRMASI HAPUS.
-    - DILARANG KERAS MENGGUNAKAN STUB / PLACEHOLDER GENERIK SEPERTI: "Field 1", "Field 2", "Field 3", "Value 1", "Value 2", "Kolom 2", "Nama Field 2", atau placeholder abstrak semacamnya!
-    - SETIAP FORMULIR WAJIB MEMILIKI KOLOM SUNGGUHAN SESUAI SKEMA TABEL ENTITAS (misal untuk Transaksi: Tanggal, Kategori, Nominal/Jumlah, Catatan, Status; untuk Siswa: Nama Lengkap, No HP, Paket/Kelas, Status).
-    - FIELD BERSIFAT RELASI (Foreign Key / Relasi ke tabel lain) WAJIB berupa \`<select>\` dropdown berisi opsi dari data tabel relasi terkait, DILARANG input teks bebas!
-    - POLA HTML MODAL WAJIB (Contoh Konkret Multi-Field Sesuai Skema):
-      \`\`\`html
-      <!-- MODAL FORM (TAMBAH & EDIT) -->
-      <div id="modalForm" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
-        <div class="modal-box" style="background:#fff; border-radius:12px; padding:24px; max-width:500px; width:90%; max-height:90vh; overflow-y:auto;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h3 id="modalTitle" class="title" style="font-size:18px; margin:0; font-weight:600;">Tambah Data</h3>
-            <button type="button" class="btn-secondary" onclick="tutupModalForm()" style="padding:4px 8px; cursor:pointer;">✕</button>
-          </div>
-          <form id="formData" onsubmit="event.preventDefault(); simpanForm();">
-            <input type="hidden" id="editId" value="">
-            
-            <!-- Kolom Teks Utama Sesuai Entitas -->
-            <div class="form-group" style="margin-bottom:12px;">
-              <label class="form-label" for="inputNama" style="display:block; margin-bottom:4px; font-weight:500;">Nama / Keterangan</label>
-              <input type="text" id="inputNama" class="form-input" placeholder="Masukkan nama atau keterangan..." style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;" required>
-            </div>
-
-            <!-- Kolom Dropdown Relasi / Kategori Sesuai Entitas -->
-            <div class="form-group" style="margin-bottom:12px;">
-              <label class="form-label" for="inputKategori" style="display:block; margin-bottom:4px; font-weight:500;">Kategori / Pilihan Relasi</label>
-              <select id="inputKategori" class="form-input" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;">
-                <option value="">-- Pilih Kategori --</option>
-                <option value="Operasional">Operasional</option>
-                <option value="Pendapatan">Pendapatan</option>
-              </select>
-            </div>
-
-            <!-- Kolom Angka / Nominal / Nilai Spesifik -->
-            <div class="form-group" style="margin-bottom:12px;">
-              <label class="form-label" for="inputNominal" style="display:block; margin-bottom:4px; font-weight:500;">Nominal / Jumlah</label>
-              <input type="number" id="inputNominal" class="form-input" placeholder="Contoh: 50000" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;">
-            </div>
-
-            <!-- Kolom Status / Dropdown Nilai -->
-            <div class="form-group" style="margin-bottom:16px;">
-              <label class="form-label" for="inputStatus" style="display:block; margin-bottom:4px; font-weight:500;">Status</label>
-              <select id="inputStatus" class="form-input" style="width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;">
-                <option value="Aktif">Aktif</option>
-                <option value="Pending">Pending</option>
-                <option value="Selesai">Selesai</option>
-              </select>
-            </div>
-
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:20px;">
-              <button type="button" class="btn-secondary" onclick="tutupModalForm()">Batal</button>
-              <button type="submit" class="btn-primary">Simpan</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <!-- MODAL KONFIRMASI HAPUS -->
-      <div id="modalHapus" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
-        <div class="modal-box" style="background:#fff; border-radius:12px; padding:24px; max-width:400px; width:90%;">
-          <h3 class="title" style="font-size:18px; margin-top:0;">Konfirmasi Hapus</h3>
-          <p class="subtitle" style="margin-bottom:20px; color:#64748b;">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
-          <input type="hidden" id="hapusId" value="">
-          <div style="display:flex; justify-content:flex-end; gap:8px;">
-            <button type="button" class="btn-secondary" onclick="tutupModalHapus()">Batal</button>
-            <button type="button" class="btn-danger" onclick="eksekusiHapus()">Hapus</button>
-          </div>
-        </div>
-      </div>
-      \`\`\`
-    - POLA JAVASCRIPT MODAL WAJIB:
-      \`\`\`javascript
-      let editId = null;
-
-      function bukaModalTambah() {
-        editId = null;
-        document.getElementById('modalTitle').innerText = 'Tambah Data';
-        document.getElementById('editId').value = '';
-        document.getElementById('inputNama').value = '';
-        if (document.getElementById('inputKategori')) document.getElementById('inputKategori').value = '';
-        if (document.getElementById('inputNominal')) document.getElementById('inputNominal').value = '';
-        if (document.getElementById('inputStatus')) document.getElementById('inputStatus').value = 'Aktif';
-        document.getElementById('modalForm').style.display = 'flex';
-      }
-
-      function bukaModalEdit(id) {
-        editId = String(id);
-        const item = items.find(i => String(i.id) === String(id));
-        if (!item) return;
-        document.getElementById('modalTitle').innerText = 'Edit Data';
-        document.getElementById('editId').value = item.id;
-        document.getElementById('inputNama').value = item.nama || item.keterangan || '';
-        if (document.getElementById('inputKategori')) document.getElementById('inputKategori').value = item.kategori || '';
-        if (document.getElementById('inputNominal')) document.getElementById('inputNominal').value = item.nominal || item.jumlah || '';
-        if (document.getElementById('inputStatus')) document.getElementById('inputStatus').value = item.status || 'Aktif';
-        document.getElementById('modalForm').style.display = 'flex';
-      }
-
-      function tutupModalForm() {
-        document.getElementById('modalForm').style.display = 'none';
-      }
-
-      function simpanForm() {
-        const nama = document.getElementById('inputNama')?.value.trim();
-        if (!nama) {
-          showToast('Harap lengkapi semua kolom formulir!', 'error');
-          return;
-        }
-        const kategori = document.getElementById('inputKategori')?.value || '-';
-        const nominal = Number(document.getElementById('inputNominal')?.value || 0);
-        const status = document.getElementById('inputStatus')?.value || 'Aktif';
-
-        if (editId) {
-          // UPDATE DATA EXISTING
-          items = items.map(item => String(item.id) === String(editId) ? { ...item, nama, kategori, nominal, status } : item);
-          showToast('Data berhasil diperbarui!', 'success');
-        } else {
-          // TAMBAH DATA BARU
-          const newItem = { id: String(Date.now()), nama, kategori, nominal, status };
-          items.push(newItem);
-          showToast('Data baru berhasil ditambahkan!', 'success');
-        }
-        tutupModalForm();
-        render();
-      }
-
-      function bukaModalHapus(id) {
-        document.getElementById('hapusId').value = String(id);
-        document.getElementById('modalHapus').style.display = 'flex';
-      }
-
-      function tutupModalHapus() {
-        document.getElementById('modalHapus').style.display = 'none';
-      }
-
-      function eksekusiHapus() {
-        const id = document.getElementById('hapusId')?.value;
-        if (!id) return;
-        items = items.filter(item => String(item.id) !== String(id));
-        tutupModalHapus();
-        render();
-        showToast('Data berhasil dihapus!', 'success');
-      }
-      \`\`\`
-20. LAYAR LOGIN SIMULASI SEBAGAI TAMPILAN AWAL (WAJIB PERSIS SEPERTI GAMBAR 2):
-    - JIKA APLIKASI MEMILIKI LEBIH DARI 1 PERAN (MULTI-ROLE):
-      * TAMPILAN AWAL WAJIB LANGSUNG MENAMPILKAN LAYAR LOGIN DI TENGAH LAYAR (#loginScreen).
-      * Container aplikasi utama (#appContainer) WAJIB DIAWALI DENGAN style="display: none;".
-      * DILARANG KERAS langsung menampilkan dashboard aplikasi dengan tombol "Login Staf" di header! Pengguna WAJIB disambut oleh Layar Login (#loginScreen) terlebih dahulu.
-
-    === STRUKTUR HTML LAYAR LOGIN (#loginScreen) — PERSIS SEPERTI GAMBAR 2 ===
-    <!-- LAYAR LOGIN DI TENGAH LAYAR (#loginScreen) -->
-    <div id="loginScreen" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f8fafc; padding: 20px; font-family: system-ui, -apple-system, sans-serif;">
-      <div class="card" style="max-width: 420px; width: 100%; padding: 36px 32px; border-radius: 20px; background: #ffffff; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.06), 0 8px 10px -6px rgba(0,0,0,0.02); text-align: center;">
-        
-        <!-- Icon Container Kotak Rounded Biru Lembut -->
-        <div style="width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px; background: #eff6ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 26px;">
-          🏬
-        </div>
-
-        <!-- Judul & Subjudul -->
-        <h2 style="font-size: 24px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0;">[Nama Aplikasi]</h2>
-        <p style="font-size: 14px; color: #64748b; margin: 0 0 24px 0;">Masuk ke Akun Anda untuk Memulai</p>
-
-        <!-- Input Username -->
-        <div style="text-align: left; margin-bottom: 16px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Username</label>
-          <input type="text" id="loginUsername" placeholder="Masukkan username" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;" required>
-        </div>
-
-        <!-- Input Password -->
-        <div style="text-align: left; margin-bottom: 20px;">
-          <label style="display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px;">Kata Sandi</label>
-          <input type="password" id="loginPassword" placeholder="Masukkan kata sandi" style="width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;" required>
-        </div>
-
-        <!-- Tombol Masuk -->
-        <button type="button" class="btn-primary" onclick="handleLogin()" style="width: 100%; justify-content: center; padding: 12px; font-size: 15px; font-weight: 600; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; background: #4f46e5; color: #ffffff; border: none;">
-          ➔] Masuk
-        </button>
-
-        <!-- KOTAK AKUN DEMO STAF (PERSIS SEPERTI GAMBAR 2) -->
-        <div style="margin-top: 24px; background: #f1f5f9; border-radius: 12px; padding: 16px; font-size: 13px; text-align: left; color: #334155; line-height: 1.6;">
-          <div style="font-weight: 700; color: #0f172a; margin-bottom: 8px;">🔑 Akun Demo Staf:</div>
-          <!-- Setiap baris role dapat diklik untuk Quick Login instan -->
-          <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('superadmin', 'superadmin123')">• Super Admin: <code style="color: #4f46e5; font-weight: 600;">superadmin / superadmin123</code></div>
-          <div style="cursor: pointer; padding: 3px 0;" onclick="quickLogin('kasir', 'kasir123')">• Kasir: <code style="color: #4f46e5; font-weight: 600;">kasir / kasir123</code></div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- CONTAINER UTAMA APLIKASI (#appContainer) TERSEMBUNYI SAAT AWAL LOAD -->
-    <div id="appContainer" style="display: none;">
-      <header class="app-header" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: #ffffff; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="width: 42px; height: 42px; border-radius: 10px; background: #eff6ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;">
-            🏬
-          </div>
-          <div>
-            <div style="font-size: 18px; font-weight: 700; color: #0f172a;">[Nama Aplikasi]</div>
-            <div style="font-size: 12px; color: #64748b;">Peran: <span id="currentRoleBadge" style="font-weight: 600; color: #4f46e5;">Admin</span></div>
-          </div>
-        </div>
-        <button type="button" class="btn-secondary" onclick="logout()" style="padding: 8px 14px; font-size: 13px; border-radius: 8px;">
-          🚪 Keluar / Ganti Akun
-        </button>
-      </header>
-      <!-- Navigasi Tab & Konten Tab di sini -->
-    </div>
-
-    === JAVASCRIPT AUTENTIKASI, QUICK LOGIN & LOGOUT ===
-    <script>
-    function quickLogin(u, p) {
-      const uInput = document.getElementById('loginUsername');
-      const pInput = document.getElementById('loginPassword');
-      if (uInput) uInput.value = u;
-      if (pInput) pInput.value = p;
-      handleLogin();
-    }
-
-    function handleLogin() {
-      const u = (document.getElementById('loginUsername')?.value || '').trim().toLowerCase();
-      const p = (document.getElementById('loginPassword')?.value || '').trim();
-
-      const matched = DEMO_ACCOUNTS.find(acc => acc.username.toLowerCase() === u && acc.password === p);
-      if (matched) {
-        loginAs(matched.role);
-        showToast('Selamat datang! Masuk sebagai ' + matched.role, 'success');
-      } else {
-        showToast('Username atau kata sandi tidak cocok! Silakan klik salah satu akun demo di bawah.', 'error');
-      }
-    }
-
-    function loginAs(role) {
-      currentRole = role;
-      const loginEl = document.getElementById('loginScreen');
-      const appEl = document.getElementById('appContainer');
-      if (loginEl) loginEl.style.display = 'none';
-      if (appEl) appEl.style.display = 'block';
-
-      filterTabsByRole(role);
-
-      const badgeEl = document.getElementById('currentRoleBadge');
-      if (badgeEl) badgeEl.innerText = role;
-
-      // WAJIB MUTLAK (Bagian A - Anti-Tampilan Sama):
-      // SETIAP role yang login WAJIB langsung diarahkan ke landingTab miliknya!
-      // DILARANG KERAS membiarkan tab Super Admin tetap terbuka saat Kasir/Barber/Pelanggan login!
-      const matched = (typeof DEMO_ACCOUNTS !== 'undefined' ? DEMO_ACCOUNTS : []).find(a => a.role === role);
-      if (matched && matched.landingTab && typeof showTab === 'function') {
-        showTab(matched.landingTab);
-      } else {
-        const firstVisibleTab = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.style.display !== 'none');
-        if (firstVisibleTab) firstVisibleTab.click();
-      }
-
-      render();
-    }
-
-    const OWNER_ROLE_NAME = '${ownerRole}';
-    window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
-
-    function filterTabsByRole(role) {
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        const allowed = (btn.getAttribute('data-access-roles') || '').split(',').map(r => r.trim().toLowerCase());
-        const isOwner = Boolean(role && String(role).trim().toLowerCase() === OWNER_ROLE_NAME.toLowerCase());
-        btn.style.display = (isOwner || (role && allowed.includes(role.toLowerCase()))) ? '' : 'none';
-      });
-    }
-
-    function logout() {
-      currentRole = '';
-      const loginEl = document.getElementById('loginScreen');
-      const appEl = document.getElementById('appContainer');
-      if (appEl) appEl.style.display = 'none';
-      if (loginEl) loginEl.style.display = 'flex';
-      showToast('Berhasil keluar. Silakan login kembali.', 'info');
-    }
-    </script>
-
-21. DESAIN UI PER ROLE BERDASARKAN JOB DESCRIPTION & STRUKTUR SECTION (ROLE-AWARE UX — WAJIB DITERAPKAN JIKA ADA MULTI-ROLE):
-    - Membatasi akses tab saja TIDAK CUKUP. Setiap role WAJIB mendapatkan pengalaman yang terasa DIRANCANG UNTUK MEREKA:
-    - ATURAN WAJIB:
-      a. SETIAP TOMBOL TAB WAJIB PUNYA data-access-roles: Format: data-access-roles="RoleA,RoleB" — daftar peran yang BOLEH melihat tab ini.
-         SESUAIKAN dengan nama peran ASLI dari Brief Kebutuhan, JANGAN pakai nama peran dari domain lain.
-      b. LANDING TAB DEFAULT PER ROLE WAJIB SESUAI BRIEF: loginAs(role) → filterTabsByRole(role) → showTab ke landing default masing-masing peran.
-      c. SETIAP SECTION YANG DIDEKLARASIKAN WAJIB WUJUD FISIK NYATA di halaman terkait.
-      d. KOLOM TABEL & KARTU STATISTIK DISESUAIKAN PER ROLE di loop render().
-      e. DATA TIDAK BOLEH BERBEDA — array state TETAP SAMA, yang beda hanya tampilan/filter per role.
-23. EFISIENSI MODAL & KESELARASAN HANDLER JAVASCRIPT LENGKAP:
-    - HINDARI menduplikasi banyak modal HTML terpisah (misal: modalUser, modalTarif, modalOrder yang memicu puluhan fungsi berbeda). Cukup gunakan 1 modal form dinamis untuk Tambah/Edit Data (\`bukaModal(type)\` / \`tutupModal()\`) dan 1 modal Konfirmasi Hapus (\`bukaModalHapus(id)\` / \`tutupModalHapus()\`).
-    - STATE DATA ARRAY WAJIB DIINISIALISASI: Jika fungsi JavaScript merujuk variabel data array (seperti \`items\`, \`data\`, \`list\`), WAJIB deklarasikan secara global di tag <script> dengan 3-5 data awal (misal: \`let items = [...];\` atau \`let data = [...];\`). DILARANG memanggil \`items.find\` atau \`items.push\` tanpa deklarasi variabel \`items\`!
-    - KREDENSIAL DEMO DI WINDOW: Selalu lampirkan akun demo ke window: \`window.DEMO_ACCOUNTS = DEMO_ACCOUNTS;\` di dalam tag <script>.
-    - HAK AKSES OWNER TERHADAP TAB: Peran Owner/Pengelola ('${ownerRole}') sebagai pengelola sistem WAJIB memiliki akses untuk memeriksa seluruh modul tab operasional (sertakan '${ownerRole}' di atribut data-access-roles setiap tab operasional atau gunakan filterTabsByRole yang mencocokkan ke OWNER_ROLE_NAME).
-    - SETIAP fungsi yang dipanggil di atribut onclick HTML (seperti \`loginAs\`, \`handleLogin\`, \`bukaModalLogin\`, \`tutupModalLogin\`, \`logout\`, \`showTab\`, \`filterTabsByRole\`, \`render\`, \`bukaModal\`, \`tutupModal\`, \`simpanData\`, \`hapusData\`, \`prosesPenjualan\`, \`prosesTransaksi\`, \`checkout\`, \`bayar\`, \`cetakStruk\`) WAJIB memiliki definisi fungsi yang LENGKAP & NYATA di dalam tag <script>. DILARANG memanggil fungsi di onclick tanpa mendefinisikannya di JavaScript.`;
+1. FORMAT KODE SINGLE-FILE HTML WAJIB: Berikan kode HTML utuh yang mandiri di dalam blok: \`\`\`html ... \`\`\`.
+2. STACK TEKNOLOGI RESMI (VUE 3 CDN + TAILWIND CSS v2 PRECOMPILED):
+   - WAJIB gunakan stylesheet Tailwind CSS v2.2.19 precompiled di <head>:
+     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+   - WAJIB gunakan Vue 3 CDN (Full build dengan in-DOM template compiler) di <head>:
+     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+   - DILARANG KERAS menggunakan compiler JavaScript eksternal seperti cdn.tailwindcss.com (karena diblokir di sandbox iframe akibat eval / new Function).
+3. ATURAN KETAT KELAS UTILITY TAILWIND v2 (ANTI-SILENT FAILURE):
+   - AI HANYA BOLEH menggunakan kelas utility standar yang tersedia di Tailwind CSS v2.2.19.
+   - DILARANG KERAS menggunakan arbitrary value syntax [...] (misal: w-[350px], top-[10px], bg-[#4f46e5], h-[80vh]). Selalu gunakan utility class standar bawaan (misal: w-80, max-w-md, top-2, bg-indigo-600, h-64). Arbitrary value TIDAK AKAN memiliki efek visual pada stylesheet precompiled v2 (gagal-diam / silent visual fail)!
+   - DILARANG KERAS menggunakan kelas utility Tailwind v3+ yang TIDAK ADA di v2 (misal: aspect-*, columns-*, break-inside-*, accent-*, scroll-m-*, touch-*, text-wrap, text-balance).
+   - DILARANG KERAS menggunakan pseudo-class variants v3+ (misal: has:, group-has:, peer-has:, open:, backdrop:, peer-*).
+4. ARSITEKTUR CRUD GENERIK PARAMETERIZED (SINGLE-MODAL & DECLARATIVE SCHEMA):
+   - AI DILARANG menulis ulang boilerplate tabel, modal, dan handler DOM manual secara berulang per entitas!
+   - Definisikan konfigurasi seluruh tabel data secara deklaratif di objek \`tablesConfig\` di data Vue:
+     \`\`\`javascript
+     tablesConfig: {
+       paket: {
+         label: 'Paket Kursus',
+         allowRoles: ['Super Admin', 'Admin Pendaftaran'],
+         fields: [
+           { key: 'nama', label: 'Nama Paket', type: 'text', required: true },
+           { key: 'level', label: 'Level Belajar', type: 'select', options: ['Pemula', 'Mahir', 'Intensif'] },
+           { key: 'pertemuan', label: 'Jumlah Pertemuan', type: 'number', required: true },
+           { key: 'harga', label: 'Biaya (Rp)', type: 'number', required: true },
+           { key: 'lokasi', label: 'Lokasi Latihan', type: 'text' }
+         ]
+       },
+       // ... tabel lainnya dari Skema Data
+     }
+     \`\`\`
+   - State data in-memory reaktif diinisialisasi pada objek \`db\` di data Vue dengan 3-5 rekaman contoh realistis lengkap (DILARANG ARRAY KOSONG):
+     \`\`\`javascript
+     db: {
+       paket: [
+         { id: 'PKT-001', nama: 'Paket Pemula Matic', level: 'Pemula', pertemuan: 8, harga: 1200000, lokasi: 'Lapangan Parkir Timur' },
+         { id: 'PKT-002', nama: 'Paket Kilat Manual', level: 'Mahir', pertemuan: 5, harga: 900000, lokasi: 'Jalan Raya Protokol' }
+       ],
+       // ... tabel lainnya
+     }
+     \`\`\`
+   - Render antarmuka tabel secara generik melalui loop parameterized:
+     \`\`\`html
+     <div v-for="(cfg, tblKey) in tablesConfig" :key="tblKey" v-show="activeTab === 'tab_' + tblKey" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+       <div class="flex justify-between items-center mb-4">
+         <h2 class="text-xl font-bold text-gray-800">{{ cfg.label }}</h2>
+         <button @click="openCreate(tblKey)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition">
+           + Tambah {{ cfg.label }}
+         </button>
+       </div>
+       <div class="overflow-x-auto">
+         <table class="w-full text-left text-sm">
+           <thead class="bg-gray-50 border-b border-gray-200">
+             <tr>
+               <th v-for="fld in cfg.fields" :key="fld.key" class="py-3 px-4 text-xs font-bold text-gray-600 uppercase">{{ fld.label }}</th>
+               <th class="py-3 px-4 text-xs font-bold text-gray-600 uppercase text-right">Aksi</th>
+             </tr>
+           </thead>
+           <tbody class="divide-y divide-gray-100">
+             <tr v-for="row in db[tblKey]" :key="row.id" class="hover:bg-gray-50">
+               <td v-for="fld in cfg.fields" :key="fld.key" class="py-3 px-4 text-gray-800">{{ row[fld.key] }}</td>
+               <td class="py-3 px-4 text-right space-x-2">
+                 <button @click="openEdit(tblKey, row)" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded transition">Edit</button>
+                 <button @click="confirmDelete(tblKey, row.id)" class="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded transition">Hapus</button>
+               </td>
+             </tr>
+           </tbody>
+         </table>
+       </div>
+     </div>
+     \`\`\`
+   - FORM MODAL TUNGGAL GENERIK (TAMBAH & EDIT):
+     Satu modal form generik yang me-render kolom input secara dinamis sesuai \`currentTableConfig.fields\`:
+     \`\`\`html
+     <div v-show="modal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+       <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl max-h-screen overflow-y-auto">
+         <div class="flex justify-between items-center mb-4">
+           <h3 class="text-lg font-bold text-gray-800">{{ modal.isEdit ? 'Edit Data' : 'Tambah Data' }} {{ currentTableConfig.label }}</h3>
+           <button @click="modal.isOpen = false" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+         </div>
+         <form @submit.prevent="saveItem" class="space-y-4">
+           <div v-for="fld in currentTableConfig.fields" :key="fld.key">
+             <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">{{ fld.label }}</label>
+             <input v-if="fld.type === 'text'" type="text" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+             <input v-else-if="fld.type === 'number'" type="number" v-model.number="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+             <input v-else-if="fld.type === 'date'" type="date" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+             <select v-else-if="fld.type === 'select'" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+               <option value="">-- Pilih {{ fld.label }} --</option>
+               <option v-for="opt in fld.options" :key="opt" :value="opt">{{ opt }}</option>
+             </select>
+           </div>
+           <div class="flex justify-end space-x-2 pt-3">
+             <button type="button" @click="modal.isOpen = false" class="px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50">Batal</button>
+             <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm">Simpan</button>
+           </div>
+         </form>
+       </div>
+     </div>
+     \`\`\`
+   - MODAL KONFIRMASI HAPUS TUNGGAL:
+     \`\`\`html
+     <div v-show="deleteModal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+       <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl text-center">
+         <h3 class="text-lg font-bold text-gray-800 mb-2">Konfirmasi Hapus</h3>
+         <p class="text-sm text-gray-500 mb-6">Apakah Anda yakin ingin menghapus rekaman ini? Tindakan ini tidak dapat dibatalkan.</p>
+         <div class="flex justify-center space-x-3">
+           <button @click="deleteModal.isOpen = false" class="px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50">Batal</button>
+           <button @click="executeDelete" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-sm">Ya, Hapus</button>
+         </div>
+       </div>
+     </div>
+     \`\`\`
+5. METHOD CRUD & REAKTIVITAS VUE WAJIB:
+   - Method simpan WAJIB memiliki cabang UPDATE (\`if (this.modal.isEdit)\`) dan cabang CREATE (\`else { this.db[table].push(...) }\`) yang menambahkan ID unik baru.
+   - Method eksekusi hapus WAJIB memodifikasi state array (\`this.db[table] = this.db[table].filter(...)\`).
+   - Berikan feedback notifikasi visual (\`this.showToast('Data berhasil disimpan!', 'success')\`). Dilarang hanya console.log()!
+   - DILARANG confirm(), alert(), prompt() bawaan browser.
+6. LAYAR LOGIN SIMULASI MULTI-ROLE SEBAGAI TAMPILAN AWAL:
+   - Jika multi-role, tampilan awal menampilkan layar login (\`v-show="!currentRole"\`).
+   - Sediakan form login dengan \`v-model="loginForm.username"\` dan \`v-model="loginForm.password"\` serta ID \`id="loginUsername"\` & \`id="loginPassword"\`.
+   - Kotak akun demo staf dapat diklik untuk quick login: \`@click="quickLogin(acc.username, acc.password)"\`.
+   - Method \`loginAs(role)\` mengaktifkan landingTab milik peran tersebut.
+7. NAVIGASI TAB REAKTIF DENGAN ROLE GATING:
+   - Navigasi tab dirender melalui loop:
+     \`\`\`html
+     <button 
+       v-for="tab in tabs" 
+       :key="tab.id"
+       v-show="isRoleAllowed(tab.roles)"
+       @click="showTab(tab.id)"
+       class="tab-btn pb-3 px-2 text-sm font-medium transition whitespace-nowrap"
+       :class="activeTab === tab.id ? 'border-b-2 border-indigo-600 text-indigo-600 font-bold' : 'text-gray-500 hover:text-gray-700'"
+     >
+       {{ tab.label }}
+     </button>
+     \`\`\`
+   - Method \`isRoleAllowed(roles)\`:
+     \`\`\`javascript
+     isRoleAllowed(roles) {
+       if (!roles || !roles.length) return true;
+       if (this.currentRole === '${ownerRole}') return true; // Owner selalu dapat melihat semua tab operasional
+       return roles.includes(this.currentRole) || roles.includes('*');
+     }
+     \`\`\`
+   - Pasang akun demo di window: \`window.DEMO_ACCOUNTS = this.demoAccounts;\`.
+   - Pasang Owner role di window: \`window.OWNER_ROLE_NAME = '${ownerRole}';\`.`;
 
       // Mode Pure AI: Matikan semua template/referensi statis
       systemPrompt += `\n\n${pureAIGuidance}`;

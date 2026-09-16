@@ -1,0 +1,768 @@
+{
+  "step": "REVIEW_FINAL",
+  "match": {
+    "templateId": "MT-20",
+    "overlayIds": [],
+    "patternIds": [],
+    "tier": "ADVANCE",
+    "businessCategory": "Aplikasi Sales Prospek CRM untuk trackin",
+    "contextualPainPoints": [
+      "Pencatatan antrean dan alur kerja di Aplikasi Sales Prospek CRM untuk trackin membutuhkan koordinasi yang rapi agar tidak ada yang terlewat."
+    ],
+    "contextualRoles": [
+      "Super Admin",
+      "Staf Kasir",
+      "Pelanggan"
+    ]
+  },
+  "storyline": {
+    "narasi": "Berikut adalah flow proses bisnis dari Sales Prospek CRM untuk tracking prospek leads, pencatatan kunjungan sales di lokasi klien dengan validasi koordinat GPS dan upload foto bukti, negosiasi penawaran deal dengan approval diskon khusus dari Sales Manager, cetak surat quotation resmi, visualisasi pipeline funnel, dan leaderboard performa omzet tim sales. Pelanggan menyampaikan pesanan atau kebutuhan layanan, petugas operasional memproses pekerjaan dengan teliti, kemudian pembayaran diselesaikan di kasir dengan tanda terima yang rapi agar pemilik usaha dapat memantau rekapan secara berkala. Apakah ini sudah menggambarkan proses bisnismu? Kalau ada yang beda, boleh langsung dikoreksi.",
+    "asumsiMasalah": "Pencatatan antrean dan alur kerja di Aplikasi Sales Prospek CRM untuk trackin membutuhkan koordinasi yang rapi agar tidak ada yang terlewat.",
+    "asumsiAktor": [
+      "Super Admin",
+      "Staf Kasir",
+      "Pelanggan"
+    ],
+    "asumsiAlurUtama": "Pelanggan memesan -> Petugas memproses di lokasi -> Pembayaran tercatat -> Pemilik melihat rekap",
+    "detailAktor": {
+      "Super Admin": {
+        "narasi": "Pemilik usaha atau penanggung jawab utama operasional Aplikasi Sales Prospek CRM untuk trackin. Memastikan alur kerja berjalan tertib, mengelola akun pengguna serta staf bertugas, dan memantau omzet harian.",
+        "tanggungJawab": [
+          "Mendaftarkan dan mengelola akun pengguna, penugasan staf, serta penetapan hak akses aplikasi",
+          "Memantau transaksi dan omzet harian operasional",
+          "Mengatur konfigurasi dan parameter operasional aplikasi"
+        ]
+      },
+      "Staf Kasir": {
+        "narasi": "Petugas operasional di Aplikasi Sales Prospek CRM untuk trackin yang bertanggung jawab menjalankan aktivitas kerja harian untuk Staf Kasir sesuai alur yang disepakati.",
+        "tanggungJawab": [
+          "Melaksanakan dan mencatat aktivitas operasional terkait Staf Kasir di Aplikasi Sales Prospek CRM untuk trackin",
+          "Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk",
+          "Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha"
+        ]
+      },
+      "Pelanggan": {
+        "narasi": "Pihak pengguna atau pelanggan yang menerima dan memanfaatkan layanan di Aplikasi Sales Prospek CRM untuk trackin, mengajukan kebutuhan transaksi, serta menerima bukti atau hasil layanan resmi.",
+        "tanggungJawab": [
+          "Memilih atau mengajukan kebutuhan transaksi layanan di Aplikasi Sales Prospek CRM untuk trackin",
+          "Menyelesaikan transaksi pembayaran dan memverifikasi data layanan",
+          "Menerima bukti transaksi atau konfirmasi penyelesaian layanan"
+        ]
+      }
+    },
+    "statusKonfirmasi": "disetujui",
+    "revisiCount": 0,
+    "modeKlarifikasiBertahap": false
+  },
+  "roles": {
+    "selected": [
+      "Super Admin",
+      "Sales Manager",
+      "Sales Executive",
+      "Klien / Prospek"
+    ],
+    "wajib": [
+      "Super Admin",
+      "Staf Kasir"
+    ],
+    "tambahan": [
+      "Sales Manager",
+      "Sales Executive",
+      "Klien / Prospek"
+    ],
+    "tugasDilimpahkan": [
+      {
+        "dariRole": "Staf Kasir",
+        "keRole": "Super Admin",
+        "daftarTugas": [
+          "Melaksanakan dan mencatat aktivitas operasional terkait Staf Kasir di Aplikasi Sales Prospek CRM untuk trackin",
+          "Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk",
+          "Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha"
+        ]
+      }
+    ],
+    "removedExternalRoles": [
+      "Pelanggan"
+    ]
+  },
+  "flow": {
+    "alurInti": [
+      {
+        "step": 1,
+        "pelaku": "Klien / Prospek",
+        "aksi": "Memesan"
+      },
+      {
+        "step": 2,
+        "pelaku": "Super Admin",
+        "aksi": "Memproses di lokasi"
+      },
+      {
+        "step": 3,
+        "pelaku": "Super Admin",
+        "aksi": "Pembayaran tercatat"
+      },
+      {
+        "step": 4,
+        "pelaku": "Super Admin",
+        "aksi": "Melihat rekap"
+      }
+    ],
+    "alurPendukung": [
+      {
+        "nama": "Koreksi Cetak Ulang Cepat jika Warna Luntur atau Format Rusak",
+        "steps": [
+          {
+            "pelaku": "Klien / Prospek",
+            "aksi": "Menyampaikan permohonan penanganan seputar kendala Pencatatan antrean dan alur kerja di Aplikasi Sales Prospek CRM untuk trackin membutuhkan koordinasi yang rapi agar tidak ada yang terlewat. dan menyerahkan bukti transaksi terkait"
+          },
+          {
+            "pelaku": "Super Admin",
+            "aksi": "Memeriksa riwayat data hasil cetakan & banner, memvalidasi keabsahan dokumen fisik di sistem, dan merumuskan solusi penanganan"
+          }
+        ]
+      },
+      {
+        "nama": "Pembersihan Nozzle Head Mesin Cetak & Restock Gulungan Banner",
+        "steps": [
+          {
+            "pelaku": "Super Admin",
+            "aksi": "Memeriksa volume tinta warna cair di tangki mesin dan mendata sisa roll vinyl serta stiker cetak"
+          },
+          {
+            "pelaku": "Super Admin",
+            "aksi": "Menyetujui pembelian tinta industri beresolusi tinggi dan memesan bahan baku banner"
+          }
+        ]
+      }
+    ],
+    "fiturPendukung": [
+      "Dasbor pemantauan antrean transaksi dan status proses Aplikasi Sales Prospek CRM untuk trackin secara real-time",
+      "Buku besar pencatatan riwayat transaksi, mutasi berkas, dan kartu catatan Aplikasi Sales Prospek CRM untuk trackin",
+      "Cetak lembar bukti transaksi resmi, kuitansi, invoice, dan dokumen berita acara Aplikasi Sales Prospek CRM untuk trackin (PDF)",
+      "Notifikasi WhatsApp otomatis pengingat jadwal, jatuh tempo, atau pembaruan status pengerjaan Aplikasi Sales Prospek CRM untuk trackin",
+      "Rekapitulasi performa harian, ringkasan saldo keuangan/omzet, dan ekspor laporan berkala Aplikasi Sales Prospek CRM untuk trackin"
+    ]
+  },
+  "painPoints": {
+    "selected": []
+  },
+  "features": {
+    "selected": []
+  },
+  "changeSnapshots": {
+    "lastModifiedStep": "SIMULASI_DB",
+    "prevRoles": [],
+    "prevAlurInti": [
+      {
+        "step": 1,
+        "pelaku": "Klien / Prospek",
+        "aksi": "Memesan"
+      },
+      {
+        "step": 2,
+        "pelaku": "Super Admin",
+        "aksi": "Memproses di lokasi"
+      },
+      {
+        "step": 3,
+        "pelaku": "Super Admin",
+        "aksi": "Pembayaran tercatat"
+      },
+      {
+        "step": 4,
+        "pelaku": "Super Admin",
+        "aksi": "Melihat rekap"
+      }
+    ],
+    "prevRbacModul": [
+      "Portal Mandiri & Pengajuan Layanan (Klien / Prospek)",
+      "Pemrosesan Operasional & Verifikasi Berkas",
+      "Transaksi Pembayaran & Pembukuan Kasir",
+      "Penanganan Kendala & Audit Kepatuhan Operasional",
+      "Manajemen Sistem, Master Data & Hak Akses"
+    ],
+    "prevDataSchemaTabel": [
+      "pengguna",
+      "portal_mandiri_pengajuan_layanan_klien_prospek",
+      "pemrosesan_operasional_verifikasi_berkas",
+      "penanganan_kendala"
+    ],
+    "prevSimulasiDbTabel": "pengguna, portal_mandiri_pengajuan_layanan_klien_prospek, pemrosesan_operasional_verifikasi_berkas, penanganan_kendala",
+    "prevSimulasiDbRoles": [
+      "Super Admin",
+      "Sales Manager",
+      "Sales Executive",
+      "Klien / Prospek"
+    ]
+  },
+  "rbac": {
+    "modul": [
+      {
+        "nama": "Portal Mandiri & Pengajuan Layanan (Klien / Prospek)",
+        "deskripsiFungsional": "Portal mandiri untuk klien / prospek dalam membuat pengajuan, mengunggah berkas, dan memantau status",
+        "izinPerRole": [
+          {
+            "role": "Super Admin",
+            "level": "Supervisi & Otorisasi Pengajuan",
+            "keterangan": "Akses pantau dan kontrol seluruh antrean"
+          },
+          {
+            "role": "Sales Manager",
+            "level": "Verifikasi & Validasi Berkas",
+            "keterangan": "Validasi kelayakan berkas pengajuan"
+          },
+          {
+            "role": "Sales Executive",
+            "level": "Verifikasi & Validasi Berkas",
+            "keterangan": "Validasi kelayakan berkas pengajuan"
+          },
+          {
+            "role": "Klien / Prospek",
+            "level": "Buat & Pantau (Milik Sendiri)",
+            "keterangan": "Akses terbatas ke data transaksi pribadi"
+          }
+        ]
+      },
+      {
+        "nama": "Pemrosesan Operasional & Verifikasi Berkas",
+        "deskripsiFungsional": "Pencatatan verifikasi data, validasi operasional harian, dan pelaksanaan teknis layanan",
+        "izinPerRole": [
+          {
+            "role": "Super Admin",
+            "level": "Supervisi Mutu & Kontrol Operasional",
+            "keterangan": "Monitoring progres dan eskalasi kendala"
+          },
+          {
+            "role": "Sales Manager",
+            "level": "Eksekusi & Validasi Operasional",
+            "keterangan": "Input data verifikasi, checklist, dan pemrosesan"
+          },
+          {
+            "role": "Sales Executive",
+            "level": "Eksekusi & Validasi Operasional",
+            "keterangan": "Input data verifikasi, checklist, dan pemrosesan"
+          },
+          {
+            "role": "Klien / Prospek",
+            "level": "Lihat Status Pengerjaan (Milik Sendiri)",
+            "keterangan": "Menerima bukti pengerjaan/berita acara"
+          }
+        ]
+      },
+      {
+        "nama": "Transaksi Pembayaran & Pembukuan Kasir",
+        "deskripsiFungsional": "Penerimaan pembayaran, pencatatan transaksi keuangan, dan penerbitan bukti kuitansi resmi",
+        "izinPerRole": [
+          {
+            "role": "Super Admin",
+            "level": "Audit Keuangan & Rekonsiliasi Saldo",
+            "keterangan": "Akses penuh pembukuan dan kas"
+          },
+          {
+            "role": "Sales Manager",
+            "level": "Input Transaksi & Cetak Struk",
+            "keterangan": "Pencatatan transaksi kasir harian"
+          },
+          {
+            "role": "Sales Executive",
+            "level": "Input Transaksi & Cetak Struk",
+            "keterangan": "Pencatatan transaksi kasir harian"
+          },
+          {
+            "role": "Klien / Prospek",
+            "level": "Lihat Tagihan & Bukti Bayar Pribadi",
+            "keterangan": "Unduh nota pembayaran sendiri"
+          }
+        ]
+      },
+      {
+        "nama": "Penanganan Kendala & Audit Kepatuhan Operasional",
+        "deskripsiFungsional": "Pencatatan kendala layanan, tindak lanjut penyesuaian transaksi, dan audit kepatuhan harian",
+        "izinPerRole": [
+          {
+            "role": "Super Admin",
+            "level": "Otorisasi Solusi & Evaluasi Audit",
+            "keterangan": "Persetujuan kebijakan kompensasi dan audit"
+          },
+          {
+            "role": "Sales Manager",
+            "level": "Pemeriksaan Berkas & Penanganan Teknis",
+            "keterangan": "Tindak lanjut penyelesaian kendala di lapangan"
+          },
+          {
+            "role": "Sales Executive",
+            "level": "Pemeriksaan Berkas & Penanganan Teknis",
+            "keterangan": "Tindak lanjut penyelesaian kendala di lapangan"
+          },
+          {
+            "role": "Klien / Prospek",
+            "level": "Kirim Masukan / Lapor Kendala (Milik Sendiri)",
+            "keterangan": "Hanya seputar transaksi yang digunakan"
+          }
+        ]
+      },
+      {
+        "nama": "Manajemen Sistem, Master Data & Hak Akses",
+        "deskripsiFungsional": "Pengaturan katalog harga, data master, akun pengguna, dan log audit",
+        "izinPerRole": [
+          {
+            "role": "Super Admin",
+            "level": "Kontrol Penuh & Pengaturan Sistem",
+            "keterangan": "Kelola akun staf, hak akses, dan tarif"
+          },
+          {
+            "role": "Sales Manager",
+            "level": "-",
+            "keterangan": "Tidak memiliki hak akses"
+          },
+          {
+            "role": "Sales Executive",
+            "level": "-",
+            "keterangan": "Tidak memiliki hak akses"
+          },
+          {
+            "role": "Klien / Prospek",
+            "level": "-",
+            "keterangan": "Tidak memiliki hak akses"
+          }
+        ]
+      }
+    ],
+    "markdownTable": "| Modul Fungsional | Super Admin | Sales Manager | Sales Executive | Klien / Prospek |\n| :--- | :--- | :--- | :--- | :--- |\n| **Portal Mandiri & Pengajuan Layanan (Klien / Prospek)** | Supervisi & Otorisasi Pengajuan | Verifikasi & Validasi Berkas | Verifikasi & Validasi Berkas | Buat & Pantau (Milik Sendiri) |\n| **Pemrosesan Operasional & Verifikasi Berkas** | Supervisi Mutu & Kontrol Operasional | Eksekusi & Validasi Operasional | Eksekusi & Validasi Operasional | Lihat Status Pengerjaan (Milik Sendiri) |\n| **Transaksi Pembayaran & Pembukuan Kasir** | Audit Keuangan & Rekonsiliasi Saldo | Input Transaksi & Cetak Struk | Input Transaksi & Cetak Struk | Lihat Tagihan & Bukti Bayar Pribadi |\n| **Penanganan Kendala & Audit Kepatuhan Operasional** | Otorisasi Solusi & Evaluasi Audit | Pemeriksaan Berkas & Penanganan Teknis | Pemeriksaan Berkas & Penanganan Teknis | Kirim Masukan / Lapor Kendala (Milik Sendiri) |\n| **Manajemen Sistem, Master Data & Hak Akses** | Kontrol Penuh & Pengaturan Sistem | - | - | - |\n\n> 📋 **Keterangan Modul Fungsional:**\n> - **Portal Mandiri & Pengajuan Layanan (Klien / Prospek)**: Portal mandiri untuk klien / prospek dalam membuat pengajuan, mengunggah berkas, dan memantau status\n> - **Pemrosesan Operasional & Verifikasi Berkas**: Pencatatan verifikasi data, validasi operasional harian, dan pelaksanaan teknis layanan\n> - **Transaksi Pembayaran & Pembukuan Kasir**: Penerimaan pembayaran, pencatatan transaksi keuangan, dan penerbitan bukti kuitansi resmi\n> - **Penanganan Kendala & Audit Kepatuhan Operasional**: Pencatatan kendala layanan, tindak lanjut penyesuaian transaksi, dan audit kepatuhan harian\n> - **Manajemen Sistem, Master Data & Hak Akses**: Pengaturan katalog harga, data master, akun pengguna, dan log audit\n\n> ℹ️ **Catatan Wewenang & Pelimpahan Tugas:**\n> - Wewenang operasional \"Staf Kasir\" dialihkan sepenuhnya ke \"Super Admin\" karena perampingan organisasi (Melaksanakan dan mencatat aktivitas operasional terkait Staf Kasir di Aplikasi Sales Prospek CRM untuk trackin, Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk, Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha).",
+    "catatanPelimpahan": [
+      "Wewenang operasional \"Staf Kasir\" dialihkan sepenuhnya ke \"Super Admin\" karena perampingan organisasi (Melaksanakan dan mencatat aktivitas operasional terkait Staf Kasir di Aplikasi Sales Prospek CRM untuk trackin, Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk, Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha)."
+    ],
+    "statusKonfirmasi": "disetujui",
+    "revisiCount": 0
+  },
+  "dataSchema": {
+    "tabel": [
+      {
+        "nama": "pengguna",
+        "keterangan": "Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Identitas unik pengguna"
+          },
+          {
+            "nama": "nama_lengkap",
+            "tipe": "text",
+            "keterangan": "Nama lengkap pengguna atau staf"
+          },
+          {
+            "nama": "role",
+            "tipe": "text",
+            "keterangan": "Peran pengguna (Super Admin / Sales Manager / Sales Executive / Klien / Prospek)"
+          },
+          {
+            "nama": "kontak",
+            "tipe": "text",
+            "keterangan": "Nomor WhatsApp atau alamat email aktif"
+          },
+          {
+            "nama": "status_aktif",
+            "tipe": "text",
+            "keterangan": "Status keaktifan akun (Aktif / Nonaktif)"
+          }
+        ]
+      },
+      {
+        "nama": "portal_mandiri_pengajuan_layanan_klien_prospek",
+        "keterangan": "Mencatat data transaksi permohonan atau pemesanan utama dari pengguna",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Kode transaksi unik"
+          },
+          {
+            "nama": "klien_/_prospek_id",
+            "tipe": "relasi ke pengguna",
+            "keterangan": "ID akun pihak pemohon / pelanggan"
+          },
+          {
+            "nama": "tanggal_pengajuan",
+            "tipe": "tanggal",
+            "keterangan": "Waktu permohonan atau pemesanan dibuat"
+          },
+          {
+            "nama": "rincian_kebutuhan",
+            "tipe": "text",
+            "keterangan": "Deskripsi permohonan, item, atau layanan yang diminta"
+          },
+          {
+            "nama": "status_transaksi",
+            "tipe": "text",
+            "keterangan": "Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan)"
+          },
+          {
+            "nama": "diverifikasi_oleh",
+            "tipe": "relasi ke pengguna",
+            "keterangan": "ID atau nama Sales Manager yang memproses data"
+          }
+        ]
+      },
+      {
+        "nama": "pemrosesan_operasional_verifikasi_berkas",
+        "keterangan": "Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Identitas unik lembar pengerjaan"
+          },
+          {
+            "nama": "portal_mandiri_pengajuan_layanan_klien_prospek_id",
+            "tipe": "relasi ke portal_mandiri_pengajuan_layanan_klien_prospek",
+            "keterangan": "Referensi ke transaksi permohonan terkait"
+          },
+          {
+            "nama": "tanggal_pelaksanaan",
+            "tipe": "tanggal",
+            "keterangan": "Waktu eksekusi atau verifikasi dilakukan"
+          },
+          {
+            "nama": "catatan_pemeriksaan",
+            "tipe": "text",
+            "keterangan": "Hasil observasi, kelayakan fisik, atau status kelengkapan"
+          },
+          {
+            "nama": "petugas_eksekusi",
+            "tipe": "relasi ke pengguna",
+            "keterangan": "ID atau nama Sales Manager yang memproses data"
+          }
+        ]
+      },
+      {
+        "nama": "penanganan_kendala",
+        "keterangan": "Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung",
+        "field": [
+          {
+            "nama": "id",
+            "tipe": "text",
+            "keterangan": "Nomor tiket kendala unik"
+          },
+          {
+            "nama": "portal_mandiri_pengajuan_layanan_klien_prospek_id",
+            "tipe": "relasi ke portal_mandiri_pengajuan_layanan_klien_prospek",
+            "keterangan": "Referensi ke transaksi terkait (bila ada)"
+          },
+          {
+            "nama": "tanggal_laporan",
+            "tipe": "tanggal",
+            "keterangan": "Waktu kendala atau jadwal servis dicatat"
+          },
+          {
+            "nama": "deskripsi_kendala",
+            "tipe": "text",
+            "keterangan": "Rincian kendala teknis atau permohonan penyesuaian"
+          },
+          {
+            "nama": "tindakan_solusi",
+            "tipe": "text",
+            "keterangan": "Langkah penyelesaian yang disetujui atau dieksekusi"
+          },
+          {
+            "nama": "ditangani_oleh",
+            "tipe": "relasi ke pengguna",
+            "keterangan": "ID atau nama Sales Manager yang memproses data"
+          }
+        ]
+      }
+    ],
+    "korelasiRingkas": "Setiap transaksi baru tercatat di tabel `portal_mandiri_pengajuan_layanan_klien_prospek` dengan menghubungkan akun `pengguna`. Staf operasional menindaklanjuti proses melalui tabel `pemrosesan_operasional_verifikasi_berkas` untuk verifikasi dan pencatatan hasil kerja harian. Bila ditemukan kendala operasional atau jadwal pemeliharaan, tiket dicatat pada tabel `penanganan_kendala` untuk ditindaklanjuti hingga tuntas.",
+    "markdownTable": "### 📦 Tabel: `pengguna`\n*Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik pengguna |\n| `nama_lengkap` | text | Nama lengkap pengguna atau staf |\n| `role` | text | Peran pengguna (Super Admin / Sales Manager / Sales Executive / Klien / Prospek) |\n| `kontak` | text | Nomor WhatsApp atau alamat email aktif |\n| `status_aktif` | text | Status keaktifan akun (Aktif / Nonaktif) |\n\n### 📦 Tabel: `portal_mandiri_pengajuan_layanan_klien_prospek`\n*Mencatat data transaksi permohonan atau pemesanan utama dari pengguna*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Kode transaksi unik |\n| `klien_/_prospek_id` | relasi ke pengguna | ID akun pihak pemohon / pelanggan |\n| `tanggal_pengajuan` | tanggal | Waktu permohonan atau pemesanan dibuat |\n| `rincian_kebutuhan` | text | Deskripsi permohonan, item, atau layanan yang diminta |\n| `status_transaksi` | text | Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan) |\n| `diverifikasi_oleh` | relasi ke pengguna | ID atau nama Sales Manager yang memproses data |\n\n### 📦 Tabel: `pemrosesan_operasional_verifikasi_berkas`\n*Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik lembar pengerjaan |\n| `portal_mandiri_pengajuan_layanan_klien_prospek_id` | relasi ke portal_mandiri_pengajuan_layanan_klien_prospek | Referensi ke transaksi permohonan terkait |\n| `tanggal_pelaksanaan` | tanggal | Waktu eksekusi atau verifikasi dilakukan |\n| `catatan_pemeriksaan` | text | Hasil observasi, kelayakan fisik, atau status kelengkapan |\n| `petugas_eksekusi` | relasi ke pengguna | ID atau nama Sales Manager yang memproses data |\n\n### 📦 Tabel: `penanganan_kendala`\n*Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Nomor tiket kendala unik |\n| `portal_mandiri_pengajuan_layanan_klien_prospek_id` | relasi ke portal_mandiri_pengajuan_layanan_klien_prospek | Referensi ke transaksi terkait (bila ada) |\n| `tanggal_laporan` | tanggal | Waktu kendala atau jadwal servis dicatat |\n| `deskripsi_kendala` | text | Rincian kendala teknis atau permohonan penyesuaian |\n| `tindakan_solusi` | text | Langkah penyelesaian yang disetujui atau dieksekusi |\n| `ditangani_oleh` | relasi ke pengguna | ID atau nama Sales Manager yang memproses data |\n\n> 🔗 **Korelasi Antar-Tabel:**\n> Setiap transaksi baru tercatat di tabel `portal_mandiri_pengajuan_layanan_klien_prospek` dengan menghubungkan akun `pengguna`. Staf operasional menindaklanjuti proses melalui tabel `pemrosesan_operasional_verifikasi_berkas` untuk verifikasi dan pencatatan hasil kerja harian. Bila ditemukan kendala operasional atau jadwal pemeliharaan, tiket dicatat pada tabel `penanganan_kendala` untuk ditindaklanjuti hingga tuntas.",
+    "statusKonfirmasi": "disetujui",
+    "revisiCount": 0
+  },
+  "simulasiDb": {
+    "contohData": {
+      "tabel": [
+        {
+          "nama": "pengguna",
+          "keterangan": "Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem",
+          "field": [
+            {
+              "nama": "id",
+              "tipe": "text",
+              "keterangan": "Identitas unik pengguna"
+            },
+            {
+              "nama": "nama_lengkap",
+              "tipe": "text",
+              "keterangan": "Nama lengkap pengguna atau staf"
+            },
+            {
+              "nama": "role",
+              "tipe": "text",
+              "keterangan": "Peran pengguna (Super Admin / Sales Manager / Sales Executive / Klien / Prospek)"
+            },
+            {
+              "nama": "kontak",
+              "tipe": "text",
+              "keterangan": "Nomor WhatsApp atau alamat email aktif"
+            },
+            {
+              "nama": "status_aktif",
+              "tipe": "text",
+              "keterangan": "Status keaktifan akun (Aktif / Nonaktif)"
+            }
+          ],
+          "baris": [
+            {
+              "id": "ID-001",
+              "nama_lengkap": "Pak Bambang (Pemilik)",
+              "role": "Super Admin",
+              "kontak": "Aktif",
+              "status_aktif": "Aktif"
+            },
+            {
+              "id": "ID-002",
+              "nama_lengkap": "Akun Demo Sales Manager",
+              "role": "Sales Manager",
+              "kontak": "Nonaktif",
+              "status_aktif": "Nonaktif"
+            },
+            {
+              "id": "ID-003",
+              "nama_lengkap": "Akun Demo Sales Executive",
+              "role": "Sales Executive",
+              "kontak": "Aktif",
+              "status_aktif": "Aktif"
+            },
+            {
+              "id": "ID-004",
+              "nama_lengkap": "Akun Demo Klien / Prospek",
+              "role": "Klien / Prospek",
+              "kontak": "Aktif",
+              "status_aktif": "Nonaktif"
+            }
+          ]
+        },
+        {
+          "nama": "portal_mandiri_pengajuan_layanan_klien_prospek",
+          "keterangan": "Mencatat data transaksi permohonan atau pemesanan utama dari pengguna",
+          "field": [
+            {
+              "nama": "id",
+              "tipe": "text",
+              "keterangan": "Kode transaksi unik"
+            },
+            {
+              "nama": "klien_/_prospek_id",
+              "tipe": "relasi ke pengguna",
+              "keterangan": "ID akun pihak pemohon / pelanggan"
+            },
+            {
+              "nama": "tanggal_pengajuan",
+              "tipe": "tanggal",
+              "keterangan": "Waktu permohonan atau pemesanan dibuat"
+            },
+            {
+              "nama": "rincian_kebutuhan",
+              "tipe": "text",
+              "keterangan": "Deskripsi permohonan, item, atau layanan yang diminta"
+            },
+            {
+              "nama": "status_transaksi",
+              "tipe": "text",
+              "keterangan": "Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan)"
+            },
+            {
+              "nama": "diverifikasi_oleh",
+              "tipe": "relasi ke pengguna",
+              "keterangan": "ID atau nama Sales Manager yang memproses data"
+            }
+          ],
+          "baris": [
+            {
+              "id": "IDp-001",
+              "klien_/_prospek_id": "ID-004",
+              "tanggal_pengajuan": "2026-09-10",
+              "rincian_kebutuhan": "Deskripsi permohonan",
+              "status_transaksi": "Menunggu verifikasi",
+              "diverifikasi_oleh": "ID-002"
+            },
+            {
+              "id": "IDp-002",
+              "klien_/_prospek_id": "ID-004",
+              "tanggal_pengajuan": "2026-09-11",
+              "rincian_kebutuhan": "Item",
+              "status_transaksi": "Diproses",
+              "diverifikasi_oleh": "ID-002"
+            },
+            {
+              "id": "IDp-003",
+              "klien_/_prospek_id": "ID-004",
+              "tanggal_pengajuan": "2026-09-12",
+              "rincian_kebutuhan": "Deskripsi permohonan",
+              "status_transaksi": "Selesai",
+              "diverifikasi_oleh": "ID-002"
+            }
+          ]
+        },
+        {
+          "nama": "pemrosesan_operasional_verifikasi_berkas",
+          "keterangan": "Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan",
+          "field": [
+            {
+              "nama": "id",
+              "tipe": "text",
+              "keterangan": "Identitas unik lembar pengerjaan"
+            },
+            {
+              "nama": "portal_mandiri_pengajuan_layanan_klien_prospek_id",
+              "tipe": "relasi ke portal_mandiri_pengajuan_layanan_klien_prospek",
+              "keterangan": "Referensi ke transaksi permohonan terkait"
+            },
+            {
+              "nama": "tanggal_pelaksanaan",
+              "tipe": "tanggal",
+              "keterangan": "Waktu eksekusi atau verifikasi dilakukan"
+            },
+            {
+              "nama": "catatan_pemeriksaan",
+              "tipe": "text",
+              "keterangan": "Hasil observasi, kelayakan fisik, atau status kelengkapan"
+            },
+            {
+              "nama": "petugas_eksekusi",
+              "tipe": "relasi ke pengguna",
+              "keterangan": "ID atau nama Sales Manager yang memproses data"
+            }
+          ],
+          "baris": [
+            {
+              "id": "IDe-001",
+              "portal_mandiri_pengajuan_layanan_klien_prospek_id": "IDp-001",
+              "tanggal_pelaksanaan": "2026-09-10",
+              "catatan_pemeriksaan": "Hasil observasi",
+              "petugas_eksekusi": "ID-002"
+            },
+            {
+              "id": "IDe-002",
+              "portal_mandiri_pengajuan_layanan_klien_prospek_id": "IDp-002",
+              "tanggal_pelaksanaan": "2026-09-11",
+              "catatan_pemeriksaan": "Kelayakan fisik",
+              "petugas_eksekusi": "ID-002"
+            },
+            {
+              "id": "IDe-003",
+              "portal_mandiri_pengajuan_layanan_klien_prospek_id": "IDp-003",
+              "tanggal_pelaksanaan": "2026-09-12",
+              "catatan_pemeriksaan": "Atau status kelengkapan",
+              "petugas_eksekusi": "ID-002"
+            }
+          ]
+        },
+        {
+          "nama": "penanganan_kendala",
+          "keterangan": "Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung",
+          "field": [
+            {
+              "nama": "id",
+              "tipe": "text",
+              "keterangan": "Nomor tiket kendala unik"
+            },
+            {
+              "nama": "portal_mandiri_pengajuan_layanan_klien_prospek_id",
+              "tipe": "relasi ke portal_mandiri_pengajuan_layanan_klien_prospek",
+              "keterangan": "Referensi ke transaksi terkait (bila ada)"
+            },
+            {
+              "nama": "tanggal_laporan",
+              "tipe": "tanggal",
+              "keterangan": "Waktu kendala atau jadwal servis dicatat"
+            },
+            {
+              "nama": "deskripsi_kendala",
+              "tipe": "text",
+              "keterangan": "Rincian kendala teknis atau permohonan penyesuaian"
+            },
+            {
+              "nama": "tindakan_solusi",
+              "tipe": "text",
+              "keterangan": "Langkah penyelesaian yang disetujui atau dieksekusi"
+            },
+            {
+              "nama": "ditangani_oleh",
+              "tipe": "relasi ke pengguna",
+              "keterangan": "ID atau nama Sales Manager yang memproses data"
+            }
+          ],
+          "baris": [
+            {
+              "id": "IDn-001",
+              "portal_mandiri_pengajuan_layanan_klien_prospek_id": "IDp-001",
+              "tanggal_laporan": "2026-09-10",
+              "deskripsi_kendala": "Kondisi baik & lengkap",
+              "tindakan_solusi": "Langkah A",
+              "ditangani_oleh": "ID-002"
+            },
+            {
+              "id": "IDn-002",
+              "portal_mandiri_pengajuan_layanan_klien_prospek_id": "IDp-002",
+              "tanggal_laporan": "2026-09-11",
+              "deskripsi_kendala": "Perlu penanganan lanjutan",
+              "tindakan_solusi": "Langkah B",
+              "ditangani_oleh": "ID-002"
+            },
+            {
+              "id": "IDn-003",
+              "portal_mandiri_pengajuan_layanan_klien_prospek_id": "IDp-003",
+              "tanggal_laporan": "2026-09-12",
+              "deskripsi_kendala": "Selesai tepat waktu",
+              "tindakan_solusi": "Langkah C",
+              "ditangani_oleh": "ID-002"
+            }
+          ]
+        }
+      ]
+    },
+    "akunLogin": [
+      {
+        "nama": "Pak Bambang (Pemilik)",
+        "role": "Super Admin",
+        "username": "superadmin",
+        "password": "superadmin123"
+      },
+      {
+        "nama": "Akun Demo Sales Manager",
+        "role": "Sales Manager",
+        "username": "salesmanager",
+        "password": "salesmanager123"
+      },
+      {
+        "nama": "Akun Demo Sales Executive",
+        "role": "Sales Executive",
+        "username": "salesexecutive",
+        "password": "salesexecutive123"
+      },
+      {
+        "nama": "Akun Demo Klien / Prospek",
+        "role": "Klien / Prospek",
+        "username": "klienprospek",
+        "password": "klienprospek123"
+      }
+    ],
+    "instruksiGenerator": [
+      "Simpan tiap tabel dari session.dataSchema sebagai state di memori (React state atau array biasa saat generate kode nanti) — BUKAN localStorage/sessionStorage.",
+      "Isi 3-5 baris data dummy per tabel dengan relasi yang VALID — field bertipe \"relasi ke [Entitas]\" harus benar-benar merujuk ke ID yang ada di tabel entitas tersebut, bukan angka acak.",
+      "Akses data lewat fungsi terpisah per tabel (tambahTransaksi(), ambilProdukById(), dst) — bukan manipulasi array langsung tersebar di banyak tempat kode.",
+      "Simulasikan relasi antar tabel secara manual di kode (pencarian berdasarkan id) — konsisten dengan cara kerja backend Google Sheets nanti yang tidak punya JOIN otomatis.",
+      "Terapkan RBAC sejak prototipe menggunakan akun dummy di atas — role yang tidak punya akses ke suatu modul (sesuai matriks RBAC dari POIN 5) tidak boleh melihat data/fitur modul itu di prototipe."
+    ],
+    "statusKonfirmasi": "disetujui",
+    "revisiCount": 0,
+    "markdownTable": "> 💡 *Catatan: Data yang muncul di prototipe nanti masih berupa data contoh, bukan data asli — Anda dapat mengubah atau menggantinya kapan saja nanti.*\n\n### 📋 Contoh Data Awal: `pengguna`\n*Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem*\n\n| `id` | `nama_lengkap` | `role` | `kontak` | `status_aktif` |\n| :--- | :--- | :--- | :--- | :--- |\n| ID-001 | Pak Bambang (Pemilik) | Super Admin | Aktif | Aktif |\n| ID-002 | Akun Demo Sales Manager | Sales Manager | Nonaktif | Nonaktif |\n| ID-003 | Akun Demo Sales Executive | Sales Executive | Aktif | Aktif |\n| ID-004 | Akun Demo Klien / Prospek | Klien / Prospek | Aktif | Nonaktif |\n\n### 📋 Contoh Data Awal: `portal_mandiri_pengajuan_layanan_klien_prospek`\n*Mencatat data transaksi permohonan atau pemesanan utama dari pengguna*\n\n| `id` | `klien_/_prospek_id` | `tanggal_pengajuan` | `rincian_kebutuhan` | `status_transaksi` | `diverifikasi_oleh` |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| IDp-001 | ID-004 | 2026-09-10 | Deskripsi permohonan | Menunggu verifikasi | ID-002 |\n| IDp-002 | ID-004 | 2026-09-11 | Item | Diproses | ID-002 |\n| IDp-003 | ID-004 | 2026-09-12 | Deskripsi permohonan | Selesai | ID-002 |\n\n> 🔗 **Korelasi Antar-Tabel:** `klien_/_prospek_id → pengguna.id` · `diverifikasi_oleh → pengguna.id`\n\n### 📋 Contoh Data Awal: `pemrosesan_operasional_verifikasi_berkas`\n*Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan*\n\n| `id` | `portal_mandiri_pengajuan_layanan_klien_prospek_id` | `tanggal_pelaksanaan` | `catatan_pemeriksaan` | `petugas_eksekusi` |\n| :--- | :--- | :--- | :--- | :--- |\n| IDe-001 | IDp-001 | 2026-09-10 | Hasil observasi | ID-002 |\n| IDe-002 | IDp-002 | 2026-09-11 | Kelayakan fisik | ID-002 |\n| IDe-003 | IDp-003 | 2026-09-12 | Atau status kelengkapan | ID-002 |\n\n> 🔗 **Korelasi Antar-Tabel:** `portal_mandiri_pengajuan_layanan_klien_prospek_id → portal_mandiri_pengajuan_layanan_klien_prospek.id` · `petugas_eksekusi → pengguna.id`\n\n### 📋 Contoh Data Awal: `penanganan_kendala`\n*Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung*\n\n| `id` | `portal_mandiri_pengajuan_layanan_klien_prospek_id` | `tanggal_laporan` | `deskripsi_kendala` | `tindakan_solusi` | `ditangani_oleh` |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| IDn-001 | IDp-001 | 2026-09-10 | Kondisi baik & lengkap | Langkah A | ID-002 |\n| IDn-002 | IDp-002 | 2026-09-11 | Perlu penanganan lanjutan | Langkah B | ID-002 |\n| IDn-003 | IDp-003 | 2026-09-12 | Selesai tepat waktu | Langkah C | ID-002 |\n\n> 🔗 **Korelasi Antar-Tabel:** `portal_mandiri_pengajuan_layanan_klien_prospek_id → portal_mandiri_pengajuan_layanan_klien_prospek.id` · `ditangani_oleh → pengguna.id`\n\n### 🔑 Akun Demo untuk Uji Coba Login\n| Nama Akun | Role | Username | Password |\n| :--- | :--- | :--- | :--- |\n| Pak Bambang (Pemilik) | **Super Admin** | `superadmin` | `superadmin123` |\n| Akun Demo Sales Manager | **Sales Manager** | `salesmanager` | `salesmanager123` |\n| Akun Demo Sales Executive | **Sales Executive** | `salesexecutive` | `salesexecutive123` |\n| Akun Demo Klien / Prospek | **Klien / Prospek** | `klienprospek` | `klienprospek123` |"
+  },
+  "compiledBrief": "📋 **Brief Kebutuhan**\n- **Nama App**: Aplikasi Sales Prospek CRM untuk trackin\n- **Gambaran Proses Bisnis**: Berikut adalah flow proses bisnis dari Sales Prospek CRM untuk tracking prospek leads, pencatatan kunjungan sales di lokasi klien dengan validasi koordinat GPS dan upload foto bukti, negosiasi penawaran deal dengan approval diskon khusus dari Sales Manager, cetak surat quotation resmi, visualisasi pipeline funnel, dan leaderboard performa omzet tim sales. Pelanggan menyampaikan pesanan atau kebutuhan layanan, petugas operasional memproses pekerjaan dengan teliti, kemudian pembayaran diselesaikan di kasir dengan tanda terima yang rapi agar pemilik usaha dapat memantau rekapan secara berkala.\n- **Masalah Utama**: Pencatatan antrean dan alur kerja di Aplikasi Sales Prospek CRM untuk trackin membutuhkan koordinasi yang rapi agar tidak ada yang terlewat.\n- **Alur Utama (Storyline)**: Pelanggan memesan -> Petugas memproses di lokasi -> Pembayaran tercatat -> Pemilik melihat rekap\n- **Orientasi UI**: Responsif, mobile-friendly\n- **Tier Aplikasi**: ADVANCE\n- **Alur Inti (Aktivitas Utama)**:\n  1. *(Klien / Prospek)* Memesan\n  2. *(Super Admin)* Memproses di lokasi\n  3. *(Super Admin)* Pembayaran tercatat\n  4. *(Super Admin)* Melihat rekap\n- **Alur Pendukung**:\n  * **Koreksi Cetak Ulang Cepat jika Warna Luntur atau Format Rusak**:\n    1. *(Klien / Prospek)* Menyampaikan permohonan penanganan seputar kendala Pencatatan antrean dan alur kerja di Aplikasi Sales Prospek CRM untuk trackin membutuhkan koordinasi yang rapi agar tidak ada yang terlewat. dan menyerahkan bukti transaksi terkait\n    2. *(Super Admin)* Memeriksa riwayat data hasil cetakan & banner, memvalidasi keabsahan dokumen fisik di sistem, dan merumuskan solusi penanganan\n  * **Pembersihan Nozzle Head Mesin Cetak & Restock Gulungan Banner**:\n    1. *(Super Admin)* Memeriksa volume tinta warna cair di tangki mesin dan mendata sisa roll vinyl serta stiker cetak\n    2. *(Super Admin)* Menyetujui pembelian tinta industri beresolusi tinggi dan memesan bahan baku banner\n- **Fitur Pendukung (MVP)**:\n  1. Dasbor pemantauan antrean transaksi dan status proses Aplikasi Sales Prospek CRM untuk trackin secara real-time\n  2. Buku besar pencatatan riwayat transaksi, mutasi berkas, dan kartu catatan Aplikasi Sales Prospek CRM untuk trackin\n  3. Cetak lembar bukti transaksi resmi, kuitansi, invoice, dan dokumen berita acara Aplikasi Sales Prospek CRM untuk trackin (PDF)\n  4. Notifikasi WhatsApp otomatis pengingat jadwal, jatuh tempo, atau pembaruan status pengerjaan Aplikasi Sales Prospek CRM untuk trackin\n  5. Rekapitulasi performa harian, ringkasan saldo keuangan/omzet, dan ekspor laporan berkala Aplikasi Sales Prospek CRM untuk trackin\n- **Ringkasan Role & Status Wewenang**:\n  - **Role Wajib**: Super Admin, Staf Kasir\n  - **Role Tambahan**: Sales Manager, Sales Executive, Klien / Prospek\n  - **Pelimpahan Tugas Role**:\n    * Dari Staf Kasir ke Super Admin: Melaksanakan dan mencatat aktivitas operasional terkait Staf Kasir di Aplikasi Sales Prospek CRM untuk trackin; Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk; Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha\n- **Matriks Hak Akses (RBAC) per Modul Fungsional**:\n| Modul Fungsional | Super Admin | Sales Manager | Sales Executive | Klien / Prospek |\n| :--- | :--- | :--- | :--- | :--- |\n| **Portal Mandiri & Pengajuan Layanan (Klien / Prospek)** | Supervisi & Otorisasi Pengajuan | Verifikasi & Validasi Berkas | Verifikasi & Validasi Berkas | Buat & Pantau (Milik Sendiri) |\n| **Pemrosesan Operasional & Verifikasi Berkas** | Supervisi Mutu & Kontrol Operasional | Eksekusi & Validasi Operasional | Eksekusi & Validasi Operasional | Lihat Status Pengerjaan (Milik Sendiri) |\n| **Transaksi Pembayaran & Pembukuan Kasir** | Audit Keuangan & Rekonsiliasi Saldo | Input Transaksi & Cetak Struk | Input Transaksi & Cetak Struk | Lihat Tagihan & Bukti Bayar Pribadi |\n| **Penanganan Kendala & Audit Kepatuhan Operasional** | Otorisasi Solusi & Evaluasi Audit | Pemeriksaan Berkas & Penanganan Teknis | Pemeriksaan Berkas & Penanganan Teknis | Kirim Masukan / Lapor Kendala (Milik Sendiri) |\n| **Manajemen Sistem, Master Data & Hak Akses** | Kontrol Penuh & Pengaturan Sistem | - | - | - |\n\n> 📋 **Keterangan Modul Fungsional:**\n> - **Portal Mandiri & Pengajuan Layanan (Klien / Prospek)**: Portal mandiri untuk klien / prospek dalam membuat pengajuan, mengunggah berkas, dan memantau status\n> - **Pemrosesan Operasional & Verifikasi Berkas**: Pencatatan verifikasi data, validasi operasional harian, dan pelaksanaan teknis layanan\n> - **Transaksi Pembayaran & Pembukuan Kasir**: Penerimaan pembayaran, pencatatan transaksi keuangan, dan penerbitan bukti kuitansi resmi\n> - **Penanganan Kendala & Audit Kepatuhan Operasional**: Pencatatan kendala layanan, tindak lanjut penyesuaian transaksi, dan audit kepatuhan harian\n> - **Manajemen Sistem, Master Data & Hak Akses**: Pengaturan katalog harga, data master, akun pengguna, dan log audit\n\n> ℹ️ **Catatan Wewenang & Pelimpahan Tugas:**\n> - Wewenang operasional \"Staf Kasir\" dialihkan sepenuhnya ke \"Super Admin\" karena perampingan organisasi (Melaksanakan dan mencatat aktivitas operasional terkait Staf Kasir di Aplikasi Sales Prospek CRM untuk trackin, Memverifikasi dan memproses transaksi atau kebutuhan kerja yang masuk, Berkoordinasi dengan tim dan melaporkan rekapitulasi kerja harian ke Pemilik usaha).\n- **Skema Tabel & Relasi Data**:\n### 📦 Tabel: `pengguna`\n*Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik pengguna |\n| `nama_lengkap` | text | Nama lengkap pengguna atau staf |\n| `role` | text | Peran pengguna (Super Admin / Sales Manager / Sales Executive / Klien / Prospek) |\n| `kontak` | text | Nomor WhatsApp atau alamat email aktif |\n| `status_aktif` | text | Status keaktifan akun (Aktif / Nonaktif) |\n\n### 📦 Tabel: `portal_mandiri_pengajuan_layanan_klien_prospek`\n*Mencatat data transaksi permohonan atau pemesanan utama dari pengguna*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Kode transaksi unik |\n| `klien_/_prospek_id` | relasi ke pengguna | ID akun pihak pemohon / pelanggan |\n| `tanggal_pengajuan` | tanggal | Waktu permohonan atau pemesanan dibuat |\n| `rincian_kebutuhan` | text | Deskripsi permohonan, item, atau layanan yang diminta |\n| `status_transaksi` | text | Status proses (Menunggu Verifikasi / Diproses / Selesai / Dibatalkan) |\n| `diverifikasi_oleh` | relasi ke pengguna | ID atau nama Sales Manager yang memproses data |\n\n### 📦 Tabel: `pemrosesan_operasional_verifikasi_berkas`\n*Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Identitas unik lembar pengerjaan |\n| `portal_mandiri_pengajuan_layanan_klien_prospek_id` | relasi ke portal_mandiri_pengajuan_layanan_klien_prospek | Referensi ke transaksi permohonan terkait |\n| `tanggal_pelaksanaan` | tanggal | Waktu eksekusi atau verifikasi dilakukan |\n| `catatan_pemeriksaan` | text | Hasil observasi, kelayakan fisik, atau status kelengkapan |\n| `petugas_eksekusi` | relasi ke pengguna | ID atau nama Sales Manager yang memproses data |\n\n### 📦 Tabel: `penanganan_kendala`\n*Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung*\n\n| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |\n| `id` | text | Nomor tiket kendala unik |\n| `portal_mandiri_pengajuan_layanan_klien_prospek_id` | relasi ke portal_mandiri_pengajuan_layanan_klien_prospek | Referensi ke transaksi terkait (bila ada) |\n| `tanggal_laporan` | tanggal | Waktu kendala atau jadwal servis dicatat |\n| `deskripsi_kendala` | text | Rincian kendala teknis atau permohonan penyesuaian |\n| `tindakan_solusi` | text | Langkah penyelesaian yang disetujui atau dieksekusi |\n| `ditangani_oleh` | relasi ke pengguna | ID atau nama Sales Manager yang memproses data |\n\n> 🔗 **Korelasi Antar-Tabel:**\n> Setiap transaksi baru tercatat di tabel `portal_mandiri_pengajuan_layanan_klien_prospek` dengan menghubungkan akun `pengguna`. Staf operasional menindaklanjuti proses melalui tabel `pemrosesan_operasional_verifikasi_berkas` untuk verifikasi dan pencatatan hasil kerja harian. Bila ditemukan kendala operasional atau jadwal pemeliharaan, tiket dicatat pada tabel `penanganan_kendala` untuk ditindaklanjuti hingga tuntas.\n- **Simulasi Database & Akun Demo**:\n> 💡 *Catatan: Data yang muncul di prototipe nanti masih berupa data contoh, bukan data asli — Anda dapat mengubah atau menggantinya kapan saja nanti.*\n\n### 📋 Contoh Data Awal: `pengguna`\n*Menyimpan akun pengguna, kredensial, dan peran wewenang aktif di sistem*\n\n| `id` | `nama_lengkap` | `role` | `kontak` | `status_aktif` |\n| :--- | :--- | :--- | :--- | :--- |\n| ID-001 | Pak Bambang (Pemilik) | Super Admin | Aktif | Aktif |\n| ID-002 | Akun Demo Sales Manager | Sales Manager | Nonaktif | Nonaktif |\n| ID-003 | Akun Demo Sales Executive | Sales Executive | Aktif | Aktif |\n| ID-004 | Akun Demo Klien / Prospek | Klien / Prospek | Aktif | Nonaktif |\n\n### 📋 Contoh Data Awal: `portal_mandiri_pengajuan_layanan_klien_prospek`\n*Mencatat data transaksi permohonan atau pemesanan utama dari pengguna*\n\n| `id` | `klien_/_prospek_id` | `tanggal_pengajuan` | `rincian_kebutuhan` | `status_transaksi` | `diverifikasi_oleh` |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| IDp-001 | ID-004 | 2026-09-10 | Deskripsi permohonan | Menunggu verifikasi | ID-002 |\n| IDp-002 | ID-004 | 2026-09-11 | Item | Diproses | ID-002 |\n| IDp-003 | ID-004 | 2026-09-12 | Deskripsi permohonan | Selesai | ID-002 |\n\n> 🔗 **Korelasi Antar-Tabel:** `klien_/_prospek_id → pengguna.id` · `diverifikasi_oleh → pengguna.id`\n\n### 📋 Contoh Data Awal: `pemrosesan_operasional_verifikasi_berkas`\n*Mencatat pelaksanaan operasional teknis, pemeriksaan berkas, dan pengerjaan lapangan*\n\n| `id` | `portal_mandiri_pengajuan_layanan_klien_prospek_id` | `tanggal_pelaksanaan` | `catatan_pemeriksaan` | `petugas_eksekusi` |\n| :--- | :--- | :--- | :--- | :--- |\n| IDe-001 | IDp-001 | 2026-09-10 | Hasil observasi | ID-002 |\n| IDe-002 | IDp-002 | 2026-09-11 | Kelayakan fisik | ID-002 |\n| IDe-003 | IDp-003 | 2026-09-12 | Atau status kelengkapan | ID-002 |\n\n> 🔗 **Korelasi Antar-Tabel:** `portal_mandiri_pengajuan_layanan_klien_prospek_id → portal_mandiri_pengajuan_layanan_klien_prospek.id` · `petugas_eksekusi → pengguna.id`\n\n### 📋 Contoh Data Awal: `penanganan_kendala`\n*Mencatat riwayat kendala operasional, komplain layanan, atau jadwal pemeliharaan pendukung*\n\n| `id` | `portal_mandiri_pengajuan_layanan_klien_prospek_id` | `tanggal_laporan` | `deskripsi_kendala` | `tindakan_solusi` | `ditangani_oleh` |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| IDn-001 | IDp-001 | 2026-09-10 | Kondisi baik & lengkap | Langkah A | ID-002 |\n| IDn-002 | IDp-002 | 2026-09-11 | Perlu penanganan lanjutan | Langkah B | ID-002 |\n| IDn-003 | IDp-003 | 2026-09-12 | Selesai tepat waktu | Langkah C | ID-002 |\n\n> 🔗 **Korelasi Antar-Tabel:** `portal_mandiri_pengajuan_layanan_klien_prospek_id → portal_mandiri_pengajuan_layanan_klien_prospek.id` · `ditangani_oleh → pengguna.id`\n\n### 🔑 Akun Demo untuk Uji Coba Login\n| Nama Akun | Role | Username | Password |\n| :--- | :--- | :--- | :--- |\n| Pak Bambang (Pemilik) | **Super Admin** | `superadmin` | `superadmin123` |\n| Akun Demo Sales Manager | **Sales Manager** | `salesmanager` | `salesmanager123` |\n| Akun Demo Sales Executive | **Sales Executive** | `salesexecutive` | `salesexecutive123` |\n| Akun Demo Klien / Prospek | **Klien / Prospek** | `klienprospek` | `klienprospek123` |\n- **Instruksi Internal Generator Prototipe**:\n  1. Simpan tiap tabel dari session.dataSchema sebagai state di memori (React state atau array biasa saat generate kode nanti) — BUKAN localStorage/sessionStorage.\n  2. Isi 3-5 baris data dummy per tabel dengan relasi yang VALID — field bertipe \"relasi ke [Entitas]\" harus benar-benar merujuk ke ID yang ada di tabel entitas tersebut, bukan angka acak.\n  3. Akses data lewat fungsi terpisah per tabel (tambahTransaksi(), ambilProdukById(), dst) — bukan manipulasi array langsung tersebar di banyak tempat kode.\n  4. Simulasikan relasi antar tabel secara manual di kode (pencarian berdasarkan id) — konsisten dengan cara kerja backend Google Sheets nanti yang tidak punya JOIN otomatis.\n  5. Terapkan RBAC sejak prototipe menggunakan akun dummy di atas — role yang tidak punya akses ke suatu modul (sesuai matriks RBAC dari POIN 5) tidak boleh melihat data/fitur modul itu di prototipe.\n- **Job Description & Struktur Halaman per Role**:\n  * **Super Admin**:\n    - Manajemen Sistem (default): section Akun Staf, section Role & Permission, section Audit Log\n      * Field Input:\n        - [x] Nama / Email Staf (Text)\n        - [x] Role dan Permission (Select)\n      * Action / Event:\n        - [x] onclick: Tambah Akun Staf (Membuat akun staf baru)\n        - [x] onclick: Atur Role & Permission (Mengubah hak akses staf)\n  * **Sales Manager**:\n    - Dashboard & Laporan (default): section Rekapitulasi performa harian, ringkasan saldo keuangan/omzet, dan ekspor laporan berkala Aplikasi Sales Prospek CRM untuk trackin\n      * Field Input:\n        - [x] Id (text)\n        - [x] Klien / Prospek Id (relasi ke pengguna)\n        - [x] Tanggal Pengajuan (tanggal)\n      * Action / Event:\n        - [x] onclick: Simpan Data portal mandiri pengajuan layanan klien prospek (Memproses data di tabel portal_mandiri_pengajuan_layanan_klien_prospek)\n  * **Sales Executive**:\n    - Operasional Sales Executive (default): section Dasbor pemantauan antrean transaksi dan status proses Aplikasi Sales Prospek CRM untuk trackin secara real-time, section Buku besar pencatatan riwayat transaksi, mutasi berkas, dan kartu catatan Aplikasi Sales Prospek CRM untuk trackin, section Cetak lembar bukti transaksi resmi, kuitansi, invoice, dan dokumen berita acara Aplikasi Sales Prospek CRM untuk trackin (PDF), section Notifikasi WhatsApp otomatis pengingat jadwal, jatuh tempo, atau pembaruan status pengerjaan Aplikasi Sales Prospek CRM untuk trackin\n      * Field Input:\n        - [x] Id (text)\n        - [x] Klien / Prospek Id (relasi ke pengguna)\n        - [x] Tanggal Pengajuan (tanggal)\n      * Action / Event:\n        - [x] onclick: Simpan Data portal mandiri pengajuan layanan klien prospek (Memproses data di tabel portal_mandiri_pengajuan_layanan_klien_prospek)\n  * **Klien / Prospek**:\n    - Operasional Klien / Prospek (default): section Memesan, section Menyampaikan permohonan penanganan seputar kendala Pencatatan antrean dan alur kerja di Aplikasi Sales Prospek CRM untuk trackin membutuhkan koordinasi yang rapi agar tidak ada yang terlewat. dan menyerahkan bukti transaksi terkait\n      * Field Input:\n        - [x] Id (text)\n        - [x] Klien / Prospek Id (relasi ke pengguna)\n        - [x] Tanggal Pengajuan (tanggal)\n      * Action / Event:\n        - [x] onclick: Memesan (Memproses data di tabel portal_mandiri_pengajuan_layanan_klien_prospek)",
+  "statusKonfirmasi": "disetujui",
+  "reviewFinalApproved": true,
+  "review": {
+    "statusKonfirmasi": "disetujui"
+  }
+}

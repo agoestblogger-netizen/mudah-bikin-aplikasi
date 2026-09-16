@@ -885,8 +885,48 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS v2.2.19 Precompiled (Zero JS, Zero eval, Sandbox Safe) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <!-- Vue 3 CDN (Full In-DOM Compiler Build) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <!-- Lucide Icons (Pure DOM SVG Parser) -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    // Runtime Safety Bridge untuk Pilar 1 Vue Scaffold
+    window.Pilar1VueScaffoldMixin = {
+      data() {
+        return {
+          currentRole: '',
+          activeTab: 'tabDasbor',
+          toast: { show: false, message: '', type: 'info' }
+        };
+      },
+      methods: {
+        isRoleAllowed(roles) {
+          if (!roles || !roles.length) return true;
+          var owner = window.OWNER_ROLE_NAME || 'Super Admin';
+          if (this.currentRole === owner) return true;
+          return roles.includes(this.currentRole) || roles.includes('*');
+        },
+        showTab(tabId) { this.activeTab = tabId; },
+        loginAs(role) {
+          this.currentRole = role;
+          var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
+          if (acc && acc.landingTab) this.showTab(acc.landingTab);
+          else if (this.tabs && this.tabs.length) {
+            var first = this.tabs.find(function(t) { return this.isRoleAllowed(t.roles); }.bind(this));
+            if (first) this.showTab(first.id);
+          }
+        },
+        logout() { this.currentRole = ''; this.activeTab = ''; },
+        showToast(message, type) {
+          this.toast = { show: true, message: message, type: type || 'info' };
+          var self = this;
+          setTimeout(function() { if (self.toast) self.toast.show = false; }, 3000);
+        }
+      }
+    };
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -946,8 +986,8 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       cleanDoc += '\n</html>';
     }
 
-    // Bersihkan script Tailwind CDN Play jika ada agar tidak memicu SecurityError
-    cleanDoc = cleanDoc.replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '');
+    // Ganti script Tailwind Play CDN jika ada dengan precompiled Tailwind v2.2.19 agar tidak memicu SecurityError
+    cleanDoc = cleanDoc.replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">');
 
     // Masukkan Google Fonts dan Base Resets ke dalam <head> jika belum ada
     if (!cleanDoc.includes('Plus+Jakarta+Sans')) {

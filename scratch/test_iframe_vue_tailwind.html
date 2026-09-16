@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas Preview Sandbox Compatibility Verification</title>
+</head>
+<body style="font-family: sans-serif; padding: 24px; background: #0f172a; color: #f8fafc;">
+  <h2>Hasil Uji Kompatibilitas Sandbox Canvas Preview:</h2>
+  <div id="results" style="margin: 16px 0; font-size: 15px; font-family: monospace;"></div>
+
+  <iframe id="testFrame"
+    sandbox="allow-scripts allow-forms allow-modals"
+    style="width: 100%; height: 400px; border: 1px solid #334155; border-radius: 8px; background: white;"
+  ></iframe>
+
+  <script>
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'TEST_RESULT') {
+        const resDiv = document.getElementById('results');
+        const div = document.createElement('div');
+        div.style.padding = '8px';
+        div.style.marginBottom = '6px';
+        div.style.borderRadius = '4px';
+        div.style.background = e.data.success ? '#064e3b' : '#7f1d1d';
+        div.style.color = e.data.success ? '#6ee7b7' : '#fca5a5';
+        div.textContent = (e.data.success ? '✅ PASS: ' : '❌ FAIL: ') + e.data.name + ' -> ' + JSON.stringify(e.data.detail);
+        resDiv.appendChild(div);
+      }
+    });
+
+    const s = '<' + 'script';
+    const es = '<' + '/script' + '>';
+
+    const innerHtml = '<!DOCTYPE html>' +
+    '<html>' +
+    '<head>' +
+    '  <meta charset="UTF-8">' +
+    '  ' + s + ' src="https://unpkg.com/vue@3/dist/vue.global.js">' + es +
+    '  ' + s + ' src="https://cdn.tailwindcss.com">' + es +
+    '</head>' +
+    '<body class="p-6 bg-slate-50">' +
+    '  <div id="app" class="p-4 bg-white rounded shadow text-slate-800">' +
+    '    <h1 class="text-xl font-bold text-indigo-600">{{ message }}</h1>' +
+    '    <p class="mt-2 text-slate-600">Counter: <span id="countVal" class="font-bold">{{ count }}</span></p>' +
+    '    <button id="btnInc" @click="inc" class="mt-4 px-4 py-2 bg-indigo-600 text-white rounded">Tambah Counter</button>' +
+    '  </div>' +
+    '  ' + s + '>' +
+    '    function send(name, success, detail) {' +
+    '      try { window.parent.postMessage({ type: "TEST_RESULT", name, success, detail }, "*"); } catch(e){}' +
+    '    }' +
+    '    // 1. Uji unsafe-eval / new Function' +
+    '    try {' +
+    '      const fn = new Function("x", "return x * 2;");' +
+    '      send("1_UNSAFE_EVAL", fn(21) === 42, { value: fn(21) });' +
+    '    } catch(e) {' +
+    '      send("1_UNSAFE_EVAL", false, { error: e.name + ": " + e.message });' +
+    '    }' +
+    '    // 2. Uji LocalStorage' +
+    '    try {' +
+    '      localStorage.setItem("__test", "ok");' +
+    '      const v = localStorage.getItem("__test");' +
+    '      localStorage.removeItem("__test");' +
+    '      send("2_LOCALSTORAGE", v === "ok", { value: v });' +
+    '    } catch(e) {' +
+    '      send("2_LOCALSTORAGE", false, { error: e.name + ": " + e.message });' +
+    '    }' +
+    '    // 3. Uji Vue 3 Load' +
+    '    setTimeout(function() {' +
+    '      try {' +
+    '        if (typeof Vue === "undefined") {' +
+    '          send("3_VUE_LOAD", false, { error: "Vue is undefined" });' +
+    '        } else {' +
+    '          send("3_VUE_LOAD", true, { version: Vue.version });' +
+    '          // 4. Uji In-DOM Compilation & Mount' +
+    '          const app = Vue.createApp({' +
+    '            data: function() { return { message: "Vue 3 Bekerja!", count: 10 }; },' +
+    '            methods: { inc: function() { this.count++; } }' +
+    '          });' +
+    '          app.mount("#app");' +
+    '          send("4_VUE_MOUNT_REACTIVITY", true, { mounted: true });' +
+    '        }' +
+    '      } catch(e) {' +
+    '        send("4_VUE_MOUNT_REACTIVITY", false, { error: e.name + ": " + e.message });' +
+    '      }' +
+    '      // 5. Uji Tailwind CDN' +
+    '      try {' +
+    '        const h1 = document.querySelector("h1");' +
+    '        const col = window.getComputedStyle(h1).color;' +
+    '        send("5_TAILWIND_CDN", col.includes("79, 70, 229") || col.includes("rgb("), { color: col });' +
+    '      } catch(e) {' +
+    '        send("5_TAILWIND_CDN", false, { error: e.name + ": " + e.message });' +
+    '      }' +
+    '    }, 500);' +
+    '  ' + es +
+    '</body>' +
+    '</html>';
+
+    document.getElementById('testFrame').srcdoc = innerHtml;
+  </script>
+</body>
+</html>

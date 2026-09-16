@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas Preview Sandbox - Tailwind CDN Comparison Runner</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; background: #0f172a; color: #f8fafc; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+    iframe { width: 100%; height: 480px; border: 1px solid #475569; border-radius: 8px; background: white; }
+    h2 { font-size: 1.1rem; margin-bottom: 8px; color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <h1>Tailwind CDN Compatibility Suite (Canvas Preview Sandbox)</h1>
+  <p>Sandbox flags: <code>allow-scripts allow-forms allow-modals</code> (No allow-same-origin)</p>
+
+  <div class="grid">
+    <!-- Candidate 1: Tailwind Play CDN v3 -->
+    <div class="card">
+      <h2>1. Tailwind Play CDN (v3 script)</h2>
+      <iframe id="frame1" src="test_tw_play.html" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+    </div>
+
+    <!-- Candidate 2: Tailwind Browser v4 -->
+    <div class="card">
+      <h2>2. Tailwind Browser v4 (jsdelivr)</h2>
+      <iframe id="frame2" src="test_tw_v4.html" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+    </div>
+
+    <!-- Candidate 3: Precompiled Tailwind CSS (v2.2.19) -->
+    <div class="card">
+      <h2>3. Precompiled Tailwind (CSS link)</h2>
+      <iframe id="frame3" src="test_tw_css.html" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+    </div>
+  </div>
+</body>
+</html>

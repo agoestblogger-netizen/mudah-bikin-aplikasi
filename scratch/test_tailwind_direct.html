@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Tailwind CDN Comparison in Sandboxed Iframe</title>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  
+  <!-- Test Option 1: Tailwind v4 Browser -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script> -->
+
+  <!-- Test Option 2: Tailwind Play CDN v3 -->
+  <!-- <script src="https://cdn.tailwindcss.com"></script> -->
+</head>
+<body class="bg-slate-50 text-slate-900 p-6 font-sans">
+  <div id="app" class="max-w-xl mx-auto bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+    <h1 class="text-2xl font-bold text-indigo-600 mb-2">{{ title }}</h1>
+    <p class="text-slate-600 mb-4">Uji komparasi pemuatan Tailwind CDN di sandbox iframe Canvas Preview.</p>
+
+    <!-- Visual element with Tailwind classes to verify computed styles -->
+    <div id="tailwindProbe" class="p-4 rounded-xl bg-indigo-600 text-white font-semibold text-center mb-6 shadow-md transition-all">
+      Tailwind Probe Box (bg-indigo-600, rounded-xl, text-white)
+    </div>
+
+    <div class="border-t border-slate-200 pt-4">
+      <h3 class="font-bold text-lg mb-3">Hasil Diagnostik:</h3>
+      <div v-for="(t, idx) in tests" :key="idx" class="p-3 mb-2 rounded-lg text-sm" :class="t.pass ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'">
+        <strong>{{ t.pass ? '✅ PASS: ' : '❌ FAIL: ' }} {{ t.name }}</strong>
+        <div class="text-xs mt-1 opacity-90">{{ t.detail }}</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tests = [];
+
+    // Check Vue
+    tests.push({
+      name: 'VUE_3_LOAD',
+      pass: typeof Vue !== 'undefined',
+      detail: typeof Vue !== 'undefined' ? 'Vue ' + Vue.version + ' aktif' : 'Vue undefined'
+    });
+
+    // Check Probe Box computed styles
+    setTimeout(() => {
+      const probe = document.getElementById('tailwindProbe');
+      const cs = window.getComputedStyle(probe);
+      const bgColor = cs.backgroundColor;
+      const borderRadius = cs.borderRadius;
+      const color = cs.color;
+
+      // In Tailwind, bg-indigo-600 is rgb(79, 70, 229)
+      const isTailwindApplied = bgColor === 'rgb(79, 70, 229)' || (borderRadius && borderRadius !== '0px');
+
+      tests.push({
+        name: 'TAILWIND_STYLE_APPLIED',
+        pass: isTailwindApplied,
+        detail: `Computed bgColor: "${bgColor}", borderRadius: "${borderRadius}", color: "${color}"`
+      });
+
+      if (window.parent) {
+        window.parent.postMessage({ type: 'TAILWIND_TEST_RESULTS', tests }, '*');
+      }
+    }, 800);
+
+    const app = Vue.createApp({
+      data() {
+        return {
+          title: 'Tailwind CDN + Vue 3 Sandbox Test',
+          tests: tests
+        };
+      }
+    });
+    app.mount('#app');
+  </script>
+</body>
+</html>

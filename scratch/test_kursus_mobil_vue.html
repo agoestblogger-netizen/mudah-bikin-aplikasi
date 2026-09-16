@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Kursus Menyetir Mobil</title>
+  <!-- Tailwind CSS v2 Precompiled -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans p-4 md:p-6 min-h-screen">
+  <div id="app" class="max-w-6xl mx-auto">
+
+    <!-- 1. LOGIN SCREEN -->
+    <div v-if="!currentRole" id="loginScreen" class="max-w-md mx-auto my-12 bg-white p-8 rounded-2xl shadow-lg border border-gray-200">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 mx-auto mb-3 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-3xl font-bold shadow-md">
+          🚗
+        </div>
+        <h2 class="text-2xl font-extrabold text-gray-900">Kursus Menyetir Mobil</h2>
+        <p class="text-sm text-gray-500 mt-1">Sistem Manajemen Pelatihan & Penjadwalan</p>
+      </div>
+
+      <form @submit.prevent="handleLogin" class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Username</label>
+          <input 
+            type="text" 
+            v-model="loginForm.username" 
+            placeholder="Masukkan username" 
+            required 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+          <input 
+            type="password" 
+            v-model="loginForm.password" 
+            placeholder="Masukkan password" 
+            required 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          />
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow transition">
+          Masuk ke Sistem
+        </button>
+      </form>
+
+      <div class="mt-6 pt-6 border-t border-gray-200">
+        <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 text-center">Akun Demo Cepat (Klik untuk Masuk):</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button 
+            v-for="acc in demoAccounts" 
+            :key="acc.role"
+            type="button" 
+            @click="quickLogin(acc.username, acc.password)"
+            class="p-2.5 text-left border border-gray-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-300 transition text-xs"
+          >
+            <div class="font-bold text-gray-800">{{ acc.nama }}</div>
+            <div class="text-indigo-600 font-semibold">{{ acc.role }}</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MAIN APP CONTAINER -->
+    <div v-else id="appContainer">
+      <!-- Top Navigation Header -->
+      <header class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow">
+            🚗
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-gray-900">Kursus Menyetir Terpadu</h1>
+            <div class="text-xs text-gray-500">
+              Masuk sebagai: <span id="currentRoleBadge" class="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">{{ currentRole }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button @click="logout" class="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition">
+            Keluar
+          </button>
+        </div>
+      </header>
+
+      <!-- Role-Gated Navigation Tabs -->
+      <nav class="flex flex-wrap gap-2 border-b border-gray-200 mb-6">
+        <button 
+          v-for="tab in tabs" 
+          :key="tab.id"
+          v-show="isRoleAllowed(tab.roles)"
+          @click="showTab(tab.id)"
+          :class="activeTab === tab.id ? 'border-b-2 border-indigo-600 text-indigo-600 font-bold' : 'text-gray-500 hover:text-gray-700'"
+          class="px-4 py-2.5 text-sm font-medium transition"
+        >
+          {{ tab.label }}
+        </button>
+      </nav>
+
+      <!-- TAB 1: DASBOR STRATEGIS (Super Admin) -->
+      <div v-show="activeTab === 'tabDasbor'" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">Total Siswa</div>
+            <div class="text-2xl font-extrabold text-gray-900 mt-1">{{ db.pengguna.filter(p => p.peran === 'Murid').length }}</div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">Paket Aktif</div>
+            <div class="text-2xl font-extrabold text-indigo-600 mt-1">{{ db.paket_kursus.length }}</div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">Sesi Terjadwal</div>
+            <div class="text-2xl font-extrabold text-yellow-600 mt-1">{{ db.jadwal_sesi.filter(j => j.status === 'Terjadwal').length }}</div>
+          </div>
+          <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+            <div class="text-xs font-bold text-gray-500 uppercase">Total Pendapatan</div>
+            <div class="text-2xl font-extrabold text-green-600 mt-1">Rp {{ totalPendapatan.toLocaleString('id-ID') }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: TABEL PENGGUNA -->
+      <div v-show="activeTab === 'tabPengguna'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Data Pengguna & Staf</h2>
+            <p class="text-xs text-gray-500">Kelola murid, staf administrasi, dan instruktur.</p>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" v-model="searchQuery.pengguna" placeholder="Cari pengguna..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+            <button v-show="isRoleAllowed(['Super Admin'])" @click="openCreate('pengguna')" class="px-3 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700">
+              + Tambah Pengguna
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">ID</th>
+                <th class="p-3">Nama Lengkap</th>
+                <th class="p-3">Peran</th>
+                <th class="p-3">Nomor HP</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr v-for="row in filteredTable('pengguna')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-500">{{ row.id }}</td>
+                <td class="p-3 font-semibold">{{ row.nama }}</td>
+                <td class="p-3"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="getRoleBadgeClass(row.peran)">{{ row.peran }}</span></td>
+                <td class="p-3">{{ row.nomor_hp }}</td>
+                <td class="p-3 text-right space-x-2">
+                  <button v-show="isRoleAllowed(['Super Admin'])" @click="openEdit('pengguna', row)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs">Edit</button>
+                  <button v-show="isRoleAllowed(['Super Admin'])" @click="confirmDelete('pengguna', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs">Hapus</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 3: TABEL PAKET KURSUS -->
+      <div v-show="activeTab === 'tabPaket'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Daftar Paket Kursus</h2>
+            <p class="text-xs text-gray-500">Pilihan paket latihan menyetir dan biaya.</p>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" v-model="searchQuery.paket_kursus" placeholder="Cari paket..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+            <button v-show="isRoleAllowed(['Super Admin', 'Admin Pendaftaran'])" @click="openCreate('paket_kursus')" class="px-3 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700">
+              + Tambah Paket
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">ID</th>
+                <th class="p-3">Nama Paket</th>
+                <th class="p-3">Level</th>
+                <th class="p-3">Pertemuan</th>
+                <th class="p-3">Harga</th>
+                <th class="p-3">Lokasi</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr v-for="row in filteredTable('paket_kursus')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-500">{{ row.id }}</td>
+                <td class="p-3 font-semibold">{{ row.nama_paket }}</td>
+                <td class="p-3">{{ row.jenis_level }}</td>
+                <td class="p-3">{{ row.jumlah_pertemuan }} Sesi</td>
+                <td class="p-3 font-bold text-indigo-600">Rp {{ Number(row.harga_total).toLocaleString('id-ID') }}</td>
+                <td class="p-3">{{ row.lokasi_rekomendasi }}</td>
+                <td class="p-3 text-right space-x-2">
+                  <button v-show="isRoleAllowed(['Super Admin', 'Admin Pendaftaran'])" @click="openEdit('paket_kursus', row)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs">Edit</button>
+                  <button v-show="isRoleAllowed(['Super Admin'])" @click="confirmDelete('paket_kursus', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs">Hapus</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 4: TABEL JADWAL SESI -->
+      <div v-show="activeTab === 'tabJadwal'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Jadwal Sesi Latihan</h2>
+            <p class="text-xs text-gray-500">Jadwal latihan harian murid & mobil latih.</p>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" v-model="searchQuery.jadwal_sesi" placeholder="Cari jadwal..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+            <button v-show="isRoleAllowed(['Super Admin', 'Admin Pendaftaran', 'Murid'])" @click="openCreate('jadwal_sesi')" class="px-3 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700">
+              + Booking Jadwal
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">ID</th>
+                <th class="p-3">Tanggal & Jam</th>
+                <th class="p-3">Murid</th>
+                <th class="p-3">Paket</th>
+                <th class="p-3">Mobil</th>
+                <th class="p-3">Status</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr v-for="row in filteredTable('jadwal_sesi')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-500">{{ row.id }}</td>
+                <td class="p-3 font-semibold">{{ row.tanggal_latih }} ({{ row.jam_latih }})</td>
+                <td class="p-3">{{ getNamaPengguna(row.relasi_ke_pengguna) }}</td>
+                <td class="p-3">{{ getNamaPaket(row.relasi_ke_paket_kursus) }}</td>
+                <td class="p-3 font-mono text-xs">{{ row.nomor_polisi_mobil }}</td>
+                <td class="p-3"><span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="row.status === 'Selesai' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'">{{ row.status }}</span></td>
+                <td class="p-3 text-right space-x-2">
+                  <button v-show="isRoleAllowed(['Super Admin', 'Admin Pendaftaran'])" @click="openEdit('jadwal_sesi', row)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs">Edit</button>
+                  <button v-show="isRoleAllowed(['Super Admin'])" @click="confirmDelete('jadwal_sesi', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs">Hapus</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 5: TABEL LAPORAN SESI & LOG KENDARAAN -->
+      <div v-show="activeTab === 'tabLaporan'" class="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Laporan Sesi, Pengecekan Mobil & Pembayaran</h2>
+            <p class="text-xs text-gray-500">Evaluasi instruktur, cek rem tangan/spion, dan kwitansi.</p>
+          </div>
+          <div class="flex gap-2">
+            <input type="text" v-model="searchQuery.laporan_sesi" placeholder="Cari laporan..." class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg">
+            <button v-show="isRoleAllowed(['Super Admin', 'Admin Pendaftaran', 'Instruktur Mengemudi'])" @click="openCreate('laporan_sesi')" class="px-3 py-1.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700">
+              + Catat Laporan & Evaluasi
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
+              <tr>
+                <th class="p-3">ID Sesi</th>
+                <th class="p-3">Rem Tangan</th>
+                <th class="p-3">Spion</th>
+                <th class="p-3">Evaluasi Manuver</th>
+                <th class="p-3">Pembayaran</th>
+                <th class="p-3">Tanda Tangan</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+              <tr v-for="row in filteredTable('laporan_sesi')" :key="row.id" class="hover:bg-gray-50">
+                <td class="p-3 font-mono text-xs text-gray-500">{{ row.relasi_ke_jadwal_sesi }}</td>
+                <td class="p-3 text-xs">{{ row.cek_reman_tangan }}</td>
+                <td class="p-3 text-xs">{{ row.cek_spion }}</td>
+                <td class="p-3">
+                  <div class="font-semibold">{{ row.catatan_progres }}</div>
+                  <div class="text-xs text-gray-500">Skor Parkir: {{ row.teknik_parkir }}/100</div>
+                </td>
+                <td class="p-3">
+                  <div class="font-bold text-green-600">Rp {{ Number(row.nominal_dibayar || 0).toLocaleString('id-ID') }}</div>
+                  <div class="text-xs text-gray-500">{{ row.metode_pembayaran || 'Belum bayar' }}</div>
+                </td>
+                <td class="p-3">
+                  <span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="row.status_tanda_tangan === 'Selesai' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'">
+                    {{ row.status_tanda_tangan }}
+                  </span>
+                </td>
+                <td class="p-3 text-right space-x-2">
+                  <button v-show="isRoleAllowed(['Super Admin', 'Admin Pendaftaran', 'Instruktur Mengemudi'])" @click="openEdit('laporan_sesi', row)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs">Edit</button>
+                  <button v-show="isRoleAllowed(['Super Admin'])" @click="confirmDelete('laporan_sesi', row.id)" class="text-red-600 hover:text-red-900 font-semibold text-xs">Hapus</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. GENERIC REUSABLE MODAL (CREATE / EDIT) -->
+    <div v-if="modal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-screen overflow-y-auto">
+        <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+          <h3 class="text-lg font-bold text-gray-900">
+            {{ modal.isEdit ? 'Edit Data' : 'Tambah Data' }} {{ currentTableConfig.label }}
+          </h3>
+          <button @click="closeModal" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+        </div>
+
+        <form @submit.prevent="saveItem" class="space-y-4">
+          <div v-for="fld in currentTableConfig.fields" :key="fld.key">
+            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+              {{ fld.label }} <span v-if="fld.required" class="text-red-500">*</span>
+            </label>
+
+            <!-- Tipe Number -->
+            <input 
+              v-if="fld.type === 'number'"
+              type="number" 
+              v-model.number="modal.form[fld.key]" 
+              :required="fld.required"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+            />
+
+            <!-- Tipe Date -->
+            <input 
+              v-else-if="fld.type === 'date'"
+              type="date" 
+              v-model="modal.form[fld.key]" 
+              :required="fld.required"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+            />
+
+            <!-- Tipe Select -->
+            <select 
+              v-else-if="fld.type === 'select'"
+              v-model="modal.form[fld.key]" 
+              :required="fld.required"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+            >
+              <option value="">-- Pilih {{ fld.label }} --</option>
+              <option v-for="opt in fld.options" :key="opt" :value="opt">{{ opt }}</option>
+            </select>
+
+            <!-- Tipe Default Text -->
+            <input 
+              v-else
+              type="text" 
+              v-model="modal.form[fld.key]" 
+              :required="fld.required"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm"
+            />
+          </div>
+
+          <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+            <button type="button" @click="closeModal" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-semibold">
+              Batal
+            </button>
+            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-semibold shadow">
+              Simpan Data
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 4. GENERIC DELETE CONFIRMATION MODAL -->
+    <div v-if="deleteModal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+        <div class="w-12 h-12 mx-auto mb-3 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-xl font-bold">
+          ⚠️
+        </div>
+        <h3 class="text-lg font-bold text-gray-900 mb-2">Konfirmasi Hapus</h3>
+        <p class="text-sm text-gray-600 mb-6">Apakah Anda yakin ingin menghapus data ini dari sistem?</p>
+        <div class="flex justify-center gap-3">
+          <button type="button" @click="deleteModal.isOpen = false" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-semibold">
+            Batal
+          </button>
+          <button type="button" @click="executeDelete" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-semibold shadow">
+            Ya, Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. TOAST NOTIFICATION -->
+    <div 
+      v-if="toast.visible" 
+      :class="toast.type === 'success' ? 'bg-green-600' : (toast.type === 'error' ? 'bg-red-600' : 'bg-indigo-600')"
+      class="fixed bottom-6 right-6 text-white px-5 py-3 rounded-xl shadow-xl text-sm font-semibold transition z-50 flex items-center gap-2"
+    >
+      <span>{{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '❌' : 'ℹ️') }}</span>
+      <span>{{ toast.message }}</span>
+    </div>
+
+  </div>
+
+  <script>
+    // Konstanta Owner Dinamis dari Sesi
+    var OWNER_ROLE_NAME = "Super Admin";
+    if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;
+
+    // Pilar 1 Vue Scaffold Mixin
+    var Pilar1VueScaffoldMixin = {
+      data() {
+        return {
+          ownerRole: typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : 'Super Admin',
+          toast: { visible: false, message: '', type: 'info' }
+        };
+      },
+      methods: {
+        isRoleAllowed(roles) {
+          if (!this.currentRole) return false;
+          var owner = this.ownerRole || (typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : 'Super Admin');
+          if (owner && String(this.currentRole).trim().toLowerCase() === String(owner).trim().toLowerCase()) {
+            return true;
+          }
+          if (!roles) return false;
+          var allowed = (Array.isArray(roles) ? roles : String(roles).split(',')).map(function(r) { return String(r).trim().toLowerCase(); });
+          var cur = String(this.currentRole).trim().toLowerCase();
+          return allowed.indexOf(cur) !== -1 || allowed.indexOf('*') !== -1 || allowed.indexOf('all') !== -1;
+        },
+        showTab(tabId) {
+          this.activeTab = tabId;
+        },
+        loginAs(role) {
+          this.currentRole = role;
+          var matched = (this.demoAccounts || []).find(function(a) { return String(a.role).toLowerCase() === String(role).toLowerCase(); });
+          if (matched && matched.landingTab) {
+            this.showTab(matched.landingTab);
+          } else if (this.tabs && this.tabs.length) {
+            var firstAllowed = this.tabs.find(function(t) { return this.isRoleAllowed(t.roles); }.bind(this));
+            if (firstAllowed) this.showTab(firstAllowed.id);
+          }
+          this.showToast('Masuk sebagai ' + role, 'success');
+        },
+        logout() {
+          this.currentRole = '';
+          this.activeTab = '';
+          this.showToast('Berhasil keluar.', 'info');
+        },
+        showToast(msg, type) {
+          this.toast = { visible: true, message: msg, type: type || 'info' };
+          var self = this;
+          setTimeout(function() {
+            if (self.toast && self.toast.message === msg) self.toast.visible = false;
+          }, 3000);
+        }
+      }
+    };
+
+    // Auto-mixin wrapper untuk menjamin Pilar 1
+    (function ensureVueAppScaffold() {
+      if (typeof Vue !== 'undefined' && Vue.createApp && !Vue.__pilar1Patched) {
+        var _origCreateApp = Vue.createApp;
+        Vue.createApp = function(rootComp, rootProps) {
+          rootComp = rootComp || {};
+          rootComp.mixins = rootComp.mixins || [];
+          rootComp.mixins.push(Pilar1VueScaffoldMixin);
+          var app = _origCreateApp(rootComp, rootProps);
+          var _origMount = app.mount;
+          app.mount = function(container) {
+            var vm = _origMount.call(app, container);
+            if (typeof window !== 'undefined') window.vueApp = vm;
+            return vm;
+          };
+          return app;
+        };
+        Vue.__pilar1Patched = true;
+      }
+    })();
+
+    // Vue 3 App Instance
+    const app = Vue.createApp({
+      data() {
+        return {
+          currentRole: '',
+          activeTab: 'tabDasbor',
+          loginForm: { username: '', password: '' },
+          demoAccounts: [
+            { nama: 'Pak Bambang (Pemilik)', role: 'Super Admin', username: 'superadmin', password: 'superadmin123', landingTab: 'tabDasbor' },
+            { nama: 'Siti Rahma (Staf)', role: 'Admin Pendaftaran', username: 'adminpendaftaran', password: 'adminpendaftaran123', landingTab: 'tabJadwal' },
+            { nama: 'Pak Hendra (Instruktur)', role: 'Instruktur Mengemudi', username: 'instrukturmengemudi', password: 'instrukturmengemudi123', landingTab: 'tabLaporan' },
+            { nama: 'Budi Pratama (Siswa)', role: 'Murid', username: 'murid', password: 'murid123', landingTab: 'tabJadwal' }
+          ],
+          tabs: [
+            { id: 'tabDasbor', label: 'Dasbor Bisnis', roles: ['Super Admin'] },
+            { id: 'tabPengguna', label: 'Pengguna & Akun', roles: ['Super Admin'] },
+            { id: 'tabPaket', label: 'Paket Kursus', roles: ['Super Admin', 'Admin Pendaftaran'] },
+            { id: 'tabJadwal', label: 'Jadwal Latihan', roles: ['Super Admin', 'Admin Pendaftaran', 'Murid'] },
+            { id: 'tabLaporan', label: 'Laporan & Log Mobil', roles: ['Super Admin', 'Admin Pendaftaran', 'Instruktur Mengemudi'] }
+          ],
+          tablesConfig: {
+            pengguna: {
+              label: 'Pengguna',
+              fields: [
+                { key: 'nama', label: 'Nama Lengkap', type: 'text', required: true },
+                { key: 'peran', label: 'Peran', type: 'select', options: ['Super Admin', 'Admin Pendaftaran', 'Instruktur Mengemudi', 'Murid'], required: true },
+                { key: 'nomor_hp', label: 'Nomor HP', type: 'text', required: true }
+              ]
+            },
+            paket_kursus: {
+              label: 'Paket Kursus',
+              fields: [
+                { key: 'nama_paket', label: 'Nama Paket', type: 'text', required: true },
+                { key: 'jenis_level', label: 'Level', type: 'select', options: ['Dasar', 'Lanjut'], required: true },
+                { key: 'jumlah_pertemuan', label: 'Jumlah Pertemuan', type: 'number', required: true },
+                { key: 'harga_total', label: 'Harga (Rp)', type: 'number', required: true },
+                { key: 'lokasi_rekomendasi', label: 'Lokasi Rekomendasi', type: 'text', required: true }
+              ]
+            },
+            jadwal_sesi: {
+              label: 'Jadwal Sesi',
+              fields: [
+                { key: 'tanggal_latih', label: 'Tanggal Latihan', type: 'date', required: true },
+                { key: 'jam_latih', label: 'Jam Latihan (WIB)', type: 'text', required: true },
+                { key: 'nomor_polisi_mobil', label: 'No Polisi Mobil Latih', type: 'text', required: true },
+                { key: 'status', label: 'Status Jadwal', type: 'select', options: ['Terjadwal', 'Selesai'], required: true }
+              ]
+            },
+            laporan_sesi: {
+              label: 'Laporan Sesi',
+              fields: [
+                { key: 'relasi_ke_jadwal_sesi', label: 'ID Sesi Jadwal', type: 'text', required: true },
+                { key: 'cek_reman_tangan', label: 'Cek Rem Tangan', type: 'text', required: true },
+                { key: 'cek_spion', label: 'Cek Spion Tambahan', type: 'text', required: true },
+                { key: 'catatan_progres', label: 'Catatan Evaluasi Murid', type: 'text', required: true },
+                { key: 'teknik_parkir', label: 'Skor Manuver (1-100)', type: 'number', required: true },
+                { key: 'metode_pembayaran', label: 'Metode Pembayaran', type: 'select', options: ['Tunai', 'Transfer'], required: false },
+                { key: 'nominal_dibayar', label: 'Nominal Bayar (Rp)', type: 'number', required: false },
+                { key: 'status_tanda_tangan', label: 'Status Tanda Tangan', type: 'select', options: ['Diproses', 'Selesai', 'Menunggu Verifikasi'], required: true }
+              ]
+            }
+          },
+          searchQuery: {
+            pengguna: '',
+            paket_kursus: '',
+            jadwal_sesi: '',
+            laporan_sesi: ''
+          },
+          // Database Reaktif In-Memory
+          db: {
+            pengguna: [
+              { id: 'ID-001', nama: 'Budi Santoso', peran: 'Murid', nomor_hp: '081234567890' },
+              { id: 'ID-002', nama: 'Siti Rahma', peran: 'Instruktur Mengemudi', nomor_hp: '081987654321' },
+              { id: 'ID-003', nama: 'Ahmad Hidayat', peran: 'Admin Pendaftaran', nomor_hp: '081555666777' }
+            ],
+            paket_kursus: [
+              { id: 'IDp-001', nama_paket: 'Paket Pemula', harga_total: 1500000, jenis_level: 'Dasar', jumlah_pertemuan: 8, lokasi_rekomendasi: 'Jalanan Umum' },
+              { id: 'IDp-002', nama_paket: 'Paket Mahir', harga_total: 2200000, jenis_level: 'Lanjut', jumlah_pertemuan: 12, lokasi_rekomendasi: 'Balap' },
+              { id: 'IDp-003', nama_paket: 'Paket Intensif', harga_total: 1800000, jenis_level: 'Dasar', jumlah_pertemuan: 6, lokasi_rekomendasi: 'Jalanan Umum' }
+            ],
+            jadwal_sesi: [
+              { id: 'IDj-001', status: 'Selesai', jam_latih: '09:00', tanggal_latih: '2026-09-10', nomor_polisi_mobil: 'B 1234 XYZ', relasi_ke_pengguna: 'ID-001', relasi_ke_paket_kursus: 'IDp-001' },
+              { id: 'IDj-002', status: 'Terjadwal', jam_latih: '13:00', tanggal_latih: '2026-09-12', nomor_polisi_mobil: 'B 5678 PQR', relasi_ke_pengguna: 'ID-001', relasi_ke_paket_kursus: 'IDp-002' }
+            ],
+            laporan_sesi: [
+              { id: 'IDl-001', relasi_ke_jadwal_sesi: 'IDj-001', cek_spion: 'Sempurna', tanggal_bayar: '2026-09-10', teknik_parkir: 88, catatan_progres: 'Sangat baik', nominal_dibayar: 150000, cek_reman_tangan: 'Berfungsi Baik', metode_pembayaran: 'Transfer', status_tanda_tangan: 'Diproses' },
+              { id: 'IDl-002', relasi_ke_jadwal_sesi: 'IDj-002', cek_spion: 'Aman', tanggal_bayar: '2026-09-11', teknik_parkir: 75, catatan_progres: 'Perlu latihan', nominal_dibayar: 250000, cek_reman_tangan: 'Normal', metode_pembayaran: 'Tunai', status_tanda_tangan: 'Selesai' }
+            ]
+          },
+          modal: {
+            isOpen: false,
+            isEdit: false,
+            editId: null,
+            activeTable: '',
+            form: {}
+          },
+          deleteModal: {
+            isOpen: false,
+            activeTable: '',
+            targetId: null
+          }
+        };
+      },
+      computed: {
+        currentTableConfig() {
+          return this.tablesConfig[this.modal.activeTable] || { label: '', fields: [] };
+        },
+        totalPendapatan() {
+          return (this.db.laporan_sesi || []).reduce((acc, row) => acc + (Number(row.nominal_dibayar) || 0), 0);
+        }
+      },
+      methods: {
+        quickLogin(u, p) {
+          this.loginForm.username = u;
+          this.loginForm.password = p;
+          this.handleLogin();
+        },
+        handleLogin() {
+          const u = this.loginForm.username.toLowerCase().trim();
+          const p = this.loginForm.password.trim();
+          const acc = this.demoAccounts.find(a => a.username.toLowerCase() === u && a.password === p);
+          if (acc) {
+            this.loginAs(acc.role);
+          } else {
+            this.showToast('Username atau password salah!', 'error');
+          }
+        },
+        openCreate(table) {
+          this.modal.activeTable = table;
+          this.modal.isEdit = false;
+          this.modal.editId = null;
+          this.modal.form = {};
+          this.modal.isOpen = true;
+        },
+        openEdit(table, row) {
+          this.modal.activeTable = table;
+          this.modal.isEdit = true;
+          this.modal.editId = row.id;
+          this.modal.form = { ...row };
+          this.modal.isOpen = true;
+        },
+        closeModal() {
+          this.modal.isOpen = false;
+        },
+        saveItem() {
+          const table = this.modal.activeTable;
+          if (!table || !this.db[table]) return;
+
+          if (this.modal.isEdit) {
+            const idx = this.db[table].findIndex(item => String(item.id) === String(this.modal.editId));
+            if (idx !== -1) {
+              this.db[table][idx] = { ...this.modal.form };
+              this.showToast('Data berhasil diperbarui!', 'success');
+            }
+          } else {
+            const newId = 'ID-' + String(Date.now()).slice(-4);
+            this.db[table].push({ id: newId, ...this.modal.form });
+            this.showToast('Data berhasil ditambahkan!', 'success');
+          }
+          this.closeModal();
+        },
+        confirmDelete(table, id) {
+          this.deleteModal = {
+            isOpen: true,
+            activeTable: table,
+            targetId: id
+          };
+        },
+        executeDelete() {
+          const { activeTable, targetId } = this.deleteModal;
+          if (activeTable && this.db[activeTable]) {
+            this.db[activeTable] = this.db[activeTable].filter(item => String(item.id) !== String(targetId));
+            this.showToast('Data berhasil dihapus!', 'success');
+          }
+          this.deleteModal.isOpen = false;
+        },
+        filteredTable(table) {
+          const q = (this.searchQuery[table] || '').toLowerCase().trim();
+          const rows = this.db[table] || [];
+          if (!q) return rows;
+          return rows.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(q)));
+        },
+        getNamaPengguna(id) {
+          const p = this.db.pengguna.find(item => item.id === id);
+          return p ? p.nama : id;
+        },
+        getNamaPaket(id) {
+          const p = this.db.paket_kursus.find(item => item.id === id);
+          return p ? p.nama_paket : id;
+        },
+        getRoleBadgeClass(peran) {
+          switch(peran) {
+            case 'Super Admin': return 'bg-purple-100 text-purple-800';
+            case 'Admin Pendaftaran': return 'bg-blue-100 text-blue-800';
+            case 'Instruktur Mengemudi': return 'bg-yellow-100 text-yellow-800';
+            default: return 'bg-green-100 text-green-800';
+          }
+        }
+      }
+    });
+
+    const vm = app.mount('#app');
+  </script>
+</body>
+</html>

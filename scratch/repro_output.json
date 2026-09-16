@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "provider": "gemini",
+  "replyText": "⚠️ **Pembuatan kode belum berhasil melewati validasi integritas otomatis.**\n\n🔍 **Detail kendala:** MISMATCH_HANDLER: Fungsi \"bukaModalPengguna\" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>.; MISMATCH_HANDLER: Fungsi \"bukaModalPaket\" dipanggil di onclick HTML tetapi TIDAK didefinisikan di dalam tag <script>..\n\n💡 **Saran Tindakan:** Gunakan tombol di bawah untuk mencoba lagi, atau minta versi yang lebih sederhana terlebih dahulu.",
+  "code": null,
+  "isContinued": false,
+  "suggestSimplify": true,
+  "suggestedRetryPrompt": "buatkan prototipe sekarang",
+  "suggestedSimplifyPrompt": "buatkan prototipe versi sederhana dulu, fokus hanya 2 role utama: Super Admin dan Admin Pendaftaran"
+}
