@@ -35,15 +35,16 @@ npx tsx tests/actor_classification_and_owner_role.test.ts
 npx tsx tests/bug1a_and_1b_fix.test.ts
 npx tsx tests/product_variant_question.test.ts
 npx tsx tests/laundry_schema_tabs_and_tailwind_active.test.ts
+npx tsx tests/laundry_null_safety_and_string_guard.test.ts
 ```
 
 > Catatan: `npx tsx` (bukan `npx`) dipakai karena seluruh suite ditulis sebagai TypeScript dan mengimpor modul `src/` secara langsung.
 
 ---
 
-## 2. Daftar 18 Test Suite Aktif & Cakupan Pengujian
+## 2. Daftar 19 Test Suite Aktif & Cakupan Pengujian
 
-Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests) berisi **19 file** total: 18 file `*.test.ts` (terdaftar di bawah) + 1 master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/run_all.ts).
+Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests) berisi **20 file** total: 19 file `*.test.ts` (terdaftar di bawah) + 1 master runner [`tests/run_all.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/run_all.ts).
 
 | No | File Test | Fokus & Cakupan Pengujian | Status |
 |---|---|---|---|
@@ -65,6 +66,7 @@ Direktori [`tests/`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-apli
 | **16** | [`tests/bug1a_and_1b_fix.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/bug1a_and_1b_fix.test.ts) | **Bug 1a (Dangling Config Reference) & Bug 1b (ownerRole Priority)**<br>**Bug 1a:** deteksi `DANGLING_CONFIG_REFERENCE` dan repair menghasilkan `canEditCurrentTab` multi-role yang resilien. **Bug 1b:** eliminasi pelimpahan tugas salah (`tugasDilimpahkan`) pada `ENTITAS_DATA`, serta kepastian `ownerRole` diisi tepat pada field `terdaftar_oleh` (Simulasi DB = ID pegawai administrasi, bukan Instruktur). | ✅ PASS |
 | **17** | [`tests/product_variant_question.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/product_variant_question.test.ts) | **Fitur Baru: Pertanyaan Variasi Produk/Layanan & Nilai Katalog Simulasi DB**<br>Pertanyaan variasi produk di awal alur (**SEBELUM** klarifikasi aktor), append penanda `[Variasi Produk: ...]` ke narasi untuk heuristik Bagian D (3 Lapis), default Tunggal, skip untuk bisnis transaksional jelas (bengkel, warung, laundry kiloan) & operasional internal (CRM), TANPA allowlist domain (studio tato/bimbel/ternak tetap ditanya), serta nilai varian riil user dipakai di tabel katalog Simulasi DB. | ✅ PASS |
 | **18** | [`tests/laundry_schema_tabs_and_tailwind_active.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/laundry_schema_tabs_and_tailwind_active.test.ts) | **Regresi Role Tab Ampersand & Tailwind v4 Native Variants**<br>Verifikasi penanganan karakter khusus (`&`) pada nama role seperti `Staf Pencuci & Setrika` agar tidak memicu `ROLE_MISSING_TAB_NAVIGATION`, serta memastikan variant modern (`active:scale-95`, `active:bg-blue-700`, dsb) dipertahankan dan lolos validasi tanpa dipangkas regex. | ✅ PASS |
+| **19** | [`tests/laundry_null_safety_and_string_guard.test.ts`](file:///Users/macbook/Documents/Vibecoding/mudah-bikin-aplikasi/tests/laundry_null_safety_and_string_guard.test.ts) | **3-Tier Null Safety Modal CRUD, Stringified-Guard Repair, & CDN Dedup**<br>Mencegah blank screen saat initial render (Lapis 1 `v-if="modal.isOpen && currentTableConfig"`, Lapis 2 default `{ label: '', fields: [] }`, Lapis 3 `?.`). Memperbaiki regex stringified-guard agar menangkap seluruh member expression (`data.id`, `this.activeTab`) alih-alih merusak kode menjadi `String(data).id`, auto-clean jejak lama, validator warning `MALFORMED_STRING_GUARD`, dan dedup CDN Tailwind/Vue/Lucide di `buildSrcDoc.ts`. | ✅ PASS |
 
 ---
 

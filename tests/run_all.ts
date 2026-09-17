@@ -113,6 +113,12 @@ const testFiles = [
     name: 'Skema Laundry Tab Repair (& chars) & Tailwind active: Variant Cleanup',
     file: 'tests/laundry_schema_tabs_and_tailwind_active.test.ts',
     desc: 'Auto-repair non-blocking untuk peran dengan karakter khusus (&, /, -, ()), bracket depth balancing, dan pembersihan otomatis variant active:*/disabled:* dengan alternatif CSS :active'
+  },
+  {
+    id: 19,
+    name: 'Laundry Null-Safety Modal, String Guard & CDN Dedup',
+    file: 'tests/laundry_null_safety_and_string_guard.test.ts',
+    desc: 'Anti-crash 3-lapis modal CRUD (v-if, data default, optional chaining), perbaikan stringified-guard member expression, auto-clean String(x).prop, dan dedup CDN Tailwind/Vue/Lucide'
   }
 ];
 

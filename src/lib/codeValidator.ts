@@ -1191,12 +1191,41 @@ function showToast(msg, type = 'info') {
   // Pastikan tombol Hapus memiliki class="btn-danger" jika belum ada
   repairedHtml = repairedHtml.replace(/<button(?![^>]*class=)([^>]*onclick=["'][^"']*(?:hapus|delete|remove|openModal)[^"']*["'][^>]*)>/gi, '<button class="btn-danger"$1>');
 
-  // 4. Perbaikan Otomatis Perbandingan ID (Stringified Guard)
-  // Ubah `item.id !== id` atau `item.id != id` menjadi `String(item.id) !== String(id)`
+  // 4. Perbaikan Otomatis Perbandingan ID (Robust Stringified Guard)
+  // Ubah `item.id !== id` atau `r.id === data.id` menjadi `String(item.id) !== String(id)` dan `String(r.id) === String(data.id)`
+  // WAJIB: Tangkap seluruh member expression (termasuk .id, .activeTab, dll) agar tidak memotong operand kedua!
   if (repairedHtml.includes('.id !==') || repairedHtml.includes('.id !=') || repairedHtml.includes('.id ===') || repairedHtml.includes('.id ==')) {
-    repairedHtml = repairedHtml.replace(/(\w+)\.id\s*!==\s*([a-zA-Z0-9_$]+)/g, 'String($1.id) !== String($2)');
-    repairedHtml = repairedHtml.replace(/(\w+)\.id\s*===\s*([a-zA-Z0-9_$]+)/g, 'String($1.id) === String($2)');
+    const memberExpr = '([a-zA-Z_$][a-zA-Z0-9_$]*(?:\\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)';
+    const neqRegex = new RegExp(`(?<!String\\()(\\b[a-zA-Z_$][a-zA-Z0-9_$]*)\\.id\\s*!==\\s*(?!String\\()${memberExpr}`, 'g');
+    const eqRegex = new RegExp(`(?<!String\\()(\\b[a-zA-Z_$][a-zA-Z0-9_$]*)\\.id\\s*===\\s*(?!String\\()${memberExpr}`, 'g');
+    repairedHtml = repairedHtml.replace(neqRegex, 'String($1.id) !== String($2)');
+    repairedHtml = repairedHtml.replace(eqRegex, 'String($1.id) === String($2)');
   }
+
+  // 4b. Pembersihan Otomatis Pola Anomali String(x).properti -> String(x.properti)
+  // Menangani sisa regex salah format lama atau kode yang salah membungkus operand sebelum properti
+  repairedHtml = repairedHtml.replace(/String\(([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\)\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g, 'String($1.$2)');
+
+  // 4c. Validator Deteksi Pola Rusak String(x).properti
+  const malformedStringGuardRegex = /String\([^)]+\)\.[a-zA-Z_$][a-zA-Z0-9_$]*/g;
+  let malformedMatch: RegExpExecArray | null;
+  while ((malformedMatch = malformedStringGuardRegex.exec(repairedHtml)) !== null) {
+    issues.push(`MALFORMED_STRING_GUARD: Ditemukan pemanggilan properti pada hasil String(): "${malformedMatch[0]}". Operasi ini menghasilkan undefined karena operand yang salah dibungkus String().`);
+  }
+
+  // 4d. Anti-Crash Vue 3: Null-Safety currentTableConfig & Modal CRUD Container (Lapis 1, 2, 3)
+  // Lapis 1: Ubah v-show pada modal container menjadi v-if="... && currentTableConfig"
+  if (repairedHtml.includes('currentTableConfig') && /v-show=["']modal\.isOpen["']/.test(repairedHtml)) {
+    repairedHtml = repairedHtml.replace(/v-show=["']modal\.isOpen["']/g, 'v-if="modal.isOpen && currentTableConfig"');
+  }
+
+  // Lapis 2: Pastikan default currentTableConfig di data() adalah objek aman { label: '', fields: [] }, bukan null
+  repairedHtml = repairedHtml.replace(/currentTableConfig\s*:\s*null\s*,?/g, "currentTableConfig: { label: '', fields: [] },");
+
+  // Lapis 3: Tambahkan safe optional chaining (?.) pada referensi currentTableConfig di template
+  repairedHtml = repairedHtml.replace(/currentTableConfig\.(label|fields|roles|allowRoles)/g, (match, prop) => {
+    return `currentTableConfig?.${prop}`;
+  });
 
   // 5. Cek & Perbaiki Larangan `confirm()`, `alert()`, dan `prompt()` (PRD Bagian 7)
   const forbiddenApis = ['confirm(', 'alert(', 'prompt('];

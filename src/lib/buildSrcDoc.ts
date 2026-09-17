@@ -1055,12 +1055,18 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       cleanDoc += '\n</html>';
     }
 
-    // Normalisasi script Tailwind lama (v3 Play CDN / v2 precompiled link) ke Tailwind v4 Browser build
+    // Dedup CDN: Hapus tag CDN Tailwind, Vue 3, dan Lucide yang digenerate AI dari dokumen
+    // agar hanya termuat 1 kali secara deterministik dari baseHeaders (mencegah overwrite window.Vue & double JIT)
     cleanDoc = cleanDoc
-      .replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>/gi, '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>')
-      .replace(/<link[^>]*tailwindcss@2\.2\.19[^>]*>/gi, '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>');
+      .replace(/<script[^>]*@tailwindcss\/browser@[^>]*><\/script>\s*/gi, '')
+      .replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>\s*/gi, '')
+      .replace(/<link[^>]*tailwindcss[^>]*>\s*/gi, '')
+      .replace(/<script[^>]*vue@[^>]*><\/script>\s*/gi, '')
+      .replace(/<script[^>]*vue\.global\.js[^>]*><\/script>\s*/gi, '')
+      .replace(/<script[^>]*lucide@[^>]*><\/script>\s*/gi, '')
+      .replace(/<script[^>]*lucide(?:\.min)?\.js[^>]*><\/script>\s*/gi, '');
 
-    // Masukkan Google Fonts dan Base Resets ke dalam <head> jika belum ada
+    // Masukkan Google Fonts, CDN resmi deterministik, dan Base Resets ke dalam <head> jika belum ada
     if (!cleanDoc.includes('Plus+Jakarta+Sans')) {
       if (cleanDoc.includes('<head>')) {
         cleanDoc = cleanDoc.replace('<head>', `<head>${baseHeaders}`);
