@@ -7,11 +7,19 @@ import { getMasterTemplateById } from '../masterTemplates';
 import { getRoleCategory } from '../../rolePolicy';
 import type {
   ActorClassification,
+  BusinessFormula,
+  DomainProfile,
+  EntityDataCardItem,
   GuidedStepOption,
   GuidedStepPayload,
   GuidedStepId,
   MockupSessionState,
-  SessionStep
+  ReferensiModulItem,
+  ReferensiModulRole,
+  RoleModuleChecklistGroup,
+  RoleModuleChecklistItem,
+  SessionStep,
+  ViewConfig
 } from './types';
 
 /**
@@ -23,9 +31,11 @@ export const REQUIRED_ROLE = 'Super Admin';
 
 export const SESSION_STEP_ORDER: SessionStep[] = [
   'STORYTELLING',
+  'DOMAIN_PROFILE',
   'ROLE',
   'ALUR',
   'RBAC',
+  'FORMULA',
   'SKEMA_DATA',
   'SIMULASI_DB',
   'REVIEW_FINAL'
@@ -42,6 +52,7 @@ export const GUIDED_STEP_METADATA: { step: SessionStep; label: string; descripti
   { step: 'ROLE', label: 'Role & Tanggung Jawab', description: 'Penetapan pelaku & hak wewenang' },
   { step: 'ALUR', label: 'Alur Sistem & Fitur', description: 'Urutan aktivitas utama & fitur MVP' },
   { step: 'RBAC', label: 'Matriks Hak Akses (RBAC)', description: 'Izin akses tiap peran per modul' },
+  { step: 'FORMULA', label: 'Deklarasi Formula & Kalkulasi', description: 'Rumus otomatis & field terhitung' },
   { step: 'SKEMA_DATA', label: 'Skema Database & Relasi', description: 'Struktur tabel, kolom, & relasi' },
   { step: 'SIMULASI_DB', label: 'Simulasi Database & Akun Demo', description: 'Data contoh & akun login' },
   { step: 'REVIEW_FINAL', label: 'Ringkasan Akhir', description: 'Gate akhir sebelum buat prototipe' }
@@ -138,6 +149,13 @@ export function generateChangeNote(targetStep: SessionStep, session: MockupSessi
       return `> 💡 **Catatan Penyesuaian:** Modul RBAC diselaraskan dengan cakupan alur kerja terbaru.`;
     } else if (snapshot.lastModifiedStep === 'ROLE' || snapshot.lastModifiedStep === 'ALUR') {
       return `> 💡 **Catatan Penyesuaian:** Matriks hak akses (RBAC) telah diselaraskan dengan daftar peran dan alur kerja terbaru.`;
+    }
+    return null;
+  }
+
+  if (targetStep === 'FORMULA') {
+    if (snapshot.lastModifiedStep === 'ROLE' || snapshot.lastModifiedStep === 'ALUR' || snapshot.lastModifiedStep === 'RBAC') {
+      return `> 💡 **Catatan Penyesuaian:** Formula kalkulasi dianalisis ulang sesuai dengan alur kerja dan wewenang modul terbaru.`;
     }
     return null;
   }
@@ -351,11 +369,12 @@ function dedupeOptions(options: GuidedStepOption[]): GuidedStepOption[] {
  */
 export function isGovernanceRole(
   label: string,
-  detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>
+  detailAktor?: Record<string, { narasi: string; tanggungJawab: string[] }>,
+  session?: MockupSessionState | null
 ): boolean {
   if (!label) return false;
   const clean = label.trim();
-  if (isSuperAdminRole(clean) || isExternalRole(clean)) return false;
+  if (isSuperAdminRole(clean) || isActorEntityData(session, clean) || isExternalRole(clean, session)) return false;
 
   // 1. PRIORITAS UTAMA: Analisis Konseptual dari Isi Tanggung Jawab (Hasil AI Step ROLE)
   if (detailAktor) {
@@ -422,6 +441,10 @@ export function isExternalRole(label: string, session?: MockupSessionState | nul
     );
     if (found) {
       return found.category === 'ENTITAS_DATA';
+    }
+    // Jika aktor adalah Super Admin atau peran sistem yang ada di session.roles.selected, pasti bukan peran eksternal
+    if (isSuperAdminRole(clean) || (session.roles?.selected || []).some((r) => r.toLowerCase() === clean.toLowerCase())) {
+      return false;
     }
   }
 
@@ -1159,6 +1182,76 @@ export function deduplicateRoleOptionsSemantically(options: GuidedStepOption[]):
   return result;
 }
 
+export function renderDomainProfileMarkdown(profile: DomainProfile, businessName: string): string {
+  const opLabel = profile.modelOperasional === 'DI_TEMPAT'
+    ? '🏢 Operasional Langsung di Lokasi (Di Tempat / Counter)'
+    : profile.modelOperasional === 'PENGIRIMAN_LOGISTIK'
+    ? '🚚 Pengiriman & Antar-Jemput (Logistik / Kurir)'
+    : '💻 Layanan Digital / Mandiri';
+
+  const tarifLabel = profile.modelTarif === 'SEWA_DURASI'
+    ? '⏱️ Berdasarkan Durasi Waktu Sewa (Jam / Hari)'
+    : profile.modelTarif === 'BERAT_TIMBANGAN'
+    ? '⚖️ Berdasarkan Berat / Timbangan (Kg)'
+    : profile.modelTarif === 'PER_ITEM'
+    ? '📦 Berdasarkan Kuantitas per Item / Produk'
+    : '📋 Biaya Paket Jasa / Pendaftaran';
+
+  let md = `### 🗺️ Peta Profil & Kelaziman Bisnis: **${businessName}**\n\n`;
+  md += `- **Model Operasional**: ${opLabel}\n`;
+  md += `- **Model Tarif & Kalkulasi**: ${tarifLabel}\n`;
+  md += `- **Jaminan / Deposit**: ${profile.adaJaminanDeposit ? `✅ Ada (${profile.fungsiDeposit || 'Jaminan unit fisik'})` : '❌ Tidak Ada'}\n`;
+  md += `- **Katalog Master**: \`${profile.entitasKatalogMaster?.join('`, `') || '-'}\`\n`;
+  md += `- **Pencatatan Transaksi**: \`${profile.entitasPencatatanTransaksi?.join('`, `') || '-'}\`\n`;
+  md += `- **Whitelist Komponen Biaya Sah**: \`${profile.komponenBiayaYangLazim?.join('`, `') || '-'}\`\n`;
+  if (profile.referensiAlurKerjaLazim && profile.referensiAlurKerjaLazim.length > 0) {
+    md += `- **Referensi Alur Kerja Lazim Industri**:\n`;
+    for (const ref of profile.referensiAlurKerjaLazim) {
+      const modulList = ref.modul.map((m) => m.nama).join(', ');
+      md += `  * *${ref.role}*: ${modulList}\n`;
+    }
+  }
+  if (profile.catatanOperasional) {
+    md += `\n> 💡 *Catatan Batasan Bisnis*: ${profile.catatanOperasional}\n`;
+  }
+  return md;
+}
+
+export function buildDomainProfileStep(session: MockupSessionState): GuidedStepPayload {
+  const isRevising = Boolean(session.domainProfile?.revisiCount && session.domainProfile.revisiCount > 0);
+  const profile = session.domainProfile;
+
+  return {
+    stepId: 'DOMAIN_PROFILE',
+    title: 'Peta Pemahaman Profil & Batasan Bisnis Aplikasi',
+    multi: false,
+    allowOther: false,
+    domainProfile: profile,
+    options: [
+      {
+        id: 'confirm_domain_profile',
+        label: '✅ Pemahaman domain sudah pas, lanjut ke Pemilihan Peran',
+        recommended: true,
+        description: profile
+          ? `Model operasional (${profile.modelOperasional}), model tarif (${profile.modelTarif}), dan ${profile.komponenBiayaYangLazim?.length || 0} whitelist komponen biaya sudah sesuai.`
+          : 'Lanjut ke pemilihan peran pengguna dan tanggung jawab aplikasi.'
+      },
+      {
+        id: 'koreksi_domain_profile',
+        label: isRevising ? '✏️ Masih ada koreksi pemahaman profil bisnis' : '✏️ Ada koreksi profil / tambah komponen biaya lazim',
+        description: 'Tuliskan koreksi jika ada model operasional yang keliru atau komponen biaya sah yang terlewat.',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Bisnis ini ada biaya asuransi per sewa, atau operasionalnya melayani antar-jemput...'
+      }
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah narasi cerita',
+      description: 'Kembali ke langkah cerita alur bisnis awal untuk memeriksa atau memperbaiki narasi.'
+    }
+  };
+}
+
 function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   const seen = new Set<string>([canonicalRoleKey(REQUIRED_ROLE)]);
   const candidateLabels: string[] = [];
@@ -1238,12 +1331,72 @@ function buildRoleStep(session: MockupSessionState): GuidedStepPayload {
   // POIN REVISI 4: Deduplikasi semantik lapis kedua (mengecek kesamaan tanggung jawab antar role)
   const finalOptions = deduplicateRoleOptionsSemantically(options).slice(0, 10);
 
+  // Kumpulkan daftar ENTITAS_DATA (Non-Login) dari klasifikasi aktor sebelumnya
+  const classifications =
+    session.actorsClassification && session.actorsClassification.length > 0
+      ? session.actorsClassification
+      : analyzeActorClassification(session).classifications;
+
+  const entityDataList: EntityDataCardItem[] = [];
+  const seenEntities = new Set<string>();
+
+  for (const ac of classifications) {
+    if (ac.category === 'ENTITAS_DATA') {
+      const cleanName = ac.actor.trim();
+      const lower = cleanName.toLowerCase();
+      if (!cleanName || seenEntities.has(lower)) continue;
+      seenEntities.add(lower);
+
+      const owner = ac.ownerRole || coreRole || REQUIRED_ROLE;
+      const detail = session.storyline?.detailAktor?.[cleanName];
+
+      let desc = detail?.narasi || '';
+      if (!desc) {
+        if (ac.reason) {
+          desc = ac.reason.replace(/^🤖\s*Saran:\s*/i, '');
+        } else {
+          desc = `Dicatat dan dikelola oleh ${owner}.`;
+        }
+      }
+      if (!/entitas data/i.test(desc)) {
+        desc = `Entitas Data — dicatat & dikelola oleh ${owner}. ${desc}`.trim();
+      }
+
+      entityDataList.push({
+        id: cleanName,
+        name: cleanName,
+        description: desc,
+        ownerRole: owner
+      });
+    }
+  }
+
+  // Fallback cek asumsiAktor jika ada aktor yang terdeteksi sebagai entitas data tapi belum tercatat
+  if (session.storyline?.asumsiAktor) {
+    for (const a of session.storyline.asumsiAktor) {
+      const clean = a.trim();
+      const lower = clean.toLowerCase();
+      if (!clean || seenEntities.has(lower)) continue;
+      if (isActorEntityData(session, clean)) {
+        seenEntities.add(lower);
+        const owner = coreRole || REQUIRED_ROLE;
+        entityDataList.push({
+          id: clean,
+          name: clean,
+          description: `Entitas Data — dicatat & dikelola oleh ${owner}.`,
+          ownerRole: owner
+        });
+      }
+    }
+  }
+
   return {
     stepId: 'ROLE',
     title: 'Pilih peran pengguna & pembagian tanggung jawab aplikasi',
     multi: true,
     allowOther: true,
     options: finalOptions,
+    entityDataList: entityDataList.length > 0 ? entityDataList : undefined,
     backNavOption: {
       id: 'back_to_previous',
       label: '⬅️ Ada yang terlewat di langkah sebelumnya',
@@ -1285,36 +1438,72 @@ export interface DomainFlowData {
 /**
  * Resolves an actor role for a workflow step, obeying task delegation.
  * If a role was removed/unselected in Step ROLE, it automatically maps to the delegated role (Super Admin / Owner).
+ * Mempertahankan ENTITAS_DATA / peran eksternal (Pelanggan, Siswa, Penyewa, dsb) sebagai pelaku naratif yang sah di dunia bisnis.
  */
 export function resolveActorForStep(
   targetRole: string,
-  rolesState?: MockupSessionState['roles']
+  rolesState?: MockupSessionState['roles'],
+  session?: MockupSessionState | null
 ): string {
-  if (!rolesState) return targetRole;
+  if (!rolesState && !session) return targetRole;
 
-  const selected = rolesState.selected || [];
+  const selected = rolesState?.selected || [];
   if (selected.includes(targetRole)) {
     return targetRole;
   }
 
   const targetKey = canonicalRoleKey(targetRole);
 
-  // 1. Jika role target adalah eksternal (customer/guest/warga/penyewa/dst)
+  // 1. Jika role target adalah eksternal / ENTITAS_DATA (customer/guest/warga/penyewa/siswa/dst)
   if (
     targetKey === 'customer' ||
     targetKey === 'guest' ||
-    isExternalRole(targetRole) ||
+    isActorEntityData(session, targetRole) ||
+    isExternalRole(targetRole, session) ||
     /^(pelanggan|pembeli|tamu|pasien|siswa|murid|wali|penyewa|klien|warga|anggota|nasabah)\b/i.test(targetRole)
   ) {
-    // Cari peran eksternal yang nyata-nyata ada di selected roles
-    const externalInSelected = selected.find((r) => isExternalRole(r));
+    // Cari peran eksternal yang nyata-nyata ada di selected roles (jika sistem mengizinkan login peran eksternal)
+    const externalInSelected = selected.find((r) => isActorEntityData(session, r) || isExternalRole(r, session));
     if (externalInSelected) {
       return externalInSelected;
     }
+
+    // JIKA TIDAK ADA DI SELECTED ROLES: JANGAN DITIMPA MENJADI STAF / ADMIN!
+    // Entitas Data / peran eksternal adalah pelaku naratif di dunia nyata, bukan akun login sistem.
+    // Jika ada nama entitas data yang spesifik di session.actorsClassification atau storyline.asumsiAktor, gunakan:
+    if (session?.actorsClassification && session.actorsClassification.length > 0) {
+      const entityMatch = session.actorsClassification.find(
+        (a) => a.category === 'ENTITAS_DATA' &&
+          (a.actor.trim().toLowerCase() === targetRole.trim().toLowerCase() ||
+           canonicalRoleKey(a.actor) === targetKey ||
+           targetRole.toLowerCase().includes(a.actor.toLowerCase()) ||
+           a.actor.toLowerCase().includes(targetRole.toLowerCase()))
+      );
+      if (entityMatch) {
+        return entityMatch.actor;
+      }
+    }
+    if (session?.storyline?.asumsiAktor) {
+      const storyMatch = session.storyline.asumsiAktor.find(
+        (a) => a.trim().toLowerCase() === targetRole.trim().toLowerCase() ||
+          canonicalRoleKey(a) === targetKey ||
+          targetRole.toLowerCase().includes(a.toLowerCase()) ||
+          a.toLowerCase().includes(targetRole.toLowerCase())
+      );
+      if (storyMatch) {
+        return storyMatch;
+      }
+    }
+
+    // Jika targetRole sendiri sudah berupa nama entitas yang spesifik (misal Pelanggan, Siswa), pertahankan!
+    if (targetKey !== 'customer' && targetKey !== 'guest') {
+      return targetRole;
+    }
+    return 'Pelanggan';
   }
 
   // 2. Cek apakah ada tugas yang dilimpahkan dari role ini
-  const delegation = rolesState.tugasDilimpahkan?.find(
+  const delegation = rolesState?.tugasDilimpahkan?.find(
     (d) =>
       canonicalRoleKey(d.dariRole) === targetKey ||
       d.dariRole.trim().toLowerCase() === targetRole.trim().toLowerCase() ||
@@ -1406,8 +1595,8 @@ function generateSemanticSupportingFlows(
   );
 
   // Periksa peran governance / pengambil keputusan / pengawas
-  const governanceCandidate = session.roles?.selected?.find((r) => isGovernanceRole(r, session.storyline?.detailAktor));
-  const reviewerActor = governanceCandidate ? resolveActorForStep(governanceCandidate, session.roles) : activeOwner;
+  const governanceCandidate = session.roles?.selected?.find((r) => isGovernanceRole(r, session.storyline?.detailAktor, session));
+  const reviewerActor = governanceCandidate ? resolveActorForStep(governanceCandidate, session.roles, session) : activeOwner;
   const alur1Actor = customerActor.toLowerCase() !== activeCore.toLowerCase() ? customerActor : activeCore;
 
   // 1. EKSTRAKSI DETAIL MASALAH OPERASIONAL KONKRET (Untuk Alur Pendukung 1)
@@ -1634,7 +1823,7 @@ export function getDomainFlowDetails(
 
   const activeOwner = REQUIRED_ROLE; // 'Super Admin'
   const coreRole = session.roles?.wajib?.find((r) => r !== REQUIRED_ROLE) || detectCoreOperationalRole(session);
-  const activeCore = resolveActorForStep(coreRole, session.roles);
+  const activeCore = resolveActorForStep(coreRole, session.roles, session);
 
   // Helper untuk mencari aktor yang ada di session roles atau storyline
   const findActor = (pattern: RegExp, defaultName: string): string => {
@@ -1647,25 +1836,39 @@ export function getDomainFlowDetails(
       }
     }
 
-    // 2. Jika mencari peran eksternal/pelanggan, cari peran eksternal apa pun yang ada di selected
-    if (/pelanggan|customer|warga|pasien|penyewa|klien|member/i.test(pattern.source)) {
-      const extInSelected = selected.find((r) => isActorEntityData(session, r));
-      if (extInSelected) {
-        return extInSelected;
+    // 2. Cari dari actorsClassification yang tergolong ENTITAS_DATA
+    const entityActors = (session.actorsClassification || [])
+      .filter((a) => a.category === 'ENTITAS_DATA')
+      .map((a) => a.actor);
+    for (const ent of entityActors) {
+      if (pattern.test(ent)) {
+        return ent;
       }
     }
 
-    // 3. Cari dari kandidat storyline
+    // 3. Cari dari kandidat storyline (asumsiAktor)
     const candidates = [
       ...selected,
       ...(session.storyline?.asumsiAktor || [])
     ];
     for (const c of candidates) {
       if (pattern.test(c)) {
-        return resolveActorForStep(c, session.roles);
+        if (isActorEntityData(session, c) || /pelanggan|penyewa|pasien|pembeli|klien|member|siswa|murid|warga|anggota|nasabah/i.test(c)) {
+          return c;
+        }
+        return resolveActorForStep(c, session.roles, session);
       }
     }
-    return resolveActorForStep(defaultName, session.roles);
+
+    if (/pelanggan|penyewa|pasien|pembeli|klien|member|siswa|murid|warga|anggota|nasabah/i.test(defaultName) && entityActors.length > 0) {
+      return entityActors[0];
+    }
+
+    if (isActorEntityData(session, defaultName) || /pelanggan|penyewa|pasien|pembeli|klien|member|siswa|murid|warga|anggota|nasabah/i.test(defaultName)) {
+      return defaultName;
+    }
+
+    return resolveActorForStep(defaultName, session.roles, session);
   };
 
   const rawSteps: { pelaku: string; aksi: string }[] = [];
@@ -1676,12 +1879,17 @@ export function getDomainFlowDetails(
   // Menggunakan ekstraksi fase multi-layer dari asumsiAlurUtama dan narasi
   const phases = extractFlowPhasesFromStoryline(session);
 
-  const knownActors = [
+  const entityDataActors = (session.actorsClassification || [])
+    .filter((a) => a.category === 'ENTITAS_DATA')
+    .map((a) => a.actor);
+
+  const knownActors = Array.from(new Set([
     ...(session.roles?.selected || []),
+    ...entityDataActors,
     ...(session.storyline?.asumsiAktor || []),
     activeCore,
     activeOwner
-  ];
+  ]));
 
   if (phases.length >= 2) {
     phases.forEach((phase, idx) => {
@@ -1693,13 +1901,16 @@ export function getDomainFlowDetails(
       // Diurutkan berdasarkan panjang string descending agar nama peran lengkap (misal "Warga Penjual") dicocokkan sebelum parsial
       const sortedKnownActors = Array.from(new Set(knownActors)).sort((a, b) => b.length - a.length);
 
+      // Bersihkan tanda kutip pembuka dan spasi jika ada (misal "Pelanggan" atau 'Siswa')
+      const cleanLowerPhase = lowerPhase.replace(/^["'«“\s]+/, '');
+
       for (const actor of sortedKnownActors) {
         const cleanActor = actor.trim();
         if (!cleanActor) continue;
         const cleanLower = cleanActor.toLowerCase();
 
         // Cocokkan nama peran utuh di awal kalimat
-        if (new RegExp(`^${cleanLower}\\b`, 'i').test(lowerPhase)) {
+        if (new RegExp(`^${cleanLower}\\b`, 'i').test(cleanLowerPhase)) {
           matchedRole = cleanActor;
           break;
         }
@@ -1707,7 +1918,7 @@ export function getDomainFlowDetails(
         // Cocokkan kata pertama peran (minimal 3 huruf, bukan stopword umum)
         const firstWord = cleanLower.split(/\s+/)[0];
         if (firstWord.length >= 3 && !/^(dan|atau|yang|untuk|dari|pada|oleh|dengan)$/i.test(firstWord)) {
-          if (new RegExp(`^${firstWord}\\b`, 'i').test(lowerPhase)) {
+          if (new RegExp(`^${firstWord}\\b`, 'i').test(cleanLowerPhase)) {
             matchedRole = cleanActor;
             break;
           }
@@ -1783,10 +1994,15 @@ export function getDomainFlowDetails(
         matchedRole = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah|warga/i, 'Pelanggan');
       }
 
+      // 5b. Deteksi semantik aksi khas pengguna / pelanggan / siswa (menggunakan unit, menikmati layanan, mengikuti kursus/sesi latihan)
+      if (!matchedRole && /\b(menggunakan|memakai|mengendarai|bersepeda|mengikuti\s+(?:sesi|kursus|latihan|kelas)|belajar|menikmati|mengonsumsi|menginap|mencicipi|mengembalikan\s+(?:sepeda|unit|kunci|mobil|motor|buku|barang))\b/i.test(lowerPhase)) {
+        matchedRole = findActor(/pelanggan|penyewa|pasien|pembeli|konsumen|tamu|klien|member|siswa|murid|wali|anggota|nasabah|warga/i, 'Pelanggan');
+      }
+
       if (matchedRole) {
-        assignedActor = resolveActorForStep(matchedRole, session.roles);
+        assignedActor = resolveActorForStep(matchedRole, session.roles, session);
       } else if (idx === 0) {
-        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|warga|anggota/i, 'Pelanggan');
+        assignedActor = findActor(/pelanggan|penyewa|pasien|pembeli|klien|warga|anggota|siswa|murid|nasabah/i, 'Pelanggan');
       } else if (idx === phases.length - 1) {
         assignedActor = activeOwner;
       } else {
@@ -1825,17 +2041,19 @@ export function getDomainFlowDetails(
       const sortedPrefixes = Array.from(new Set(rawPrefixes)).sort((a, b) => b.length - a.length);
 
       for (const pfx of sortedPrefixes) {
-        const pfxRegex = new RegExp(`^${pfx}\\s+(?:dan\\s+)?`, 'i');
+        const pfxRegex = new RegExp(`^["'«“]?\\s*${pfx}["'»”]?\\s*(?:dan\\s+)?`, 'i');
         if (pfxRegex.test(actionText) && actionText.replace(pfxRegex, '').trim().length > 5) {
           actionText = actionText.replace(pfxRegex, '').trim();
           break;
         }
       }
 
+      // Bersihkan tanda kutip pembuka/penutup tersisa di awal/akhir aksi
+      actionText = actionText.replace(/^["'«“\s]+/, '').replace(/["'»”\s]+$/, '');
       actionText = actionText.charAt(0).toUpperCase() + actionText.slice(1);
 
       rawSteps.push({
-        pelaku: resolveActorForStep(assignedActor, session.roles),
+        pelaku: resolveActorForStep(assignedActor, session.roles, session),
         aksi: actionText
       });
     });
@@ -1895,26 +2113,50 @@ export function getDomainFlowDetails(
   const deduplicatedSteps = deduplicateFlowSteps(
     rawSteps.map((s, idx) => ({
       step: idx + 1,
-      pelaku: resolveActorForStep(s.pelaku, session.roles),
+      pelaku: resolveActorForStep(s.pelaku, session.roles, session),
       aksi: s.aksi
     }))
   );
 
-  // VALIDASI KONSISTENSI AKTOR ALUR INTI (Poin 3)
-  // Memastikan 100% pelaku langkah alur inti terdaftar di session.roles.selected!
+  // VALIDASI KONSISTENSI AKTOR ALUR INTI
+  // Memastikan pelaku langkah alur inti adalah aktor yang sah secara naratif:
+  // - Peran sistem resmi di session.roles.selected (Super Admin, Staf, dsb)
+  // - ATAU Entitas Data bisnis di session.actorsClassification / session.storyline.asumsiAktor (Pelanggan, Siswa, Penyewa, dsb)
   const validSelectedRoles = session.roles?.selected && session.roles.selected.length > 0
     ? session.roles.selected
     : [REQUIRED_ROLE];
 
+  const validEntityActors = Array.from(new Set([
+    ...(session.actorsClassification || [])
+      .filter((a) => a.category === 'ENTITAS_DATA')
+      .map((a) => a.actor),
+    ...(session.storyline?.asumsiAktor || [])
+      .filter((a) => isActorEntityData(session, a) || /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien|anggota|nasabah|warga)\b/i.test(a))
+  ]));
+
+  const allValidNarrativeActors = Array.from(new Set([...validSelectedRoles, ...validEntityActors]));
+
   const validatedSteps = deduplicatedSteps.map((s) => {
     let actor = s.pelaku;
-    if (!validSelectedRoles.includes(actor)) {
-      actor = resolveActorForStep(actor, session.roles);
+    // Jika pelaku sudah merupakan peran sistem yang valid ATAU entitas data yang sah, pertahankan!
+    const isKnownValid = allValidNarrativeActors.some(
+      (va) => va.toLowerCase() === actor.toLowerCase()
+    );
+    if (isKnownValid) {
+      const canonicalMatch = allValidNarrativeActors.find(
+        (va) => va.toLowerCase() === actor.toLowerCase()
+      );
+      return {
+        ...s,
+        pelaku: canonicalMatch || actor
+      };
     }
-    if (!validSelectedRoles.includes(actor)) {
-      if (isActorEntityData(session, actor)) {
-        const ext = validSelectedRoles.find((r) => isActorEntityData(session, r));
-        actor = ext || REQUIRED_ROLE;
+
+    actor = resolveActorForStep(actor, session.roles, session);
+
+    if (!allValidNarrativeActors.some((va) => va.toLowerCase() === actor.toLowerCase())) {
+      if (isActorEntityData(session, actor) || /^(pelanggan|penyewa|pasien|pembeli|siswa|murid|tamu|klien|anggota|nasabah|warga)\b/i.test(actor)) {
+        actor = validEntityActors[0] || actor;
       } else {
         const staff = validSelectedRoles.find((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r));
         actor = staff || REQUIRED_ROLE;
@@ -2796,11 +3038,12 @@ export function renderRbacMarkdownTable(
 
 export function renderDataSchemaMarkdown(
   tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[],
-  korelasiRingkas?: string
+  korelasiRingkas?: string,
+  views?: ViewConfig[]
 ): string {
-  if (!tables || tables.length === 0) return '';
+  if ((!tables || tables.length === 0) && (!views || views.length === 0)) return '';
 
-  const tableBlocks = tables.map((t) => {
+  const tableBlocks = (tables || []).map((t) => {
     const desc = t.keterangan ? `*${t.keterangan.trim()}*\n\n` : '';
     const header = `| Field | Tipe | Keterangan |\n| :--- | :--- | :--- |`;
     const rows = t.field.map((f) => {
@@ -2810,6 +3053,19 @@ export function renderDataSchemaMarkdown(
   });
 
   let fullMarkdown = tableBlocks.join('\n\n');
+
+  if (views && views.length > 0) {
+    const viewBlocks = views.map((v) => {
+      const desc = v.keterangan ? `*${v.keterangan.trim()}*\n\n` : '*Laporan ringkasan terhitung otomatis dari data transaksi (Read-Only).* \n\n';
+      const header = `| Metrik Terhitung | Operasi | Sumber Data | Format |\n| :--- | :--- | :--- | :--- |`;
+      const rows = (v.aggregates || []).map((agg) => {
+        return `| \`${agg.key}\` (${agg.label}) | **${agg.op}** | \`${v.sourceTable}.${agg.sourceKey || agg.key}\` | ${agg.format || 'angka'} |`;
+      });
+      const rolesInfo = v.targetRoles && v.targetRoles.length > 0 ? `\n> 👤 **Akses Peran:** ${v.targetRoles.join(', ')}` : '';
+      return `### 📊 Laporan Turunan (Computed View): \`${v.label}\`\n${desc}> ℹ️ **Tabel Sumber:** \`${v.sourceTable}\` | **Pengelompokan:** per \`${v.groupByField}\` (${v.groupByLabel})${rolesInfo}\n\n${header}\n${rows.join('\n')}`;
+    });
+    fullMarkdown += (fullMarkdown ? '\n\n' : '') + viewBlocks.join('\n\n');
+  }
 
   if (korelasiRingkas && korelasiRingkas.trim()) {
     fullMarkdown += `\n\n> 🔗 **Korelasi Antar-Tabel:**\n> ${korelasiRingkas.trim().replace(/\n+/g, '\n> ')}`;
@@ -3195,6 +3451,80 @@ export function repairRelasiSimulasiDb(
 }
 
 /**
+ * Menyelesaikan nilai token numerik untuk formula matematika, baik dari baris tabel saat ini
+ * maupun menembus relasi foreign key (Opsi B: cross-table FK resolution) (Bug 3).
+ */
+export function resolveFormulaTokenValue(
+  token: string,
+  row: Record<string, any>,
+  currentTable: { nama: string; field?: { nama: string; tipe: string; keterangan?: string }[] },
+  allTables: { nama: string; field?: { nama: string; tipe: string; keterangan?: string }[]; baris: Record<string, any>[] }[]
+): number | null {
+  // 1. Cek langsung di baris saat ini (exact match & case-insensitive)
+  if (token in row && row[token] !== null && row[token] !== undefined && !isNaN(Number(row[token]))) {
+    return Number(row[token]);
+  }
+  const tokenLower = token.toLowerCase();
+  for (const [k, v] of Object.entries(row)) {
+    if (k.toLowerCase() === tokenLower && v !== null && v !== undefined && !isNaN(Number(v))) {
+      return Number(v);
+    }
+  }
+
+  // 2. Cross-table FK resolution:
+  // Cari kolom foreign key di currentTable (misal sepeda_id, pelanggan_id, dsb)
+  for (const f of currentTable.field || []) {
+    const fLower = f.nama.toLowerCase();
+    const fType = (f.tipe || '').toLowerCase();
+    const isFk = fLower.endsWith('_id') || (fLower.startsWith('id_') && fLower !== 'id') || fType.includes('relasi ke');
+    if (!isFk) continue;
+
+    const fkVal = row[f.nama];
+    if (!fkVal) continue;
+
+    // Cari tabel target
+    const match = fType.match(/relasi ke\s+([a-zA-Z0-9_]+)/i);
+    const rawTarget = match ? match[1] : fLower.replace(/_(id|fk)$/i, '').replace(/^id_/i, '');
+    const normTarget = normalizeEntityKey(rawTarget);
+
+    const targetTable = allTables.find((t) => {
+      const norm = normalizeEntityKey(t.nama);
+      return norm === normTarget || norm.includes(normTarget) || normTarget.includes(norm);
+    });
+    if (!targetTable || !targetTable.baris || targetTable.baris.length === 0) continue;
+
+    // Cari baris di tabel target yang PK-nya cocok dengan fkVal
+    const targetPkField = (targetTable.field || []).find((tf) => tf.nama === 'id' || /^id_/i.test(tf.nama))?.nama || 'id';
+    const targetRow = targetTable.baris.find((tr) => String(tr[targetPkField] ?? '') === String(fkVal));
+    if (!targetRow) continue;
+
+    // Cek apakah token ada di targetRow
+    if (token in targetRow && !isNaN(Number(targetRow[token]))) {
+      return Number(targetRow[token]);
+    }
+    for (const [tk, tv] of Object.entries(targetRow)) {
+      if (tk.toLowerCase() === tokenLower && !isNaN(Number(tv))) {
+        return Number(tv);
+      }
+    }
+    // Fuzzy/semantik match (misal formula butuh 'tarif_per_jam' dan targetRow punya 'tarif_sewa_per_jam' atau 'tarif' atau 'harga')
+    for (const [tk, tv] of Object.entries(targetRow)) {
+      const tkNorm = tk.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const tokenNorm = tokenLower.replace(/[^a-z0-9]/g, '');
+      if (
+        (tkNorm.includes(tokenNorm) || tokenNorm.includes(tkNorm) ||
+         ((/tarif|harga/i.test(tokenLower)) && (/tarif|harga/i.test(tk)))) &&
+        tv !== null && tv !== undefined && !isNaN(Number(tv))
+      ) {
+        return Number(tv);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Menghasilkan simulasi database deterministik:
  * 1. Semua tabel dari session.dataSchema, masing-masing dengan baris data contoh realistis.
  * 2. Field bertipe "relasi ke [Entitas]" benar-benar merujuk ID yang ada di data contoh tabel tujuan.
@@ -3215,37 +3545,42 @@ export function generateDeterministicSimulasiDb(
   const akunLogin = activeRoles.map((role) => {
     const cleanUsername = role.toLowerCase().replace(/[^a-z0-9]/g, '');
     const password = `${cleanUsername}123`;
-    let nama = `Akun Demo ${role}`;
+    let personName = 'Pengguna';
 
     if (isSuperAdminRole(role)) {
-      nama = 'Pak Bambang (Pemilik)';
+      personName = 'Pak Bambang';
     } else if (/instruktur|pengajar|guru/i.test(role)) {
-      nama = 'Pak Hendra (Instruktur)';
+      personName = 'Pak Hendra';
     } else if (/siswa|murid|kursus/i.test(role)) {
-      nama = 'Budi Pratama (Siswa)';
-    } else if (/staf|admin/i.test(role)) {
-      nama = 'Siti Rahma (Staf Administrasi)';
+      personName = 'Budi Pratama';
     } else if (/kasir/i.test(role)) {
-      nama = 'Siti Rahma (Kasir)';
+      personName = 'Siti Rahma';
     } else if (/pengumpul/i.test(role)) {
-      nama = 'Joko Purnomo (Pengumpul)';
+      personName = 'Joko Purnomo';
     } else if (/mekanik|montir/i.test(role)) {
-      nama = 'Agus Mekanik';
+      personName = 'Agus Mekanik';
     } else if (/barista/i.test(role)) {
-      nama = 'Rian Barista';
+      personName = 'Rian Barista';
     } else if (/bendahara/i.test(role)) {
-      nama = 'Ibu Sri (Bendahara)';
+      personName = 'Ibu Sri';
     } else if (/ketua/i.test(role)) {
-      nama = 'Pak Bambang (Ketua)';
+      personName = 'Pak Bambang';
     } else if (/penyewa/i.test(role)) {
-      nama = 'Dimas (Penyewa)';
+      personName = 'Dimas';
     } else if (/warga/i.test(role)) {
-      nama = 'Pak RT Warga';
+      personName = 'Pak RT';
     } else if (/anggota|member/i.test(role)) {
-      nama = 'Ahmad (Anggota)';
+      personName = 'Ahmad';
     } else if (/pelanggan|konsumen/i.test(role)) {
-      nama = 'Budi Santoso (Pelanggan)';
+      personName = 'Budi Santoso';
+    } else if (/staf|admin|petugas|operator/i.test(role)) {
+      personName = 'Siti Rahma';
+    } else {
+      personName = 'Siti Rahma';
     }
+
+    // Label dalam kurung SELALU mengambil nama role persis dari session.roles.selected (Bug 5)
+    const nama = `${personName} (${role})`;
 
     return {
       nama,
@@ -3254,6 +3589,36 @@ export function generateDeterministicSimulasiDb(
       password
     };
   });
+
+  // Profil pengguna unik untuk baris tabel pengguna — CEGAH DUPLIKASI Super Admin / Pemilik (Bug 5)
+  const penggunaRows: { nama: string; peran: string; username: string; password: string }[] = [];
+  activeRoles.forEach((r, i) => {
+    const acc = akunLogin[i];
+    penggunaRows.push({
+      nama: acc ? acc.nama : `Pengguna (${r})`,
+      peran: r,
+      username: acc ? acc.username : `user${i + 1}`,
+      password: acc ? acc.password : 'password123'
+    });
+  });
+
+  // Jika jumlah peran aktif < 3, tambahkan operator/staf unik sekunder (BUKAN me-loop kembali ke Super Admin/Owner!)
+  if (penggunaRows.length < 3) {
+    const nonAdminRole = activeRoles.find((r) => !isSuperAdminRole(r)) || activeRoles[0];
+    const extraNames = ['Budi Santoso', 'Ahmad Hidayat', 'Dewi Lestari', 'Joko Purnomo'];
+    let extraIdx = 0;
+    while (penggunaRows.length < 3) {
+      const extraName = extraNames[extraIdx % extraNames.length];
+      const cleanUname = `${nonAdminRole.toLowerCase().replace(/[^a-z0-9]/g, '')}${extraIdx + 2}`;
+      penggunaRows.push({
+        nama: `${extraName} (${nonAdminRole})`,
+        peran: nonAdminRole,
+        username: cleanUname,
+        password: `${cleanUname}123`
+      });
+      extraIdx++;
+    }
+  }
 
   // Ekstrak varian eksplisit dari narasi jika ada (Fitur Variasi Produk/Layanan)
   const explicitVariants: string[] = [];
@@ -3361,21 +3726,21 @@ export function generateDeterministicSimulasiDb(
 
     // Penanganan khusus jika tabel saat ini adalah tabel pengguna / user
     if (isTablePengguna(meta.table.nama)) {
+      const userProfile = penggunaRows[rowIdx % penggunaRows.length];
       if (/^(peran|role|jabatan)$/i.test(fName)) {
-        return activeRoles[rowIdx % activeRoles.length];
+        return userProfile.peran;
       }
       if (/^(nama|nama_lengkap|nama_pengguna|nama_user)$/i.test(fName)) {
-        return akunLogin[rowIdx % akunLogin.length]?.nama || `Pengguna ${rowIdx + 1}`;
+        return userProfile.nama;
       }
       if (/^(username|user_name)$/i.test(fName)) {
-        return akunLogin[rowIdx % akunLogin.length]?.username || `user${rowIdx + 1}`;
+        return userProfile.username;
       }
       if (/^(password|kata_sandi)$/i.test(fName)) {
-        return akunLogin[rowIdx % akunLogin.length]?.password || 'password123';
+        return userProfile.password;
       }
       if (/^(email)$/i.test(fName)) {
-        const u = akunLogin[rowIdx % akunLogin.length]?.username || `user${rowIdx + 1}`;
-        return `${u}@gmail.com`;
+        return `${userProfile.username}@gmail.com`;
       }
       if (/^(status)$/i.test(fName)) {
         return 'Aktif';
@@ -3425,10 +3790,18 @@ export function generateDeterministicSimulasiDb(
       fType === 'angka' ||
       /^(angka|number|integer|nominal|harga|tarif|biaya|total|jumlah|stok|berat|durasi|tenor|kilometer|km)$/i.test(fType)
     ) {
+      // Field Target Finansial (skala Rupiah realistis bisnis kecil/menengah)
+      if (/target.*omzet|target.*omset|target.*pendapatan|target.*penjualan/i.test(fName)) {
+        return [500000, 800000, 1000000][rowIdx];
+      }
+      // Field Realisasi Omzet / Pendapatan (bervariasi terhadap target: 90%, 106%, 125%)
+      if (/omzet|omset|pendapatan|pemasukan|penerimaan|penjualan/i.test(fName)) {
+        return [450000, 850000, 1250000][rowIdx];
+      }
       if (/deposit|jaminan|uang_muka|dp/i.test(fName) || (/deposit|jaminan|uang_muka|dp/i.test(kata) && !/total|tagihan/i.test(fName))) {
         return [50000, 100000, 200000][rowIdx];
       }
-      if (/total|tagihan|harga|tarif|biaya|nominal|bayar|omset|pinjaman|saldo|iuran|gaji|subtotal/i.test(fName)) {
+      if (/total|tagihan|harga|tarif|biaya|nominal|bayar|omset|omzet|pinjaman|saldo|iuran|gaji|subtotal/i.test(fName)) {
         return [150000, 250000, 500000][rowIdx];
       }
       if (/denda|pinalti|ongkir|ongkos_kirim|diskon|potongan/i.test(fName) || /denda|pinalti|ongkir|diskon/i.test(kata)) {
@@ -3440,7 +3813,7 @@ export function generateDeterministicSimulasiDb(
       if (/berat|bobot|kg|timbangan/i.test(fName)) {
         return [25, 40, 65][rowIdx];
       }
-      if (/durasi|hari|bulan|tenor|hari_sewa|minggu|tahun/i.test(fName)) {
+      if (/durasi|hari_sewa|tenor/i.test(fName) || (/(^|_)(hari|bulan|minggu|tahun)(_|$)/i.test(fName) && !/omzet|omset|target|pendapatan|nominal|biaya|tarif|harga/i.test(fName))) {
         return [1, 3, 7][rowIdx];
       }
       if (/km|kilometer|odometer/i.test(fName)) {
@@ -3477,18 +3850,55 @@ export function generateDeterministicSimulasiDb(
     // 1a) Enum eksplisit di keterangan: "(besi/kardus/plastik)" atau "Tersedia / Disewa / Bengkel"
     const parenMatch = kata.match(/\(([^)]+)\)/);
     const enumBlob = parenMatch ? parenMatch[1] : kata;
-    const enumParts = enumBlob
-      .split(/\s*\/\s*|\s*,\s*/)
-      .map((s) => s.trim())
-      .filter((s) => /^[a-z0-9][a-z0-9\s'’-]*$/i.test(s) && s.split(/\s+/).length <= 3);
-    if (enumParts.length >= 2 && enumParts.length <= 6) {
-      return enumParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1))[rowIdx % enumParts.length];
+    const isMetaComment = /opsional|audit|wajib|catatan|referensi|keterangan|seperti|misal|contoh/i.test(enumBlob);
+    if (!isMetaComment) {
+      const enumParts = enumBlob
+        .split(/\s*\/\s*|\s*,\s*/)
+        .map((s) => s.trim())
+        .filter((s) => /^[a-z0-9][a-z0-9\s'’-]*$/i.test(s) && s.split(/\s+/).length <= 3 && !/^(opsional|audit|wajib|contoh|misal|catatan)$/i.test(s));
+      if (enumParts.length >= 2 && enumParts.length <= 6) {
+        return enumParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1))[rowIdx % enumParts.length];
+      }
     }
 
-    // 1b-pre) Penanganan kerusakan / kondisi fisik barang (Mencegah salah tafsir "lokasi kerusakan" menjadi nama jalan)
+    // 1b) Kontak / Telepon / WhatsApp / Email (Prioritas TINGGI di atas alamat agar 'alamat email' tidak tertafsir jalanan) (Bug 2)
+    if (/telepon|whatsapp|kontak|nomor hp|no.?hp|phone|ponsel/i.test(kata) || /^(kontak|telepon|hp|wa|whatsapp|phone|no_hp|nomor_telepon)$/i.test(fName)) {
+      return pick(['081234567890', '081298765432', '085712345678']);
+    }
+    if (/email/i.test(kata) || /^(email|surel)$/i.test(fName)) {
+      return pick(['budi.santoso@gmail.com', 'siti.rahma@gmail.com', 'ahmad.hidayat@gmail.com']);
+    }
+
+    // 1c) Nomor / Kode Transaksi Realistis (Bug 1)
+    if (/^(nomor|no|kode)_(transaksi|sewa|nota|pesanan|faktur)$/i.test(fName) || (/transaksi|sewa/i.test(meta.table.nama) && /^(nomor|no|kode)$/i.test(fName))) {
+      return [`TRX-20260910-00${rowIdx + 1}`, `TRX-20260911-00${rowIdx + 1}`, `TRX-20260912-00${rowIdx + 1}`][rowIdx % 3];
+    }
+
+    // 1d) Nama Unit / Sepeda Realistis (Bug 1)
+    if (/sepeda|bike|mtb|onthel/i.test(fName) || (/sepeda/i.test(meta.table.nama) && /nama|merk|model|unit/i.test(fName))) {
+      return ['Polygon Xtrada 5.0', 'United Terrano', 'Pacific Noris 2.0'][rowIdx % 3];
+    }
+
+    // 1e) Kondisi Fisik Saat Ambil & Saat Kembali (Bug 1)
+    if (/kondisi.*(ambil|awal|mulai|serah)/i.test(fName) || /kondisi.*(ambil|serah)/i.test(kata)) {
+      return pick([
+        'Baik & rem pakem',
+        'Mulus tanpa cacat',
+        'Rem sedikit longgar (sudah diinfokan ke pelanggan)'
+      ]);
+    }
+    if (/kondisi.*(kembali|akhir|pulang)/i.test(fName) || /kondisi.*(kembali|selesai)/i.test(kata)) {
+      return pick([
+        'Baik & lengkap seperti semula',
+        'Baret ringan pemakaian wajar',
+        'Lengkap & bersih'
+      ]);
+    }
+
+    // 1f) Penanganan kerusakan / kondisi fisik barang (Mencegah salah tafsir "lokasi kerusakan" menjadi nama jalan)
     const isPhysicalDamageOrCondition =
       /kerusakan|cacat|kondisi_fisik|rangka|ban|mesin|bodi|komponen|part|keluhan|inspeksi/i.test(fName) ||
-      (/kerusakan|cacat|kondisi|fisik|rangka|ban|mesin|bodi|komponen|spesifik/i.test(kata) && !/alamat|tempat_tinggal|domisili/i.test(kata));
+      (/kerusakan|cacat|kondisi|fisik|rangka|ban|mesin|bodi|komponen|spesifik/i.test(kata) && !/alamat(?!.*email)|tempat_tinggal|domisili/i.test(kata));
 
     if (isPhysicalDamageOrCondition) {
       if (/sepeda/i.test(meta.table.nama) || /rangka|ban|rantai|rem|velg|stang/i.test(kata) || /rangka|ban|rantai|rem|velg|stang/i.test(fName)) {
@@ -3500,7 +3910,7 @@ export function generateDeterministicSimulasiDb(
       return pick(['Baret pemakaian wajar', 'Komponen berfungsi normal', 'Perlu pembersihan & servis ringan']);
     }
 
-    // 1b) Hint keyword pada keterangan
+    // 1g) Hint keyword pada keterangan
     if (/aktif|nonaktif|tersedia|ketersediaan/i.test(kata)) {
       return pick(['Aktif', 'Nonaktif', 'Aktif']);
     }
@@ -3521,14 +3931,19 @@ export function generateDeterministicSimulasiDb(
     }
     if (/warna/i.test(kata)) return pick(['Merah', 'Biru', 'Hijau']);
     if (/ukuran|size/i.test(kata)) return pick(['S', 'M', 'L']);
-    if (/alamat|domisili|tempat_tinggal/i.test(kata) || (/lokasi/i.test(kata) && /cabang|toko|kantor|penjemputan|pengantaran|posko|outlet/i.test(kata))) {
+    if (/alamat(?!.*email)|domisili|tempat_tinggal/i.test(kata) || (/lokasi/i.test(kata) && /cabang|toko|kantor|penjemputan|pengantaran|posko|outlet/i.test(kata))) {
       return pick(['Jl. Merdeka No. 1', 'Jl. Sudirman No. 45', 'Jl. Diponegoro No. 12']);
     }
     if (/kota|domisili/i.test(kata)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
     if (/jenis kelamin|gender/i.test(kata)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
-    if (/telepon|whatsapp|kontak|nomor hp|no.?hp/i.test(kata)) return pick(['081234567890', '081298765432', '085712345678']);
 
     // 2) SEMANTIK BERBASIS NAMA FIELD (jika keterangan tidak memberikan petunjuk)
+    if (/^(kontak|telepon|hp|wa|whatsapp|phone|no_hp|nomor_telepon)$/i.test(fName)) {
+      return pick(['081234567890', '081298765432', '085712345678']);
+    }
+    if (/^(email|surel)$/i.test(fName)) {
+      return pick(['pelanggan1@gmail.com', 'pelanggan2@gmail.com', 'pelanggan3@gmail.com']);
+    }
     if (/varian|rasa|flavor|topping/i.test(fName)) {
       return pick(['Vanilla', 'Coklat', 'Strawberry']);
     }
@@ -3555,8 +3970,6 @@ export function generateDeterministicSimulasiDb(
     }
     if (/kota|domisili/i.test(fName)) return pick(['Jakarta', 'Bandung', 'Surabaya']);
     if (/kelamin|gender/i.test(fName)) return pick(['Laki-laki', 'Perempuan', 'Laki-laki']);
-    if (/telepon|whatsapp|kontak|hp|wa_/i.test(fName)) return pick(['081234567890', '081298765432', '085712345678']);
-    if (/email/i.test(fName)) return pick(['pelanggan1@gmail.com', 'pelanggan2@gmail.com', 'pelanggan3@gmail.com']);
     if (/plat|nopol|nomor_plat/i.test(fName)) return ['B 1234 ABC', 'D 5678 EFG', 'L 9012 HIJ'][rowIdx];
     if (/rosok|besi|tua|tembaga|kardus/i.test(fName)) return pick(['Kardus Bekas', 'Besi Tua', 'Tembaga Super']);
     if (/merk|tipe|model|mobil|motor|kendaraan/i.test(fName)) return ['Toyota Avanza', 'Honda Brio', 'Mitsubishi Xpander'][rowIdx];
@@ -3571,15 +3984,15 @@ export function generateDeterministicSimulasiDb(
       return ['Staf Lapangan 1', 'Staf Lapangan 2', 'Staf Lapangan 1'][rowIdx];
     }
 
-    // 3) DEFAULT: nilai berbasis kata kunci keterangan/nama field (BUKAN placeholder "Contoh Data N")
+    // 3) DEFAULT: nilai berbasis kata kunci keterangan/nama field (BUKAN placeholder "Contoh Data N" dan BUKAN meta keterangan)
     const baseToken = (field.keterangan || field.nama)
       .trim()
       .split(/\s+/)
-      .filter((w) => /^[a-z]/i.test(w) && !/^(nama|jenis|kategori|status|dan|atau|untuk|dari|ke|yang|id|no|nomor)$/i.test(w))[0];
+      .filter((w) => /^[a-z]/i.test(w) && !/^(nama|jenis|kategori|status|dan|atau|untuk|dari|ke|yang|id|no|nomor|opsional|audit|contoh|catatan|keterangan|deskripsi|label|kode|informasi|field|kolom)$/i.test(w))[0];
     let stem = baseToken ? baseToken.charAt(0).toUpperCase() + baseToken.slice(1) : '';
-    if (!stem) stem = fName.replace(/[^a-z0-9]+/g, ' ').trim();
-    if (!stem) stem = 'Item';
-    return [`${stem} A`, `${stem} B`, `${stem} C`][rowIdx];
+    if (!stem) stem = fName.replace(/[^a-z0-9]+/g, ' ').replace(/^(id|kode|no|nomor)\s*/i, '').trim();
+    if (!stem || /^(nama|opsional|audit|item)$/i.test(stem)) stem = 'Unit Standar';
+    return [`${stem} 1`, `${stem} 2`, `${stem} 3`][rowIdx];
   };
 
   // PASS B: bangun baris contoh untuk SEMUA tabel
@@ -3619,6 +4032,7 @@ export function generateDeterministicSimulasiDb(
             ? aiFieldVals[idx % aiFieldVals.length]
             : generateFieldValue(f, idx, m);
       }
+
       return row;
     });
     return {
@@ -3628,6 +4042,58 @@ export function generateDeterministicSimulasiDb(
       baris
     };
   });
+
+  // Multi-pass formula evaluation with cross-table FK resolution (Bug 3)
+  // Menjamin formula dihitung secara matematis presisi dan menembus relasi (misal tarif_per_jam dari katalog_sepeda)
+  for (let pass = 0; pass < 3; pass++) {
+    for (const ct of contohTabel) {
+      const schemaTbl = schemaTables.find((st) => st.nama === ct.nama);
+      if (!schemaTbl) continue;
+
+      for (const f of schemaTbl.field) {
+        const fAny = f as any;
+        // Ambil formula dari field skema ATAU dari session.formulas.daftar
+        let formulaExpr = (fAny.isFormula && fAny.formulaExpression ? String(fAny.formulaExpression) : '').trim();
+        if (!formulaExpr && session.formulas?.daftar) {
+          const matchF = session.formulas.daftar.find(
+            (df) =>
+              (df.namaField.toLowerCase() === f.nama.toLowerCase() || (df.labelField && df.labelField.toLowerCase() === f.nama.toLowerCase())) &&
+              (!df.targetTable || normalizeEntityKey(df.targetTable) === normalizeEntityKey(ct.nama))
+          );
+          if (matchF) {
+            formulaExpr = (matchF.formulaExpression || matchF.formulaText || '').trim();
+          }
+        }
+        if (!formulaExpr) continue;
+
+        for (const row of ct.baris) {
+          try {
+            const tokens = formulaExpr.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+            const compVals: Record<string, number> = {};
+            let canEval = true;
+
+            for (const token of tokens) {
+              const val = resolveFormulaTokenValue(token, row, ct, contohTabel);
+              if (val !== null && !isNaN(val)) {
+                compVals[token] = val;
+              } else {
+                canEval = false;
+                break;
+              }
+            }
+
+            if (canEval && tokens.length > 0) {
+              const evalFunc = new Function(...Object.keys(compVals), `return (${formulaExpr});`);
+              const calculated = Number(evalFunc(...Object.values(compVals)));
+              if (!isNaN(calculated) && isFinite(calculated)) {
+                row[f.nama] = calculated;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  }
 
   // 3. 5 Instruksi internal generator prototipe (TIDAK DITAMPILKAN KE USER)
   const instruksiGenerator = [
@@ -3703,6 +4169,7 @@ export function extractEnumOptions(keterangan?: string): string[] | null {
   }
 
   if (!candidate) return null;
+  if (/opsional|audit|catatan|referensi|keterangan/i.test(candidate)) return null;
 
   // Bersihkan awalan contoh/misal
   candidate = candidate.replace(/^(?:contoh|misal|seperti|misalnya|e\.g\.)\s*:?/i, '').trim();
@@ -3785,11 +4252,49 @@ function checkKontenSimulasi(
   // Deteksi field kerusakan fisik barang yang diisi alamat jalan (Bug B1)
   const isDamageField =
     /kerusakan|cacat|kondisi_fisik|rangka|ban|mesin/i.test(`${fLower} ${kata}`) &&
-    !/alamat|tempat_tinggal|domisili/i.test(`${fLower} ${kata}`);
+    !/alamat(?!.*email)|tempat_tinggal|domisili/i.test(`${fLower} ${kata}`);
   if (isDamageField && /(?:^jl\.|\bjalan\b|\bgg\.|\bblok\b|\brt\/?rw\b|\bkelurahan\b|\bkecamatan\b|\bno\.\s*\d+)/i.test(v)) {
     masalah.push(
       `"${t.nama}.${fld.nama}" (kerusakan fisik barang) berisi alamat jalan: "${v}" (seharusnya deskripsi fisik seperti 'rantai kendor', 'velg penyok', 'baret rangka')`
     );
+  }
+
+  // Deteksi field kontak/telepon yang diisi alamat jalan (Bug 2)
+  const isContactField = /^(kontak|telepon|phone|hp|no_hp|nomor_telepon|no_telp|wa|whatsapp)$/i.test(fLower);
+  if (isContactField && /(?:^jl\.|\bjalan\b|\bgg\.|\bblok\b|\brt\/?rw\b|\bkelurahan\b|\bkecamatan\b|\bno\.\s*\d+)/i.test(v)) {
+    masalah.push(
+      `"${t.nama}.${fld.nama}" (field kontak/telepon) berisi alamat jalan: "${v}" (seharusnya nomor telepon atau email, bukan alamat jalan)`
+    );
+  }
+
+  // Deteksi label field leaking jadi value data (Bug 1):
+  // Nilai data tidak boleh berupa nama field, label, atau potongan kata/keterangan skema itu sendiri
+  if (v && v.length >= 3 && fType !== 'angka' && fType !== 'tanggal' && !fType.includes('relasi ke')) {
+    const vLower = v.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const fNameClean = fLower.replace(/[^a-z0-9]/g, '');
+
+    // Cek jika nilai sama persis dengan nama field atau potongan umum nama field
+    if (vLower === fNameClean || (vLower.length >= 3 && /^(nama|nomor|kode|label|item|opsional|audit|catatan)$/i.test(v.trim()))) {
+      masalah.push(`"${t.nama}.${fld.nama}" bernilai "${v}" yang merupakan nama/label field itu sendiri, bukan data realistis`);
+    }
+
+    // Cek kata-kata meta keterangan seperti: opsional, untuk audit, label, keterangan, kode transaksi
+    if (kata && kata.length > 5) {
+      const metaWords = ['opsional', 'audit', 'keterangan', 'label', 'catatan'];
+      for (const mw of metaWords) {
+        if (kata.includes(mw) && v.toLowerCase().includes(mw)) {
+          masalah.push(`"${t.nama}.${fld.nama}" bernilai "${v}" yang membocorkan teks keterangan skema ("${mw}")`);
+          break;
+        }
+      }
+
+      // Cek jika nilai adalah substring persis dari keterangan skema (misal "Kode transaksi sewa", "Label sepeda")
+      const cleanKata = kata.toLowerCase().replace(/[^a-z0-9]/g, ' ');
+      const cleanV = v.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+      if (cleanV.length >= 6 && cleanKata.includes(cleanV)) {
+        masalah.push(`"${t.nama}.${fld.nama}" bernilai "${v}" yang menyalin teks keterangan skema, bukan data realistis`);
+      }
+    }
   }
 }
 
@@ -3960,6 +4465,46 @@ export function validateContohDataVsSchema(
       }
     }
 
+    // Validasi & Koreksi Matematis Field Formula (A * B = C, dst) dengan dukungan lintas tabel FK (Bug 3)
+    for (let pass = 0; pass < 2; pass++) {
+      for (const fld of schema.field) {
+        const fldAny = fld as any;
+        if (fldAny.isFormula && fldAny.formulaExpression) {
+          const expr = String(fldAny.formulaExpression).trim();
+          for (const row of t.baris) {
+            try {
+              const compVals: Record<string, number> = {};
+              let canEvaluate = true;
+              const tokens = expr.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+              for (const token of tokens) {
+                const val = resolveFormulaTokenValue(token, row, t, contohTabel);
+                if (val !== null && !isNaN(val)) {
+                  compVals[token] = val;
+                } else {
+                  canEvaluate = false;
+                  break;
+                }
+              }
+
+              if (canEvaluate && tokens.length > 0) {
+                const evalFunc = new Function(...Object.keys(compVals), `return (${expr});`);
+                const calculated = Number(evalFunc(...Object.values(compVals)));
+                if (!isNaN(calculated) && isFinite(calculated)) {
+                  const currentVal = Number(row[fld.nama]);
+                  if (isNaN(currentVal) || currentVal !== calculated) {
+                    // Koreksi nilai field formula ke nilai matematis yang sebenarnya
+                    row[fld.nama] = calculated;
+                  }
+                }
+              }
+            } catch (_) {
+              // Abaikan error evaluasi jika bukan formula matematika standar
+            }
+          }
+        }
+      }
+    }
+
     // Integritas referensi FK → harus merujuk ID yang ada di tabel tujuan
     const ownPk = schema.field.find((f) => f.nama === 'id' || /^id_/.test(f.nama))?.nama;
     for (const fld of schema.field) {
@@ -3985,7 +4530,32 @@ export function validateContohDataVsSchema(
       for (const row of t.baris) {
         const v = String(row[fld.nama] ?? '').trim();
         if (v && !tgtIds.has(v)) {
-          masalah.push(`"${t.nama}.${fld.nama}" = "${v}" tidak ada di "${tgt.nama}.${tgt.idField}"`);
+          // Exact reverse-lookup check (Poin 2B):
+          // Jika AI mengisi string nama/label literal, periksa apakah cocok PERSIS dengan nama di tabel target
+          let matchedRow: Record<string, any> | undefined;
+          for (const tgtRow of tgtTabel.baris) {
+            const matchesExact = Object.entries(tgtRow).some(([k, val]) => {
+              if (k === tgt.idField) return false;
+              if (typeof val === 'string' && val.trim().toLowerCase() === v.toLowerCase()) {
+                return true;
+              }
+              return false;
+            });
+            if (matchesExact) {
+              matchedRow = tgtRow;
+              break;
+            }
+          }
+
+          if (matchedRow && matchedRow[tgt.idField]) {
+            // Auto-repair HANYA jika ada exact match nama -> ID
+            row[fld.nama] = matchedRow[tgt.idField];
+          } else {
+            // DILARANG silent fallback ke ID pertama! Laporkan secara jujur ke validator
+            masalah.push(
+              `"${t.nama}.${fld.nama}" = "${v}" bukan ID valid di tabel "${tgt.nama}" (ID valid: [${Array.from(tgtIds).join(', ')}]) dan tidak cocok dengan nama/label baris manapun di tabel target.`
+            );
+          }
         }
       }
 
@@ -4109,7 +4679,444 @@ export function renderSimulasiDbMarkdown(
   return md;
 }
 
-function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
+/**
+ * Mencocokkan nama pelaku di alur dengan nama peran aktif target.
+ */
+export function isRoleMatch(pelaku: string, targetRole: string, allActiveRoles: string[]): boolean {
+  const p = (pelaku || '').trim().toLowerCase();
+  const r = (targetRole || '').trim().toLowerCase();
+
+  if (!p || !r) return false;
+  if (p === r) return true;
+  if (p.includes(r) || r.includes(p)) return true;
+
+  // Pelanggan / pemohon / pengguna luar
+  const isCustomerPelaku = /pelanggan|penyewa|customer|klien|pasien|siswa|murid|member|pemohon/i.test(p);
+  const isCustomerTarget = /pelanggan|penyewa|customer|klien|pasien|siswa|murid|member|pemohon/i.test(r);
+  if (isCustomerPelaku || isCustomerTarget) {
+    return isCustomerPelaku && isCustomerTarget;
+  }
+
+  // Super Admin / Pemilik
+  const isAdminPelaku = /super\s*admin|owner|pemilik|pimpinan|manager|manajer/i.test(p);
+  const isAdminTarget = /super\s*admin|owner|pemilik|pimpinan|manager|manajer/i.test(r);
+  if (isAdminPelaku || isAdminTarget) {
+    return isAdminPelaku && isAdminTarget;
+  }
+
+  // Staf operasional internal generik
+  const isGenericStaffPelaku = /^(staf|petugas|operator|kasir|admin|karyawan|pelaksana|tim)\b/i.test(p);
+  const isTargetStaff = /^(staf|petugas|operator|kasir|admin|karyawan|pelaksana|tim)\b/i.test(r);
+
+  if (isGenericStaffPelaku && isTargetStaff) {
+    const operationalRoles = allActiveRoles.filter(
+      (ar) => !/pelanggan|penyewa|customer|member|super\s*admin|owner|pemilik/i.test(ar)
+    );
+    if (operationalRoles.length <= 1 || operationalRoles[0].toLowerCase() === r) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Mendeteksi kesamaan tema modul (misal: "Input Transaksi Sewa" vs "Pencatatan Sewa")
+ */
+export function isSemanticModuleMatch(nameA: string, nameB: string): boolean {
+  const a = nameA.toLowerCase().trim();
+  const b = nameB.toLowerCase().trim();
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const keyThemes = [
+    { theme: 'sewa', re: /sewa|rental|booking|pesan|mesan|order/i },
+    { theme: 'kembali', re: /pengembalian|kembali|inspeksi|kondisi\s*unit|cek\s*fisik|kondisi/i },
+    { theme: 'pelanggan', re: /pelanggan|penyewa|member|data\s*diri|identitas/i },
+    { theme: 'bayar_nota', re: /bayar|nota|struk|kasir|kwitansi|pembayaran/i },
+    { theme: 'servis', re: /servis|perawatan|maintenance|reparasi/i },
+    { theme: 'cuci', re: /cuci|laundry|kering|setrika|wash/i },
+    { theme: 'qc', re: /inspeksi|kondisi|mutu|kualitas|qc|quality|kelayakan/i },
+    { theme: 'komplain', re: /komplain|keluhan|klaim|retur|garansi/i },
+    { theme: 'katalog', re: /katalog|master|stok|unit|produk|data\s*master/i },
+    { theme: 'laporan', re: /laporan|rekap|statistik|audit/i }
+  ];
+
+  for (const t of keyThemes) {
+    if (t.re.test(a) && t.re.test(b)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Menyederhanakan deskripsi aksi alur menjadi nama modul/form yang ringkas dan profesional.
+ */
+export function deriveModuleNameFromAction(aksi: string): string {
+  const clean = aksi.trim();
+  if (!clean) return 'Modul Operasional';
+
+  if (/transaksi sewa|mencatat sewa|booking sewa|sewa unit/i.test(clean)) {
+    return 'Input Transaksi Sewa';
+  }
+  if (/data pelanggan|identitas penyewa|biodata penyewa|data pemesan/i.test(clean)) {
+    return 'Input Data Pelanggan';
+  }
+  if (/nota|struk|bukti transaksi|kwitansi/i.test(clean)) {
+    return 'Cetak Nota/Struk Transaksi';
+  }
+  if (/pembayaran|terima pembayaran|kasir|tagihan/i.test(clean)) {
+    return 'Pencatatan Pembayaran';
+  }
+  if (/pengembalian|kembalikan unit|cek kondisi|inspeksi unit|pemeriksaan unit/i.test(clean)) {
+    return 'Proses Pengembalian & Pemeriksaan Kondisi Unit';
+  }
+  if (/perawatan|servis|maintenance|perbaikan/i.test(clean)) {
+    return 'Pencatatan Perawatan & Servis Unit';
+  }
+  if (/verifikasi|validasi berkas|cek dokumen/i.test(clean)) {
+    return 'Verifikasi & Validasi Berkas';
+  }
+  if (/surat jalan|pengiriman|antar paket|ekspedisi/i.test(clean)) {
+    return 'Manajemen Surat Jalan & Pengiriman';
+  }
+  if (/pendaftaran|daftar kursus|registrasi/i.test(clean)) {
+    return 'Pendaftaran & Formulir Registrasi';
+  }
+
+  // Bersihkan awalan kata kerja / aktor
+  const withoutActor = clean
+    .replace(/^(staf|petugas|admin|pelanggan|kasir|sopir|teknisi)\s+/i, '')
+    .replace(/^(mencatat|menginput|memasukkan|membuat|melakukan|menerima|mengelola)\s+/i, '');
+
+  const words = withoutActor.split(/\s+/).slice(0, 5).join(' ');
+  const title = words.charAt(0).toUpperCase() + words.slice(1);
+  return title.length > 3 ? `Form ${title}` : 'Form Operasional';
+}
+
+/**
+ * Mengelompokkan aksi-aksi alur suatu peran menjadi modal/form kerja komposit yang kohesif.
+ * Mencegah fragmentasi 1-to-1 aksi storytelling menjadi form terpisah di UI/UX aplikasi nyata.
+ */
+export function clusterRoleStepsIntoModules(
+  roleSteps: Array<{ pelaku: string; aksi: string; source: string }>,
+  role: string,
+  businessCategory?: string
+): Array<{ nama: string; deskripsi: string; cakupanAksi: string[] }> {
+  if (!roleSteps || roleSteps.length === 0) return [];
+
+  const cat = (businessCategory || '').toLowerCase();
+  const isLaundry = /laundry|cuci/i.test(cat);
+  const isRental = /sewa|rental/i.test(cat);
+  const isCourse = /kursus|les|training|akademi/i.test(cat);
+  const isFood = /kuliner|restoran|cafe|makan|kopi|warung/i.test(cat);
+  const isClinic = /klinik|dokter|medis|pasien/i.test(cat);
+
+  const clusterDefinitions = [
+    {
+      clusterKey: 'INTAKE_POS',
+      nama: isRental
+        ? 'Form Booking & Transaksi Sewa'
+        : isLaundry
+        ? 'Form Transaksi Kasir POS (Penerimaan Cucian & Pembayaran)'
+        : isFood
+        ? 'Form Kasir & Pemesanan Menu'
+        : isCourse
+        ? 'Form Pendaftaran & Biaya Kursus'
+        : isClinic
+        ? 'Form Registrasi Pasien & Pembayaran'
+        : 'Form Entri Transaksi & Pembayaran Kasir',
+      deskripsiTemplate: 'Pencatatan transaksi masuk, data pelanggan, pemilihan paket/layanan, dan pembayaran kasir.',
+      matcher: /timbang|terima|nota|struk|kasir|bayar|pembayaran|pesan|order|booking|sewa|daftar|registrasi|pelanggan|biodata|identitas|pilih paket|pilih layanan|menu|uang|qris|dp|uang muka/i
+    },
+    {
+      clusterKey: 'FULFILLMENT',
+      nama: isLaundry
+        ? 'Form Pemrosesan Cucian (Cuci, Kering & Packing)'
+        : isFood
+        ? 'Form Dapur & Pemrosesan Pesanan'
+        : isRental
+        ? 'Form Penyiapan & Pengecekan Unit Sewa'
+        : 'Form Pemrosesan & Pengerjaan Operasional',
+      deskripsiTemplate: 'Pelaksanaan tugas operasional, update progres pengerjaan, dan pemenuhan layanan.',
+      matcher: /cuci|kering|setrika|packing|lipat|proses|pengerjaan|masak|saji|reparasi|perbaikan|servis|siapkan unit/i
+    },
+    {
+      clusterKey: 'QC_INSPECTION',
+      nama: 'Form Pemeriksaan Mutu & Uji Kelayakan (Quality Check)',
+      deskripsiTemplate: 'Inspeksi kualitas pengerjaan, pengecekan kebersihan/noda, dan verifikasi kelayakan sebelum serah terima.',
+      matcher: /inspeksi|cek kondisi|mutu|kualitas|qc|quality|pemeriksaan fisik|uji|cek noda|cek kelayakan|cek kelengkapan/i
+    },
+    {
+      clusterKey: 'HANDOVER_DELIVERY',
+      nama: /antar|kirim|kurir|ekspedisi/i.test(roleSteps.map((s) => s.aksi).join(' '))
+        ? 'Form Surat Jalan & Pengiriman / Antar Barang'
+        : 'Form Pengambilan Barang & Serah Terima Akhir',
+      deskripsiTemplate: 'Verifikasi serah terima barang/layanan kepada pelanggan beserta bukti pengambilan/pengantaran.',
+      matcher: /ambil|pengambilan|serah terima|antar|kirim|pengiriman|kurir|surat jalan|ekspedisi|selesai cucian|tanda terima/i
+    },
+    {
+      clusterKey: 'COMPLAINT',
+      nama: 'Form Penanganan Komplain & Klaim Pelanggan',
+      deskripsiTemplate: 'Pencatatan keluhan pelanggan, klaim kerusakan/kehilangan, dan solusi garansi layanan.',
+      matcher: /komplain|keluhan|klaim|retur|garansi|pengembalian dana|refund/i
+    }
+  ];
+
+  const assignedClusterModules: Map<string, { nama: string; deskripsi: string; cakupanAksi: string[] }> = new Map();
+  const unclusteredSteps: Array<{ pelaku: string; aksi: string; source: string }> = [];
+
+  for (const step of roleSteps) {
+    const aksi = step.aksi.trim();
+    let matched = false;
+
+    for (const cDef of clusterDefinitions) {
+      if (cDef.matcher.test(aksi)) {
+        matched = true;
+        const existing = assignedClusterModules.get(cDef.clusterKey);
+        if (existing) {
+          if (!existing.cakupanAksi.includes(aksi)) {
+            existing.cakupanAksi.push(aksi);
+          }
+        } else {
+          assignedClusterModules.set(cDef.clusterKey, {
+            nama: cDef.nama,
+            deskripsi: cDef.deskripsiTemplate,
+            cakupanAksi: [aksi]
+          });
+        }
+        break;
+      }
+    }
+
+    if (!matched) {
+      unclusteredSteps.push(step);
+    }
+  }
+
+  // Lengkapi deskripsi modul cluster dengan rangkuman aksi konkret
+  const result: Array<{ nama: string; deskripsi: string; cakupanAksi: string[] }> = [];
+
+  for (const cluster of assignedClusterModules.values()) {
+    let desc = cluster.deskripsi;
+    if (cluster.cakupanAksi.length > 0) {
+      desc += ` (Mencakup: ${cluster.cakupanAksi.slice(0, 3).join(', ')}${cluster.cakupanAksi.length > 3 ? ', dll' : ''})`;
+    }
+    result.push({
+      nama: cluster.nama,
+      deskripsi: desc,
+      cakupanAksi: cluster.cakupanAksi
+    });
+  }
+
+  // Tambahkan aksi yang tidak masuk cluster sebagai modul mandiri
+  for (const unclustered of unclusteredSteps) {
+    const modName = deriveModuleNameFromAction(unclustered.aksi);
+    result.push({
+      nama: modName,
+      deskripsi: `Diangkat dari alur kerja: "${unclustered.aksi}"`,
+      cakupanAksi: [unclustered.aksi]
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Membangun checklist modul/form per peran aktif:
+ * - Modul dari alur kerja (alurInti/alurPendukung/kasusGanda) dikonsolidasikan menjadi form komposit kohesif -> DEFAULT TERCENTANG.
+ * - Modul dari domainProfile.referensiAlurKerjaLazim yang belum ada di alur -> DEFAULT TIDAK TERCENTANG, berlabel (disarankan).
+ * - Modul custom yang ditambahkan user -> TERCENTANG.
+ */
+export function generateRoleModuleChecklist(session: MockupSessionState): RoleModuleChecklistGroup[] {
+  const removedExt = session.roles?.removedExternalRoles || [];
+  const activeRoles = (session.roles?.selected || ['Super Admin']).filter(
+    (r) => !removedExt.includes(r)
+  );
+
+  const existingChecklist = session.rbac?.checklistPerRole || [];
+
+  const flowData = session.flow || {};
+  const allSteps: { pelaku: string; aksi: string; source: string }[] = [];
+
+  if (flowData.alurInti) {
+    flowData.alurInti.forEach((s) => allSteps.push({ pelaku: s.pelaku, aksi: s.aksi, source: 'alur_inti' }));
+  }
+  if (flowData.alurPendukung) {
+    flowData.alurPendukung.forEach((ap) => {
+      ap.steps?.forEach((s) => allSteps.push({ pelaku: s.pelaku, aksi: s.aksi, source: ap.nama }));
+    });
+  }
+  if (flowData.kasusGanda) {
+    flowData.kasusGanda.forEach((kg) => {
+      kg.alurInti?.forEach((s) => allSteps.push({ pelaku: s.pelaku, aksi: s.aksi, source: kg.nama }));
+    });
+  }
+
+  const referensiLazim = session.domainProfile?.referensiAlurKerjaLazim || [];
+  const katalogMaster = session.domainProfile?.entitasKatalogMaster || [];
+
+  const groups: RoleModuleChecklistGroup[] = [];
+
+  for (const role of activeRoles) {
+    const existingGroup = existingChecklist.find(
+      (g) => g.role.toLowerCase() === role.toLowerCase()
+    );
+
+    const items: RoleModuleChecklistItem[] = [];
+    const addedModuleNames = new Set<string>();
+
+    // 1. Ambil langkah-langkah Alur untuk role ini
+    const roleSteps = allSteps.filter((s) => isRoleMatch(s.pelaku, role, activeRoles));
+
+    // Ekstraksi dan sintesis modul komposit kohesif dari alur
+    const clusteredModules = clusterRoleStepsIntoModules(
+      roleSteps,
+      role,
+      session.match?.businessCategory
+    );
+
+    for (const cMod of clusteredModules) {
+      const moduleName = cMod.nama;
+      if (moduleName && !addedModuleNames.has(moduleName.toLowerCase())) {
+        addedModuleNames.add(moduleName.toLowerCase());
+        const existingItem = existingGroup?.items.find(
+          (it) =>
+            it.nama.toLowerCase() === moduleName.toLowerCase() ||
+            isSemanticModuleMatch(it.nama, moduleName)
+        );
+        items.push({
+          id: `mod_${role}_${items.length + 1}`.replace(/\s+/g, '_').toLowerCase(),
+          nama: moduleName,
+          deskripsi: existingItem ? existingItem.deskripsi || cMod.deskripsi : cMod.deskripsi,
+          role,
+          termasukDiAlur: true,
+          disarankan: false,
+          checked: existingItem ? existingItem.checked : true,
+          cakupanAksi: cMod.cakupanAksi
+        });
+      }
+    }
+
+    // Khusus Super Admin / Pemilik jika langkah operasional alur tidak menyebutkannya eksplisit
+    if (
+      (role.toLowerCase().includes('admin') || role.toLowerCase().includes('pemilik')) &&
+      items.length === 0
+    ) {
+      const masterName =
+        katalogMaster.length > 0
+          ? `Katalog Master (${katalogMaster.join(', ')})`
+          : 'Data Master & Kebijakan';
+      items.push({
+        id: `mod_${role}_master`.replace(/\s+/g, '_').toLowerCase(),
+        nama: `Manajemen ${masterName}`,
+        deskripsi: 'Pengelolaan data induk produk/layanan, tarif, dan kebijakan operasional.',
+        role,
+        termasukDiAlur: true,
+        disarankan: false,
+        checked: true
+      });
+      addedModuleNames.add(`manajemen ${masterName}`.toLowerCase());
+
+      items.push({
+        id: `mod_${role}_laporan`.replace(/\s+/g, '_').toLowerCase(),
+        nama: 'Laporan & Rekapitulasi Operasional',
+        deskripsi: 'Monitoring transaksi harian, statistik omzet, dan audit performa bisnis.',
+        role,
+        termasukDiAlur: true,
+        disarankan: false,
+        checked: true
+      });
+      addedModuleNames.add('laporan & rekapitulasi operasional');
+    }
+
+    // 2. Cocokkan dengan domainProfile.referensiAlurKerjaLazim
+    const matchingRef = referensiLazim.find((ref) =>
+      isRoleMatch(ref.role, role, activeRoles)
+    );
+
+    if (matchingRef && Array.isArray(matchingRef.modul)) {
+      for (const refMod of matchingRef.modul) {
+        // Cek apakah sudah ter-cover oleh item alur komposit atau aksi yang dirangkum
+        const alreadyCovered = items.some(
+          (it) =>
+            it.nama.toLowerCase() === refMod.nama.toLowerCase() ||
+            isSemanticModuleMatch(it.nama, refMod.nama) ||
+            it.cakupanAksi?.some((cakupan) => isSemanticModuleMatch(cakupan, refMod.nama))
+        );
+
+        if (!alreadyCovered && !addedModuleNames.has(refMod.nama.toLowerCase())) {
+          addedModuleNames.add(refMod.nama.toLowerCase());
+          const existingItem = existingGroup?.items.find(
+            (it) => it.nama.toLowerCase() === refMod.nama.toLowerCase()
+          );
+
+          items.push({
+            id: `mod_saran_${role}_${items.length + 1}`.replace(/\s+/g, '_').toLowerCase(),
+            nama: refMod.nama,
+            deskripsi: refMod.deskripsi || 'Rekomendasi kelaziman alur kerja industri',
+            role,
+            termasukDiAlur: false,
+            disarankan: true,
+            checked: existingItem ? existingItem.checked : false // DEFAULT TIDAK TERCENTANG
+          });
+        }
+      }
+    }
+
+    // 3. Sertakan item custom yang sebelumnya sudah ditambahkan user
+    if (existingGroup) {
+      for (const ex of existingGroup.items) {
+        if (ex.isCustom && !addedModuleNames.has(ex.nama.toLowerCase())) {
+          addedModuleNames.add(ex.nama.toLowerCase());
+          items.push(ex);
+        }
+      }
+    }
+
+    groups.push({
+      role,
+      items
+    });
+  }
+
+  return groups;
+}
+
+export function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
+  const isChecklistStage =
+    session.rbac?.stage === 'CHECKLIST' ||
+    (!session.rbac?.modul || session.rbac.modul.length === 0);
+
+  const checklistGroups = session.rbac?.checklistPerRole || generateRoleModuleChecklist(session);
+
+  if (isChecklistStage) {
+    return {
+      stepId: 'RBAC',
+      title: '📋 Modul & Form Kerja per Peran',
+      multi: true,
+      allowOther: false,
+      rbacStage: 'CHECKLIST',
+      roleModuleChecklist: checklistGroups,
+      options: [
+        {
+          id: 'confirm_role_modules',
+          label: 'Lanjut Susun Matriks Hak Akses (RBAC) →',
+          recommended: true,
+          description:
+            'Lanjutkan penyusunan hak akses dan wewenang berdasarkan modul-modul yang dipilih di atas.'
+        }
+      ],
+      backNavOption: {
+        id: 'back_to_previous',
+        label: '⬅️ Kembali ke Alur Kerja',
+        description: 'Kembali ke langkah alur kerja sebelumnya.'
+      }
+    };
+  }
+
   const isRevising = Boolean(session.rbac?.revisiCount && session.rbac.revisiCount > 0);
   const totalModul = session.rbac?.modul?.length || 0;
   return {
@@ -4117,22 +5124,109 @@ function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
     title: 'Matriks Hak Akses & Pembagian Wewenang Role',
     multi: false,
     allowOther: false,
+    rbacStage: 'MATRIX',
+    roleModuleChecklist: checklistGroups,
     options: [
       {
         id: 'confirm_rbac',
-        label: '✅ Sudah pas, lanjut ke Skema Data',
+        label: '✅ Sudah pas, lanjut ke Deklarasi Formula',
         recommended: true,
         description:
           totalModul > 0
-            ? `Hak akses ${totalModul} modul fungsional per peran sudah sesuai kebutuhan operasional.`
-            : 'Pembagian wewenang dan batasan akses antar-peran sudah tepat.'
+            ? `Hak akses ${totalModul} modul fungsional per peran sudah sesuai, lanjut ke penentuan rumus kalkulasi.`
+            : 'Pembagian wewenang sudah tepat, lanjut ke penentuan rumus kalkulasi.'
       },
       {
         id: 'koreksi_rbac',
         label: isRevising ? '✏️ Masih ada koreksi hak akses role' : '✏️ Ada koreksi hak akses role',
         description: 'Tuliskan modul atau peran mana yang hak akses/wewenangnya perlu disesuaikan.',
         requiresInput: true,
-        inputPlaceholder: 'Contoh: Kasir jangan diberi akses hapus data, atau Penyewa boleh batalkan booking sendiri...'
+        inputPlaceholder:
+          'Contoh: Kasir jangan diberi akses hapus data, atau Penyewa boleh batalkan booking sendiri...'
+      },
+      {
+        id: 'reopen_module_checklist',
+        label: '📋 Ubah checklist modul/form per role',
+        description: 'Buka kembali checklist modul untuk menambah modul custom atau memilih rekomendasi alur lazim.'
+      }
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di langkah sebelumnya',
+      description: 'Kembali ke langkah sebelumnya untuk memeriksa atau mengubah data yang terlewat.'
+    }
+  };
+}
+
+export function extractFormulaVariables(formulaExpression?: string, formulaText?: string): string[] {
+  const text = (formulaExpression || formulaText || '').trim();
+  if (!text) return [];
+
+  // Match all identifier tokens starting with letter or underscore
+  const matches = text.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+
+  // Standard JS / Math keywords and primitives to ignore
+  const reservedWords = new Set([
+    'Math', 'round', 'floor', 'ceil', 'min', 'max', 'abs', 'sqrt', 'pow',
+    'true', 'false', 'null', 'undefined', 'NaN', 'Infinity',
+    'if', 'else', 'return', 'function', 'var', 'let', 'const'
+  ]);
+
+  const uniqueVars: string[] = [];
+  for (const m of matches) {
+    if (!reservedWords.has(m) && !uniqueVars.includes(m)) {
+      uniqueVars.push(m);
+    }
+  }
+
+  return uniqueVars;
+}
+
+export function renderFormulaMarkdownTable(formulas: BusinessFormula[]): string {
+  if (!formulas || formulas.length === 0) {
+    return (
+      '> ℹ️ **Tidak ada formula kalkulasi khusus yang terdeteksi secara otomatis.**\n' +
+      '> Semua data saat ini dicatat langsung tanpa rumus turunan. Jika aplikasi Anda membutuhkan perhitungan otomatis (seperti total harga, subtotal, denda keterlambatan, atau saldo), Anda dapat menambahkannya melalui tombol koreksi di bawah.'
+    );
+  }
+
+  let md = '| Tabel Target | Field Terhitung | Label Tampilan | Rumus / Formula | Komponen Input | Keterangan |\n';
+  md += '|---|---|---|---|---|---|\n';
+
+  for (const f of formulas) {
+    const pureVars = extractFormulaVariables(f.formulaExpression, f.formulaText);
+    const komponenList = pureVars.length > 0 ? pureVars : (f.komponenInput || []);
+    const komponen = komponenList.length > 0 ? komponenList.join(', ') : '-';
+    md += `| \`${f.targetTable || '-'}\` | \`${f.namaField}\` | ${f.labelField || f.namaField} | \`${f.formulaText || f.formulaExpression || '-'}\` | \`${komponen}\` | ${f.deskripsi || '-'} |\n`;
+  }
+
+  return md;
+}
+
+export function buildFormulaStep(session: MockupSessionState): GuidedStepPayload {
+  const isRevising = Boolean(session.formulas?.revisiCount && session.formulas.revisiCount > 0);
+  const totalFormula = session.formulas?.daftar?.length || 0;
+  return {
+    stepId: 'FORMULA',
+    title: 'Deklarasi Formula & Kalkulasi Otomatis',
+    multi: false,
+    allowOther: false,
+    options: [
+      {
+        id: 'confirm_formula',
+        label: '✅ Sudah pas, lanjut ke Skema Data',
+        recommended: true,
+        description:
+          totalFormula > 0
+            ? `${totalFormula} formula perhitungan otomatis sudah siap diintegrasikan ke skema database.`
+            : 'Lanjut ke skema database dengan struktur field standar.'
+      },
+      {
+        id: 'koreksi_formula',
+        label: isRevising ? '✏️ Masih ada koreksi / penambahan formula' : '✏️ Ada koreksi / penambahan formula',
+        description: 'Tuliskan rumus atau field kalkulasi yang perlu ditambah, diubah, atau dihapus.',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Tambahkan total_bayar = durasi_jam * tarif_per_jam, atau ubah rumus denda...'
       }
     ],
     backNavOption: {
@@ -4258,6 +5352,10 @@ export function renderReviewFinalMarkdown(session: MockupSessionState): string {
   const modulCount = session.rbac?.modul?.length || 0;
   lines.push(`- 🛡️ **Hak Akses & Wewenang (RBAC):** ${modulCount} modul fungsional terkonfigurasi`);
 
+  // 4b. Formula Kalkulasi
+  const formulaCount = session.formulas?.daftar?.length || 0;
+  lines.push(`- 🧮 **Formula & Rumus Kalkulasi:** ${formulaCount > 0 ? `${formulaCount} formula otomatis terdefinisi` : 'Tidak ada formula turunan khusus (pencatatan data langsung)'}`);
+
   // 5. Skema Data
   const tableNames = session.dataSchema?.tabel?.map((t) => `\`${t.nama}\``) || [];
   lines.push(`- 🗄️ **Skema Basis Data:** ${tableNames.length} tabel entitas (${tableNames.join(', ') || '-'})`);
@@ -4318,6 +5416,11 @@ export function buildReviewFinalStep(session: MockupSessionState): GuidedStepPay
       description: `Matriks wewenang: ${session.rbac?.modul?.length || 0} modul fungsional`
     },
     {
+      id: 'edit_formula',
+      label: '✏️ Lihat & Edit Formula Kalkulasi',
+      description: `Formula kalkulasi: ${session.formulas?.daftar?.length || 0} rumus terdefinisi`
+    },
+    {
       id: 'edit_schema',
       label: '✏️ Lihat & Edit Skema Data',
       description: `Skema tabel: ${session.dataSchema?.tabel?.length || 0} entitas data`
@@ -4342,12 +5445,16 @@ export function buildGuidedStep(session: MockupSessionState): GuidedStepPayload 
   switch (session.step) {
     case 'STORYTELLING':
       return buildStorytellingStep(session);
+    case 'DOMAIN_PROFILE':
+      return buildDomainProfileStep(session);
     case 'ROLE':
       return buildRoleStep(session);
     case 'ALUR':
       return buildAlurStep(session);
     case 'RBAC':
       return buildRbacStep(session);
+    case 'FORMULA':
+      return buildFormulaStep(session);
     case 'SKEMA_DATA':
       return buildSkemaDataStep(session);
     case 'SIMULASI_DB':
@@ -4482,7 +5589,7 @@ export function applyGuidedAnswer(
         }
       }
 
-      next.step = 'ROLE';
+      next.step = 'DOMAIN_PROFILE';
       return next;
     }
 
@@ -4520,9 +5627,9 @@ export function applyGuidedAnswer(
           next.step = 'STORYTELLING';
           return next;
         } else {
-          // Semua aktor dalam antrean sudah selesai diklarifikasi -> LANGSUNG KE ROLE
+          // Semua aktor dalam antrean sudah selesai diklarifikasi -> LANGSUNG KE DOMAIN_PROFILE (Mind-Map)
           delete next.storyline!.pendingActorClarification;
-          next.step = 'ROLE';
+          next.step = 'DOMAIN_PROFILE';
           return next;
         }
       }
@@ -4558,6 +5665,7 @@ export function applyGuidedAnswer(
 
     if (isMismatch) {
       delete next.actorsClassification;
+      delete next.domainProfile;
       next.storyline = {
         ...existingStory,
         statusKonfirmasi: 'dikoreksi',
@@ -4611,13 +5719,14 @@ export function applyGuidedAnswer(
         }
       }
 
-      next.step = 'ROLE';
+      next.step = 'DOMAIN_PROFILE';
       return next;
     }
 
     // Jika koreksi kecil (minor_adjust / other):
     // Sesi TETAP berada di step STORYTELLING untuk ditampilkan ulang!
     delete next.actorsClassification;
+    delete next.domainProfile;
     next.storyline = {
       ...existingStory,
       narasi: other ? `${existingStory.narasi} (Catatan: ${other})` : existingStory.narasi,
@@ -4628,6 +5737,42 @@ export function applyGuidedAnswer(
     };
     delete next.storyline.pendingActorClarification;
     next.step = 'STORYTELLING';
+    return next;
+  } else if (stepId === 'DOMAIN_PROFILE') {
+    const feedbackText = (other || '').trim();
+    const isConfirm =
+      cleanSelected.includes('confirm_domain_profile') ||
+      (!feedbackText && cleanSelected.length === 0) ||
+      (Boolean(feedbackText) && isPureConfirmationText(feedbackText));
+
+    if (isConfirm) {
+      if (next.domainProfile) {
+        next.domainProfile.statusKonfirmasi = 'disetujui';
+      }
+      next.step = 'ROLE';
+      return next;
+    }
+
+    // Koreksi profil domain bisnis: sesi tetap di DOMAIN_PROFILE untuk di-recompute
+    if (next.domainProfile) {
+      next.domainProfile.statusKonfirmasi = 'dikoreksi';
+      next.domainProfile.revisiCount = (next.domainProfile.revisiCount || 0) + 1;
+    }
+    // Bersihkan turunan downstream jika profil dikoreksi
+    next.roles = { selected: [REQUIRED_ROLE], wajib: [REQUIRED_ROLE], tambahan: [] };
+    if (next.flow) {
+      delete next.flow.selectedId;
+      delete next.flow.alurInti;
+      delete next.flow.alurPendukung;
+      delete next.flow.fiturPendukung;
+      delete next.flow.kasusGanda;
+    }
+    delete next.rbac;
+    delete next.formulas;
+    delete next.dataSchema;
+    delete next.simulasiDb;
+
+    next.step = 'DOMAIN_PROFILE';
     return next;
   } else if (stepId === 'ROLE') {
     const offeredStep = buildRoleStep(session);
@@ -4651,6 +5796,23 @@ export function applyGuidedAnswer(
       tambahan: tambahanRoles,
       ...(other && !isNavigationActionId(other.trim()) && !isConfirm ? { other } : {})
     };
+
+    // Penyesuaian promosi peran: Jika peran yang dipilih sebelumnya diklasifikasikan sebagai ENTITAS_DATA,
+    // ubah klasifikasinya menjadi PENGGUNA_SISTEM (akses login mandiri).
+    if (next.actorsClassification) {
+      for (const ac of next.actorsClassification) {
+        if (finalSelected.some((r) => r.toLowerCase() === ac.actor.toLowerCase())) {
+          ac.category = 'PENGGUNA_SISTEM';
+          delete ac.ownerRole;
+          ac.reason = `Dikonfirmasi pengguna sebagai peran sistem (akses login mandiri)`;
+        }
+      }
+    }
+    if (next.roles.removedExternalRoles) {
+      next.roles.removedExternalRoles = next.roles.removedExternalRoles.filter(
+        (r) => !finalSelected.some((fs) => fs.toLowerCase() === r.toLowerCase())
+      );
+    }
 
     // POIN REVISI 3: Pelimpahan tugas eksplisit saat peran dihapus
     // PENTING (Bug 1b): Entitas Data (misal Siswa, Pelanggan, Pasien) BUKAN peran sistem yang dihapus.
@@ -4800,8 +5962,9 @@ export function applyGuidedAnswer(
       prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
     };
 
-    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC, Skema Data, dan Simulasi DB saat alur kerja berubah
+    // SYARAT TAMBAHAN 1: Bersihkan cache RBAC, Formula, Skema Data, dan Simulasi DB saat alur kerja berubah
     delete next.rbac;
+    delete next.formulas;
     delete next.dataSchema;
     delete next.simulasiDb;
   } else if (stepId === 'RBAC') {
@@ -4812,6 +5975,19 @@ export function applyGuidedAnswer(
       ...next.changeSnapshots,
       lastModifiedStep: 'RBAC',
       prevRbacModul: session.rbac?.modul?.map((m) => m.nama) || [],
+      prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
+      prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
+        .map((t) => t.nama)
+        .join(', '),
+      prevSimulasiDbRoles: session.simulasiDb?.akunLogin?.map((a) => a.role) || []
+    };
+  } else if (stepId === 'FORMULA') {
+    if (next.formulas) {
+      next.formulas.statusKonfirmasi = 'disetujui';
+    }
+    next.changeSnapshots = {
+      ...next.changeSnapshots,
+      lastModifiedStep: 'FORMULA',
       prevDataSchemaTabel: session.dataSchema?.tabel?.map((t) => t.nama) || [],
       prevSimulasiDbTabel: normalizeContohTabel(session.simulasiDb?.contohData)
         .map((t) => t.nama)
@@ -4854,6 +6030,10 @@ export function applyGuidedAnswer(
     }
     if (selected.includes('edit_rbac')) {
       next.step = 'RBAC';
+      return next;
+    }
+    if (selected.includes('edit_formula')) {
+      next.step = 'FORMULA';
       return next;
     }
     if (selected.includes('edit_schema')) {
@@ -4912,6 +6092,11 @@ export function isBriefBusinessComplete(session: MockupSessionState): BriefCompl
   // 3. Validasi RBAC (minimal 1 modul terisi)
   if (!session.rbac?.modul || session.rbac.modul.length === 0) {
     missing.push('Matriks hak akses (RBAC) belum dirancang');
+  }
+
+  // 3b. Validasi Formula (harus sudah dideklarasikan / dikonfirmasi)
+  if (!session.formulas) {
+    missing.push('Deklarasi formula kalkulasi belum dilakukan');
   }
 
   // 4. Validasi Skema Data (minimal 1 tabel terisi)

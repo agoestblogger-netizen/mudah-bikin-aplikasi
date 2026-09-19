@@ -117,12 +117,12 @@ test('Judul kartu variasi menyebut entityLabel kursus', () => {
   assert(payload!.title.toLowerCase().includes('kursus'), `judul harus menyebut "kursus", dapat: "${payload!.title}"`);
 });
 
-console.log('\n== [2] variant_single → ROLE, narasi tidak berubah ==');
+console.log('\n== [2] variant_single → DOMAIN_PROFILE, narasi tidak berubah ==');
 
-test('variant_single → step ROLE', () => {
+test('variant_single → step DOMAIN_PROFILE', () => {
   const session = makeKursusSession({ pendingProductVariantQuestion: { entityLabel: 'kursus' } });
   const result = applyGuidedAnswer(session, 'STORYTELLING', ['variant_single'], undefined);
-  assertEqual(result.step, 'ROLE', 'step harus ROLE');
+  assertEqual(result.step, 'DOMAIN_PROFILE', 'step harus DOMAIN_PROFILE');
 });
 
 test('variant_single → narasi tidak di-append', () => {
@@ -138,7 +138,7 @@ console.log('\n== [3] variant_multiple → append note ke narasi ==');
 test('variant_multiple tanpa nama varian → append [Variasi Produk:...]', () => {
   const session = makeKursusSession({ pendingProductVariantQuestion: { entityLabel: 'kursus' } });
   const result = applyGuidedAnswer(session, 'STORYTELLING', ['variant_multiple'], undefined);
-  assertEqual(result.step, 'ROLE', 'step harus ROLE');
+  assertEqual(result.step, 'DOMAIN_PROFILE', 'step harus DOMAIN_PROFILE');
   assert(result.storyline!.narasi.includes('[Variasi Produk:'), `narasi harus mengandung "[Variasi Produk:", dapat: "${result.storyline!.narasi.substring(0, 150)}"`);
 });
 
@@ -157,10 +157,10 @@ test('variant_multiple → pendingProductVariantQuestion dihapus', () => {
 
 console.log('\n== [4] Skip bisnis transaksi tunggal (bengkel) ==');
 
-test('Bengkel → konfirmasi langsung ke ROLE tanpa pertanyaan variasi', () => {
+test('Bengkel → konfirmasi langsung ke DOMAIN_PROFILE tanpa pertanyaan variasi', () => {
   const session = makeBengkelSession();
   const result = applyGuidedAnswer(session, 'STORYTELLING', ['confirm_story'], undefined);
-  assertEqual(result.step, 'ROLE', `bengkel harus langsung ke ROLE, step=${result.step}, pending=${JSON.stringify(result.storyline?.pendingProductVariantQuestion)}`);
+  assertEqual(result.step, 'DOMAIN_PROFILE', `bengkel harus langsung ke DOMAIN_PROFILE, step=${result.step}, pending=${JSON.stringify(result.storyline?.pendingProductVariantQuestion)}`);
 });
 
 console.log('\n== [5] Skip jika narasi sudah ada penanda variasi ==');
@@ -170,7 +170,7 @@ test('Narasi dengan [Variasi Produk:...] → skip pertanyaan', () => {
     narasi: 'Platform kursus menyetir. [Variasi Produk: Bisnis ini menawarkan beberapa varian kursus. Pelanggan dapat memilih dari beberapa opsi yang tersedia.]'
   });
   const result = applyGuidedAnswer(session, 'STORYTELLING', ['confirm_story'], undefined);
-  assertEqual(result.step, 'ROLE', 'sudah ada penanda variasi → harus langsung ke ROLE');
+  assertEqual(result.step, 'DOMAIN_PROFILE', 'sudah ada penanda variasi → harus langsung ke DOMAIN_PROFILE');
   assert(result.storyline?.pendingProductVariantQuestion === undefined, 'pendingProductVariantQuestion tidak boleh di-set ulang');
 });
 
@@ -241,7 +241,7 @@ test('Pelatihan Kuliner: setelah confirm_story, muncul Variasi Produk DULU (buka
     ['confirm_actor_recommendation'],
     undefined
   );
-  assertEqual(afterActor.step, 'ROLE', 'Setelah klasifikasi Siswa selesai, langsung lanjut ke ROLE');
+  assertEqual(afterActor.step, 'DOMAIN_PROFILE', 'Setelah klasifikasi Siswa selesai, langsung lanjut ke DOMAIN_PROFILE');
 });
 
 console.log('\n== [7] Simulasi DB: Nama varian user dipakai sebagai nilai katalog ==');
@@ -337,7 +337,7 @@ test('Sales Prospek CRM → langsung ke ROLE tanpa pertanyaan variasi', () => {
   };
 
   const result = applyGuidedAnswer(crmSession, 'STORYTELLING', ['confirm_story'], undefined);
-  assertEqual(result.step, 'ROLE', 'CRM harus langsung ke ROLE');
+  assertEqual(result.step, 'DOMAIN_PROFILE', 'CRM harus langsung ke DOMAIN_PROFILE');
   assert(result.storyline?.pendingProductVariantQuestion === undefined, 'tidak ada variasi untuk CRM');
 });
 
@@ -464,7 +464,7 @@ test('Warung Kelontong → SKIP pertanyaan variasi (masuk skiplist transaksional
     result.storyline?.pendingProductVariantQuestion === undefined,
     'Toko kelontong harus SKIP pertanyaan variasi'
   );
-  assertEqual(result.step, 'ROLE', 'harus langsung ke ROLE');
+  assertEqual(result.step, 'DOMAIN_PROFILE', 'harus langsung ke DOMAIN_PROFILE');
 });
 
 test('Laundry Kiloan → SKIP pertanyaan variasi (masuk skiplist transaksional)', () => {

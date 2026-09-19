@@ -119,6 +119,42 @@ const testFiles = [
     name: 'Laundry Null-Safety Modal, String Guard & CDN Dedup',
     file: 'tests/laundry_null_safety_and_string_guard.test.ts',
     desc: 'Anti-crash 3-lapis modal CRUD (v-if, data default, optional chaining), perbaikan stringified-guard member expression, auto-clean String(x).prop, dan dedup CDN Tailwind/Vue/Lucide'
+  },
+  {
+    id: 20,
+    name: 'Konsistensi domainProfile, Formula, & Skema Data (Snapshot & Rekap Harian)',
+    file: 'tests/domain_profile_formula_schema_consistency.test.ts',
+    desc: 'Sinkronisasi komponenInput murni dari formulaExpression, Opsi A snapshot field di transaksi_sewa, Opsi B computeFormulaValue relasi fallback, dan preservasi rekap_transaksi_harian'
+  },
+  {
+    id: 21,
+    name: 'Formalisasi Gerbang Login, Larangan Role Switcher & Reset Sesi',
+    file: 'tests/login_gate_and_role_switch_formalization.test.ts',
+    desc: 'Memastikan larangan role switcher di appContainer ditegakkan (@click, onclick, v-model), auto-repair membersihkan elemen rogue, logout/loginAs mereset state & modal bersih, serta mendarat di landingTab'
+  },
+  {
+    id: 22,
+    name: 'Kurasi HyperUI & Registry Bundel Tema Visual',
+    file: 'tests/hyperui_curation_and_registry.test.ts',
+    desc: 'Memverifikasi kelengkapan 6 bundel tema HyperUI (modern_minimalist, corporate_formal, sleek_dark, warm_pastel, playful_neobrutalism, vibrant_saas), translasi murni direktif Vue 3 (anti-Alpine/DOM listener), dan penalaran semantik AI'
+  },
+  {
+    id: 23,
+    name: '3 Bug Baru: Mismatch Tab/Tabel (Opsi A), ID Generator Clean, & Mixin Method Preservation',
+    file: 'tests/tab_alignment_id_gen_mixin_dedup.test.ts',
+    desc: 'Memverifikasi penyelaran tab ID = nama tabel di v-show & landingTab, perbaikan rantai rusak ID Math.random(), dan stripping duplikat method komponen agar mixin Pilar 1 tetap berlaku'
+  },
+  {
+    id: 24,
+    name: 'Tegakkan Granularitas RBAC (View-Only vs CRUD Penuh per Role per Tabel)',
+    file: 'tests/granular_rbac_view_vs_crud.test.ts',
+    desc: 'Ekstraksi wewenang granular editRoles per tabel/tab, eliminasi bypass naive Super Admin pada tab berstatus Supervisi & Audit, auto-guarding tombol Tambah/Aksi/Edit/Hapus, dan banner Read-Only'
+  },
+  {
+    id: 25,
+    name: 'Checklist Modul/Form per Role & Stage RBAC (Alur + Referensi Lazim)',
+    file: 'tests/role_module_checklist_rbac.test.ts',
+    desc: 'Verifikasi pembagian modul tersirat alur (default checked) vs rekomendasi lazim industri (default unchecked), custom modules, dan transisi tahap RBAC'
   }
 ];
 

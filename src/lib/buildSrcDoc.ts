@@ -910,23 +910,54 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           return roles.includes(this.currentRole) || roles.includes('*');
         },
         canEditCurrentTab() {
+          // 1. Cek editRoles pada currentTableConfig
           if (this.currentTableConfig) {
-            var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-            return this.isRoleAllowed(allowed);
-          }
-          if (this.tablesConfig) {
-            var key = (this.activeTab || '').replace(/^tab_/, '');
-            var cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
-            if (cfg) {
-              var allowedCfg = cfg.roles || cfg.allowRoles || [];
-              return this.isRoleAllowed(allowedCfg);
+            var editRoles = this.currentTableConfig.editRoles || this.currentTableConfig.canEditRoles;
+            if (Array.isArray(editRoles)) {
+              return editRoles.includes(this.currentRole) || editRoles.includes('*');
             }
           }
+          // 2. Cek editRoles pada tablesConfig berdasarkan activeTab
+          if (this.tablesConfig) {
+            var key = (this.activeTab || '').replace(/^(?:tab_|view_)/, '');
+            var cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
+            if (cfg) {
+              var cfgEditRoles = cfg.editRoles || cfg.canEditRoles;
+              if (Array.isArray(cfgEditRoles)) {
+                return cfgEditRoles.includes(this.currentRole) || cfgEditRoles.includes('*');
+              }
+            }
+          }
+          // 3. Cek editRoles pada tabs array
           if (this.tabs && this.tabs.length) {
             var curTab = this.tabs.find(function(t) { return t.id === this.activeTab; }.bind(this));
             if (curTab) {
-              var tabRoles = curTab.roles || curTab.allowRoles || [];
-              return this.isRoleAllowed(tabRoles);
+              if (curTab.isView) return false;
+              var tabEditRoles = curTab.editRoles || curTab.canEditRoles;
+              if (Array.isArray(tabEditRoles)) {
+                return tabEditRoles.includes(this.currentRole) || tabEditRoles.includes('*');
+              }
+            }
+          }
+          // 4. Fallback jika editRoles belum didefinisikan secara granular (backward compatibility)
+          if (this.currentTableConfig) {
+            var allowed = this.currentTableConfig?.roles || this.currentTableConfig?.allowRoles || [];
+            if (allowed && allowed.length) return this.isRoleAllowed(allowed);
+          }
+          if (this.tablesConfig) {
+            var key2 = (this.activeTab || '').replace(/^(?:tab_|view_)/, '');
+            var cfg2 = this.tablesConfig[key2] || this.tablesConfig[this.activeTab];
+            if (cfg2) {
+              var allowedCfg = cfg2?.roles || cfg2?.allowRoles || [];
+              if (allowedCfg && allowedCfg.length) return this.isRoleAllowed(allowedCfg);
+            }
+          }
+          if (this.tabs && this.tabs.length) {
+            var curTab2 = this.tabs.find(function(t) { return t.id === this.activeTab; }.bind(this));
+            if (curTab2) {
+              if (curTab2.isView) return false;
+              var tabRoles = curTab2?.roles || curTab2?.allowRoles || [];
+              if (tabRoles && tabRoles.length) return this.isRoleAllowed(tabRoles);
             }
           }
           var owner = window.OWNER_ROLE_NAME || 'Super Admin';
@@ -934,8 +965,19 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         },
         showTab(tabId) { this.activeTab = tabId; },
         loginAs(role) {
+          if (this.isLoggedIn) {
+            this.logout();
+          }
           this.currentRole = role;
           this.isLoggedIn = true;
+          if (this.modal && typeof this.modal === 'object') {
+            this.modal.isOpen = false;
+            this.modal.show = false;
+          }
+          if (this.deleteModal && typeof this.deleteModal === 'object') {
+            this.deleteModal.isOpen = false;
+            this.deleteModal.show = false;
+          }
           var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
           if (acc && acc.landingTab) this.showTab(acc.landingTab);
           else if (this.tabs && this.tabs.length) {
@@ -947,7 +989,26 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           this.currentRole = '';
           this.isLoggedIn = false;
           this.activeTab = '';
-          this.showToast('Berhasil keluar.', 'info');
+          if (this.modal && typeof this.modal === 'object') {
+            this.modal.isOpen = false;
+            this.modal.show = false;
+            this.modal.isEdit = false;
+          }
+          if (this.deleteModal && typeof this.deleteModal === 'object') {
+            this.deleteModal.isOpen = false;
+            this.deleteModal.show = false;
+          }
+          if (typeof this.closeModal === 'function') {
+            try { this.closeModal(); } catch (e) {}
+          }
+          if (typeof this.closeDeleteModal === 'function') {
+            try { this.closeDeleteModal(); } catch (e) {}
+          }
+          if (this.loginForm && typeof this.loginForm === 'object') {
+            this.loginForm.username = '';
+            this.loginForm.password = '';
+          }
+          this.showToast('Berhasil keluar. Silakan login kembali.', 'info');
         },
         showToast(message, type) {
           type = type || 'info';
@@ -959,6 +1020,42 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
               self.toast.visible = false;
             }
           }, 3000);
+        },
+        handleLogin() {
+          var username = (this.loginForm && this.loginForm.username) || (this.credentials && this.credentials.username) || '';
+          var password = (this.loginForm && this.loginForm.password) || (this.credentials && this.credentials.password) || '';
+          var accounts = this.demoAccounts || (typeof window !== 'undefined' && window.DEMO_ACCOUNTS) || [];
+          var matched = accounts.find(function(a) {
+            return (a.username || '').toLowerCase() === (username || '').toLowerCase();
+          });
+          if (matched) {
+            this.loginAs(matched.role);
+            this.showToast('Selamat datang, ' + matched.role + '!', 'success');
+          } else {
+            var first = accounts[0];
+            if (first) {
+              this.loginAs(first.role);
+              this.showToast('Login sebagai ' + first.role, 'info');
+            } else {
+              this.showToast('Silakan pilih salah satu akun demo untuk login.', 'warning');
+            }
+          }
+        },
+        quickLogin(u, p) {
+          if (this.loginForm && typeof this.loginForm === 'object') {
+            this.loginForm.username = u;
+            this.loginForm.password = p || '';
+          }
+          var accounts = this.demoAccounts || (typeof window !== 'undefined' && window.DEMO_ACCOUNTS) || [];
+          var matched = accounts.find(function(a) {
+            return (a.username || '').toLowerCase() === (u || '').toLowerCase();
+          });
+          if (matched) {
+            this.loginAs(matched.role);
+            this.showToast('Login instan sebagai ' + matched.role, 'success');
+          } else {
+            this.handleLogin();
+          }
         },
         bukaModalTambahStaf() {
           if (this.openCreate && this.tablesConfig && this.tablesConfig.pengguna) {
@@ -972,6 +1069,113 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
         },
         nonaktifkanAkunStaf() {
           this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
+        },
+        resolveRelationDisplay(targetTable, id, depth, visited) {
+          if (!id) return '-';
+          depth = depth || 0;
+          visited = visited || new Set();
+          if (depth > 3 || visited.has(targetTable + ':' + id)) {
+            return String(id);
+          }
+          visited.add(targetTable + ':' + id);
+
+          var targetRows = (this.db && this.db[targetTable]) || [];
+          var row = targetRows.find(function(r) { return String(r.id) === String(id); });
+          if (!row) {
+            // Jika id adalah teks nama literal yang cocok dengan display/nama salah satu baris
+            var matchedByName = targetRows.find(function(r) {
+              return Object.values(r).some(function(val) {
+                return typeof val === 'string' && val.toLowerCase() === String(id).toLowerCase();
+              });
+            });
+            if (matchedByName) row = matchedByName;
+            else return String(id);
+          }
+
+          var cfg = (this.tablesConfig && this.tablesConfig[targetTable]) || {};
+
+          // 1. Jika tabel memiliki compositeFields (Tabel Jembatan / Lapis 2)
+          if (cfg.compositeFields && cfg.compositeFields.length) {
+            var parts = [];
+            for (var i = 0; i < cfg.compositeFields.length; i++) {
+              var cfKey = cfg.compositeFields[i];
+              var fldCfg = (cfg.fields || []).find(function(f) { return f.key === cfKey; });
+              var targetFkTable = (fldCfg && fldCfg.targetTable) || cfKey.replace(/_(id|fk)$/i, '');
+              var fkVal = row[cfKey];
+              if (fkVal) {
+                var resolved = this.resolveRelationDisplay(targetFkTable, fkVal, depth + 1, visited);
+                if (resolved && resolved !== '-') parts.push(resolved);
+              }
+            }
+            if (parts.length > 0) return parts.join(' - ');
+          }
+
+          // 2. Jika ada displayField eksplisit dari skema
+          if (cfg.displayField && row[cfg.displayField]) {
+            return String(row[cfg.displayField]);
+          }
+
+          // 3. Fallback semantik representatif alami
+          if (row.nama) return String(row.nama);
+          if (row.nama_lengkap) return String(row.nama_lengkap);
+          if (row.nama_paket) return String(row.nama_paket);
+          if (row.nama_alat) return String(row.nama_alat);
+          if (row.nama_unit) return String(row.nama_unit);
+          if (row.nama_barang) return String(row.nama_barang);
+          if (row.nama_layanan) return String(row.nama_layanan);
+          if (row.judul) return String(row.judul);
+          if (row.kode_unit) return String(row.kode_unit);
+          if (row.label) return String(row.label);
+          if (row.perusahaan) return String(row.perusahaan);
+
+          return String(row.id || id);
+        },
+        getRelationOptions(targetTable) {
+          var targetRows = (this.db && this.db[targetTable]) || [];
+          var self = this;
+          return targetRows.map(function(row) {
+            return {
+              value: row.id,
+              text: self.resolveRelationDisplay(targetTable, row.id)
+            };
+          });
+        },
+        computeFormulaValue(form, fld) {
+          if (!form || !fld) return 0;
+          if (fld.formulaExpression) {
+            try {
+              var expr = fld.formulaExpression;
+              var ctx = Object.assign({}, form);
+              var dbSource = (this && this.db) || (this && this.tables) || (typeof window !== 'undefined' && window.__mockDb);
+              if (dbSource) {
+                for (var key in form) {
+                  if (key.endsWith('_id') && form[key]) {
+                    var targetName = key.slice(0, -3).toLowerCase();
+                    var tableKeys = Object.keys(dbSource);
+                    var matchedKey = tableKeys.find(function(k) {
+                      var lk = k.toLowerCase();
+                      return lk === targetName || lk === 'katalog_' + targetName || lk === targetName + 's';
+                    });
+                    if (matchedKey && Array.isArray(dbSource[matchedKey])) {
+                      var targetRow = dbSource[matchedKey].find(function(r) { return r && r.id === form[key]; });
+                      if (targetRow) {
+                        for (var rk in targetRow) {
+                          if (ctx[rk] === undefined || ctx[rk] === null) {
+                            ctx[rk] = targetRow[rk];
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              var evaluated = new Function('f', 'with(f) { return (' + expr + '); }')(ctx);
+              return isNaN(evaluated) || !isFinite(evaluated) ? 0 : evaluated;
+            } catch (e) {
+              return form[fld.key] || 0;
+            }
+          }
+          return form[fld.key] || 0;
         }
       }
     };
@@ -1055,16 +1259,14 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
       cleanDoc += '\n</html>';
     }
 
-    // Dedup CDN: Hapus tag CDN Tailwind, Vue 3, dan Lucide yang digenerate AI dari dokumen
+    // Dedup CDN: Hapus tag CDN Tailwind, Vue 3, Lucide yang digenerate AI
     // agar hanya termuat 1 kali secara deterministik dari baseHeaders (mencegah overwrite window.Vue & double JIT)
     cleanDoc = cleanDoc
-      .replace(/<script[^>]*@tailwindcss\/browser@[^>]*><\/script>\s*/gi, '')
-      .replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*><\/script>\s*/gi, '')
+      .replace(/<script[^>]*@?tailwindcss(?:\/browser)?[^>]*>[\s\S]*?<\/script>\s*/gi, '')
+      .replace(/<script[^>]*cdn\.tailwindcss\.com[^>]*>[\s\S]*?<\/script>\s*/gi, '')
       .replace(/<link[^>]*tailwindcss[^>]*>\s*/gi, '')
-      .replace(/<script[^>]*vue@[^>]*><\/script>\s*/gi, '')
-      .replace(/<script[^>]*vue\.global\.js[^>]*><\/script>\s*/gi, '')
-      .replace(/<script[^>]*lucide@[^>]*><\/script>\s*/gi, '')
-      .replace(/<script[^>]*lucide(?:\.min)?\.js[^>]*><\/script>\s*/gi, '');
+      .replace(/<script[^>]*\bvue(?:\.global|\.runtime)?(?:@[^"'>]+)?(?:\/[^"'>]*)?[^>]*>[\s\S]*?<\/script>\s*/gi, '')
+      .replace(/<script[^>]*lucide[^>]*>[\s\S]*?<\/script>\s*/gi, '');
 
     // Masukkan Google Fonts, CDN resmi deterministik, dan Base Resets ke dalam <head> jika belum ada
     if (!cleanDoc.includes('Plus+Jakarta+Sans')) {

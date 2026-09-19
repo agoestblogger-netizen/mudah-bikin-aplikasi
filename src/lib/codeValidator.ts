@@ -278,6 +278,380 @@ export function injectVueMixinIntoCreateApp(code: string): string {
   return code;
 }
 
+export const PILAR1_SCAFFOLD_METHODS = new Set([
+  'isRoleAllowed',
+  'canEditCurrentTab',
+  'showTab',
+  'loginAs',
+  'logout',
+  'handleLogin',
+  'quickLogin',
+  'showToast',
+  'bukaModalTambahStaf',
+  'bukaModalAturHakAkses',
+  'nonaktifkanAkunStaf',
+  'resolveRelationDisplay',
+  'getRelationOptions',
+  'computeFormulaValue'
+]);
+
+/**
+ * Otomatis menghapus method dari komponen Vue (methods: { ... }) jika nama method
+ * sudah disediakan secara lengkap oleh Pilar1VueScaffoldMixin.
+ * Menjamin method mixin (resolusi relasi Lapis 2/3, formula computed, login) tidak ditimpa placeholder/stub rusak.
+ */
+export function stripDuplicateMixinMethodsFromVue(jsCode: string): string {
+  if (!jsCode) return jsCode;
+  try {
+    const ast: any = acorn.parse(jsCode, { ecmaVersion: 'latest', sourceType: 'script', ranges: true });
+    const rangesToRemove: { start: number; end: number }[] = [];
+
+    function walk(node: any) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'CallExpression') {
+        const isCreateApp = (node.callee?.type === 'Identifier' && node.callee.name === 'createApp') ||
+          (node.callee?.type === 'MemberExpression' && node.callee.property?.name === 'createApp');
+        if (isCreateApp && node.arguments?.length > 0 && node.arguments[0]?.type === 'ObjectExpression') {
+          const rootObj = node.arguments[0];
+          const methodsProp = rootObj.properties?.find((p: any) => p.key && (p.key.name === 'methods' || p.key.value === 'methods'));
+          if (methodsProp && methodsProp.value && methodsProp.value.type === 'ObjectExpression') {
+            for (let i = 0; i < (methodsProp.value.properties || []).length; i++) {
+              const prop = methodsProp.value.properties[i];
+              const keyName = prop.key ? (prop.key.name || prop.key.value) : null;
+              if (keyName && PILAR1_SCAFFOLD_METHODS.has(keyName)) {
+                let start = prop.start;
+                let end = prop.end;
+                const trailing = jsCode.slice(end);
+                const commaMatch = trailing.match(/^\s*,/);
+                if (commaMatch) {
+                  end += commaMatch[0].length;
+                } else {
+                  const leading = jsCode.slice(0, start);
+                  const leadCommaMatch = leading.match(/,\s*$/);
+                  if (leadCommaMatch) {
+                    start -= leadCommaMatch[0].length;
+                  }
+                }
+                rangesToRemove.push({ start, end });
+              }
+            }
+          }
+        }
+      }
+      for (const k of Object.keys(node)) {
+        if (k !== 'range' && k !== 'loc') {
+          const child = node[k];
+          if (Array.isArray(child)) child.forEach(walk);
+          else if (child && typeof child === 'object') walk(child);
+        }
+      }
+    }
+    walk(ast);
+
+    if (rangesToRemove.length === 0) return jsCode;
+    rangesToRemove.sort((a, b) => b.start - a.start);
+    let result = jsCode;
+    for (const r of rangesToRemove) {
+      result = result.slice(0, r.start) + result.slice(r.end);
+    }
+    acorn.parse(result, { ecmaVersion: 'latest', sourceType: 'script' });
+    return result;
+  } catch {
+    return jsCode;
+  }
+}
+
+/**
+ * Penyelarasan ID Tab vs Kunci Tabel (Opsi A: Tab ID = Nama Tabel Langsung).
+ * Memastikan:
+ * 1) Kondisi v-show pada kontainer tabel di HTML mendukung 'tab_' + tblKey maupun tblKey langsung.
+ * 2) Array tabs di JS merepresentasikan tabel/views nyata (bukan nama peran).
+ * 3) landingTab pada demoAccounts mengarah ke nama tabel operasional pertama yang relevan (bukan nama peran).
+ * 4) activeTab diinisialisasi ke nama tabel pertama yang valid.
+ */
+export function repairVueTabAndTableAlignment(html: string, jsCode: string): { html: string; js: string } {
+  let repairedHtml = html || '';
+  let repairedJs = jsCode || '';
+
+  // 1. Perbaiki kondisi v-show di HTML agar mendukung tab ID berupa tblKey maupun 'tab_' + tblKey
+  if (repairedHtml) {
+    repairedHtml = repairedHtml.replace(
+      /v-show=(["'])activeTab === (?:'tab_' \+ )?tblKey\1/g,
+      'v-show="activeTab === tblKey || activeTab === \'tab_\' + tblKey"'
+    );
+    repairedHtml = repairedHtml.replace(
+      /v-show=(["'])activeTab === (?:'view_' \+ )?vKey\1/g,
+      'v-show="activeTab === vKey || activeTab === \'view_\' + vKey"'
+    );
+
+    // Auto-guard tombol Tambah jika belum memiliki v-if="canEditCurrentTab()"
+    repairedHtml = repairedHtml.replace(
+      /(<button\b(?![^>]*\bv-if=)[^>]*@click=["'][^"']*openCreate[^"']*["'][^>]*>)/gi,
+      (match) => match.replace('<button', '<button v-if="canEditCurrentTab()"')
+    );
+
+    // Auto-guard kolom header Aksi jika belum memiliki v-if="canEditCurrentTab()"
+    repairedHtml = repairedHtml.replace(
+      /(<th\b(?![^>]*\bv-if=)[^>]*>\s*(?:Aksi|Action|Tindakan)\s*<\/th>)/gi,
+      (match) => match.replace('<th', '<th v-if="canEditCurrentTab()"')
+    );
+
+    // Auto-guard sel data Aksi (Edit/Hapus) jika belum memiliki v-if="canEditCurrentTab()"
+    repairedHtml = repairedHtml.replace(
+      /(<td\b(?![^>]*\bv-if=)[^>]*>)([\s\S]*?)(<\/td>)/gi,
+      (match, openTag, content, closeTag) => {
+        if (/(?:openEdit|confirmDelete|executeDelete)/i.test(content) && !openTag.includes('v-if')) {
+          return openTag.replace('<td', '<td v-if="canEditCurrentTab()"') + content + closeTag;
+        }
+        return match;
+      }
+    );
+
+    // Suntikkan banner Supervisi & Audit (Read-Only) jika belum ada di dalam template loop tabel
+    if (!repairedHtml.includes('!canEditCurrentTab()')) {
+      repairedHtml = repairedHtml.replace(
+        /(<div\b[^>]*v-for=["']\(cfg,\s*tblKey\)\s*in\s*tablesConfig["'][^>]*>)/i,
+        `$1\n        <div v-if="!canEditCurrentTab()" class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800">\n          <span class="text-base">👁️</span>\n          <span>Mode Supervisi & Audit (Read-Only) — Anda memiliki izin pantau tanpa hak mengubah data.</span>\n        </div>`
+      );
+    }
+  }
+
+  // 2. Parse JS AST untuk menyeimbangkan tabs, tablesConfig, viewsConfig, demoAccounts, & activeTab
+  if (!repairedJs) return { html: repairedHtml, js: repairedJs };
+
+  try {
+    const ast: any = acorn.parse(repairedJs, { ecmaVersion: 'latest', sourceType: 'script', ranges: true });
+
+    let rootObj: any = null;
+    function findRoot(node: any) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'CallExpression') {
+        const isCreateApp = (node.callee?.type === 'Identifier' && node.callee.name === 'createApp') ||
+          (node.callee?.type === 'MemberExpression' && node.callee.property?.name === 'createApp');
+        if (isCreateApp && node.arguments?.length > 0 && node.arguments[0]?.type === 'ObjectExpression') {
+          rootObj = node.arguments[0];
+          return;
+        }
+      }
+      for (const k of Object.keys(node)) {
+        if (rootObj) return;
+        const c = node[k];
+        if (Array.isArray(c)) c.forEach(findRoot);
+        else if (c && typeof c === 'object') findRoot(c);
+      }
+    }
+    findRoot(ast);
+    if (!rootObj) return { html: repairedHtml, js: repairedJs };
+
+    const dataProp = rootObj.properties?.find((p: any) => p.key && (p.key.name === 'data' || p.key.value === 'data'));
+    if (!dataProp) return { html: repairedHtml, js: repairedJs };
+
+    let returnObj: any = null;
+    function findReturn(node: any) {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'ReturnStatement' && node.argument && node.argument.type === 'ObjectExpression') {
+        returnObj = node.argument;
+        return;
+      }
+      for (const k of Object.keys(node)) {
+        if (returnObj) return;
+        const c = node[k];
+        if (Array.isArray(c)) c.forEach(findReturn);
+        else if (c && typeof c === 'object') findReturn(c);
+      }
+    }
+    findReturn(dataProp);
+    if (!returnObj) return { html: repairedHtml, js: repairedJs };
+
+    // Ekstrak info tablesConfig (termasuk roles dan editRoles)
+    const tblProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'tablesConfig' || p.key.value === 'tablesConfig'));
+    const tablesList: { key: string; label: string; roles: string[]; editRoles?: string[] }[] = [];
+    if (tblProp && tblProp.value && tblProp.value.type === 'ObjectExpression') {
+      for (const p of (tblProp.value.properties || [])) {
+        const tKey = p.key ? (p.key.name || p.key.value) : null;
+        if (!tKey) continue;
+        let label = tKey;
+        let roles = ['*'];
+        let editRoles: string[] | undefined = undefined;
+        if (p.value && p.value.type === 'ObjectExpression') {
+          const lblP = p.value.properties?.find((x: any) => x.key && (x.key.name === 'label' || x.key.value === 'label'));
+          if (lblP && lblP.value && lblP.value.type === 'Literal') label = String(lblP.value.value);
+          const rolP = p.value.properties?.find((x: any) => x.key && (x.key.name === 'allowRoles' || x.key.name === 'roles'));
+          if (rolP && rolP.value && rolP.value.type === 'ArrayExpression') {
+            roles = rolP.value.elements.map((e: any) => e.type === 'Literal' ? String(e.value) : '').filter(Boolean);
+          }
+          const editRolP = p.value.properties?.find((x: any) => x.key && (x.key.name === 'editRoles' || x.key.name === 'canEditRoles'));
+          if (editRolP && editRolP.value && editRolP.value.type === 'ArrayExpression') {
+            editRoles = editRolP.value.elements.map((e: any) => e.type === 'Literal' ? String(e.value) : '').filter(Boolean);
+          }
+        }
+        tablesList.push({ key: tKey, label, roles, editRoles });
+      }
+    }
+
+    // Fallback: Jika tablesConfig kosong, ekstrak nama tabel dari db
+    if (tablesList.length === 0) {
+      const dbProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'db' || p.key.value === 'db'));
+      if (dbProp && dbProp.value && dbProp.value.type === 'ObjectExpression') {
+        for (const p of (dbProp.value.properties || [])) {
+          const tKey = p.key ? (p.key.name || p.key.value) : null;
+          if (tKey) {
+            const formattedLabel = tKey.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            tablesList.push({ key: tKey, label: formattedLabel, roles: ['*'] });
+          }
+        }
+      }
+    }
+
+    // Ekstrak info viewsConfig
+    const viewProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'viewsConfig' || p.key.value === 'viewsConfig'));
+    const viewsList: { key: string; label: string; roles: string[] }[] = [];
+    if (viewProp && viewProp.value && viewProp.value.type === 'ObjectExpression') {
+      for (const p of (viewProp.value.properties || [])) {
+        const vKey = p.key ? (p.key.name || p.key.value) : null;
+        if (!vKey) continue;
+        let label = vKey;
+        let roles = ['*'];
+        if (p.value && p.value.type === 'ObjectExpression') {
+          const lblP = p.value.properties?.find((x: any) => x.key && (x.key.name === 'label' || x.key.value === 'label'));
+          if (lblP && lblP.value && lblP.value.type === 'Literal') label = String(lblP.value.value);
+          const rolP = p.value.properties?.find((x: any) => x.key && (x.key.name === 'allowRoles' || x.key.name === 'roles'));
+          if (rolP && rolP.value && rolP.value.type === 'ArrayExpression') {
+            roles = rolP.value.elements.map((e: any) => e.type === 'Literal' ? String(e.value) : '').filter(Boolean);
+          }
+        }
+        viewsList.push({ key: vKey, label, roles });
+      }
+    }
+
+    if (tablesList.length === 0) return { html: repairedHtml, js: repairedJs };
+
+    const validTargetIds = new Set<string>([
+      ...tablesList.map(t => t.key),
+      ...tablesList.map(t => 'tab_' + t.key),
+      ...viewsList.map(v => v.key),
+      ...viewsList.map(v => 'view_' + v.key)
+    ]);
+
+    // Ekstrak roleSlugs dari demoAccounts
+    const accsProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'demoAccounts' || p.key.value === 'demoAccounts'));
+    const roleSlugs = new Set<string>();
+    const allRolesFromAccs: string[] = [];
+    if (accsProp && accsProp.value && accsProp.value.type === 'ArrayExpression') {
+      for (const el of accsProp.value.elements) {
+        if (el && el.type === 'ObjectExpression') {
+          const roleP = el.properties?.find((x: any) => x.key && (x.key.name === 'role' || x.key.value === 'role'));
+          if (roleP && roleP.value && roleP.value.type === 'Literal') {
+            const roleStr = String(roleP.value.value);
+            allRolesFromAccs.push(roleStr);
+            roleSlugs.add(roleStr.toLowerCase().replace(/[^a-z0-9]/g, ''));
+          }
+        }
+      }
+    }
+
+    // Periksa tabs: rebuild HANYA jika tab ID terdeteksi sebagai nama peran (Bug 1: role slug tabs)
+    const tabsProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'tabs' || p.key.value === 'tabs'));
+    let needRebuildTabs = false;
+    if (tabsProp && tabsProp.value && tabsProp.value.type === 'ArrayExpression') {
+      const existingTabIds: string[] = [];
+      for (const el of tabsProp.value.elements) {
+        if (el && el.type === 'ObjectExpression') {
+          const idP = el.properties?.find((x: any) => x.key && (x.key.name === 'id' || x.key.value === 'id'));
+          if (idP && idP.value && idP.value.type === 'Literal') {
+            existingTabIds.push(String(idP.value.value));
+          }
+        }
+      }
+      // Rebuild HANYA jika seluruh ID tab cocok dengan slug nama peran (misal: ['superadmin', 'petugaspenyewaansepeda'])
+      const areAllRoleSlugs = existingTabIds.length > 0 && existingTabIds.every(id => {
+        const cleanId = id.toLowerCase().replace(/^(?:tab_|view_)?/, '').replace(/[^a-z0-9]/g, '');
+        return roleSlugs.has(cleanId);
+      });
+      if (areAllRoleSlugs) {
+        needRebuildTabs = true;
+      }
+    }
+
+    const replacements: { start: number; end: number; replacement: string }[] = [];
+
+    if (needRebuildTabs && tabsProp) {
+      const fallbackRoles = allRolesFromAccs.length > 0 ? allRolesFromAccs : ['*'];
+      const newTabs = [
+        ...tablesList.map(t => ({
+          id: t.key,
+          label: t.label,
+          roles: t.roles.includes('*') ? fallbackRoles : t.roles,
+          editRoles: t.editRoles ? t.editRoles : (t.roles.includes('*') ? fallbackRoles : t.roles)
+        })),
+        ...viewsList.map(v => ({
+          id: 'view_' + v.key,
+          label: v.label,
+          roles: v.roles.includes('*') ? fallbackRoles : v.roles,
+          editRoles: [],
+          isView: true
+        }))
+      ];
+      const tabsJson = JSON.stringify(newTabs, null, 8).replace(/^/gm, '      ').trim();
+      replacements.push({
+        start: tabsProp.value.start,
+        end: tabsProp.value.end,
+        replacement: tabsJson
+      });
+    }
+
+    // Periksa landingTab pada demoAccounts
+    if (accsProp && accsProp.value && accsProp.value.type === 'ArrayExpression') {
+      for (const el of accsProp.value.elements) {
+        if (el && el.type === 'ObjectExpression') {
+          const roleP = el.properties?.find((x: any) => x.key && (x.key.name === 'role' || x.key.value === 'role'));
+          const landP = el.properties?.find((x: any) => x.key && (x.key.name === 'landingTab' || x.key.value === 'landingTab'));
+          const roleVal = roleP && roleP.value && roleP.value.type === 'Literal' ? String(roleP.value.value) : '';
+          const landVal = landP && landP.value && landP.value.type === 'Literal' ? String(landP.value.value) : '';
+
+          if (landP && landVal && !validTargetIds.has(landVal)) {
+            const matchedTbl = tablesList.find(t => t.roles.some(r => r === roleVal || (r !== '*' && roleVal.toLowerCase().includes(r.toLowerCase()))))
+              || tablesList.find(t => t.roles.includes('*'))
+              || tablesList[0];
+            if (matchedTbl) {
+              replacements.push({
+                start: landP.value.start,
+                end: landP.value.end,
+                replacement: `'${matchedTbl.key}'`
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Periksa activeTab awal
+    const activeTabProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'activeTab' || p.key.value === 'activeTab'));
+    if (activeTabProp && activeTabProp.value && activeTabProp.value.type === 'Literal') {
+      const curActive = String(activeTabProp.value.value);
+      if (!validTargetIds.has(curActive)) {
+        replacements.push({
+          start: activeTabProp.value.start,
+          end: activeTabProp.value.end,
+          replacement: `'${tablesList[0].key}'`
+        });
+      }
+    }
+
+    if (replacements.length > 0) {
+      replacements.sort((a, b) => b.start - a.start);
+      for (const r of replacements) {
+        repairedJs = repairedJs.slice(0, r.start) + r.replacement + repairedJs.slice(r.end);
+      }
+      acorn.parse(repairedJs, { ecmaVersion: 'latest', sourceType: 'script' });
+    }
+  } catch (e) {
+    console.error('Error in repairVueTabAndTableAlignment:', e);
+  }
+
+  return { html: repairedHtml, js: repairedJs };
+}
+
 /**
  * Ekstrak nama-nama fungsi yang hilang (MISMATCH_HANDLER) dari issues array.
  * Di-export agar route.ts bisa menggunakannya untuk targeted AI repair call
@@ -459,7 +833,9 @@ export function validateAndRepairGeneratedCode(
   css: string,
   js: string,
   expectedRoles?: string[],
-  ownerRoleName?: string
+  ownerRoleName?: string,
+  schemaTables?: { nama: string; keterangan?: string; displayField?: string; field?: any[] }[],
+  rbacModules?: { nama: string; deskripsiFungsional?: string; izinPerRole: { role: string; level: string }[] }[]
 ): ValidationReport {
   const issues: string[] = [];
   let repairedHtml = cleanConversationalLeaks(html);
@@ -478,7 +854,8 @@ export function validateAndRepairGeneratedCode(
     resolvedOwner = 'Super Admin';
   }
 
-  // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown
+  // 0. Sanitasi Anti-Leak: Buang teks percakapan / markdown & perbaiki typo umum
+  repairedHtml = repairedHtml.replace(/➔\]/g, '➔');
   if (repairedHtml.includes('<!DOCTYPE')) {
     repairedHtml = repairedHtml.slice(repairedHtml.indexOf('<!DOCTYPE')).trim();
   } else if (repairedHtml.includes('<html')) {
@@ -495,6 +872,17 @@ export function validateAndRepairGeneratedCode(
     inlineJs = parts.slice(1).join('\n').replace(/<\/script>[\s\S]*$/i, '');
   }
   let combinedJs = (inlineJs + '\n' + repairedJs).trim();
+
+  // Validasi & Auto-repair Kesenjangan RBAC vs TablesConfig/Tab (Poin 1.3)
+  if (schemaTables && schemaTables.length > 0) {
+    const missingTablesReport = checkAndRepairMissingSchemaTables(repairedHtml, combinedJs, schemaTables, expectedRoles, rbacModules);
+    if (missingTablesReport.issues.length > 0) {
+      issues.push(...missingTablesReport.issues);
+      repairedHtml = missingTablesReport.repairedHtml;
+      repairedJs = missingTablesReport.repairedJs;
+      combinedJs = (inlineJs + '\n' + repairedJs).trim();
+    }
+  }
 
 
   // 1.5 VALIDASI SINTAKS JAVASCRIPT DENGAN ACORN AST PARSER (Pilar 2)
@@ -525,8 +913,33 @@ export function validateAndRepairGeneratedCode(
   // Menyediakan implementasi standar yang teruji untuk navigasi tab, login role, dan toast
   // jika aplikasi memuat elemen tab (.tab-btn / showTab) atau sistem otentikasi login
   const isVueApp = /Vue\.createApp\s*\(/.test(combinedJs) || /<div[^>]*id=["']app["']/.test(repairedHtml);
+  if (isVueApp) {
+    for (const fn of PILAR1_SCAFFOLD_METHODS) {
+      definedFunctions.add(fn);
+    }
+  }
   const hasTabs = repairedHtml.includes('.tab-btn') || repairedHtml.includes('showTab(') || /data-access-roles/i.test(repairedHtml) || /v-for=["'][^"']*tabs/i.test(repairedHtml);
   const hasLogin = repairedHtml.includes('loginScreen') || repairedHtml.includes('loginAs(') || repairedHtml.includes('DEMO_ACCOUNTS') || /v-model=["']loginForm/i.test(repairedHtml);
+
+  // Validasi Kritis: Pastikan template Vue (<div id="app">) memiliki inisialisasi Vue.createApp dan .mount('#app')
+  const hasVueTemplate = /<div[^>]*id=["']app["']/i.test(repairedHtml) || /\bv-(?:if|show|model|for)\b/.test(repairedHtml);
+  const hasVueCreateApp = /(?:Vue\s*\.\s*)?createApp\s*\(/.test(combinedJs);
+  const hasVueMount = /\.mount\s*\(\s*['"]#app['"]\s*\)/.test(combinedJs);
+
+  if (hasVueTemplate && !hasVueCreateApp) {
+    issues.push(
+      `MISSING_VUE_INITIALIZATION: Template aplikasi menggunakan Vue (<div id="app">), namun script inisialisasi Vue.createApp({ ... }).mount('#app') tidak ditemukan di dalam <script>. Seluruh direktif Vue mati.`
+    );
+  } else if (hasVueTemplate && hasVueCreateApp && !hasVueMount) {
+    if (/(?:Vue\s*\.\s*)?createApp\s*\([\s\S]*?\)\s*;?\s*$/.test(combinedJs)) {
+      repairedHtml = repairedHtml.replace(/(createApp\s*\([\s\S]*?\))\s*;?\s*(<\/script>)/i, "$1.mount('#app');\n$2");
+      combinedJs = combinedJs.replace(/(createApp\s*\([\s\S]*?\))\s*;?\s*$/, "$1.mount('#app');");
+    } else {
+      issues.push(
+        `MISSING_VUE_MOUNT: Inisialisasi Vue.createApp ditemukan tetapi belum di-mount ke '#app' (.mount('#app') tidak ditemukan).`
+      );
+    }
+  }
 
   const plumbingToInject: string[] = [];
 
@@ -559,23 +972,54 @@ var Pilar1VueScaffoldMixin = {
       return roles.includes(this.currentRole) || roles.includes('*');
     },
     canEditCurrentTab() {
+      // 1. Cek editRoles pada currentTableConfig
       if (this.currentTableConfig) {
-        var allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-        return this.isRoleAllowed(allowed);
-      }
-      if (this.tablesConfig) {
-        var key = (this.activeTab || '').replace(/^tab_/, '');
-        var cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
-        if (cfg) {
-          var allowedCfg = cfg.roles || cfg.allowRoles || [];
-          return this.isRoleAllowed(allowedCfg);
+        var editRoles = this.currentTableConfig.editRoles || this.currentTableConfig.canEditRoles;
+        if (Array.isArray(editRoles)) {
+          return editRoles.includes(this.currentRole) || editRoles.includes('*');
         }
       }
+      // 2. Cek editRoles pada tablesConfig berdasarkan activeTab
+      if (this.tablesConfig) {
+        var key = (this.activeTab || '').replace(/^(?:tab_|view_)/, '');
+        var cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
+        if (cfg) {
+          var cfgEditRoles = cfg.editRoles || cfg.canEditRoles;
+          if (Array.isArray(cfgEditRoles)) {
+            return cfgEditRoles.includes(this.currentRole) || cfgEditRoles.includes('*');
+          }
+        }
+      }
+      // 3. Cek editRoles pada tabs array
       if (this.tabs && this.tabs.length) {
         var curTab = this.tabs.find(function(t) { return t.id === this.activeTab; }.bind(this));
         if (curTab) {
-          var tabRoles = curTab.roles || curTab.allowRoles || [];
-          return this.isRoleAllowed(tabRoles);
+          if (curTab.isView) return false;
+          var tabEditRoles = curTab.editRoles || curTab.canEditRoles;
+          if (Array.isArray(tabEditRoles)) {
+            return tabEditRoles.includes(this.currentRole) || tabEditRoles.includes('*');
+          }
+        }
+      }
+      // 4. Fallback jika editRoles belum didefinisikan secara granular (backward compatibility)
+      if (this.currentTableConfig) {
+        var allowed = this.currentTableConfig?.roles || this.currentTableConfig?.allowRoles || [];
+        if (allowed && allowed.length) return this.isRoleAllowed(allowed);
+      }
+      if (this.tablesConfig) {
+        var key2 = (this.activeTab || '').replace(/^(?:tab_|view_)/, '');
+        var cfg2 = this.tablesConfig[key2] || this.tablesConfig[this.activeTab];
+        if (cfg2) {
+          var allowedCfg = cfg2?.roles || cfg2?.allowRoles || [];
+          if (allowedCfg && allowedCfg.length) return this.isRoleAllowed(allowedCfg);
+        }
+      }
+      if (this.tabs && this.tabs.length) {
+        var curTab2 = this.tabs.find(function(t) { return t.id === this.activeTab; }.bind(this));
+        if (curTab2) {
+          if (curTab2.isView) return false;
+          var tabRoles = curTab2?.roles || curTab2?.allowRoles || [];
+          if (tabRoles && tabRoles.length) return this.isRoleAllowed(tabRoles);
         }
       }
       var owner = typeof window !== 'undefined' && window.OWNER_ROLE_NAME ? window.OWNER_ROLE_NAME : '${resolvedOwner}';
@@ -585,8 +1029,19 @@ var Pilar1VueScaffoldMixin = {
       this.activeTab = tabId;
     },
     loginAs(role) {
+      if (this.isLoggedIn) {
+        this.logout();
+      }
       this.currentRole = role;
       this.isLoggedIn = true;
+      if (this.modal && typeof this.modal === 'object') {
+        this.modal.isOpen = false;
+        this.modal.show = false;
+      }
+      if (this.deleteModal && typeof this.deleteModal === 'object') {
+        this.deleteModal.isOpen = false;
+        this.deleteModal.show = false;
+      }
       var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
       if (acc && acc.landingTab) {
         this.showTab(acc.landingTab);
@@ -599,7 +1054,26 @@ var Pilar1VueScaffoldMixin = {
       this.currentRole = '';
       this.isLoggedIn = false;
       this.activeTab = '';
-      this.showToast('Berhasil keluar.', 'info');
+      if (this.modal && typeof this.modal === 'object') {
+        this.modal.isOpen = false;
+        this.modal.show = false;
+        this.modal.isEdit = false;
+      }
+      if (this.deleteModal && typeof this.deleteModal === 'object') {
+        this.deleteModal.isOpen = false;
+        this.deleteModal.show = false;
+      }
+      if (typeof this.closeModal === 'function') {
+        try { this.closeModal(); } catch (e) {}
+      }
+      if (typeof this.closeDeleteModal === 'function') {
+        try { this.closeDeleteModal(); } catch (e) {}
+      }
+      if (this.loginForm && typeof this.loginForm === 'object') {
+        this.loginForm.username = '';
+        this.loginForm.password = '';
+      }
+      this.showToast('Berhasil keluar. Silakan login kembali.', 'info');
     },
     showToast(message, type) {
       type = type || 'info';
@@ -611,6 +1085,42 @@ var Pilar1VueScaffoldMixin = {
           self.toast.visible = false;
         }
       }, 3000);
+    },
+    handleLogin() {
+      var username = (this.loginForm && this.loginForm.username) || (this.credentials && this.credentials.username) || '';
+      var password = (this.loginForm && this.loginForm.password) || (this.credentials && this.credentials.password) || '';
+      var accounts = this.demoAccounts || (typeof window !== 'undefined' && window.DEMO_ACCOUNTS) || [];
+      var matched = accounts.find(function(a) {
+        return (a.username || '').toLowerCase() === (username || '').toLowerCase();
+      });
+      if (matched) {
+        this.loginAs(matched.role);
+        this.showToast('Selamat datang, ' + matched.role + '!', 'success');
+      } else {
+        var first = accounts[0];
+        if (first) {
+          this.loginAs(first.role);
+          this.showToast('Login sebagai ' + first.role, 'info');
+        } else {
+          this.showToast('Silakan pilih salah satu akun demo untuk login.', 'warning');
+        }
+      }
+    },
+    quickLogin(u, p) {
+      if (this.loginForm && typeof this.loginForm === 'object') {
+        this.loginForm.username = u;
+        this.loginForm.password = p || '';
+      }
+      var accounts = this.demoAccounts || (typeof window !== 'undefined' && window.DEMO_ACCOUNTS) || [];
+      var matched = accounts.find(function(a) {
+        return (a.username || '').toLowerCase() === (u || '').toLowerCase();
+      });
+      if (matched) {
+        this.loginAs(matched.role);
+        this.showToast('Login instan sebagai ' + matched.role, 'success');
+      } else {
+        this.handleLogin();
+      }
     },
     bukaModalTambahStaf() {
       if (typeof this.openCreate === 'function' && this.tablesConfig && this.tablesConfig.pengguna) {
@@ -624,6 +1134,112 @@ var Pilar1VueScaffoldMixin = {
     },
     nonaktifkanAkunStaf() {
       this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
+    },
+    resolveRelationDisplay(targetTable, id, depth, visited) {
+      if (!id) return '-';
+      depth = depth || 0;
+      visited = visited || new Set();
+      if (depth > 3 || visited.has(targetTable + ':' + id)) {
+        return String(id);
+      }
+      visited.add(targetTable + ':' + id);
+
+      var targetRows = (this.db && this.db[targetTable]) || [];
+      var row = targetRows.find(function(r) { return String(r.id) === String(id); });
+      if (!row) {
+        var matchedByName = targetRows.find(function(r) {
+          return Object.values(r).some(function(val) {
+            return typeof val === 'string' && val.toLowerCase() === String(id).toLowerCase();
+          });
+        });
+        if (matchedByName) row = matchedByName;
+        else return String(id);
+      }
+
+      var cfg = (this.tablesConfig && this.tablesConfig[targetTable]) || {};
+
+      // 1. Jika tabel memiliki compositeFields (Tabel Jembatan / Lapis 2)
+      if (cfg.compositeFields && cfg.compositeFields.length) {
+        var parts = [];
+        for (var i = 0; i < cfg.compositeFields.length; i++) {
+          var cfKey = cfg.compositeFields[i];
+          var fldCfg = (cfg.fields || []).find(function(f) { return f.key === cfKey; });
+          var targetFkTable = (fldCfg && fldCfg.targetTable) || cfKey.replace(/_(id|fk)$/i, '');
+          var fkVal = row[cfKey];
+          if (fkVal) {
+            var resolved = this.resolveRelationDisplay(targetFkTable, fkVal, depth + 1, visited);
+            if (resolved && resolved !== '-') parts.push(resolved);
+          }
+        }
+        if (parts.length > 0) return parts.join(' - ');
+      }
+
+      // 2. Jika ada displayField eksplisit dari skema
+      if (cfg.displayField && row[cfg.displayField]) {
+        return String(row[cfg.displayField]);
+      }
+
+      // 3. Fallback semantik representatif alami
+      if (row.nama) return String(row.nama);
+      if (row.nama_lengkap) return String(row.nama_lengkap);
+      if (row.nama_paket) return String(row.nama_paket);
+      if (row.nama_alat) return String(row.nama_alat);
+      if (row.nama_unit) return String(row.nama_unit);
+      if (row.nama_barang) return String(row.nama_barang);
+      if (row.nama_layanan) return String(row.nama_layanan);
+      if (row.judul) return String(row.judul);
+      if (row.kode_unit) return String(row.kode_unit);
+      if (row.label) return String(row.label);
+      if (row.perusahaan) return String(row.perusahaan);
+
+      return String(row.id || id);
+    },
+    getRelationOptions(targetTable) {
+      var targetRows = (this.db && this.db[targetTable]) || [];
+      var self = this;
+      return targetRows.map(function(row) {
+        return {
+          value: row.id,
+          text: self.resolveRelationDisplay(targetTable, row.id)
+        };
+      });
+    },
+    computeFormulaValue(form, fld) {
+      if (!form || !fld) return 0;
+      if (fld.formulaExpression) {
+        try {
+          var expr = fld.formulaExpression;
+          var ctx = Object.assign({}, form);
+          var dbSource = (this && this.db) || (this && this.tables) || (typeof window !== 'undefined' && window.__mockDb);
+          if (dbSource) {
+            for (var key in form) {
+              if (key.endsWith('_id') && form[key]) {
+                var targetName = key.slice(0, -3).toLowerCase();
+                var tableKeys = Object.keys(dbSource);
+                var matchedKey = tableKeys.find(function(k) {
+                  var lk = k.toLowerCase();
+                  return lk === targetName || lk === 'katalog_' + targetName || lk === targetName + 's';
+                });
+                if (matchedKey && Array.isArray(dbSource[matchedKey])) {
+                  var targetRow = dbSource[matchedKey].find(function(r) { return r && r.id === form[key]; });
+                  if (targetRow) {
+                    for (var rk in targetRow) {
+                      if (ctx[rk] === undefined || ctx[rk] === null) {
+                        ctx[rk] = targetRow[rk];
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          var evaluated = new Function('f', 'with(f) { return (' + expr + '); }')(ctx);
+          return isNaN(evaluated) || !isFinite(evaluated) ? 0 : evaluated;
+        } catch (e) {
+          return form[fld.key] || 0;
+        }
+      }
+      return form[fld.key] || 0;
     }
   }
 };
@@ -822,6 +1438,9 @@ if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;`);
   }
 
   if (isVueApp) {
+    // 0. Stripping method duplikat yang menimpa Pilar1VueScaffoldMixin (Bug 3)
+    repairedJs = stripDuplicateMixinMethodsFromVue(repairedJs);
+
     // 1. Perbaikan manipulasi DOM manual pada loginScreen/appContainer (Bug 2)
     const domRepair = repairVueManualDomManipulation(repairedHtml, repairedJs);
     repairedHtml = domRepair.html;
@@ -830,10 +1449,17 @@ if (typeof window !== 'undefined') window.OWNER_ROLE_NAME = OWNER_ROLE_NAME;`);
     // 2. Perbaikan role-check hardcode pada canEditCurrentTab (Bug 3)
     repairedJs = repairVueHardcodedRoleChecks(repairedJs);
 
-    // 3. Transformasi script inline di HTML (Bug 2, Bug 3, Bug 4)
+    // 3. Penyelarasan Tab ID vs Kunci Tabel & Landing Tab (Bug 1 - Opsi A)
+    const tabRepair = repairVueTabAndTableAlignment(repairedHtml, repairedJs);
+    repairedHtml = tabRepair.html;
+    repairedJs = tabRepair.js;
+
+    // 4. Transformasi script inline di HTML (Bug 2, Bug 3, Bug 4, Bug 1, Mixin Dedup)
     repairedHtml = transformInlineScripts(repairedHtml, (s) => {
-      let script = repairVueManualDomManipulation('', s).js;
+      let script = stripDuplicateMixinMethodsFromVue(s);
+      script = repairVueManualDomManipulation('', script).js;
       script = repairVueHardcodedRoleChecks(script);
+      script = repairVueTabAndTableAlignment('', script).js;
       script = injectVueMixinIntoCreateApp(script);
       return script;
     });
@@ -1202,15 +1828,89 @@ function showToast(msg, type = 'info') {
     repairedHtml = repairedHtml.replace(eqRegex, 'String($1.id) === String($2)');
   }
 
-  // 4b. Pembersihan Otomatis Pola Anomali String(x).properti -> String(x.properti)
-  // Menangani sisa regex salah format lama atau kode yang salah membungkus operand sebelum properti
-  repairedHtml = repairedHtml.replace(/String\(([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\)\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g, 'String($1.$2)');
+  // 4b. Pembersihan & Auto-Repair Otomatis Anomali String Guard / String(36).substr / ID Generation
+  // 1) Bersihkan segala anomali rantai Math.random() yang terduplikasi/stuttering (misal: Math.random().toMath.random()...)
+  repairedHtml = repairedHtml.replace(
+    /(?:Math\.random\(\)\s*\.\s*(?:to\s*)?)+(?:toString|String)\s*\(\s*(?:16|36)\s*\)\s*\.\s*(?:substring|substr|slice)(?:\s*\([^)]*\))?/g,
+    'Math.random().toString(36).substring(2, 9)'
+  );
+  repairedHtml = repairedHtml.replace(
+    /(?:Math\.random\(\)\s*\.\s*(?:to\s*)?)+Math\.random\(\)\s*\.\s*(?:to\s*)?/g,
+    'Math.random().'
+  );
+  repairedHtml = repairedHtml.replace(
+    /\bMath\.random\(\)\s*\.\s*to(?![a-zA-Z0-9_$])/g,
+    'Math.random().toString(36).substring(2, 9)'
+  );
 
-  // 4c. Validator Deteksi Pola Rusak String(x).properti
-  const malformedStringGuardRegex = /String\([^)]+\)\.[a-zA-Z_$][a-zA-Z0-9_$]*/g;
+  // 2) Auto-repair pemanggilan radix 16/36 yang salah dibungkus String():
+  // Tangkap seluruh ekspresi String(36).substr(...) atau Math.random().String(36).substr(...) tanpa meninggalkan prefix .to
+  repairedHtml = repairedHtml.replace(
+    /(?:Math\.random\(\)\s*\.\s*(?:to\s*)?)?(?<![a-zA-Z0-9_$.])String\s*\(\s*(?:16|36)\s*\)\s*\.\s*(?:substring|substr|slice)(?:\s*\([^)]*\))?/g,
+    'Math.random().toString(36).substring(2, 9)'
+  );
+
+  // 3) Normalisasi .substr(...) pada .toString(16/36) menjadi .substring(...)
+  repairedHtml = repairedHtml.replace(
+    /\.toString\s*\(\s*(16|36)\s*\)\s*\.\s*substr\s*\(/g,
+    '.toString($1).substring('
+  );
+  repairedHtml = repairedHtml.replace(
+    /\.String\s*\(\s*(16|36)\s*\)\s*\.\s*(?:substring|substr|slice)\s*\(/g,
+    '.toString($1).substring('
+  );
+
+  // 2) Auto-repair String(x).properti -> String(x.properti)
+  // Menangani sisa regex salah format lama atau kode yang salah membungkus operand sebelum properti non-string
+  const STRING_PROTOTYPE_METHODS = new Set([
+    'toLowerCase', 'toUpperCase', 'trim', 'trimStart', 'trimEnd',
+    'slice', 'substring', 'substr', 'charAt', 'charCodeAt', 'codePointAt',
+    'concat', 'includes', 'indexOf', 'lastIndexOf', 'match', 'matchAll',
+    'padEnd', 'padStart', 'repeat', 'replace', 'replaceAll', 'search',
+    'split', 'startsWith', 'endsWith', 'length', 'valueOf', 'toString'
+  ]);
+
+  repairedHtml = repairedHtml.replace(
+    /(?<![a-zA-Z0-9_$.])String\(([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\)\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g,
+    (match, obj, prop) => {
+      // Jika prop adalah method bawaan String (misal String(role).toLowerCase() atau String(x).trim()), pertahankan valid JS!
+      if (STRING_PROTOTYPE_METHODS.has(prop)) {
+        return match;
+      }
+      // Jika prop adalah properti objek (misal String(data).id atau String(this).activeTab), perbaiki menjadi String(data.id)
+      return `String(${obj}.${prop})`;
+    }
+  );
+
+  // 4c. Validator Deteksi & Auto-Repair Pola Rusak String(x).properti
+  // WAJIB: Gunakan lookbehind (?<![a-zA-Z0-9_$.]) agar TIDAK salah mendeteksi .toString(36).substr(...) yang valid!
+  const malformedStringGuardRegex = /(?<![a-zA-Z0-9_$.])String\(([^)]+)\)\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
   let malformedMatch: RegExpExecArray | null;
   while ((malformedMatch = malformedStringGuardRegex.exec(repairedHtml)) !== null) {
-    issues.push(`MALFORMED_STRING_GUARD: Ditemukan pemanggilan properti pada hasil String(): "${malformedMatch[0]}". Operasi ini menghasilkan undefined karena operand yang salah dibungkus String().`);
+    const fullMatch = malformedMatch[0];
+    const innerArg = malformedMatch[1].trim();
+    const prop = malformedMatch[2];
+
+    // Jika memanggil method String yang valid pada variabel non-angka (misal String(id).toLowerCase()), ini valid JS
+    if (STRING_PROTOTYPE_METHODS.has(prop) && !/^(?:16|36)$/.test(innerArg)) {
+      continue;
+    }
+
+    // Auto-repair diam-diam jika polanya adalah literal radix 16/36
+    if (/^(?:16|36)$/.test(innerArg)) {
+      const escapedMatch = fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const safeRegex = new RegExp(`(?:Math\\.random\\(\\)\\s*\\.\\s*(?:to\\s*)?)?${escapedMatch}`, 'g');
+      repairedHtml = repairedHtml.replace(safeRegex, 'Math.random().toString(36).substring(2, 9)');
+      continue;
+    }
+
+    // Auto-repair diam-diam untuk akses properti objek (misal String(data).foo -> String(data.foo))
+    if (!STRING_PROTOTYPE_METHODS.has(prop)) {
+      repairedHtml = repairedHtml.replace(fullMatch, `String(${innerArg}.${prop})`);
+      continue;
+    }
+
+    issues.push(`MALFORMED_STRING_GUARD: Ditemukan pemanggilan properti pada hasil String(): "${fullMatch}". Operasi ini menghasilkan undefined karena operand yang salah dibungkus String().`);
   }
 
   // 4d. Anti-Crash Vue 3: Null-Safety currentTableConfig & Modal CRUD Container (Lapis 1, 2, 3)
@@ -1515,68 +2215,6 @@ function showToast(msg, type = 'info') {
         });
       }
 
-      // Auto-repair: Hapus tombol switch peran langsung (loginAs) yang ditaruh di dalam appContainer
-      const appContainerIdx = repairedHtml.indexOf('id="appContainer"') !== -1 ? repairedHtml.indexOf('id="appContainer"') : repairedHtml.indexOf("id='appContainer'");
-      if (appContainerIdx !== -1) {
-        const preApp = repairedHtml.substring(0, appContainerIdx);
-        let postApp = repairedHtml.substring(appContainerIdx);
-        postApp = postApp.replace(/<button[^>]*onclick=['"](?:javascript:)?loginAs\([^)]*\)['"][^>]*>[\s\S]*?<\/button>/gi, '');
-        repairedHtml = preApp + postApp;
-      }
-
-      // Poin 56 & 57: Pemeriksaan ketat tombol/link berlabel nama peran mentah di dalam appContainer
-      const appContainerMatch = repairedHtml.match(/<div[^>]*id=['"]appContainer['"][^>]*>([\s\S]*?)<\/body>/i);
-      if (appContainerMatch) {
-        const appHtml = appContainerMatch[1];
-        const interactiveElements = [...appHtml.matchAll(/<(button|a)([^>]*)>([\s\S]*?)<\/\1>/gi)];
-
-        for (const el of interactiveElements) {
-          const attrs = el[2];
-          const rawContent = el[3].replace(/<[^>]*>/g, '').trim();
-
-          // Abaikan tombol logout / ganti akun
-          if (attrs.includes('logout()') || /keluar|ganti\s*akun/i.test(rawContent)) {
-            continue;
-          }
-
-          // Abaikan tombol aksi form standar
-          if (attrs.includes('tutupModal') || attrs.includes('bukaModal') || /batal|tutup|simpan|hapus|edit|tambah/i.test(rawContent)) {
-            continue;
-          }
-
-          // Bersihkan emoji, icon, dan simbol
-          const cleanText = rawContent.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-          for (const role of expectedRoles!) {
-            const rLower = role.trim().toLowerCase();
-            const isPureRoleName = cleanText === rLower ||
-                                   cleanText === 'role ' + rLower ||
-                                   cleanText === 'peran ' + rLower ||
-                                   cleanText === 'menu ' + rLower ||
-                                   cleanText === 'tab ' + rLower ||
-                                   cleanText === 'halaman ' + rLower;
-
-            if (isPureRoleName) {
-              issues.push(
-                `ROLE_AS_TAB_LABEL: Ditemukan tombol/link dengan label nama peran mentah "${rawContent}" di dalam halaman aplikasi (#appContainer). ` +
-                `DILARANG menamai tombol tab dengan nama peran! Tab di dalam aplikasi adalah NAVIGASI FITUR (contoh: "Kelola Anggota", "Kartu Digital", "Laporan"). ` +
-                `Pergantian peran HANYA dilakukan melalui tombol "Keluar / Ganti Akun" yang kembali ke form login.`
-              );
-            }
-          }
-        }
-
-        // Cek jika masih ada tombol loginAs di dalam appContainer
-        const appLoginAsMatches = [...appHtml.matchAll(/onclick=['"](?:javascript:)?loginAs\(['"]([^'"]+)['"]\)/gi)];
-        if (appLoginAsMatches.length > 0) {
-          issues.push(
-            `FORBIDDEN_ROLE_SWITCHER_IN_APP: Ditemukan tombol ganti peran langsung di dalam halaman aplikasi (appContainer). ` +
-            `DILARANG membuat tombol ganti peran / role switcher di dalam halaman aplikasi! ` +
-            `Pergantian peran SELURUHNYA HANYA lewat tombol Logout / "Keluar / Ganti Akun" yang mengembalikan pengguna ke #loginScreen.`
-          );
-        }
-      }
-
       // Poin 58: Isolasi peran (tidak semua tab dibuka untuk semua peran)
       if (tabBtnMatches.length > 1) {
         const allRolesJoined = expectedRoles!.map(r => r.trim().toLowerCase()).sort().join(',');
@@ -1611,6 +2249,78 @@ function showToast(msg, type = 'info') {
 
       // Bersihkan wrapper div role-switcher yang kosong jika ada
       repairedHtml = repairedHtml.replace(/<div[^>]*class=['"][^'"]*role(?:-switcher|-buttons)?[^'"]*['"][^>]*>\s*<\/div>/gi, '');
+    }
+
+    // =========================================================================
+    // Pemeriksaan ketat larangan role switcher di dalam appContainer (Universal: Vue 3 & Vanilla JS)
+    // =========================================================================
+    const appContainerMatch = repairedHtml.match(/<div[^>]*id=['"]appContainer['"][^>]*>([\s\S]*?)<\/body>/i);
+    if (appContainerMatch) {
+      const appHtml = appContainerMatch[1];
+      const interactiveElements = [...appHtml.matchAll(/<(button|a)([^>]*)>([\s\S]*?)<\/\1>/gi)];
+
+      for (const el of interactiveElements) {
+        const attrs = el[2];
+        const rawContent = el[3].replace(/<[^>]*>/g, '').trim();
+
+        // Abaikan tombol logout / ganti akun
+        if (attrs.includes('logout()') || attrs.includes('logout') || /keluar|ganti\s*akun/i.test(rawContent)) {
+          continue;
+        }
+
+        // Abaikan tombol aksi form standar
+        if (attrs.includes('tutupModal') || attrs.includes('bukaModal') || attrs.includes('closeModal') || /batal|tutup|simpan|hapus|edit|tambah/i.test(rawContent)) {
+          continue;
+        }
+
+        // Bersihkan emoji, icon, dan simbol
+        const cleanText = rawContent.replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+        if (expectedRoles) {
+          for (const role of expectedRoles) {
+            const rLower = role.trim().toLowerCase();
+            const isPureRoleName = cleanText === rLower ||
+                                   cleanText === 'role ' + rLower ||
+                                   cleanText === 'peran ' + rLower ||
+                                   cleanText === 'menu ' + rLower ||
+                                   cleanText === 'tab ' + rLower ||
+                                   cleanText === 'halaman ' + rLower;
+
+            if (isPureRoleName) {
+              issues.push(
+                `ROLE_AS_TAB_LABEL: Ditemukan tombol/link dengan label nama peran mentah "${rawContent}" di dalam halaman aplikasi (#appContainer). ` +
+                `DILARANG menamai tombol tab dengan nama peran! Tab di dalam aplikasi adalah NAVIGASI FITUR (contoh: "Kelola Anggota", "Kartu Digital", "Laporan"). ` +
+                `Pergantian peran HANYA dilakukan melalui tombol "Keluar / Ganti Akun" yang kembali ke form login.`
+              );
+            }
+          }
+        }
+      }
+
+      // Cek jika terdapat tombol/pemilih peran langsung di dalam appContainer (@click, onclick, v-model)
+      const appSwitcherMatches = [
+        ...appHtml.matchAll(/(?:onclick|@click)=['"](?:javascript:)?(?:loginAs|switchRole|selectRole|quickLogin)\([^)]*\)/gi),
+        ...appHtml.matchAll(/@click=['"]currentRole\s*=/gi),
+        ...appHtml.matchAll(/v-model=['"]currentRole['"]/gi)
+      ];
+      if (appSwitcherMatches.length > 0) {
+        issues.push(
+          `FORBIDDEN_ROLE_SWITCHER_IN_APP: Ditemukan tombol atau pemilih peran langsung di dalam halaman aplikasi (appContainer). ` +
+          `DILARANG membuat tombol ganti peran / role switcher di dalam halaman aplikasi! ` +
+          `Pergantian peran SELURUHNYA HANYA lewat tombol Logout / "Keluar / Ganti Akun" (@click="logout") yang mengembalikan pengguna ke #loginScreen.`
+        );
+      }
+    }
+
+    // Auto-repair: Hapus tombol/elemen switch peran langsung (loginAs/switchRole/currentRole) yang ditaruh di dalam appContainer
+    const appContainerIdx = repairedHtml.indexOf('id="appContainer"') !== -1 ? repairedHtml.indexOf('id="appContainer"') : repairedHtml.indexOf("id='appContainer'");
+    if (appContainerIdx !== -1) {
+      const preApp = repairedHtml.substring(0, appContainerIdx);
+      let postApp = repairedHtml.substring(appContainerIdx);
+      postApp = postApp.replace(/<(?:button|a|div)[^>]*(?:onclick|@click)=['"](?:javascript:)?(?:loginAs|switchRole|selectRole|quickLogin)\([^)]*\)['"][^>]*>[\s\S]*?<\/(?:button|a|div)>/gi, '');
+      postApp = postApp.replace(/<(?:button|a|div)[^>]*@click=['"]currentRole\s*=[^'"]*['"][^>]*>[\s\S]*?<\/(?:button|a|div)>/gi, '');
+      postApp = postApp.replace(/<select[^>]*v-model=['"]currentRole['"][^>]*>[\s\S]*?<\/select>/gi, '');
+      repairedHtml = preApp + postApp;
     }
 
     // Auto-repair: inject fungsi role-gating generik bila belum ada.
@@ -2238,7 +2948,7 @@ export function repairVueManualDomManipulation(html: string, js: string): { html
 
   // 2. Pastikan loginAs/handleLogin menyetel this.isLoggedIn = true, dan logout menyetel this.isLoggedIn = false
   if (/logout\s*\([^)]*\)\s*\{/i.test(repairedJs) && !/this\.isLoggedIn\s*=\s*false/i.test(repairedJs)) {
-    repairedJs = repairedJs.replace(/(logout\s*\([^)]*\)\s*\{)/i, '$1\n      this.isLoggedIn = false;');
+    repairedJs = repairedJs.replace(/(logout\s*\([^)]*\)\s*\{)/i, '$1\n      this.isLoggedIn = false;\n      this.currentRole = \'\';\n      this.activeTab = \'\';');
   }
   if (/loginAs\s*\([^)]*\)\s*\{/i.test(repairedJs) && !/this\.isLoggedIn\s*=\s*true/i.test(repairedJs)) {
     repairedJs = repairedJs.replace(/(loginAs\s*\([^)]*\)\s*\{)/i, '$1\n      this.isLoggedIn = true;');
@@ -2342,7 +3052,7 @@ export function checkVueHardcodedRoleCheck(ast: any, html: string, jsCode: strin
 
   if (!hardcodedFn) {
     const canEditMatch = jsCode.match(/canEditCurrentTab\s*\([^)]*\)\s*\{([\s\S]*?)\}/);
-    if (canEditMatch && /roles\.includes\s*\(\s*['"][^'"]+['"]\s*\)/i.test(canEditMatch[1])) {
+    if (canEditMatch && /\broles\.includes\s*\(\s*['"][^'*"]+['"]\s*\)/i.test(canEditMatch[1])) {
       hardcodedFn = 'canEditCurrentTab';
       hardcodedRole = 'literal role';
     }
@@ -2378,26 +3088,183 @@ export function checkVueDanglingConfigReferences(jsCode: string): string[] {
   return issues;
 }
 
+/**
+ * Validator & Jaring Pengaman 1.3: Kesenjangan RBAC vs TablesConfig/Tab
+ * Memastikan setiap tabel di Skema Data Resmi memiliki entri di tablesConfig dan tab yang relevan.
+ */
+export function checkAndRepairMissingSchemaTables(
+  html: string,
+  jsCode: string,
+  schemaTables?: { nama: string; keterangan?: string; displayField?: string; field?: any[] }[],
+  expectedRoles?: string[],
+  rbacModules?: { nama: string; deskripsiFungsional?: string; izinPerRole: { role: string; level: string }[] }[]
+): { issues: string[]; repairedHtml: string; repairedJs: string } {
+  const issues: string[] = [];
+  let repairedHtml = html;
+  let repairedJs = jsCode;
+
+  if (!schemaTables || schemaTables.length === 0) {
+    return { issues, repairedHtml, repairedJs };
+  }
+
+  const combined = html + '\n' + jsCode;
+  
+  // Ekstrak blok tablesConfig secara utuh menggunakan brace-balancing parser
+  const tcIdx = combined.search(/\btablesConfig\s*:\s*\{/);
+  if (tcIdx === -1) {
+    return { issues, repairedHtml, repairedJs };
+  }
+
+  const openBracePos = combined.indexOf('{', tcIdx);
+  let depth = 1;
+  let closeBracePos = -1;
+  for (let i = openBracePos + 1; i < combined.length; i++) {
+    const ch = combined[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        closeBracePos = i;
+        break;
+      }
+    }
+  }
+
+  if (closeBracePos === -1) {
+    return { issues, repairedHtml, repairedJs };
+  }
+
+  const tcContent = combined.slice(openBracePos + 1, closeBracePos);
+  const existingTableKeys = new Set<string>();
+  const keyRegex = /([a-zA-Z0-9_]+)\s*:\s*\{/g;
+  let km: RegExpExecArray | null;
+  while ((km = keyRegex.exec(tcContent)) !== null) {
+    existingTableKeys.add(km[1].toLowerCase());
+  }
+
+  const missingTables = schemaTables.filter(t => {
+    const tLower = t.nama.toLowerCase();
+    if (tLower === 'pengguna' || tLower === 'users' || tLower === 'user') return false;
+    // PENTING: Tab Laporan Turunan (viewConfig / isView) tidak boleh dituntut ada di tablesConfig fisik
+    if (tLower.startsWith('view_') || (t as any).isView) return false;
+    return !existingTableKeys.has(tLower);
+  });
+
+  if (missingTables.length > 0) {
+    for (const mt of missingTables) {
+      const label = mt.keterangan || mt.nama.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const displayField = mt.displayField || (mt.field?.find(f => /nama|judul|kode/i.test(f.nama))?.nama) || 'nama';
+      const fieldsConfig = (mt.field || []).map(f => {
+        const isRel = f.tipe?.includes('relasi ke') || f.nama?.endsWith('_id');
+        const target = f.targetTable || (isRel ? f.nama.replace(/_id$/, '') : undefined);
+        let fType = 'text';
+        if (isRel) fType = 'relation';
+        else if (/angka|number|nominal|tarif|biaya/i.test(f.tipe)) fType = 'number';
+        else if (/tanggal|date/i.test(f.tipe)) fType = 'date';
+        return `            { key: '${f.nama}', label: '${f.keterangan || f.nama}', type: '${fType}'${target ? `, targetTable: '${target}'` : ''} }`;
+      }).join(',\n');
+
+      // Resolusi role: Cek apakah modul RBAC yang disetujui user mencakup tabel/entitas ini
+      let targetRoles: string[] = [];
+      if (rbacModules && rbacModules.length > 0) {
+        const matchingModul = rbacModules.find(m => {
+          const mText = `${m.nama} ${m.deskripsiFungsional || ''}`.toLowerCase();
+          const tKeywords = mt.nama.toLowerCase().split('_');
+          return tKeywords.some(kw => kw.length >= 3 && mText.includes(kw));
+        });
+        if (matchingModul && matchingModul.izinPerRole?.length > 0) {
+          const validRoleEntries = matchingModul.izinPerRole.filter(ipr => 
+            !/none|tidak ada|tanpa akses|no access/i.test(ipr.level)
+          );
+          if (validRoleEntries.length > 0) {
+            targetRoles = validRoleEntries.map(ipr => ipr.role);
+          }
+        }
+      }
+      if (targetRoles.length === 0) {
+        targetRoles = expectedRoles && expectedRoles.length > 0 ? expectedRoles : ['Super Admin'];
+      }
+
+      const newTableEntry = `\n        ${mt.nama}: {
+          label: '${label}',
+          displayField: '${displayField}',
+          allowRoles: ${JSON.stringify(targetRoles)},
+          fields: [
+${fieldsConfig}
+          ]
+        },`;
+
+      let tableInjected = false;
+      const idx = repairedHtml.search(/\btablesConfig\s*:\s*\{/);
+      if (idx !== -1) {
+        const openBrace = repairedHtml.indexOf('{', idx);
+        repairedHtml = repairedHtml.slice(0, openBrace + 1) + newTableEntry + repairedHtml.slice(openBrace + 1);
+        tableInjected = true;
+      }
+
+      const dbIdx = repairedHtml.search(/\bdb\s*:\s*\{/);
+      if (dbIdx !== -1 && !repairedHtml.includes(`${mt.nama}: [`)) {
+        const openDbBrace = repairedHtml.indexOf('{', dbIdx);
+        const newDbEntry = `\n        ${mt.nama}: [],`;
+        repairedHtml = repairedHtml.slice(0, openDbBrace + 1) + newDbEntry + repairedHtml.slice(openDbBrace + 1);
+      }
+
+      // Pastikan tab untuk tabel baru juga disuntikkan ke array tabs di data() jika ada
+      const tabsIdx = repairedHtml.search(/\btabs\s*:\s*\[/);
+      if (tabsIdx !== -1 && !repairedHtml.includes(`id: '${mt.nama}'`) && !repairedHtml.includes(`id: "tab_${mt.nama}"`)) {
+        const openTabsBracket = repairedHtml.indexOf('[', tabsIdx);
+        const newTabEntry = `\n        { id: '${mt.nama}', label: '${label}', icon: '📁', roles: ${JSON.stringify(targetRoles)} },`;
+        repairedHtml = repairedHtml.slice(0, openTabsBracket + 1) + newTabEntry + repairedHtml.slice(openTabsBracket + 1);
+      }
+
+      // Auto-repair BERHASIL: Tidak memasukkan error pemblokir ke issues jika injeksi berhasil!
+      // Hanya catat issue jika injeksi gagal total (misal sintaks tablesConfig hilang).
+      if (!tableInjected) {
+        issues.push(
+          `SCHEMA_TABLE_MISSING_IN_CONFIG: Tabel "${mt.nama}" terdaftar di Skema Data Resmi namun tidak didefinisikan di 'tablesConfig' Vue.`
+        );
+      } else {
+        console.log(`[Auto-Repair] Berhasil menyuntikkan konfigurasi dan tab tabel "${mt.nama}" secara senyap.`);
+      }
+    }
+  }
+
+  return { issues, repairedHtml, repairedJs };
+}
+
 export function repairVueHardcodedRoleChecks(js: string): string {
   if (!js) return js;
   const canonicalCanEdit = `canEditCurrentTab() {
         if (this.currentTableConfig) {
+          const editRoles = this.currentTableConfig.editRoles || this.currentTableConfig.canEditRoles;
+          if (Array.isArray(editRoles)) {
+            return editRoles.includes(this.currentRole) || editRoles.includes('*');
+          }
           const allowed = this.currentTableConfig.roles || this.currentTableConfig.allowRoles || [];
-          return this.isRoleAllowed(allowed);
+          if (allowed.length) return this.isRoleAllowed(allowed);
         }
         if (this.tablesConfig) {
-          const key = (this.activeTab || '').replace(/^tab_/, '');
+          const key = (this.activeTab || '').replace(/^(?:tab_|view_)/, '');
           const cfg = this.tablesConfig[key] || this.tablesConfig[this.activeTab];
           if (cfg) {
+            const editRoles = cfg.editRoles || cfg.canEditRoles;
+            if (Array.isArray(editRoles)) {
+              return editRoles.includes(this.currentRole) || editRoles.includes('*');
+            }
             const allowed = cfg.roles || cfg.allowRoles || [];
-            return this.isRoleAllowed(allowed);
+            if (allowed.length) return this.isRoleAllowed(allowed);
           }
         }
         if (this.tabs && this.tabs.length) {
           const curTab = this.tabs.find(t => t.id === this.activeTab);
           if (curTab) {
+            if (curTab.isView) return false;
+            const editRoles = curTab.editRoles || curTab.canEditRoles;
+            if (Array.isArray(editRoles)) {
+              return editRoles.includes(this.currentRole) || editRoles.includes('*');
+            }
             const allowed = curTab.roles || curTab.allowRoles || [];
-            return this.isRoleAllowed(allowed);
+            if (allowed.length) return this.isRoleAllowed(allowed);
           }
         }
         const owner = (typeof window !== 'undefined' && window.OWNER_ROLE_NAME) ? window.OWNER_ROLE_NAME : 'Super Admin';

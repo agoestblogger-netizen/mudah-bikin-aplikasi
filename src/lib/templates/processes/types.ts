@@ -146,12 +146,94 @@ export interface GuidedStepOption {
 
 export type GuidedStepId =
   | 'STORYTELLING'
+  | 'DOMAIN_PROFILE'
   | 'ROLE'
   | 'ALUR'
   | 'RBAC'
+  | 'FORMULA'
   | 'SKEMA_DATA'
   | 'SIMULASI_DB'
   | 'REVIEW_FINAL';
+
+export interface EntityDataCardItem {
+  id: string;
+  name: string;
+  description: string;
+  ownerRole?: string;
+}
+
+export interface DomainProfile {
+  modelOperasional: 'DI_TEMPAT' | 'PENGIRIMAN_LOGISTIK' | 'DIGITAL';
+  modelTarif: 'SEWA_DURASI' | 'BERAT_TIMBANGAN' | 'PER_ITEM' | 'BIAYA_JASA';
+  adaJaminanDeposit: boolean;
+  fungsiDeposit?: string;
+  entitasKatalogMaster: string[];
+  entitasPencatatanTransaksi: string[];
+  komponenBiayaYangLazim: string[]; // WHITELIST SAJA — strict whitelist tanpa blocklist
+  referensiAlurKerjaLazim?: ReferensiModulRole[];
+  catatanOperasional?: string;
+  markdownMindMap?: string;
+  statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+  revisiCount?: number;
+}
+
+export interface ReferensiModulItem {
+  nama: string;
+  deskripsi?: string;
+}
+
+export interface ReferensiModulRole {
+  role: string;
+  modul: ReferensiModulItem[];
+}
+
+export interface RoleModuleChecklistItem {
+  id: string;
+  nama: string;
+  deskripsi?: string;
+  role: string;
+  termasukDiAlur: boolean;
+  disarankan?: boolean;
+  checked: boolean;
+  isCustom?: boolean;
+  catatanTambahan?: string;
+  cakupanAksi?: string[];
+}
+
+export interface RoleModuleChecklistGroup {
+  role: string;
+  items: RoleModuleChecklistItem[];
+}
+
+export interface AnalyzeCustomModuleResult {
+  canMerge: boolean;
+  targetModuleName?: string;
+  targetModuleId?: string;
+  mergeExplanation?: string;
+  enhancedTargetDescription?: string;
+  independentModuleName?: string;
+  independentModuleDescription?: string;
+}
+
+export interface ViewAggregateField {
+  key: string;
+  label: string;
+  op: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+  sourceKey?: string;
+  format?: 'rupiah' | 'angka' | 'teks';
+}
+
+export interface ViewConfig {
+  id: string;
+  label: string;
+  icon?: string;
+  targetRoles?: string[];
+  sourceTable: string;
+  groupByField: string;
+  groupByLabel: string;
+  aggregates: ViewAggregateField[];
+  keterangan?: string;
+}
 
 export interface GuidedStepPayload {
   stepId: GuidedStepId;
@@ -160,13 +242,19 @@ export interface GuidedStepPayload {
   allowOther: boolean;
   options: GuidedStepOption[];
   backNavOption?: GuidedStepOption;
+  entityDataList?: EntityDataCardItem[];
+  domainProfile?: DomainProfile;
+  roleModuleChecklist?: RoleModuleChecklistGroup[];
+  rbacStage?: 'CHECKLIST' | 'MATRIX';
 }
 
 export type SessionStep =
   | 'STORYTELLING'
+  | 'DOMAIN_PROFILE'
   | 'ROLE'
   | 'ALUR'
   | 'RBAC'
+  | 'FORMULA'
   | 'SKEMA_DATA'
   | 'SIMULASI_DB'
   | 'REVIEW_FINAL';
@@ -211,6 +299,17 @@ export interface ActorClassification {
   matchSource?: 'EXPLICIT_OWNER' | 'EXPLICIT_STAFF_TITLE' | 'PREDICATE_SEMANTIC_MATCH' | 'AI_SEMANTIC' | 'INCONCLUSIVE_FALLBACK';
 }
 
+export interface BusinessFormula {
+  namaField: string;
+  labelField: string;
+  targetTable: string;
+  deskripsi: string;
+  formulaText: string;
+  komponenInput: string[];
+  tipeOperasi?: 'perkalian' | 'penjumlahan' | 'pengurangan' | 'pembagian' | 'kombinasi' | 'custom';
+  formulaExpression?: string;
+}
+
 export interface MockupSessionState {
   step: SessionStep;
   match: {
@@ -223,6 +322,7 @@ export interface MockupSessionState {
     contextualRoles?: string[];
   };
   actorsClassification?: ActorClassification[];
+  domainProfile?: DomainProfile;
   pendingOwnerRoleClarification?: {
     entity: string;
     suggestedOwnerRoles: string[];
@@ -337,13 +437,33 @@ export interface MockupSessionState {
     catatanPelimpahan?: string[];
     statusKonfirmasi?: 'disetujui' | 'dikoreksi';
     revisiCount?: number;
+    checklistPerRole?: RoleModuleChecklistGroup[];
+    confirmedModulesPerRole?: Record<string, string[]>;
+    stage?: 'CHECKLIST' | 'MATRIX';
+  };
+  formulas?: {
+    daftar: BusinessFormula[];
+    markdownTable?: string;
+    statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+    revisiCount?: number;
   };
   dataSchema?: {
     tabel: {
       nama: string;
       keterangan?: string;
-      field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[];
+      displayField?: string;
+      compositeFields?: string[];
+      field: {
+        nama: string;
+        tipe: string;
+        keterangan: string;
+        targetRole?: string;
+        targetTable?: string;
+        isFormula?: boolean;
+        formulaExpression?: string;
+      }[];
     }[];
+    views?: ViewConfig[];
     korelasiRingkas?: string;
     markdownTable?: string;
     statusKonfirmasi?: 'disetujui' | 'dikoreksi';

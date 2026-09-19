@@ -141,7 +141,7 @@ assert(
 console.log('  ✅ deleteRow(): r.id !== id -> String(r.id) !== String(id)\n');
 
 // --------------------------------------------------------------------------
-// SUBTEST 3: Pembersihan Otomatis Pola Anomali String(x).properti
+// SUBTEST 3: Pembersihan Otomatis Pola Anomali String(x).properti & String(36).substr
 // --------------------------------------------------------------------------
 console.log('--- SUBTEST 3: Auto-Clean & Validator MALFORMED_STRING_GUARD ---');
 
@@ -152,20 +152,47 @@ const malformedInput = `
 `;
 
 const cleanedInput = malformedInput.replace(
-  /String\(([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\)\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g,
+  /(?<![a-zA-Z0-9_$.])String\(([a-zA-Z_$][a-zA-Z0-9_$]*(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*)*)\)\.([a-zA-Z_$][a-zA-Z0-9_$]*)/g,
   'String($1.$2)'
 );
 
 assert(cleanedInput.includes('String(data.id)'), 'FAILED: String(data).id harus bersih jadi String(data.id)');
 assert(cleanedInput.includes('String(this.activeTab)'), 'FAILED: String(this).activeTab harus bersih jadi String(this.activeTab)');
 assert(cleanedInput.includes('String(row.kode)'), 'FAILED: String(row).kode harus bersih jadi String(row.kode)');
-assert(!/String\([^)]+\)\.[a-zA-Z]/.test(cleanedInput), 'FAILED: Tidak boleh ada sisa String(x).prop!');
-console.log('  ✅ Pembersihan otomatis String(x).property -> String(x.property) berhasil 100%\n');
+assert(!/(?<![a-zA-Z0-9_$.])String\([^)]+\)\.[a-zA-Z]/.test(cleanedInput), 'FAILED: Tidak boleh ada sisa String(x).prop!');
+console.log('  ✅ Pembersihan otomatis String(x).property -> String(x.property) berhasil 100%');
+
+// Test 3b: Validasi String(36).substr auto-repair dan valid toString(36).substr tidak memicu false positive
+const htmlWithValidToString = `<!DOCTYPE html><html><body><div id="app"></div><script>
+  const id1 = Math.random().toString(36).substr(2, 9);
+  const id2 = Math.random().toString(36).substring(2, 9);
+  const lower = String(role).toLowerCase();
+  Vue.createApp({}).mount('#app');
+</script></body></html>`;
+const resValid = validateAndRepairGeneratedCode(htmlWithValidToString, '', '');
+assert(!resValid.issues.some(i => i.includes('MALFORMED_STRING_GUARD')), 'FAILED: Math.random().toString(36).substr TIDAK boleh memicu MALFORMED_STRING_GUARD!');
+console.log('  ✅ Math.random().toString(36).substr(2, 9) & String(role).toLowerCase() lolos 100% tanpa false positive');
+
+const htmlWithMalformedId = `<!DOCTYPE html><html><body><div id="app"></div><script>
+  const badId1 = "TRX-" + String(36).substr(2, 9);
+  const badId2 = Math.random().String(36).substr(2, 9);
+  Vue.createApp({}).mount('#app');
+</script></body></html>`;
+const resRepaired = validateAndRepairGeneratedCode(htmlWithMalformedId, '', '');
+assert(!resRepaired.issues.some(i => i.includes('MALFORMED_STRING_GUARD')), 'FAILED: String(36).substr harus di-autorepair tanpa melempar error!');
+assert(resRepaired.repairedCode.html.includes('toString(36).substring'), 'FAILED: String(36).substr harus di-autorepair ke toString(36).substring!');
+console.log('  ✅ String(36).substr otomatis diperbaiki diam-diam ke Math.random().toString(36).substring(2, 9)');
+
+// Test 3c: Validasi Kritis MISSING_VUE_INITIALIZATION jika template Vue tidak punya script createApp
+const htmlWithoutVueApp = `<!DOCTYPE html><html><body><div id="app"><button @click="test">Klik</button></div><script>console.log("No Vue");</script></body></html>`;
+const resMissingVue = validateAndRepairGeneratedCode(htmlWithoutVueApp, '', '');
+assert(resMissingVue.issues.some(i => i.includes('MISSING_VUE_INITIALIZATION')), 'FAILED: Harus mendeteksi MISSING_VUE_INITIALIZATION jika template Vue tidak punya createApp!');
+console.log('  ✅ MISSING_VUE_INITIALIZATION berhasil mendeteksi template Vue tanpa blok createApp\n');
 
 // --------------------------------------------------------------------------
-// SUBTEST 4: De-duplikasi CDN Script Tags di buildSrcDoc
+// SUBTEST 4: De-duplikasi CDN Script Tags & Preservasi Script Vue di buildSrcDoc
 // --------------------------------------------------------------------------
-console.log('--- SUBTEST 4: De-duplikasi CDN Script Tags di buildSrcDoc ---');
+console.log('--- SUBTEST 4: De-duplikasi CDN Script Tags & Preservasi Script Vue di buildSrcDoc ---');
 
 const htmlWithAiCdnTags = `<!DOCTYPE html>
 <html lang="id">
@@ -178,6 +205,12 @@ const htmlWithAiCdnTags = `<!DOCTYPE html>
 </head>
 <body>
   <div id="app">Konten</div>
+  <script>
+    const app = Vue.createApp({
+      mixins: [typeof Pilar1VueScaffoldMixin !== 'undefined' ? Pilar1VueScaffoldMixin : (window.Pilar1VueScaffoldMixin || {})],
+      data() { return { db: { pesanan: [] } }; }
+    }).mount('#app');
+  </script>
 </body>
 </html>`;
 
@@ -202,9 +235,13 @@ assert.strictEqual(
   1,
   `FAILED: Lucide Icons CDN harus tepat 1 kali, ditemukan ${lucideMatches.length} kali!`
 );
+// KRITIS: Pastikan blok script Vue.createApp TIDAK terhapus oleh buildSrcDoc!
+assert(builtDoc.includes('Vue.createApp'), 'FAILED KRITIS: Script Vue.createApp tidak boleh terhapus oleh buildSrcDoc!');
+assert(builtDoc.includes(".mount('#app')"), 'FAILED KRITIS: .mount("#app") harus tetap ada di builtDoc!');
 console.log('  ✅ CDN Tailwind v4 termuat tepat 1 kali (tanpa duplikasi)');
 console.log('  ✅ CDN Vue 3 termuat tepat 1 kali (monkey-patch Vue.createApp aman)');
-console.log('  ✅ CDN Lucide termuat tepat 1 kali\n');
+console.log('  ✅ CDN Lucide termuat tepat 1 kali');
+console.log('  ✅ Script Vue.createApp & .mount("#app") TERJAMIN UTUH 100% di Canvas Preview (tidak terhapus)\n');
 
 // --------------------------------------------------------------------------
 // SUBTEST 5: E2E Skema Laundry Asli Mercury-2.5 Terbebas dari Masalah

@@ -172,12 +172,22 @@ KEMBALIKAN HANYA KODE HTML ELEMEN HASIL MODIFIKASI:`;
               { role: 'user', content: userPrompt }
             ];
 
+        const isReasoning =
+          activeOpenAIModel.toLowerCase().includes('r1') ||
+          activeOpenAIModel.toLowerCase().includes('o1') ||
+          activeOpenAIModel.toLowerCase().includes('o3') ||
+          activeOpenAIModel.toLowerCase().includes('gpt-5');
+
         const reqBody: Record<string, any> = {
           model: activeOpenAIModel,
-          messages,
-          max_tokens: 4096
+          messages
         };
-        if (!activeOpenAIModel.toLowerCase().includes('r1') && !activeOpenAIModel.toLowerCase().includes('o1')) {
+        if (isOpenRouter) {
+          reqBody.max_tokens = 4096;
+        } else {
+          reqBody.max_completion_tokens = isReasoning ? 8192 : 4096;
+        }
+        if (!isReasoning) {
           reqBody.temperature = 0.2;
         }
 

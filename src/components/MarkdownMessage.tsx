@@ -122,8 +122,18 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
               </td>
             );
           },
+          pre: ({ node, ...props }: any) => (
+            <pre
+              className="overflow-x-auto bg-black/60 border border-white/10 rounded-xl p-3 my-2 text-[11px] font-mono text-zinc-200"
+              {...props}
+            />
+          ),
           code: ({ node, inline, className: codeClassName, children, ...props }: any) => {
-            if (inline) {
+            const isMultiline = typeof children === 'string' && children.includes('\n');
+            const hasLang = Boolean(codeClassName && codeClassName.includes('language-'));
+            const isBlock = !inline && (hasLang || isMultiline);
+
+            if (!isBlock) {
               return (
                 <code
                   className="bg-white/10 text-emerald-300 px-1.5 py-0.5 rounded text-[11px] font-mono"
@@ -134,11 +144,9 @@ export const MarkdownMessage: React.FC<MarkdownMessageProps> = ({
               );
             }
             return (
-              <pre className="overflow-x-auto bg-black/60 border border-white/10 rounded-xl p-3 my-2 text-[11px] font-mono text-zinc-200">
-                <code className={codeClassName} {...props}>
-                  {children}
-                </code>
-              </pre>
+              <code className={codeClassName} {...props}>
+                {children}
+              </code>
             );
           },
           a: ({ node, ...props }) => (

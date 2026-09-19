@@ -12,6 +12,7 @@ import { SavedProjectsList } from '@/components/SavedProjectsList';
 import { AppSidebar } from '@/components/AppSidebar';
 import { SavedProjectsModal } from '@/components/SavedProjectsModal';
 import { BuildBadge } from '@/components/BuildBadge';
+import { ErdPanel } from '@/components/ErdPanel';
 import { buildSrcDoc } from '@/lib/buildSrcDoc';
 import {
   Code2,
@@ -183,6 +184,18 @@ export default function AppWorkspacePage() {
     () => buildSrcDoc(projectState.canvasCode),
     [reloadTrigger]
   );
+
+  const { isSchemaDataStep, schemaTablesForErd } = useMemo(() => {
+    const session = projectState.sessionState;
+    const lastGuidedMsg = [...(projectState.chatMessages || [])].reverse().find((m) => m.guidedStep);
+    const stepId = lastGuidedMsg?.guidedStep?.stepId || session?.step;
+    const isStep = stepId === 'SKEMA_DATA';
+    const tables = ((session?.dataSchema?.tabel as any[]) || []);
+    return {
+      isSchemaDataStep: isStep,
+      schemaTablesForErd: tables
+    };
+  }, [projectState.sessionState, projectState.chatMessages]);
 
   // Sync initial loaded project once on mount
   useEffect(() => {
@@ -2380,6 +2393,8 @@ export default function AppWorkspacePage() {
                     ) : isGenerating ? (
                     // === POIN 16: SKELETON PROGRESS SAAT GENERATE KODE BATCH ===
                     <GeneratingSkeletonPreview />
+                  ) : isSchemaDataStep && schemaTablesForErd.length > 0 ? (
+                    <ErdPanel tables={schemaTablesForErd} />
                   ) : (
                     <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 text-slate-500">
                       <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-indigo-400/60 shadow-inner">

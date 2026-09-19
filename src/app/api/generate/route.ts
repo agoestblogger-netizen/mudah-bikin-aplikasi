@@ -473,6 +473,20 @@ export async function POST(req: Request) {
     let staffRoles: string[];
     let roleLandingTabs: Record<string, string>;
 
+    // Ekstraksi skema data tabel dari session (SUMBER KEBENARAN field form CRUD & tab operasional)
+    const sessionDataSchema = incomingSession?.dataSchema;
+    const sessionSimulasiDb = incomingSession?.simulasiDb;
+    const availableTableKeys: string[] = [];
+    if (sessionDataSchema?.tabel && Array.isArray(sessionDataSchema.tabel)) {
+      for (const t of sessionDataSchema.tabel) {
+        if (t.nama) availableTableKeys.push(t.nama);
+      }
+    } else if (sessionSimulasiDb?.tabel && Array.isArray(sessionSimulasiDb.tabel)) {
+      for (const t of sessionSimulasiDb.tabel) {
+        if (t.nama) availableTableKeys.push(t.nama);
+      }
+    }
+
     const hasStructuredSession = Boolean(
       incomingSession &&
       incomingSession.roles?.selected &&
@@ -489,10 +503,17 @@ export async function POST(req: Request) {
       publicRole = officialRoles.find(r => /^(pasien|pelanggan|customer|tamu|guest|publik|client)/i.test(r)) || null;
       staffRoles = officialRoles.filter(r => r !== publicRole);
 
-      // Bangun roleLandingTabs dari session atau fallback ke slug sederhana
+      // Bangun roleLandingTabs dari tabel operasional (Opsi A: landingTab = nama tabel operasional, BUKAN nama peran)
       roleLandingTabs = {};
       for (const role of officialRoles) {
-        roleLandingTabs[role] = role.toLowerCase().replace(/[^a-z0-9]/g, '');
+        let matchedTbl = availableTableKeys[0] || 'dashboard';
+        const rLower = role.toLowerCase();
+        const found = availableTableKeys.find(k => {
+          const kLower = k.toLowerCase();
+          return rLower.includes(kLower) || kLower.includes(rLower.replace(/^(petugas|staf|admin|operator)\s*/i, ''));
+        });
+        if (found) matchedTbl = found;
+        roleLandingTabs[role] = matchedTbl;
       }
 
       // Jika compiledBrief kosong tapi ada chatHistory yang punya brief, pakai fallback parsing sebagai supplement
@@ -507,7 +528,11 @@ export async function POST(req: Request) {
       officialRoles = parsed.roles;
       publicRole = parsed.publicRole;
       staffRoles = parsed.staffRoles;
-      roleLandingTabs = parsed.roleLandingTabs;
+      roleLandingTabs = {};
+      for (const role of officialRoles) {
+        let matchedTbl = availableTableKeys[0] || (parsed.roleLandingTabs[role] ?? 'dashboard');
+        roleLandingTabs[role] = matchedTbl;
+      }
       if (officialRoles.length > 0) {
         console.log(`[Fallback] Menggunakan ekstraksi chat history: ${officialRoles.length} roles`);
       }
@@ -532,9 +557,116 @@ export async function POST(req: Request) {
       }
     }
 
-    // Ekstraksi skema data tabel dari session (SUMBER KEBENARAN field form CRUD)
-    const sessionDataSchema = incomingSession?.dataSchema;
-    const sessionSimulasiDb = incomingSession?.simulasiDb;
+    // Ekstraksi modul dan analisis granularitas wewenang RBAC (View-Only vs CRUD Penuh)
+    const noAccessRegex = /(?:tidak ada|tidak memiliki|belum ada|tanpa akses|no access|none|^-$|^-+$)/i;
+    const crudRegex = /(?:catat|proses|input|kelola|entri|tulis|buat|edit|ubah|hapus|eksekusi|kontrol penuh|full|crud)/i;
+    const viewRegex = /(?:supervisi|audit|pantau|monitoring|review|lihat|baca|read)/i;
+
+    function classifyRoleWewenang(text: string): 'CRUD' | 'VIEW_ONLY' | 'NONE' {
+      if (!text || noAccessRegex.test(text.trim())) return 'NONE';
+      if (crudRegex.test(text)) return 'CRUD';
+      if (viewRegex.test(text)) return 'VIEW_ONLY';
+      return 'VIEW_ONLY';
+    }
+
+    // Jika sessionRbacModul kosong, coba parse dari tabel markdown di approvedBrief
+    let activeRbacModulList = [...sessionRbacModul];
+    if (activeRbacModulList.length === 0 && approvedBrief && approvedBrief.includes('|')) {
+      const lines = approvedBrief.split('\n');
+      let tableHeaderIdx = -1;
+      let headers: string[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('|') && /modul/i.test(line)) {
+          tableHeaderIdx = i;
+          headers = line.split('|').map(h => h.trim()).filter(Boolean);
+          break;
+        }
+      }
+      if (tableHeaderIdx !== -1 && headers.length >= 2) {
+        const rolesInTable = headers.slice(1);
+        for (let i = tableHeaderIdx + 2; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line.startsWith('|')) break;
+          const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+          if (cells.length < 2) continue;
+          const modulName = cells[0].replace(/\*\*/g, '').trim();
+          const wewenangPeran: Record<string, string> = {};
+          rolesInTable.forEach((r, idx) => {
+            wewenangPeran[r] = cells[idx + 1] || '-';
+          });
+          activeRbacModulList.push({ nama: modulName, wewenangPeran });
+        }
+      }
+    }
+
+    const granularRbacList: Array<{
+      modul: string;
+      roles: string[];
+      editRoles: string[];
+      viewOnlyRoles: string[];
+      details: string[];
+    }> = [];
+
+    if (activeRbacModulList.length > 0) {
+      for (const m of activeRbacModulList) {
+        const modulName = m.nama || m.namaModul || '';
+        if (!modulName) continue;
+        const viewRoles: string[] = [];
+        const editRoles: string[] = [];
+        const viewOnlyRoles: string[] = [];
+        const details: string[] = [];
+
+        for (const r of officialRoles) {
+          let wewenangText = '';
+          if (m.wewenangPeran && typeof m.wewenangPeran === 'object' && m.wewenangPeran[r]) {
+            wewenangText = m.wewenangPeran[r].trim();
+          } else if (Array.isArray(m.izinPerRole)) {
+            const match = m.izinPerRole.find(
+              (ip: any) => ip.role?.trim().toLowerCase() === r.trim().toLowerCase()
+            );
+            if (match && match.level) wewenangText = match.level.trim();
+          }
+
+          const classification = classifyRoleWewenang(wewenangText);
+          if (classification === 'CRUD') {
+            viewRoles.push(r);
+            editRoles.push(r);
+            details.push(`${r}: CRUD Penuh ("${wewenangText || 'Kelola Data'}")`);
+          } else if (classification === 'VIEW_ONLY') {
+            viewRoles.push(r);
+            viewOnlyRoles.push(r);
+            details.push(`${r}: VIEW-ONLY / Supervisi & Audit ("${wewenangText || 'Supervisi & Audit'}")`);
+          } else {
+            details.push(`${r}: TANPA AKSES ("${wewenangText || '-'}")`);
+          }
+        }
+
+        granularRbacList.push({
+          modul: modulName,
+          roles: viewRoles,
+          editRoles,
+          viewOnlyRoles,
+          details
+        });
+      }
+    }
+
+    let granularRbacBlock = '';
+    if (granularRbacList.length > 0) {
+      granularRbacBlock = `================================================================================
+🛡️ MATRIKS LEVEL AKSES CRUD vs VIEW-ONLY (RBAC GRANULAR WAJIB DITERJEMAHKAN 100%):
+Berdasarkan wewenang per peran di matriks RBAC resmi yang telah disepakati:
+` + granularRbacList.map(item => {
+        return `📌 Modul / Tabel: "${item.modul}"
+   - roles (Siapa yang boleh LIHAT tab ini): ${JSON.stringify(item.roles)}
+   - editRoles (Siapa yang boleh TAMBAH/EDIT/HAPUS): ${JSON.stringify(item.editRoles)}
+   ${item.viewOnlyRoles.length > 0 ? `   - 👁️ Role VIEW-ONLY (Hanya Supervisi & Audit, TANPA tombol Tambah/Edit/Hapus): ${JSON.stringify(item.viewOnlyRoles)}` : ''}
+   - Rincian: ${item.details.join(' | ')}`;
+      }).join('\n\n') + `\n================================================================================`;
+    }
+
+    // Format skema data tabel menjadi markdown block (SUMBER KEBENARAN field form CRUD)
     const schemaMarkdownBlock = sessionDataSchema?.tabel && sessionDataSchema.tabel.length > 0
       ? (sessionDataSchema.markdownTable || renderDataSchemaMarkdown(sessionDataSchema.tabel, sessionDataSchema.korelasiRingkas))
       : null;
@@ -960,91 +1092,212 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      \`\`\`
      Atau gunakan inline style: style="scrollbar-width: none; -ms-overflow-style: none;".
 4. ARSITEKTUR CRUD GENERIK PARAMETERIZED (SINGLE-MODAL & DECLARATIVE SCHEMA):
-   - AI DILARANG menulis ulang boilerplate tabel, modal, dan handler DOM manual secara berulang per entitas!
-   - Definisikan konfigurasi seluruh tabel data secara deklaratif di objek \`tablesConfig\` di data Vue:
-     \`\`\`javascript
-     tablesConfig: {
-       paket: {
-         label: 'Paket Kursus',
-         allowRoles: ['Super Admin', 'Admin Pendaftaran'],
-         fields: [
-           { key: 'nama', label: 'Nama Paket', type: 'text', required: true },
-           { key: 'level', label: 'Level Belajar', type: 'select', options: ['Pemula', 'Mahir', 'Intensif'] },
-           { key: 'pertemuan', label: 'Jumlah Pertemuan', type: 'number', required: true },
-           { key: 'harga', label: 'Biaya (Rp)', type: 'number', required: true },
-           { key: 'lokasi', label: 'Lokasi Latihan', type: 'text' }
-         ]
-       },
-       // ... tabel lainnya dari Skema Data
-     }
-     \`\`\`
-   - State data in-memory reaktif diinisialisasi pada objek \`db\` di data Vue dengan 3-5 rekaman contoh realistis lengkap (DILARANG ARRAY KOSONG):
-     \`\`\`javascript
-     db: {
-       paket: [
-         { id: 'PKT-001', nama: 'Paket Pemula Matic', level: 'Pemula', pertemuan: 8, harga: 1200000, lokasi: 'Lapangan Parkir Timur' },
-         { id: 'PKT-002', nama: 'Paket Kilat Manual', level: 'Mahir', pertemuan: 5, harga: 900000, lokasi: 'Jalan Raya Protokol' }
-       ],
-       // ... tabel lainnya
-     }
-     \`\`\`
-   - Render antarmuka tabel secara generik melalui loop parameterized:
-     \`\`\`html
-     <div v-for="(cfg, tblKey) in tablesConfig" :key="tblKey" v-show="activeTab === 'tab_' + tblKey" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-       <div class="flex justify-between items-center mb-4">
-         <h2 class="text-xl font-bold text-gray-800">{{ cfg.label }}</h2>
-         <button @click="openCreate(tblKey)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition">
-           + Tambah {{ cfg.label }}
-         </button>
-       </div>
-       <div class="overflow-x-auto">
-         <table class="w-full text-left text-sm">
-           <thead class="bg-gray-50 border-b border-gray-200">
-             <tr>
-               <th v-for="fld in cfg.fields" :key="fld.key" class="py-3 px-4 text-xs font-bold text-gray-600 uppercase">{{ fld.label }}</th>
-               <th class="py-3 px-4 text-xs font-bold text-gray-600 uppercase text-right">Aksi</th>
-             </tr>
-           </thead>
-           <tbody class="divide-y divide-gray-100">
-             <tr v-for="row in db[tblKey]" :key="row.id" class="hover:bg-gray-50">
-               <td v-for="fld in cfg.fields" :key="fld.key" class="py-3 px-4 text-gray-800">{{ row[fld.key] }}</td>
-               <td class="py-3 px-4 text-right space-x-2">
-                 <button @click="openEdit(tblKey, row)" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded transition">Edit</button>
-                 <button @click="confirmDelete(tblKey, row.id)" class="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded transition">Hapus</button>
-               </td>
-             </tr>
-           </tbody>
-         </table>
-       </div>
-     </div>
-     \`\`\`
-   - FORM MODAL TUNGGAL GENERIK (TAMBAH & EDIT):
-     Satu modal form generik yang me-render kolom input secara dinamis sesuai \`currentTableConfig.fields\`:
-     \`\`\`html
-     <div v-show="modal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-       <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl max-h-screen overflow-y-auto">
-         <div class="flex justify-between items-center mb-4">
-           <h3 class="text-lg font-bold text-gray-800">{{ modal.isEdit ? 'Edit Data' : 'Tambah Data' }} {{ currentTableConfig.label }}</h3>
-           <button @click="modal.isOpen = false" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
-         </div>
-         <form @submit.prevent="saveItem" class="space-y-4">
-           <div v-for="fld in currentTableConfig.fields" :key="fld.key">
-             <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">{{ fld.label }}</label>
-             <input v-if="fld.type === 'text'" type="text" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-             <input v-else-if="fld.type === 'number'" type="number" v-model.number="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-             <input v-else-if="fld.type === 'date'" type="date" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-             <select v-else-if="fld.type === 'select'" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-               <option value="">-- Pilih {{ fld.label }} --</option>
-               <option v-for="opt in fld.options" :key="opt" :value="opt">{{ opt }}</option>
-             </select>
+    - AI DILARANG menulis ulang boilerplate tabel, modal, dan handler DOM manual secara berulang per entitas!
+    - Definisikan konfigurasi seluruh tabel data secara deklaratif di objek \`tablesConfig\` di data Vue (sertakan displayField untuk master, compositeFields untuk tabel jembatan, targetTable pada relasi, isFormula/formulaExpression pada field terhitung, serta \`roles\` untuk izin LIHAT tab dan \`editRoles\` untuk izin CRUD Tambah/Edit/Hapus):
+      \`\`\`javascript
+      tablesConfig: {
+        paket: {
+          label: 'Paket Kursus',
+          displayField: 'nama',
+          roles: ['Super Admin', 'Admin Pendaftaran'], // Role yang boleh LIHAT tab ini
+          editRoles: ['Admin Pendaftaran'],           // Role yang boleh CRUD (Tambah/Edit/Hapus). Super Admin hanya Supervisi & Audit (Read-Only) di tabel operasional ini
+          fields: [
+            { key: 'nama', label: 'Nama Paket', type: 'text', required: true },
+            { key: 'level', label: 'Level Belajar', type: 'select', options: ['Pemula', 'Mahir', 'Intensif'] },
+            { key: 'pertemuan', label: 'Jumlah Pertemuan', type: 'number', required: true },
+            { key: 'harga', label: 'Biaya (Rp)', type: 'number', required: true },
+            { key: 'lokasi', label: 'Lokasi Latihan', type: 'text' }
+          ]
+        },
+        pendaftaran: {
+          label: 'Pendaftaran Kursus',
+          compositeFields: ['siswa_id', 'paket_id'],
+          roles: ['Super Admin', 'Admin Pendaftaran'],
+          editRoles: ['Admin Pendaftaran'],
+          fields: [
+            { key: 'siswa_id', label: 'Siswa', type: 'relation', targetTable: 'siswa', required: true },
+            { key: 'paket_id', label: 'Paket Kursus', type: 'relation', targetTable: 'paket', required: true },
+            { key: 'durasi_bulan', label: 'Durasi (Bulan)', type: 'number', required: true },
+            { key: 'total_tagihan', label: 'Total Tagihan (Rp)', type: 'number', isFormula: true, formulaExpression: 'durasi_bulan * 500000' }
+          ]
+        }
+        // ... tabel lainnya dari Skema Data
+      }
+      \`\`\`
+    - State data in-memory reaktif diinisialisasi pada objek \`db\` di data Vue dengan 3-5 rekaman contoh realistis lengkap (DILARANG ARRAY KOSONG):
+      \`\`\`javascript
+      db: {
+        paket: [
+          { id: 'PKT-001', nama: 'Paket Pemula Matic', level: 'Pemula', pertemuan: 8, harga: 1200000, lokasi: 'Lapangan Parkir Timur' },
+          { id: 'PKT-002', nama: 'Paket Kilat Manual', level: 'Mahir', pertemuan: 5, harga: 900000, lokasi: 'Jalan Raya Protokol' }
+        ],
+        // ... tabel lainnya
+      }
+      \`\`\`
+    - Render antarmuka tabel secara generik melalui loop parameterized (resolusi nilai relasi otomatis dengan \`resolveRelationDisplay\`, proteksi aksi CRUD dengan \`canEditCurrentTab()\`, dan banner mode supervisi):
+      \`\`\`html
+      <div v-for="(cfg, tblKey) in tablesConfig" :key="tblKey" v-show="activeTab === tblKey || activeTab === 'tab_' + tblKey" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <!-- Banner Mode Supervisi & Audit (Read-Only) jika pengguna tidak punya wewenang edit -->
+        <div v-if="!canEditCurrentTab()" class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800">
+          <span class="text-base">👁️</span>
+          <span>Mode Supervisi & Audit (Read-Only) — Anda memiliki hak memantau data tanpa izin penambahan atau perubahan.</span>
+        </div>
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold text-gray-800">{{ cfg.label }}</h2>
+          <button v-if="canEditCurrentTab()" @click="openCreate(tblKey)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition">
+            + Tambah {{ cfg.label }}
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th v-for="fld in cfg.fields" :key="fld.key" class="py-3 px-4 text-xs font-bold text-gray-600 uppercase">{{ fld.label }}</th>
+                <th v-if="canEditCurrentTab()" class="py-3 px-4 text-xs font-bold text-gray-600 uppercase text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="row in db[tblKey]" :key="row.id" class="hover:bg-gray-50">
+                <td v-for="fld in cfg.fields" :key="fld.key" class="py-3 px-4 text-gray-800">
+                  <span v-if="fld.targetTable || fld.type === 'relation'">{{ resolveRelationDisplay(fld.targetTable || fld.key.replace(/_(id|fk)$/i, ''), row[fld.key]) }}</span>
+                  <span v-else>{{ row[fld.key] }}</span>
+                </td>
+                <td v-if="canEditCurrentTab()" class="py-3 px-4 text-right space-x-2">
+                  <button @click="openEdit(tblKey, row)" class="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded transition">Edit</button>
+                  <button @click="confirmDelete(tblKey, row.id)" class="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 font-medium rounded transition">Hapus</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      \`\`\`
+    - ARSITEKTUR TAB KHUSUS LAPORAN TURUNAN (COMPUTED VIEWS - READ ONLY):
+      * JIKA terdapat konfigurasi laporan/rekapitulasi turunan (views) di Skema Data:
+        1) Definisikan konfigurasi laporan di objek \`viewsConfig\` pada data Vue:
+           \`\`\`javascript
+           viewsConfig: {
+             laporan_harian: {
+               label: 'Laporan Harian (Read-Only)',
+               icon: '📊',
+               sourceTable: 'transaksi_sewa',
+               groupByField: 'jam_mulai',
+               groupByLabel: 'Tanggal Transaksi',
+               allowRoles: ['Super Admin', 'Owner'],
+               aggregates: [
+                 { key: 'total_transaksi', label: 'Total Transaksi', op: 'COUNT', format: 'angka' },
+                 { key: 'total_pendapatan', label: 'Total Omzet (Rp)', op: 'SUM', sourceKey: 'total_biaya', format: 'rupiah' }
+               ]
+             }
+           }
+           \`\`\`
+        2) Daftarkan tab laporan di array \`tabs\` data() dengan awalan \`view_\` dan label jelas:
+           \`{ id: 'view_laporan_harian', label: '📊 Laporan Harian (Read-Only)', icon: '📊', isView: true, roles: ['Super Admin', 'Owner'] }\`
+        3) Definisikan computed property \`computedViews\` di Vue untuk mengelompokkan data dari db[sourceTable] secara reaktif:
+           \`\`\`javascript
+           computedViews() {
+             const res = {};
+             for (const [vKey, vCfg] of Object.entries(this.viewsConfig || {})) {
+               const rows = this.db[vCfg.sourceTable] || [];
+               const groups = {};
+               rows.forEach(r => {
+                 let rawG = r[vCfg.groupByField] || r.tanggal || r.created_at || 'Hari Ini';
+                 let gKey = String(rawG).split(' ')[0] || 'Hari Ini';
+                 if (!groups[gKey]) groups[gKey] = { groupValue: gKey, _count: 0, _sums: {} };
+                 groups[gKey]._count++;
+                 (vCfg.aggregates || []).forEach(agg => {
+                   if (agg.op === 'SUM') {
+                     const val = Number(r[agg.sourceKey || agg.key] || 0);
+                     groups[gKey]._sums[agg.key] = (groups[gKey]._sums[agg.key] || 0) + (isNaN(val) ? 0 : val);
+                   }
+                 });
+               });
+               res[vKey] = Object.values(groups).map(g => {
+                 const row = { [vCfg.groupByField || 'group']: g.groupValue };
+                 (vCfg.aggregates || []).forEach(agg => {
+                   if (agg.op === 'COUNT') row[agg.key] = g._count;
+                   else if (agg.op === 'SUM') row[agg.key] = g._sums[agg.key] || 0;
+                 });
+                 return row;
+               });
+             }
+             return res;
+           }
+           \`\`\`
+        4) Render kontainer tab laporan secara khusus (TERPISAH dari loop CRUD, TANPA tombol Tambah/Edit/Hapus, dengan banner biru):
+           \`\`\`html
+           <div v-for="(vCfg, vKey) in viewsConfig" :key="vKey" v-show="activeTab === 'view_' + vKey" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+             <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-800">
+               <span class="text-base">ℹ️</span>
+               <span>Data laporan ini dihitung otomatis dari tabel <strong>{{ vCfg.sourceTable }}</strong> — Read-Only (tidak dapat diedit manual).</span>
+             </div>
+             <div class="flex justify-between items-center mb-4">
+               <div>
+                 <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                   <span>{{ vCfg.icon || '📊' }}</span>
+                   <span>{{ vCfg.label }}</span>
+                 </h2>
+                 <p class="text-xs text-gray-500 mt-1">Dikelompokkan berdasarkan {{ vCfg.groupByLabel || 'Periode' }}</p>
+               </div>
+             </div>
+             <div class="overflow-x-auto">
+               <table class="w-full text-left text-sm">
+                 <thead class="bg-gray-50 border-b border-gray-200">
+                   <tr>
+                     <th class="py-3 px-4 text-xs font-bold text-gray-600 uppercase">{{ vCfg.groupByLabel || 'Periode' }}</th>
+                     <th v-for="agg in vCfg.aggregates" :key="agg.key" class="py-3 px-4 text-xs font-bold text-gray-600 uppercase">{{ agg.label }}</th>
+                   </tr>
+                 </thead>
+                 <tbody class="divide-y divide-gray-100">
+                   <tr v-for="(row, idx) in (computedViews[vKey] || [])" :key="idx" class="hover:bg-gray-50">
+                     <td class="py-3 px-4 font-semibold text-gray-800">{{ row[vCfg.groupByField || 'group'] }}</td>
+                     <td v-for="agg in vCfg.aggregates" :key="agg.key" class="py-3 px-4 text-gray-700 font-mono">
+                       <span v-if="agg.format === 'rupiah'">Rp {{ Number(row[agg.key] || 0).toLocaleString('id-ID') }}</span>
+                       <span v-else>{{ row[agg.key] }}</span>
+                     </td>
+                   </tr>
+                   <tr v-if="!(computedViews[vKey] && computedViews[vKey].length)">
+                     <td :colspan="1 + (vCfg.aggregates ? vCfg.aggregates.length : 0)" class="py-6 text-center text-gray-400">
+                       Belum ada data transaksi untuk dihitung.
+                     </td>
+                   </tr>
+                 </tbody>
+               </table>
+             </div>
            </div>
-           <div class="flex justify-end space-x-2 pt-3">
-             <button type="button" @click="modal.isOpen = false" class="px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50">Batal</button>
-             <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm">Simpan</button>
-           </div>
-         </form>
-       </div>
-     </div>
+           \`\`\`
+    - FORM MODAL TUNGGAL GENERIK (TAMBAH & EDIT):
+      Satu modal form generik yang me-render kolom input secara dinamis sesuai \`currentTableConfig.fields\` (dropdown relasi otomatis dengan \`getRelationOptions\`, dan input formula terhitung otomatis/read-only):
+      \`\`\`html
+      <div v-show="modal.isOpen" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl max-h-screen overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-gray-800">{{ modal.isEdit ? 'Edit Data' : 'Tambah Data' }} {{ currentTableConfig.label }}</h3>
+            <button @click="modal.isOpen = false" class="text-gray-400 hover:text-gray-600 text-xl font-bold">✕</button>
+          </div>
+          <form @submit.prevent="saveItem" class="space-y-4">
+            <div v-for="fld in currentTableConfig.fields" :key="fld.key">
+              <label class="block text-xs font-semibold text-gray-600 uppercase mb-1">{{ fld.label }}</label>
+              <select v-if="fld.targetTable || fld.type === 'relation'" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option value="">-- Pilih {{ fld.label }} --</option>
+                <option v-for="opt in getRelationOptions(fld.targetTable || fld.key.replace(/_(id|fk)$/i, ''))" :key="opt.value" :value="opt.value">{{ opt.text }}</option>
+              </select>
+              <input v-else-if="fld.isFormula" type="text" :value="computeFormulaValue(modal.form, fld)" disabled class="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-600 cursor-not-allowed" />
+              <input v-else-if="fld.type === 'text'" type="text" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              <input v-else-if="fld.type === 'number'" type="number" v-model.number="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              <input v-else-if="fld.type === 'date'" type="date" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              <select v-else-if="fld.type === 'select'" v-model="modal.form[fld.key]" :required="fld.required" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option value="">-- Pilih {{ fld.label }} --</option>
+                <option v-for="opt in fld.options" :key="opt" :value="opt">{{ opt }}</option>
+              </select>
+            </div>
+            <div class="flex justify-end space-x-2 pt-3">
+              <button type="button" @click="modal.isOpen = false" class="px-4 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50">Batal</button>
+              <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm">Simpan</button>
+            </div>
+          </form>
+        </div>
+      </div>
      \`\`\`
    - MODAL KONFIRMASI HAPUS TUNGGAL:
      \`\`\`html
@@ -1060,16 +1313,66 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      </div>
      \`\`\`
 5. METHOD CRUD & REAKTIVITAS VUE WAJIB:
+   - ⚠️ DILARANG KERAS MENULIS ULANG METHOD YANG SUDAH DISEDIAKAN MIXIN (Pilar1VueScaffoldMixin):
+     Method utilitas berikut SUDAH DISEDIAKAN LENGKAP secara otomatis oleh mixin:
+     * isRoleAllowed(roles)
+     * canEditCurrentTab() (Mengecek editRoles pada currentTableConfig, tablesConfig, atau tab aktif tanpa jalan pintas Owner pada tabel di mana role hanya berstatus Supervisi & Audit)
+     * showTab(tabId)
+     * loginAs(role)
+     * logout()
+     * handleLogin()
+     * quickLogin(u, p)
+     * showToast(message, type)
+     * resolveRelationDisplay(targetTable, id) (Mendukung compositeFields multi-lapis dan fallback nama representatif)
+     * getRelationOptions(targetTable)
+     * computeFormulaValue(form, fld) (Mendukung traversal FK otomatis dan eksekusi formulaExpression reaktif)
+     DILARANG KERAS menulis ulang method-method di atas di dalam methods: { ... } komponen Vue!
+     AI HANYA boleh menulis method BARU spesifik aplikasi (misal: openCreate, openEdit, saveItem, confirmDelete, executeDelete).
    - Method simpan WAJIB memiliki cabang UPDATE (\`if (this.modal.isEdit)\`) dan cabang CREATE (\`else { this.db[table].push(...) }\`) yang menambahkan ID unik baru.
+   - ATURAN PEMBUATAN ID UNIK (WAJIB & KONSISTEN):
+     Saat membuat data baru (CREATE), buat ID unik menggunakan pola JavaScript valid:
+     \`const newId = (String(table || 'ID').substring(0, 3).toUpperCase()) + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 9);\`
+     atau:
+     \`const newId = 'ID-' + Math.random().toString(36).substring(2, 9);\`
+     PERINGATAN KERAS: DILARANG menulis \`String(36).substr(...)\` atau memanggil method string pada literal \`String(36)\`! Pemanggilan method radix string HANYA boleh melalui \`.toString(36)\` pada Number seperti \`Math.random().toString(36).substring(2, 9)\`.
    - Method eksekusi hapus WAJIB memodifikasi state array (\`this.db[table] = this.db[table].filter(...)\`).
    - Berikan feedback notifikasi visual (\`this.showToast('Data berhasil disimpan!', 'success')\`). Dilarang hanya console.log()!
    - DILARANG confirm(), alert(), prompt() bawaan browser.
-6. LAYAR LOGIN SIMULASI MULTI-ROLE SEBAGAI TAMPILAN AWAL:
-   - Jika multi-role, tampilan awal menampilkan layar login (\`v-show="!currentRole"\`).
-   - Sediakan form login dengan \`v-model="loginForm.username"\` dan \`v-model="loginForm.password"\` serta ID \`id="loginUsername"\` & \`id="loginPassword"\`.
-   - Kotak akun demo staf dapat diklik untuk quick login: \`@click="quickLogin(acc.username, acc.password)"\`.
-   - Method \`loginAs(role)\` mengaktifkan landingTab milik peran tersebut.
-7. NAVIGASI TAB REAKTIF DENGAN ROLE GATING:
+6. GERBANG LOGIN SIMULASI MULTI-ROLE & ATURAN MUTLAK PERGANTIAN PERAN:
+   - Jika multi-role, tampilan awal WAJIB menampilkan layar login di tengah layar (#loginScreen dengan v-if="!isLoggedIn" atau v-show="!isLoggedIn"), sedangkan kontainer aplikasi utama (#appContainer) menggunakan v-if="isLoggedIn" (atau v-show="isLoggedIn").
+   - DILARANG KERAS membuat mekanisme pindah peran langsung di dalam halaman aplikasi (#appContainer)! Tidak boleh ada dropdown "Ganti Role", tombol pill switch peran, atau pemilih peran langsung (seperti @click="loginAs(...)", @click="switchRole(...)", @click="currentRole = ...", atau <select v-model="currentRole">) di navbar, sidebar, header, ataupun panel halaman mana pun.
+   - SATU-SATUNYA jalan untuk berpindah peran adalah:
+     1) Klik tombol "🚪 Keluar / Ganti Akun" (@click="logout") di header aplikasi.
+     2) State sesi dibersihkan: this.currentRole = ''; this.isLoggedIn = false; this.activeTab = ''; serta tutup modal yang terbuka (if (this.modal) this.modal.isOpen = false; if (this.deleteModal) this.deleteModal.isOpen = false;).
+     3) Aplikasi kembali ke layar login (#loginScreen).
+     4) Dari layar login itulah pengguna memilih akun demo lain (quick-login) atau login manual.
+   - Sediakan form login di #loginScreen dengan v-model="loginForm.username" dan v-model="loginForm.password" serta ID id="loginUsername" & id="loginPassword".
+   - Kotak akun demo staf HANYA ada di #loginScreen (@click="quickLogin(acc.username, acc.password)").
+   - Method loginAs(role) WAJIB:
+     a) Melakukan pembersihan sesi terlebih dahulu jika pengguna masih dalam state login (if (this.isLoggedIn) this.logout();).
+     b) Mengaktifkan landingTab milik peran tersebut (this.showTab(acc.landingTab)).
+     c) DILARANG KERAS membiarkan tab peran sebelumnya tetap aktif saat peran baru login!
+7. NAVIGASI TAB REAKTIF DENGAN ROLE GATING & LEVEL AKSES CRUD vs VIEW-ONLY:
+   - ATURAN MUTLAK ID TAB: Setiap elemen di array tabs data() HARUS menggunakan ID yang sama persis dengan kunci tabel di tablesConfig atau kunci laporan di viewsConfig (misal: 'katalog_sepeda', 'pelanggan', 'transaksi_sewa', 'view_laporan_harian').
+   - DILARANG KERAS membuat tab dengan ID nama peran (seperti { id: 'superadmin' } atau { id: 'petugaspenyewaansepeda' })! Tab adalah untuk navigasi data tabel/laporan, BUKAN peran.
+   - SETIAP TAB WAJIB MEMILIKI \`roles\` (siapa yang boleh lihat) DAN \`editRoles\` (siapa yang boleh CRUD Tambah/Edit/Hapus):
+     * Role yang "Supervisi & Audit" (Read-Only) masuk ke \`roles\`, tapi TIDAK masuk ke \`editRoles\`.
+     * Tab laporan (isView: true) memiliki \`editRoles: []\`.
+     Contoh deklarasi tabs di data():
+     \`\`\`javascript
+     tabs: [
+       { id: 'katalog_sepeda', label: 'Katalog Sepeda', roles: ['Super Admin', 'Petugas Rental'], editRoles: ['Super Admin', 'Petugas Rental'] },
+       { id: 'pelanggan', label: 'Pelanggan', roles: ['Super Admin', 'Petugas Rental'], editRoles: ['Petugas Rental'] },
+       { id: 'transaksi_sewa', label: 'Transaksi Sewa', roles: ['Super Admin', 'Petugas Rental'], editRoles: ['Petugas Rental'] },
+       { id: 'view_laporan_harian', label: '📊 Laporan Harian', roles: ['Super Admin'], editRoles: [], isView: true }
+     ]
+     \`\`\`
+   - KONTEN TABEL: Pada kontainer tabel, gunakan kondisi v-show:
+     \`v-show="activeTab === tblKey || activeTab === 'tab_' + tblKey"\`
+   - KONTEN LAPORAN: Pada kontainer laporan (views), gunakan kondisi v-show:
+     \`v-show="activeTab === vKey || activeTab === 'view_' + vKey"\`
+   - INITIAL activeTab: Nilai awal activeTab di data() WAJIB diinisialisasi dengan nama tabel pertama yang dapat diakses (misal: 'katalog_sepeda'), BUKAN nama peran dan BUKAN string kosong!
+   - LANDING TAB DI DEMO_ACCOUNTS: Setiap akun demo WAJIB memiliki landingTab yang mengarah ke ID TABEL operasional pertama yang relevan untuk peran tersebut (misal: 'transaksi_sewa' atau 'katalog_sepeda'), BUKAN nama peran!
    - Navigasi tab dirender melalui loop:
      \`\`\`html
      <button 
@@ -1083,14 +1386,6 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
        {{ tab.label }}
      </button>
      \`\`\`
-   - Method \`isRoleAllowed(roles)\`:
-     \`\`\`javascript
-     isRoleAllowed(roles) {
-       if (!roles || !roles.length) return true;
-       if (this.currentRole === '${ownerRole}') return true; // Owner selalu dapat melihat semua tab operasional
-       return roles.includes(this.currentRole) || roles.includes('*');
-     }
-     \`\`\`
    - Pasang akun demo di window: \`window.DEMO_ACCOUNTS = this.demoAccounts;\`.
    - Pasang Owner role di window: \`window.OWNER_ROLE_NAME = '${ownerRole}';\`.`;
 
@@ -1099,18 +1394,23 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
 
       if (approvedBrief || officialRoles.length > 0) {
         // Build DEMO_ACCOUNTS dengan landingTab per role (Poin 53 & Bagian A)
-        // landingTab = ID tab default yang langsung ditampilkan saat role ini login (SEMUA role wajib punya landingTab eksplisit)
+        // landingTab = ID tab default yang langsung ditampilkan saat role ini login (SEMUA role wajib punya landingTab eksplisit mengarah ke tabel operasional)
         const credentialsList = officialRoles.map(r => {
           const u = r.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const landingTabHint = roleLandingTabs[r] || u;
+          const landingTabHint = roleLandingTabs[r] || availableTableKeys[0] || 'dashboard';
           return `{ role: '${r}', username: '${u}', password: '${u}123', landingTab: '${landingTabHint}' }`;
         });
 
         // Buat panduan landingTab eksplisit per role staf untuk AI
         const staffLandingGuide = staffRoles.map(r => {
-          const hint = roleLandingTabs[r] || r.toLowerCase().replace(/[^a-z0-9]/g, '');
-          return `   - Role "${r}": landingTab harus diisi dengan ID tab pertama yang terlihat setelah login (Tab default "${r}" sesuai Brief, BUKAN tab publik "${publicRole || 'Pelanggan'}"). Contoh hint ID: '${hint}' — sesuaikan dengan ID tab HTML yang dibuat.`;
+          const hint = roleLandingTabs[r] || availableTableKeys[0] || 'dashboard';
+          return `   - Role "${r}": landingTab harus diisi dengan ID tabel operasional pertama yang dapat diakses oleh role ini (BUKAN nama role! Contoh: '${hint}').`;
         }).join('\n');
+
+        // Suntikkan matriks hak akses RBAC granular (View-Only vs CRUD Penuh)
+        if (granularRbacBlock) {
+          systemPrompt += `\n\n${granularRbacBlock}`;
+        }
 
         // Suntikkan skema data tabel jika tersedia — SUMBER KEBENARAN field form CRUD
         if (schemaMarkdownBlock) {
@@ -1145,11 +1445,14 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
 
 ⚠️ ATURAN MUTLAK SINKRONISASI PROTOTIPE VUE 3, ISOLASI PERAN & LARANGAN ROLE SWITCHER:
 1. PERGANTIAN PERAN 100% HANYA LEWAT LAYAR LOGIN (#loginScreen):
-   - DILARANG KERAS membuat tombol switcher peran (seperti tombol berjejer [Admin] [Anggota] atau dropdown switch role) di dalam halaman aplikasi (#appContainer)!
-   - Pergantian peran SELURUHNYA HANYA dilakukan melalui tombol "🚪 Keluar / Ganti Akun" (@click="logout") di header aplikasi.
-   - Saat tombol logout ditekan, state reaktif diperbarui: this.currentRole = ''; this.isLoggedIn = false;
+   - DILARANG KERAS membuat mekanisme pindah role apa pun di dalam halaman aplikasi (#appContainer) tanpa melalui proses logout → kembali ke form login!
+   - DILARANG tombol berjejer ganti peran [Admin] [Anggota], tombol pill ganti role, dropdown/select switcher peran (<select v-model="currentRole">), link "Switch Role", ataupun method in-app yang langsung memutasi currentRole di navbar, sidebar, header, atau panel mana pun di dalam aplikasi!
+   - SATU-SATUNYA akses untuk berganti peran adalah melalui tombol "🚪 Keluar / Ganti Akun" (@click="logout") di header aplikasi.
+   - Saat logout dipanggil:
+     * State reaktif di-reset bersih: this.currentRole = ''; this.isLoggedIn = false; this.activeTab = '';
+     * Semua modal dan state form ditutup: if (this.modal) this.modal.isOpen = false; if (this.deleteModal) this.deleteModal.isOpen = false;
    - Tampilan dikontrol 100% via reaktivitas Vue: v-if="!isLoggedIn" pada #loginScreen dan v-if="isLoggedIn" pada #appContainer. DILARANG manipulasi DOM manual!
-   - Dari layar login itulah pengguna memilih/masuk sebagai akun peran lain.
+   - Dari layar login itulah pengguna memilih/masuk sebagai akun peran lain melalui quickLogin atau form login.
 
 2. LABEL TOMBOL TAB ADALAH NAMA FITUR, BUKAN NAMA PERAN:
    - DILARANG KERAS menamai tombol tab dengan nama peran mentah (misal: tombol tab bertuliskan "Super Admin" atau "Anggota")!
@@ -1163,8 +1466,12 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
    - DILARANG KERAS menampilkan tombol aksi manajemen admin (seperti Tambah/Edit/Hapus seluruh pengguna/staf) pada tampilan non-admin!
 
 4. INTEGRASI FILTER TAB & LANDING TAB OTOMATIS:
-   - Method loginAs(role) menetapkan this.currentRole = role; this.isLoggedIn = true; lalu mengaktifkan matched.landingTab.
-   - DILARANG KERAS membiarkan tab Super Admin tetap aktif/terbuka saat peran lain login! Setiap peran WAJIB langsung disambut oleh landingTab miliknya sendiri.
+   - Method loginAs(role) wajib melakukan:
+     * Implicit session cleanup jika sebelumnya masih logged in (if (this.isLoggedIn) this.logout();).
+     * this.currentRole = role; this.isLoggedIn = true;
+     * if (this.modal) this.modal.isOpen = false; if (this.deleteModal) this.deleteModal.isOpen = false;
+     * Mengaktifkan matched.landingTab (this.showTab(matched.landingTab)).
+   - DILARANG KERAS membiarkan tab Super Admin atau tab peran lama tetap aktif/terbuka saat peran lain login! Setiap peran WAJIB langsung disambut oleh landingTab miliknya sendiri.
 
 5. PEMISAHAN DATA, TABEL & FORM PER ROLE:
    - SETIAP ROLE WAJIB MEMILIKI KONTEN/HALAMAN YANG BERBEDA SECARA FISIK SESUAI BRIEF:
@@ -1172,29 +1479,20 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
      * Role Operasional: Berisi katalog/tabel operasional dan alur kerja transaksi.
      * Role Eksternal: Berisi katalog ketersediaan mandiri, booking, atau kartu status pribadi. DILARANG memuat tabel akun staf atau tombol aksi manajemen staf!
 
-6. PANDUAN PENERJEMAHAN MATRIKS RBAC KE ANTARMUKA (ACTION-LEVEL RBAC UI GATING):
+6. PANDUAN PENERJEMAHAN MATRIKS RBAC KE ANTARMUKA (GRANULARITAS VIEW-ONLY vs CRUD PENUH):
    - Di dalam toolbar tabel dan baris aksi:
-     Gunakan pengecekan this.isRoleAllowed(...) untuk menentukan visibilitas tombol Tambah / Edit / Hapus.
+     Gunakan pengecekan canEditCurrentTab() untuk menentukan visibilitas tombol Tambah / Edit / Hapus.
    - ⚠️ ATURAN KETAT canEditCurrentTab() & ANTI-HARDCODED ROLE CHECK:
-     DILARANG KERAS meng-hardcode nama peran literal (seperti roles.includes('Super Admin') || roles.includes('Staf ...')) di dalam method/computed mana pun.
-     WAJIB selalu mendelegasikan ke this.isRoleAllowed(...) dengan implementasi multi-tier fallback tangguh agar seluruh role operasional (seperti pegawai administrasi, instruktur, staf) TIDAK TERKUNCI dari tab mereka meskipun currentTableConfig tidak didefinisikan:
-     \`\`\`javascript
-     canEditCurrentTab() {
-       // 1. Cek konfigurasi tabel deklaratif jika ada
-       const config = (this.tablesConfig && this.tablesConfig[this.activeTab]) || this.currentTableConfig;
-       if (config) {
-         const allowed = config.roles || config.allowRoles || [];
-         if (allowed.length > 0) return this.isRoleAllowed(allowed);
-       }
-       // 2. Cek izin role langsung pada definisi array tabs aktif
-       const currentTabDef = (this.tabs || []).find(t => (t.id || t.key) === this.activeTab);
-       if (currentTabDef && (currentTabDef.roles || currentTabDef.allowRoles)) {
-         return this.isRoleAllowed(currentTabDef.roles || currentTabDef.allowRoles);
-       }
-       // 3. Fallback darurat ke Super Admin
-       return this.isRoleAllowed(['Super Admin']);
-     }
-     \`\`\`
+     Method canEditCurrentTab() SUDAH DISEDIAKAN LENGKAP OLEH MIXIN (Pilar1VueScaffoldMixin) dan DILARANG ditulis ulang di methods Vue!
+     Method ini secara cerdas memeriksa array \`editRoles\` pada tabel/tab aktif:
+     * Role yang memiliki wewenang CRUD ("Catat & Proses", "Input", "Kelola", "Entri", "Kontrol Penuh") WAJIB dimasukkan ke dalam \`roles\` DAN \`editRoles\`.
+     * Role yang HANYA memiliki wewenang "Supervisi & Audit", "Pantau", "Monitoring", "Review", atau "Lihat Data" (Read-Only) dimasukkan ke dalam \`roles\` (bisa melihat data), TAPI DILARANG KERAS dimasukkan ke dalam \`editRoles\`!
+     * DILARANG KERAS memberikan jalan pintas Owner / Super Admin pada modul di mana Super Admin berstatus Supervisi & Audit (Read-Only)!
+     * Pada template tabel HTML:
+       - Tombol "+ Tambah": \`<button v-if="canEditCurrentTab()" @click="openCreate(tblKey)" ...>\`
+       - Kolom Header Aksi: \`<th v-if="canEditCurrentTab()" class="...">Aksi</th>\`
+       - Kolom Data Aksi: \`<td v-if="canEditCurrentTab()" class="...">... Edit ... Hapus ...</td>\`
+       - Banner Mode Supervisi: \`<div v-if="!canEditCurrentTab()" class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800"><span class="text-base">👁️</span><span>Mode Supervisi & Audit (Read-Only) — Anda memiliki hak memantau data tanpa izin penambahan atau perubahan data.</span></div>\`
 
 7. ⚠️ ATURAN PANEL MANAJEMEN SISTEM (ANTI-LEAK & ANTI-DEAD BUTTONS):
    - SEMUA elemen UI, kartu, panel (termasuk panel Manajemen Sistem / Akun Staf Super Admin), modal, dan toast WAJIB berada di DALAM template Vue <div id="app">. DILARANG KERAS menempatkan elemen UI apa pun di luar <div id="app">!
@@ -1229,16 +1527,34 @@ ATURAN TAB GATING PUBLIK & ANTI-DATA LEAK:
      * Judul aplikasi spesifik + subjudul "Masuk ke Akun Anda untuk Memulai".
      * Input Username (id="loginUsername" v-model="loginForm.username" placeholder="Masukkan username").
      * Input Kata Sandi (id="loginPassword" type="password" v-model="loginForm.password" placeholder="Masukkan kata sandi").
-     * Tombol "➔] Masuk" (@click="handleLogin" atau form @submit.prevent="handleLogin").
-     * Kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk yang mencantumkan daftar peran resmi dan kredensialnya (@click="quickLogin(acc.username, acc.password)").
+     * Tombol "➔ Masuk" (@click="handleLogin" atau form @submit.prevent="handleLogin").
+      * Kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk yang mencantumkan daftar peran resmi dan kredensialnya (@click="quickLogin(acc.username, acc.password)").
 ${publicRole ? `     * Di bawah kotak Akun Demo Staf, sediakan link sekunder: "Atau lanjut tanpa login sebagai ${publicRole} ➔" (@click="loginAs('${publicRole}')").` : ''}
-5. LOGOUT HANDLER REAKTIF:
+5. LOGOUT & LOGINAS HANDLER REAKTIF (BERSIH DARI CELAH CROSS-SESSION LEAK):
    \`\`\`javascript
    logout() {
      this.currentRole = '';
      this.isLoggedIn = false;
      this.activeTab = '';
+     if (this.modal) this.modal.isOpen = false;
+     if (this.deleteModal) this.deleteModal.isOpen = false;
      this.showToast('Berhasil keluar. Silakan login kembali.', 'info');
+   },
+   loginAs(role) {
+     if (this.isLoggedIn) {
+       this.logout();
+     }
+     this.currentRole = role;
+     this.isLoggedIn = true;
+     if (this.modal) this.modal.isOpen = false;
+     if (this.deleteModal) this.deleteModal.isOpen = false;
+     var acc = (this.demoAccounts || []).find(a => a.role === role);
+     if (acc && acc.landingTab) {
+       this.showTab(acc.landingTab);
+     } else if (this.tabs && this.tabs.length) {
+       var first = this.tabs.find(t => this.isRoleAllowed(t.roles));
+       if (first) this.showTab(first.id);
+     }
    }
    \`\`\`
 6. KREDENSIAL SIMULASI & DEFAULT LANDING TAB PER ROLE:
@@ -1257,14 +1573,15 @@ ${staffLandingGuide}
 - Pengguna meminta pembuatan prototipe aplikasi di mode BUILD.
 - Tugas Anda: Berikan sambutan hangat dan antusias, lalu WAJIB LANGSUNG MEMBUAT KODE HTML MOCKUP LENGKAP UTUH DALAM BLOK \`\`\`html ... \`\`\` sesuai 23 Prinsip Wajib yang sudah baku:
   1. Data awal 3-5 item contoh realistis (Prinsip 1).
-  2. Layar Login Simulasi Awal (Prinsip 20 & Gambar 2): Untuk app multi-role WAJIB diawali dengan #loginScreen di tengah layar (PERSIS SEPERTI GAMBAR 2). Kartu login memiliki icon aplikasi di kotak rounded biru, judul aplikasi + "Masuk ke Akun Anda untuk Memulai", input Username & Kata Sandi, tombol Masuk ("➔] Masuk"), dan kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk dengan daftar role resmi dan kredensialnya (dapat diklik untuk quickLogin instan). Container aplikasi utama (#appContainer) WAJIB DIAWALI DENGAN style="display: none;". DILARANG KERAS langsung menampilkan dashboard dengan tombol "Login Staf" di header!
+  2. Layar Login Simulasi Awal (Prinsip 20 & Gambar 2): Untuk app multi-role WAJIB diawali dengan #loginScreen di tengah layar (PERSIS SEPERTI GAMBAR 2). Kartu login memiliki icon aplikasi di kotak rounded biru, judul aplikasi + "Masuk ke Akun Anda untuk Memulai", input Username & Kata Sandi, tombol Masuk ("➔ Masuk"), dan kotak "🔑 Akun Demo Staf:" di bawah tombol Masuk dengan daftar role resmi dan kredensialnya (dapat diklik untuk quickLogin instan). Container aplikasi utama (#appContainer) WAJIB DIAWALI DENGAN style="display: none;". DILARANG KERAS langsung menampilkan dashboard dengan tombol "Login Staf" di header!
   3. Quick Login 1-Klik di Form Login: Pada form login #loginScreen, sertakan fungsi quickLogin(u, p) yang otomatis mengisi username & kata sandi serta langsung mengeksekusi handleLogin() saat salah satu baris akun demo diklik!
   4. STANDAR KUALITAS VISUAL & STRUKTUR TAB KAYA FITUR (ANTI-HALAMAN KOSONG):
      * DILARANG KERAS membuat tab yang hanya berisi tag teks <p> deskripsi atau tag <ul> kosong!
      * SETIAP TAB wajib memiliki struktur visual nyata:
        a) Tab Header & Toolbar: Judul tab yang tegas, input pencarian (search), dropdown filter status, dan tombol aksi utama (misal: "➕ Tambah Data Baru").
        b) Ringkasan Metrik (KPI Stat Cards): 2-4 kartu statistik dengan icon, angka tebal, label, dan badge status.
-       c) Tampilan Data Utama: Data Table Interaktif (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data.
+          ⚠️ DILARANG KERAS MENG-HARDCODE ANGKA STATIS DI TEMPLATE (misal: "8 Unit" atau "12 Transaksi" secara statis)! Setiap angka metrik WAJIB dihitung reaktif dari state tabel database nyata (contoh: {{ (db.unit_sepeda || []).filter(u => u.status === 'Tersedia').length }} Unit, {{ (db.transaksi_layanan || []).length }} Transaksi).
+       c) Tampilan Data Utama: Data Table Interaktif (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data. (atau Grid Kartu Modern) yang me-render minimal 3-5 baris data contoh realistis, lengkap dengan badge status berwarna (badge-success, badge-warning, badge-danger, badge-info) dan tombol aksi Edit serta Hapus pada setiap baris data.
   5. Efisiensi Modal & Handler Lengkap (Prinsip 23): cukup 1 modal dinamis untuk Tambah/Edit Data dan 1 modal Hapus; setiap tombol onclick WAJIB memiliki fungsi terdefinisi di <script>.
   6. Styling CSS modern murni tanpa Tailwind Play CDN, responsive layout, event handler 100% selaras.
   7. SIKLUS OPERASIONAL LENGKAP DUA SISI (TWO-WAY LIFECYCLE):
@@ -1639,9 +1956,9 @@ ${staffLandingGuide}
       const fbHtml = extractHtmlFromMessage(msg);
       if (!fbHtml) return false;
 
-      const fbValidated = validateAndRepairGeneratedCode(fbHtml, '', '', officialRoles, ownerRole);
+      const fbValidated = validateAndRepairGeneratedCode(fbHtml, '', '', officialRoles, ownerRole, sessionDataSchema?.tabel, incomingSession?.rbac?.modul);
       if (fbValidated && fbValidated.isValid) {
-        htmlCode = fbHtml;
+        htmlCode = fbValidated.repairedCode?.html || fbHtml;
         assistantMessage = msg;
         validated = fbValidated;
         usedDefaultFallback = true;
@@ -2002,13 +2319,16 @@ ${staffLandingGuide}
       htmlCode = htmlCode.slice(htmlCode.indexOf('<html')).trim();
     }
 
+    // Helper validasi kode dengan injeksi skema data resmi (Poin 1.3)
+    const runValidate = (code: string) => validateAndRepairGeneratedCode(code, '', '', officialRoles, ownerRole, sessionDataSchema?.tabel, incomingSession?.rbac?.modul);
+
     // Validasi Penuh Sesuai FR-03 & NFR-10 (Dijalankan pada mode generate kode)
-    validated = (!isIdeationMode && htmlCode) ? validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole) : null;
+    validated = (!isIdeationMode && htmlCode) ? runValidate(htmlCode) : null;
     if (validated?.repairedCode?.html) {
       htmlCode = validated.repairedCode.html;
       // Jika validator melakukan auto-repair (misalnya menginjeksi tab peran yang hilang atau membersihkan variant Tailwind tak didukung),
       // konfirmasi perbaikan dengan validasi ulang terhadap kode hasil perbaikan.
-      const recheck = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+      const recheck = runValidate(htmlCode);
       if (recheck.isValid || recheck.issues.length < validated.issues.length) {
         validated = recheck;
         if (recheck.repairedCode?.html) htmlCode = recheck.repairedCode.html;
@@ -2019,13 +2339,22 @@ ${staffLandingGuide}
     const isCodeIncomplete = !htmlCode || !htmlCode.includes('</html>') || !htmlCode.includes('</script>');
     const hasScriptTag = Boolean(htmlCode && (htmlCode.includes('<script>') || htmlCode.includes('<script ')));
     const hasRenderFunction = Boolean(htmlCode && (htmlCode.includes('function render') || htmlCode.includes('render()') || htmlCode.includes('Vue.createApp') || htmlCode.includes('createApp(')));
+    const isVueTemplate = Boolean(htmlCode && (/<div[^>]*id=["']app["']/i.test(htmlCode) || /\bv-(?:if|show|model|for)\b/.test(htmlCode)));
+    const hasVueInit = Boolean(
+      htmlCode &&
+      /(?:Vue\s*\.\s*)?createApp\s*\(/.test(htmlCode) &&
+      /\.mount\s*\(\s*['"]#app['"]\s*\)/.test(htmlCode)
+    );
+    const isVueMissingInit = isVueTemplate && !hasVueInit;
     const hasMismatchesOrSyntaxErrors = Boolean(validated && validated.issues && validated.issues.length > 0);
     
-    // Jika terdeteksi kode tidak lengkap, SyntaxError JS, ketidakselarasan handler/ID, atau script hilang, picu AI auto-recovery (NFR-10b)
-    if (!isIdeationMode && (isCodeIncomplete || !validated || !validated.isValid || hasMismatchesOrSyntaxErrors || !hasScriptTag || !hasRenderFunction)) {
+    // Jika terdeteksi kode tidak lengkap, SyntaxError JS, ketidakselarasan handler/ID, script hilang, atau Vue createApp hilang, picu AI auto-recovery (NFR-10b)
+    if (!isIdeationMode && (isCodeIncomplete || !validated || !validated.isValid || hasMismatchesOrSyntaxErrors || !hasScriptTag || !hasRenderFunction || isVueMissingInit)) {
       const issueList = validated && validated.issues && validated.issues.length > 0
         ? validated.issues.join('\n- ')
-        : (isCodeIncomplete ? 'Kode HTML/JS terpotong dan tidak memiliki tag penutup </html> atau </script>' : 'Tag <script> atau fungsi render() tidak ditemukan.');
+        : (isVueMissingInit
+            ? 'Aplikasi berbasis Vue (<div id="app">) tidak memiliki blok inisialisasi Vue.createApp({ ... }).mount("#app") di dalam tag <script>.'
+            : (isCodeIncomplete ? 'Kode HTML/JS terpotong dan tidak memiliki tag penutup </html> atau </script>' : 'Tag <script> atau fungsi render() tidak ditemukan.'));
       
       console.warn('NFR-10b triggered with DOM alignment, completeness, or JS Syntax issues:\n', issueList);
       
@@ -2060,7 +2389,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
 13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
 14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!
-15. PERBAIKAN TAILWIND ANTI-PLUGIN: Jika ada peringatan TAILWIND_NON_CORE_PLUGIN (misal \`scrollbar-hide\`, \`form-input\`, \`prose\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core bawaan atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).` }] }
+15. PERBAIKAN TAILWIND ANTI-PLUGIN: Jika ada peringatan TAILWIND_NON_CORE_PLUGIN (misal \`scrollbar-hide\`, \`form-input\`, \`prose\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core bawaan atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).
+16. INISIALISASI VUE APP MUTLAK: Seluruh kode JavaScript inisialisasi Vue app WAJIB ditulis lengkap sebelum penutup </body>: <script> const { createApp } = Vue; createApp({ data() { return { ... } }, methods: { ... } }).mount('#app'); </script>. DILARANG KERAS menghasilkan template Vue tanpa blok createApp({ ... }).mount('#app') lengkap!` }] }
               ],
               generationConfig: { temperature: 0.2, maxOutputTokens: 16384 }
             })
@@ -2071,12 +2401,12 @@ INSTRUKSI PERBAIKAN WAJIB:
           if (repairMatch) {
             htmlCode = cleanConversationalLeaks(repairMatch[1]);
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+            validated = runValidate(htmlCode);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
             htmlCode = cleanConversationalLeaks(repairMsg.split('```html')[1].replace(/```[\s\S]*$/, ''));
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+            validated = runValidate(htmlCode);
             repairSuccess = true;
           }
         } catch (e) {
@@ -2112,7 +2442,8 @@ INSTRUKSI PERBAIKAN WAJIB:
 12. FEEDBACK VISUAL showToast() WAJIB: Setiap fungsi tombol aksi (seperti cetakSertifikat, prosesData, verifikasi, selesaikan, dll) DILARANG HANYA memanggil console.log(). WAJIB memanggil showToast('Pesan notifikasi status', 'success'|'error') agar pengguna melihat feedback nyata di UI!
 13. PERCABANGAN TIPE DATA MODAL LENGKAP: Jika suatu fungsi modal/detail dipanggil di UI dengan argumen tipe yang berbeda (misal: bukaModal(id, 'sesi') dan bukaModal(id, 'user')), fungsi tersebut WAJIB memiliki cabang penanganan nyata dan pengisian konten untuk SETIAP tipe (bukan hanya menyembunyikan field tanpa mengisi data pengganti). DILARANG membuka modal kosong!
 14. INTEGRITAS AKSI HAPUS (DELETE WIRING & REAL STATE MUTATION): Jika ada modal konfirmasi hapus (#modalHapus / bukaModalHapus), WAJIB pasang tombol 'Hapus' pada setiap baris tabel/daftar data untuk memanggil modal tersebut, dan fungsi eksekusi hapus WAJIB benar-benar memodifikasi array state (menggunakan .splice() atau penugasan kembali .filter()), bukan sekadar menutup modal!
-15. PERBAIKAN TAILWIND ANTI-PLUGIN: Jika ada peringatan TAILWIND_NON_CORE_PLUGIN (misal \`scrollbar-hide\`, \`form-input\`, \`prose\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core bawaan atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).` }
+15. PERBAIKAN TAILWIND ANTI-PLUGIN: Jika ada peringatan TAILWIND_NON_CORE_PLUGIN (misal \`scrollbar-hide\`, \`form-input\`, \`prose\`, dsb), HAPUS kelas tersebut segera! Ganti dengan utility core bawaan atau gunakan aturan CSS sederhana di tag <style> (misal untuk sembunyikan scrollbar gunakan selector \`.overflow-x-auto::-webkit-scrollbar { display: none; }\`).
+16. INISIALISASI VUE APP MUTLAK: Seluruh kode JavaScript inisialisasi Vue app WAJIB ditulis lengkap sebelum penutup </body>: <script> const { createApp } = Vue; createApp({ data() { return { ... } }, methods: { ... } }).mount('#app'); </script>. DILARANG KERAS menghasilkan template Vue tanpa blok createApp({ ... }).mount('#app') lengkap!` }
         ];
 
         const repairReqBody: Record<string, any> = {
@@ -2140,12 +2471,12 @@ INSTRUKSI PERBAIKAN WAJIB:
           if (repairMatch) {
             htmlCode = cleanConversationalLeaks(repairMatch[1]);
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+            validated = runValidate(htmlCode);
             repairSuccess = true;
           } else if (repairMsg.includes('```html')) {
             htmlCode = cleanConversationalLeaks(repairMsg.split('```html')[1].replace(/```[\s\S]*$/, ''));
             assistantMessage = repairMsg;
-            validated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+            validated = runValidate(htmlCode);
             repairSuccess = true;
           }
         }
@@ -2272,7 +2603,7 @@ INSTRUKSI MUTLAK:
                     const insertPos = htmlCode.lastIndexOf('</script>');
                     if (insertPos !== -1) {
                       const candidateHtml = htmlCode.slice(0, insertPos) + '\n' + sanitizedJs.trim() + '\n' + htmlCode.slice(insertPos);
-                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles, ownerRole);
+                      const candidateValidated = runValidate(candidateHtml);
 
                       const hasNewSyntaxError = candidateValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
                       const hasNewRoleContamination = candidateValidated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
@@ -2322,7 +2653,7 @@ INSTRUKSI MUTLAK:
                     const insertPos = htmlCode.lastIndexOf('</script>');
                     if (insertPos !== -1) {
                       const candidateHtml = htmlCode.slice(0, insertPos) + '\n' + sanitizedJs.trim() + '\n' + htmlCode.slice(insertPos);
-                      const candidateValidated = validateAndRepairGeneratedCode(candidateHtml, '', '', officialRoles, ownerRole);
+                      const candidateValidated = runValidate(candidateHtml);
 
                       const hasNewSyntaxError = candidateValidated.issues.some(i => i.startsWith('SYNTAX_ERROR'));
                       const hasNewRoleContamination = candidateValidated.issues.some(i => i.startsWith('ROLE_CONTAMINATION'));
@@ -2354,7 +2685,7 @@ INSTRUKSI MUTLAK:
             partialWarningFunctions = missingHandlers;
             console.warn(`[Targeted Repair] Rollback ke kode asal. ${missingHandlers.length} handler masih hilang: ${missingHandlers.join(', ')}`);
             // Re-validasi untuk memastikan verified.repairedCode yang mutakhir dan bersih dari kontaminasi
-            const finalValidated = validateAndRepairGeneratedCode(htmlCode, '', '', officialRoles, ownerRole);
+            const finalValidated = runValidate(htmlCode);
             validated = finalValidated;
           }
         } else {
@@ -2543,8 +2874,23 @@ INSTRUKSI MUTLAK:
       }
     } else if (htmlCode || assistantMessage.includes('```html')) {
       // Pesan kegagalan yang ACTIONABLE dan informatif
-      const topIssues = validated?.issues && validated.issues.length > 0
-        ? validated.issues.slice(0, 2).join('; ')
+      const friendlyIssues = (validated?.issues || []).map((issue: string) => {
+        if (/SCHEMA_TABLE_MISSING_IN_CONFIG/i.test(issue)) {
+          const match = issue.match(/Tabel "([^"]+)"/);
+          const tName = match ? match[1] : 'terkait';
+          return `Konfigurasi antarmuka untuk tabel "${tName}" belum lengkap di komponen Vue`;
+        }
+        if (/VUE_NFR_10B_MANDATORY_TABS_MISSING/i.test(issue)) {
+          return `Struktur navigasi tab belum lengkap memuat seluruh tabel operasional`;
+        }
+        if (/VUE_NFR_10B_MANDATORY_TABLE_CONFIG_MISSING/i.test(issue)) {
+          return `Definisi konfigurasi tabel pada antarmuka belum lengkap`;
+        }
+        return issue;
+      });
+
+      const topIssues = friendlyIssues.length > 0
+        ? friendlyIssues.slice(0, 2).join('; ')
         : (isCodeIncomplete ? 'Kode HTML/JS terpotong di tengah jalan' : 'Pemeriksaan DOM ID & event handler tidak lolos');
 
       // POIN D: Tentukan apakah kandidat untuk "generate versi sederhana"

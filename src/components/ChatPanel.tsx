@@ -31,7 +31,7 @@ import { MarkdownMessage } from './MarkdownMessage';
 import { loadModelSettings, saveModelSettings, getModelLabel, getProviderConfig, getModelsForProvider, ROUTER_STATIC_MODELS, type ModelSettings, type AIModelOption } from '@/lib/modelConfig';
 import { ModelSettingsMenu } from './ModelSettingsMenu';
 import { extractAppTitleFromChat } from '@/lib/extractAppTitle';
-import type { GuidedStepPayload, GuidedStepId, MockupSessionState } from '@/lib/templates/processes/types';
+import type { GuidedStepPayload, GuidedStepId, MockupSessionState, RoleModuleChecklistGroup } from '@/lib/templates/processes/types';
 import { getAuthHeaders } from '@/lib/supabase/client';
 
 export type ChatMode = 'BUILD' | 'PLAN' | 'SYNC_GAS';
@@ -414,9 +414,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     payload: GuidedStepPayload | undefined,
     selected: string[],
     other?: string,
-    customRoles?: CustomRoleItem[]
+    customRoles?: CustomRoleItem[],
+    roleModuleChecklist?: RoleModuleChecklistGroup[]
   ): string => {
     if (!payload) return [selected.join(', '), other].filter(Boolean).join(' + ') || 'Lanjut';
+    if (payload.rbacStage === 'CHECKLIST' && roleModuleChecklist && roleModuleChecklist.length > 0) {
+      const activeCount = roleModuleChecklist.reduce(
+        (acc, g) => acc + g.items.filter((it) => it.checked).length,
+        0
+      );
+      return `Konfirmasi checklist modul per peran (${activeCount} modul dipilih)`;
+    }
     const labels = payload.options.filter((o) => selected.includes(o.id)).map((o) => o.label);
     if (customRoles && customRoles.length > 0) {
       for (const cr of customRoles) {
@@ -434,7 +442,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     selected: string[],
     other?: string,
     customRoles?: CustomRoleItem[],
-    editedRoles?: Record<string, EditedRoleItem>
+    editedRoles?: Record<string, EditedRoleItem>,
+    promotedEntities?: string[],
+    editedEntities?: Record<string, { name: string; description: string }>,
+    roleModuleChecklist?: RoleModuleChecklistGroup[]
   ) => {
     const session = projectState.sessionState;
     if (!session || isGenerating) return;
@@ -443,7 +454,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     const userMsg: ChatMessage = {
       id: 'msg-' + Date.now(),
       sender: 'USER',
-      text: summarizeGuidedAnswer(stepPayload, selected, other, customRoles),
+      text: summarizeGuidedAnswer(stepPayload, selected, other, customRoles, roleModuleChecklist),
       timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
     };
     const updatedMessages = [...messages, userMsg];
@@ -464,6 +475,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           other,
           customRoles,
           editedRoles,
+          promotedEntities,
+          editedEntities,
+          roleModuleChecklist,
           ...guidedApiPayload()
         })
       });
@@ -1343,8 +1357,18 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                     preselectRecommended
                     session={projectState.sessionState}
                     apiExtraPayload={guidedApiPayload()}
-                    onSubmit={(selected, other, customRoles, editedRoles) =>
-                      handleGuidedAnswer(m.id, m.guidedStep!.stepId, selected, other, customRoles, editedRoles)
+                    onSubmit={(selected, other, customRoles, editedRoles, promotedEntities, editedEntities, roleModuleChecklist) =>
+                      handleGuidedAnswer(
+                        m.id,
+                        m.guidedStep!.stepId,
+                        selected,
+                        other,
+                        customRoles,
+                        editedRoles,
+                        promotedEntities,
+                        editedEntities,
+                        roleModuleChecklist
+                      )
                     }
                   />
                 )}

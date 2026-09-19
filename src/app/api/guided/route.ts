@@ -47,6 +47,9 @@ import {
   type SupportingFlowItem,
   type SupportingFeatureItem,
   renderRbacMarkdownTable,
+  renderFormulaMarkdownTable,
+  extractFormulaVariables,
+  type BusinessFormula,
   renderDataSchemaMarkdown,
   generateDeterministicSimulasiDb,
   renderSimulasiDbMarkdown,
@@ -60,8 +63,18 @@ import {
   renderReviewFinalMarkdown,
   buildBackNavigationStep,
   generateChangeNote,
+  type DomainProfile,
+  renderDomainProfileMarkdown,
   isPureConfirmationText,
-  isTablePengguna
+  isTablePengguna,
+  type ViewConfig,
+  type ViewAggregateField,
+  type RoleModuleChecklistGroup,
+  type RoleModuleChecklistItem,
+  type ReferensiModulRole,
+  generateRoleModuleChecklist,
+  isRoleMatch,
+  isSemanticModuleMatch
 } from '@/lib/templates';
 import {
   DEFAULT_GEMINI_MODEL,
@@ -80,7 +93,7 @@ import {
 
 export const maxDuration = 60;
 
-type GuidedAction = 'START' | 'NEXT' | 'COMPILE' | 'ANALYZE_CUSTOM_ROLE' | 'RESUME';
+type GuidedAction = 'START' | 'NEXT' | 'COMPILE' | 'ANALYZE_CUSTOM_ROLE' | 'ANALYZE_CUSTOM_MODULE' | 'RESUME';
 
 interface CustomRolePayloadItem {
   id: string;
@@ -112,6 +125,13 @@ interface GuidedBody {
   existingRoles?: Array<{ id: string; label: string; description?: string; responsibilities?: string[] }>;
   customRoles?: CustomRolePayloadItem[];
   editedRoles?: Record<string, EditedRolePayloadItem>;
+  promotedEntities?: string[];
+  editedEntities?: Record<string, { name: string; description: string }>;
+  roleModuleChecklist?: RoleModuleChecklistGroup[];
+  // Payload untuk analisis modul kustom (ANALYZE_CUSTOM_MODULE)
+  moduleName?: string;
+  moduleDesc?: string;
+  existingModules?: Array<{ nama: string; deskripsi?: string }>;
 }
 
 function buildNarrationPrompt(session: MockupSessionState, action: GuidedAction, stepTitle?: string): string {
@@ -134,7 +154,7 @@ PENTING: Jangan gunakan istilah "perancangan aplikasi".
 DILARANG mengubah, menambah, atau menghapus opsi pilihan; opsi ditentukan sistem.`;
 }
 
-async function invokeAIChat(options: {
+export async function invokeAIChat(options: {
   systemInstruction: string;
   userPrompt: string;
   temperature?: number;
@@ -221,21 +241,26 @@ async function invokeAIChat(options: {
         console.warn(`Gemini call failed (${res.status}), mencoba fallback ke OpenAI...`);
         const fallbackKey = process.env.OPENAI_API_KEY;
         if (fallbackKey) {
+          const fallbackModel = (process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL).toLowerCase();
+          const isFallbackReasoning = fallbackModel.includes('r1') || fallbackModel.includes('o1') || fallbackModel.includes('o3') || fallbackModel.includes('gpt-5');
+          const fallbackPayload: Record<string, any> = {
+            model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+            messages: [
+              { role: 'system', content: systemInstruction },
+              { role: 'user', content: userPrompt }
+            ],
+            max_completion_tokens: isFallbackReasoning ? Math.max(maxTokens, 8000) : maxTokens
+          };
+          if (!isFallbackReasoning) {
+            fallbackPayload.temperature = temperature;
+          }
           const fallbackRes = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${fallbackKey}`
             },
-            body: JSON.stringify({
-              model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
-              messages: [
-                { role: 'system', content: systemInstruction },
-                { role: 'user', content: userPrompt }
-              ],
-              temperature,
-              max_tokens: maxTokens
-            })
+            body: JSON.stringify(fallbackPayload)
           });
           if (fallbackRes.ok) {
             const data = await fallbackRes.json();
@@ -245,6 +270,11 @@ async function invokeAIChat(options: {
         }
       }
     } else if (openaiApiKey) {
+      const isReasoning =
+        openaiModel.toLowerCase().includes('r1') ||
+        openaiModel.toLowerCase().includes('o1') ||
+        openaiModel.toLowerCase().includes('o3') ||
+        openaiModel.toLowerCase().includes('gpt-5');
       const isGemmaOrNoSystem = openaiModel.toLowerCase().includes('gemma') || openaiModel.toLowerCase().includes('r1');
       const messages = isGemmaOrNoSystem
         ? [
@@ -260,10 +290,22 @@ async function invokeAIChat(options: {
 
       const bodyPayload: Record<string, any> = {
         model: openaiModel,
-        messages,
-        max_tokens: maxTokens
+        messages
       };
-      if (!openaiModel.toLowerCase().includes('r1') && !openaiModel.toLowerCase().includes('o1')) {
+
+      if (isOpenRouter) {
+        bodyPayload.max_tokens = maxTokens;
+      } else {
+        bodyPayload.max_completion_tokens = isReasoning ? Math.max(maxTokens, 8000) : maxTokens;
+        if (isReasoning) {
+          bodyPayload.reasoning_effort = 'low';
+        }
+        if (userPrompt.toLowerCase().includes('json') || systemInstruction.toLowerCase().includes('json')) {
+          bodyPayload.response_format = { type: 'json_object' };
+        }
+      }
+
+      if (!isReasoning) {
         bodyPayload.temperature = temperature;
       }
 
@@ -287,6 +329,22 @@ async function invokeAIChat(options: {
         if (text.trim()) return text.trim();
       } else {
         const errText = await res.text().catch(() => '');
+        // Auto-recovery jika model menolak max_tokens atau temperature
+        if (res.status === 400 && (errText.includes('max_completion_tokens') || errText.includes('temperature') || errText.includes('unsupported_parameter') || errText.includes('unsupported_value'))) {
+          delete bodyPayload.temperature;
+          delete bodyPayload.max_tokens;
+          bodyPayload.max_completion_tokens = Math.max(maxTokens, 8000);
+          const retryRes = await fetch(`${openaiBaseUrl || 'https://api.openai.com/v1'}/chat/completions`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(bodyPayload)
+          });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            const retryText = retryData.choices?.[0]?.message?.content || '';
+            if (retryText.trim()) return retryText.trim();
+          }
+        }
         console.warn(`OpenAI/OpenRouter call failed (${res.status}):`, errText);
       }
     }
@@ -648,6 +706,12 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - Field "narasi" WAJIB HANYA berisi 2-3 kalimat cerita alur operasional bisnis konkret (3 fase: Fase awal kedatangan/permintaan -> Fase penanganan fisik/layanan oleh staf dengan alat presisi -> Fase pembayaran/tanda terima).
    - Gunakan bahasa Indonesia sehari-hari yang santun, luwes, dan membumi (sebut "mencuci kendaraan" bukan "menggosok bodi"; sebut "menimbang barang" bukan "melakukan pengukuran massa").
    - DILARANG KERAS menggunakan kata teknis IT/software (CRUD, database, API, backend, dsb.). Ceritakan murni interaksi manusia dan barang nyata!
+
+6b. PENANDAAN ENTITAS & ISTILAH BISNIS KUNCI DENGAN TANDA KUTIP GANDA ("..."):
+    - Saat merangkai cerita pada field "narasi", tandai entitas utama (calon tabel/role: misal "Pelanggan", "Petugas Rental", "Katalog Sepeda", "Paket Kursus", "Siswa") dan istilah bisnis transaksi kunci (calon field/formula: misal "Uang Muka/Deposit", "Total Biaya Sewa", "Tarif per Jam", "Biaya Kursus", "Sisa Pelunasan") secara eksplisit dengan tanda kutip ganda ("...").
+    - PANDUAN GAYA BAHASA:
+      * Tetap gunakan kosa kata natural dari pengguna (jika pengguna menyebut "Staf Rental" atau "Penyewa", gunakan istilah itu, jangan diseragamkan paksa).
+      * Kalimat tetap harus mengalir santun, luwes, dan membumi (jangan berlebihan membubuhkan tanda kutip pada setiap kata umum; cukup tandai entitas dan istilah transaksi kunci).
 
 7. SUDUT PANDANG (WAJIB PIHAK KETIGA OBJEKTIF):
    - Narasi cerita WAJIB ditulis dari sudut pandang PIHAK KETIGA OBJEKTIF yang mendeskripsikan bagaimana bisnis ini berjalan pada umumnya secara netral.
@@ -1282,6 +1346,301 @@ export function validateRbacMatrixRelevance(
 }
 
 /**
+ * Mengekstrak Shared Domain Profile Terpusat berbasis penalaran semantik AI dari narasi alur bisnis.
+ * Berprinsip STRICT WHITELIST: komponen biaya di luar daftar yang lazim otomatis ditolak.
+ */
+export async function generateDomainProfileWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<DomainProfile> {
+  const startTime = Date.now();
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+  const narrative = session.storyline?.narasi || '';
+  const alurUtama = session.storyline?.asumsiAlurUtama || '';
+  const actors = session.storyline?.asumsiAktor || [];
+
+  const systemInstruction = `Anda adalah Analis Sistem & Arsitek Solusi Bisnis Senior.
+Tugas Anda: Menganalisis narasi alur proses bisnis secara mendalam dan mengekstrak SATU objek Profil & Batasan Domain Bisnis (DomainProfile) yang definitif.
+
+ATURAN WAJIB & STRICT WHITELIST:
+1. modelOperasional:
+   - 'DI_TEMPAT' : Jika transaksi & pelayanan berlangsung fisik langsung di counter, toko, gerai, bengkel, studio, atau lokasi usaha.
+   - 'PENGIRIMAN_LOGISTIK' : Jika proses bisnis melibatkan jasa pengiriman kurir, ekspedisi paket, atau armada antar-jemput.
+   - 'DIGITAL' : Jika layanan berjalan murni digital/online/software.
+   PENTING: Jangan memilih 'PENGIRIMAN_LOGISTIK' jika narasi murni menyatakan pelanggan datang langsung ke tempat/counter!
+
+2. modelTarif:
+   - 'SEWA_DURASI' : Perhitungan berdasarkan durasi waktu pemakaian (jam, hari, bulan, unit sewa).
+   - 'BERAT_TIMBANGAN' : Perhitungan berdasarkan berat timbangan kg/gram (laundry kiloan, rongsok, dsb).
+   - 'PER_ITEM' : Perhitungan kuantitas per produk/menu belanjaan (toko retail, kafe, apotek).
+   - 'BIAYA_JASA' : Perhitungan per paket jasa, pendaftaran kursus, tarif per sesi les/perbaikan.
+
+3. adaJaminanDeposit & fungsiDeposit:
+   - Apakah alur bisnis melibatkan uang jaminan/deposit di muka yang dipegang staf saat unit digunakan?
+   - Jika ya, sebutkan fungsinya (misal: "Jaminan kerusakan/keterlambatan unit fisik (deposit < total biaya sewa)").
+   - Jika tidak, isi false dan string kosong "".
+
+4. entitasKatalogMaster:
+   - Daftar nama entitas master/katalog yang disewakan, dijual, atau dilayani (misal: ["sepeda"], ["menu"], ["paket_kursus"]).
+
+5. entitasPencatatanTransaksi:
+   - Daftar nama transaksi/pencatatan operasional utama (misal: ["transaksi_sewa"], ["pendaftaran_kursus"], ["pesanan"]).
+
+6. komponenBiayaYangLazim (STRICT WHITELIST - SANGAT KRUSIAL):
+   - Daftar nama variabel/komponen biaya matematis snake_case yang SAH dan LAZIM untuk domain ini berdasarkan narasi alur!
+   - Contoh Rental Sepeda di tempat: ["durasi_jam", "tarif_per_jam", "deposit", "denda_keterlambatan", "total_biaya", "sisa_tagihan"]
+   - DILARANG KERAS memasukkan komponen yang tidak relevan dengan model operasional!
+     * JIKA modelOperasional === 'DI_TEMPAT', DILARANG KERAS memasukkan "ongkir", "biaya_pengiriman", atau "tarif_kurir"!
+     * JIKA bisnis jasa/sewa, DILARANG KERAS memasukkan "retur_barang" atau "hpp"!
+   - Whitelist ini akan menjadi acuan filtering mutlak di seluruh pipeline (Formula & Skema).
+
+7. referensiAlurKerjaLazim (REFERENSI ALUR KERJA LAZIM INDUSTRI):
+   - Penalaran AI semantik tentang modul/form kerja operasional yang LAZIM dan STANDAR INDUSTRI untuk jenis bisnis ini, dikelompokkan per peran/kelompok peran generik (misal: "Staf Operasional / Kasir / Petugas", "Super Admin / Pemilik").
+   - Dihasilkan dari penalaran AI mendalam atas jenis bisnis nyata, BUKAN template statis.
+   - Contoh Rental Sepeda:
+     * Staf Operasional / Petugas Rental:
+       - "Input Data Pelanggan" (pencatatan data identitas pelanggan/penyewa)
+       - "Input Transaksi Sewa" (pencatatan unit sewa, durasi, dan deposit)
+       - "Proses Pengembalian & Pemeriksaan Kondisi Unit" (inspeksi fisik saat unit kembali & cek denda)
+       - "Cetak Nota/Struk Transaksi" (pemberian bukti transaksi ke penyewa)
+     * Super Admin / Pemilik:
+       - "Manajemen Master Sepeda & Tarif" (katalog unit, tarif per jam, stok sepeda)
+       - "Laporan Keuangan & Rekap Sewa" (rekap omzet dan statistik harian)
+
+FORMAT OUTPUT HARUS JSON VALID:
+{
+  "modelOperasional": "DI_TEMPAT" | "PENGIRIMAN_LOGISTIK" | "DIGITAL",
+  "modelTarif": "SEWA_DURASI" | "BERAT_TIMBANGAN" | "PER_ITEM" | "BIAYA_JASA",
+  "adaJaminanDeposit": boolean,
+  "fungsiDeposit": "penjelasan singkat atau kosong",
+  "entitasKatalogMaster": ["string"],
+  "entitasPencatatanTransaksi": ["string"],
+  "komponenBiayaYangLazim": ["string"],
+  "referensiAlurKerjaLazim": [
+    {
+      "role": "Nama Peran / Kelompok Peran",
+      "modul": [
+        { "nama": "Nama Modul / Form Kerja", "deskripsi": "Deskripsi singkat fungsi" }
+      ]
+    }
+  ],
+  "catatanOperasional": "Ringkasan 1-2 kalimat batasan kelaziman bisnis ini"
+}`;
+
+  const userPrompt = `Domain Bisnis: ${businessDomain}
+Narasi Proses Bisnis:
+${narrative}
+${alurUtama ? `Alur Utama: ${alurUtama}` : ''}
+Aktor Teridentifikasi: ${actors.join(', ')}
+
+Ekstrak objek Profil Domain Bisnis (DomainProfile) berprinsip strict whitelist dan kelaziman industri alur kerja sesuai instruksi di atas dalam format JSON:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 1500,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const parsed = robustJsonParse<DomainProfile>(raw);
+      if (
+        parsed &&
+        parsed.modelOperasional &&
+        parsed.modelTarif &&
+        Array.isArray(parsed.komponenBiayaYangLazim)
+      ) {
+        if (!parsed.referensiAlurKerjaLazim || !Array.isArray(parsed.referensiAlurKerjaLazim) || parsed.referensiAlurKerjaLazim.length === 0) {
+          parsed.referensiAlurKerjaLazim = buildFallbackReferensiAlurKerjaLazim(parsed, businessDomain);
+        }
+        const md = renderDomainProfileMarkdown(parsed, businessDomain);
+        return {
+          ...parsed,
+          markdownMindMap: md,
+          statusKonfirmasi: 'disetujui',
+          revisiCount: 0
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[generateDomainProfileWithAI] Gagal invoke AI domainProfile, menggunakan fallback deterministik:', err);
+  }
+
+  // Fallback generik aman jika AI gagal/offline (tanpa tebak-tebakan kata kunci/template)
+  const fallbackProfile: DomainProfile = {
+    modelOperasional: 'DI_TEMPAT',
+    modelTarif: 'PER_ITEM',
+    adaJaminanDeposit: false,
+    entitasKatalogMaster: ['katalog_utama'],
+    entitasPencatatanTransaksi: ['transaksi_utama'],
+    komponenBiayaYangLazim: ['jumlah_qty', 'harga_satuan', 'subtotal', 'total_biaya'],
+    catatanOperasional: `Profil domain generik untuk ${businessDomain}. Silakan gunakan tombol "Ada yang Perlu Dikoreksi" jika rincian model operasional atau tarif memerlukan penyesuaian khusus.`,
+    statusKonfirmasi: 'disetujui',
+    revisiCount: 0
+  };
+
+  fallbackProfile.referensiAlurKerjaLazim = buildFallbackReferensiAlurKerjaLazim(fallbackProfile, businessDomain);
+  fallbackProfile.markdownMindMap = renderDomainProfileMarkdown(fallbackProfile, businessDomain);
+  return fallbackProfile;
+}
+
+export function buildFallbackReferensiAlurKerjaLazim(
+  dp: Partial<DomainProfile>,
+  domain: string
+): ReferensiModulRole[] {
+  const isRental = dp.modelTarif === 'SEWA_DURASI' || /rental|sewa/i.test(domain);
+  const isLaundry = dp.modelTarif === 'BERAT_TIMBANGAN' || /laundry|kiloan/i.test(domain);
+
+  if (isRental) {
+    return [
+      {
+        role: 'Staf Operasional / Petugas Rental',
+        modul: [
+          { nama: 'Input Data Pelanggan', deskripsi: 'Pencatatan data identitas pelanggan/penyewa' },
+          { nama: 'Input Transaksi Sewa', deskripsi: 'Pencatatan unit sewa, durasi pemakaian, dan uang jaminan/deposit' },
+          { nama: 'Proses Pengembalian & Pemeriksaan Kondisi Unit', deskripsi: 'Inspeksi fisik unit saat kembali dan cek keterlambatan/denda' },
+          { nama: 'Cetak Nota/Struk Transaksi', deskripsi: 'Pemberian tanda bukti transaksi penyewaan ke pelanggan' }
+        ]
+      },
+      {
+        role: 'Super Admin / Pemilik',
+        modul: [
+          { nama: 'Manajemen Katalog Master Unit & Tarif', deskripsi: 'Pengelolaan inventaris unit sewa, tarif sewa, dan status ketersediaan' },
+          { nama: 'Laporan Rekapitulasi & Keuangan', deskripsi: 'Monitoring omzet sewa, audit riwayat unit, dan utilisasi armada' }
+        ]
+      }
+    ];
+  }
+
+  if (isLaundry) {
+    return [
+      {
+        role: 'Staf Kasir / Operasional Laundry',
+        modul: [
+          { nama: 'Penerimaan Cucian & Penimbangan', deskripsi: 'Pencatatan data pelanggan, jenis layanan cuci, dan timbangan kg' },
+          { nama: 'Pembaruan Status Proses Cuci', deskripsi: 'Update status pencucian (cuci, kering, setrika, selesai)' },
+          { nama: 'Pengambilan Cucian & Pelunasan', deskripsi: 'Pencatatan serah terima cucian bersih dan pembayaran akhir' },
+          { nama: 'Cetak Nota/Kwitansi Laundry', deskripsi: 'Cetak bukti transaksi dan nomor resi cucian' }
+        ]
+      },
+      {
+        role: 'Super Admin / Pemilik',
+        modul: [
+          { nama: 'Manajemen Paket Layanan & Tarif', deskripsi: 'Daftar harga cuci kiloan/satuan dan paket ekspres' },
+          { nama: 'Laporan Pendapatan & Beban Operasional', deskripsi: 'Rekap omzet harian/bulanan dan biaya deterjen/operasional' }
+        ]
+      }
+    ];
+  }
+
+  const katalog = dp.entitasKatalogMaster?.[0] || 'Katalog Master';
+  const transaksi = dp.entitasPencatatanTransaksi?.[0] || 'Transaksi Operasional';
+  return [
+    {
+      role: 'Staf Operasional / Kasir',
+      modul: [
+        { nama: 'Input Data Pelanggan', deskripsi: 'Pencatatan identitas pelanggan atau pihak pemohon' },
+        { nama: `Pencatatan ${transaksi.replace(/_/g, ' ')}`, deskripsi: 'Input transaksi operasional harian dan pembayaran' },
+        { nama: 'Cetak Nota/Bukti Transaksi', deskripsi: 'Pemberian bukti tanda terima atau dokumen transaksi' },
+        { nama: 'Pemeriksaan & Penyelesaian Layanan', deskripsi: 'Verifikasi akhir dan penutupan transaksi operasional' }
+      ]
+    },
+    {
+      role: 'Super Admin / Pemilik',
+      modul: [
+        { nama: `Manajemen Master ${katalog.replace(/_/g, ' ')}`, deskripsi: 'Pengaturan data induk referensi, harga, dan tarif layanan' },
+        { nama: 'Laporan Rekapitulasi & Monitoring', deskripsi: 'Audit seluruh transaksi dan statistik keuangan usaha' }
+      ]
+    }
+  ];
+}
+
+/**
+ * Merevisi DomainProfile dengan AI berdasarkan masukan koreksi teks dari pengguna.
+ */
+export async function reviseDomainProfileWithAI(
+  session: MockupSessionState,
+  correctionText: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<DomainProfile> {
+  const currentProfile = session.domainProfile || (await generateDomainProfileWithAI(session, provider, apiKey, model));
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+  const narrative = session.storyline?.narasi || '';
+
+  const systemInstruction = `Anda adalah Analis Sistem yang membantu pengguna menyesuaikan Profil & Batasan Domain Bisnis (DomainProfile).
+Tugas Anda: Memperbarui objek DomainProfile berdasarkan masukan koreksi dari pengguna.
+ATURAN STRICT WHITELIST:
+- Anda dapat mengubah modelOperasional, modelTarif, adaJaminanDeposit, entitasKatalogMaster, entitasPencatatanTransaksi, dan komponenBiayaYangLazim.
+- Komponen biaya yang ditambah WAJIB relevan dengan narasi dan model operasional.
+
+FORMAT OUTPUT HARUS JSON VALID:
+{
+  "modelOperasional": "DI_TEMPAT" | "PENGIRIMAN_LOGISTIK" | "DIGITAL",
+  "modelTarif": "SEWA_DURASI" | "BERAT_TIMBANGAN" | "PER_ITEM" | "BIAYA_JASA",
+  "adaJaminanDeposit": boolean,
+  "fungsiDeposit": "penjelasan singkat atau kosong",
+  "entitasKatalogMaster": ["string"],
+  "entitasPencatatanTransaksi": ["string"],
+  "komponenBiayaYangLazim": ["string"],
+  "catatanOperasional": "string"
+}`;
+
+  const userPrompt = `Domain Bisnis: ${businessDomain}
+Narasi Proses Bisnis:
+${narrative}
+
+Profil Saat Ini:
+${JSON.stringify(currentProfile, null, 2)}
+
+Permintaan Koreksi Pengguna:
+"${correctionText}"
+
+Perbarui objek DomainProfile sesuai permintaan di atas dalam format JSON:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 1500,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const parsed = robustJsonParse<DomainProfile>(raw);
+      if (parsed && parsed.modelOperasional && parsed.modelTarif && Array.isArray(parsed.komponenBiayaYangLazim)) {
+        const md = renderDomainProfileMarkdown(parsed, businessDomain);
+        return {
+          ...parsed,
+          markdownMindMap: md,
+          statusKonfirmasi: 'dikoreksi',
+          revisiCount: (currentProfile.revisiCount || 0) + 1
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[reviseDomainProfileWithAI] Gagal invoke AI revisi domainProfile:', err);
+  }
+
+  // Fallback koreksi manual jika AI gagal
+  const updated = { ...currentProfile };
+  updated.revisiCount = (currentProfile.revisiCount || 0) + 1;
+  updated.catatanOperasional = `${updated.catatanOperasional || ''} (Koreksi: ${correctionText})`.trim();
+  updated.markdownMindMap = renderDomainProfileMarkdown(updated, businessDomain);
+  return updated;
+}
+
+/**
  * Menyusun Alur Pendukung dan Fitur Pendukung operasional berbasis analisis AI konseptual terpadu.
  * Menggantikan total percabangan regex domain dan template statis (Opsi 1).
  */
@@ -1499,7 +1858,7 @@ function applyDeterministicFlowCorrection(
     if (target) {
       const actorMatch = newActionText.match(/^\(([^)]+)\)\s*(.+)/);
       if (actorMatch) {
-        target.pelaku = resolveActorForStep(actorMatch[1].trim(), session.roles);
+        target.pelaku = resolveActorForStep(actorMatch[1].trim(), session.roles, session);
         target.aksi = actorMatch[2].trim();
       } else {
         target.aksi = newActionText;
@@ -1524,7 +1883,7 @@ function applyDeterministicFlowCorrection(
   if (addFeatMatch) {
     const featLabel = addFeatMatch[2].trim();
     fiturPendukung.push({
-      id: `feat_user_${Date.now()}`,
+      id: `feat_custom_${fiturPendukung.length + 1}`,
       label: featLabel
     });
   }
@@ -1552,11 +1911,16 @@ async function refineFlowWithAI(
   apiKey?: string,
   model?: string
 ): Promise<DomainFlowData> {
-  const knownActors = [
+  const entityActors = (session.actorsClassification || [])
+    .filter((a) => a.category === 'ENTITAS_DATA')
+    .map((a) => a.actor);
+
+  const knownActors = Array.from(new Set([
     REQUIRED_ROLE,
     ...(session.roles?.selected || []),
+    ...entityActors,
     ...(session.storyline?.asumsiAktor || [])
-  ];
+  ]));
 
   const systemInstruction = `Anda adalah Partner Diskusi & Arsitek Solusi AI dari platform "Aplikasi Generator".
 Tugas Anda: Memperbarui Alur Inti, Alur Pendukung, atau Fitur Pendukung aplikasi bisnis berdasarkan masukan atau koreksi dari pengguna.
@@ -1564,7 +1928,8 @@ Tugas Anda: Memperbarui Alur Inti, Alur Pendukung, atau Fitur Pendukung aplikasi
 ATURAN WAJIB:
 1. PERTAHANKAN FORMAT:
    - Alur Inti: array of { "step": nomor urut, "pelaku": "Nama Peran", "aksi": "Deskripsi aktivitas fisik nyata" }.
-   - Pelaku Alur Inti WAJIB menggunakan peran yang dikenal: ${knownActors.join(', ')}.
+   - Pelaku Alur Inti WAJIB menggunakan peran atau entitas data yang dikenal: ${knownActors.join(', ')}.
+     Catatan: Pelaku boleh berupa peran sistem login resmi (${(session.roles?.selected || [REQUIRED_ROLE]).join(', ')}) maupun Entitas Data bisnis (${entityActors.join(', ') || 'Pelanggan'}) yang melakukan aksi nyata di lapangan.
    - Alur Pendukung: array of { "id": string, "nama": string, "steps": [{ "pelaku": string, "aksi": string }] }.
    - Fitur Pendukung: array of { "id": string, "label": string }.
 2. RELEVANSI DOMAIN & TANPA ISTILAH TEKNIS IT:
@@ -1615,7 +1980,7 @@ Perbarui dan kembalikan JSON lengkap:`;
         if (Array.isArray(parsed.alurInti) && parsed.alurInti.length > 0) {
           const refinedAlurInti = parsed.alurInti.map((s: any, idx: number) => ({
             step: idx + 1,
-            pelaku: resolveActorForStep(String(s.pelaku || 'Petugas').trim(), session.roles),
+            pelaku: resolveActorForStep(String(s.pelaku || 'Petugas').trim(), session.roles, session),
             aksi: String(s.aksi || '').trim()
           }));
 
@@ -1625,7 +1990,7 @@ Perbarui dan kembalikan JSON lengkap:`;
                 nama: String(ap.nama || `Alur ${idx + 1}`),
                 steps: Array.isArray(ap.steps)
                   ? ap.steps.map((st: any) => ({
-                      pelaku: resolveActorForStep(String(st.pelaku || 'Petugas').trim(), session.roles),
+                      pelaku: resolveActorForStep(String(st.pelaku || 'Petugas').trim(), session.roles, session),
                       aksi: String(st.aksi || '').trim()
                     }))
                   : []
@@ -2117,6 +2482,23 @@ export async function generateRbacMatrixWithAI(
   const narrative = session.storyline?.narasi || '';
   const delegated = session.roles?.tugasDilimpahkan || [];
 
+  // Ambil modul-modul yang telah dicentang / disetujui pengguna per role dari checklist
+  const checklistPerRole = session.rbac?.checklistPerRole || [];
+  const confirmedModulesPerRole: { role: string; modules: string[] }[] = [];
+  for (const group of checklistPerRole) {
+    const checked = group.items.filter((it) => it.checked).map((it) => it.nama);
+    if (checked.length > 0) {
+      confirmedModulesPerRole.push({ role: group.role, modules: checked });
+    }
+  }
+
+  const confirmedModulesPrompt =
+    confirmedModulesPerRole.length > 0
+      ? `\n📋 DAFTAR MODUL / FORM KERJA YANG TELAH DISETUJUI PENGGUNA PER ROLE (WAJIB JADI ACUAN UTAMA):
+${confirmedModulesPerRole.map((c) => `- Peran "${c.role}": ${c.modules.join(', ')}`).join('\n')}
+PENTING: Pastikan semua modul yang disetujui di atas (termasuk modul custom dan modul saran yang dicentang) TERWAKILI di baris modul matriks RBAC!`
+      : '';
+
   const delegationNotesPrompt =
     delegated.length > 0
       ? `\n⚠️ ATURAN KHUSUS PELIMPAHAN TUGAS (WAJIB DIPATUHI):
@@ -2154,8 +2536,8 @@ ATURAN WAJIB & LARANGAN MUTLAK:
      * Untuk Pemilik / Super Admin / Pimpinan: "Supervisi, Otorisasi Pembatalan, & Audit Penuh" atau "Pengaturan Master Data & Kontrol Penuh".
      * Jika role TIDAK BERHAK / tidak terlibat pada modul tersebut: tulis "-" atau "Tidak Memiliki Akses".
 
-4. JUMLAH MODUL PROPORSIONAL:
-   - Buat 4 hingga 6 modul fungsional yang mencakup seluruh Alur Inti, Alur Pendukung, dan Fitur Utama sistem ini.
+4. JUMLAH MODUL PROPORSIONAL & MENGAKOMODASI CHECKLIST:
+   - Buat 4 hingga 8 modul fungsional yang mencakup seluruh modul yang disetujui di checklist pengguna, Alur Inti, Alur Pendukung, dan Fitur Utama.
    - Setiap modul harus punya nama yang jelas dan deskripsi fungsional 1 kalimat.
 
 ${delegationNotesPrompt}
@@ -2192,6 +2574,7 @@ ${alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) 
 
 Fitur Pendukung:
 ${fiturPendukung.map((fp) => `- ${typeof fp === 'string' ? fp : (fp as any)?.label || fp}`).join('\n')}
+${confirmedModulesPrompt}
 
 Susun matriks hak akses per modul fungsional dalam format JSON:`;
 
@@ -2224,6 +2607,38 @@ Susun matriks hak akses per modul fungsional dalam format JSON:`;
               deskripsiFungsional: m.deskripsiFungsional ? String(m.deskripsiFungsional).trim() : undefined,
               izinPerRole
             });
+          }
+        }
+
+        // Rekonsiliasi: pastikan setiap modul yang dicentang pengguna terwakili di validatedModul
+        for (const conf of confirmedModulesPerRole) {
+          for (const modName of conf.modules) {
+            const exists = validatedModul.some(
+              (m) =>
+                m.nama.toLowerCase() === modName.toLowerCase() ||
+                isSemanticModuleMatch(m.nama, modName)
+            );
+            if (!exists) {
+              const izinPerRole: { role: string; level: string; keterangan?: string }[] = [];
+              for (const r of activeRoles) {
+                const isOwner = isRoleMatch(conf.role, r, activeRoles);
+                const isAdmin = r.toLowerCase().includes('admin') || r.toLowerCase().includes('pemilik');
+                izinPerRole.push({
+                  role: r,
+                  level: isOwner
+                    ? 'Catat & Proses (Data Bertugas)'
+                    : isAdmin
+                    ? 'Supervisi & Kontrol Penuh'
+                    : '-',
+                  keterangan: isOwner ? 'Akses operasional modul' : undefined
+                });
+              }
+              validatedModul.push({
+                nama: modName,
+                deskripsiFungsional: `Modul fungsional untuk ${modName}`,
+                izinPerRole
+              });
+            }
           }
         }
 
@@ -2416,8 +2831,19 @@ export interface DataSchemaResult {
   tabel: {
     nama: string;
     keterangan?: string;
-    field: { nama: string; tipe: string; keterangan: string }[];
+    displayField?: string;
+    compositeFields?: string[];
+    field: {
+      nama: string;
+      tipe: string;
+      keterangan: string;
+      targetRole?: string;
+      targetTable?: string;
+      isFormula?: boolean;
+      formulaExpression?: string;
+    }[];
   }[];
+  views?: ViewConfig[];
   korelasiRingkas?: string;
   markdownTable?: string;
 }
@@ -2542,10 +2968,45 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
       ? `Bila ditemukan kendala operasional atau jadwal pemeliharaan, tiket dicatat pada tabel \`penanganan_kendala\` untuk ditindaklanjuti hingga tuntas.`
       : `Seluruh riwayat transaksi dapat diaudit sewaktu-waktu oleh Super Admin untuk rekapitulasi performa.`);
 
-  const markdownTable = renderDataSchemaMarkdown(tabel, korelasiRingkas);
+  let finalTables = ensureMergedCatalogAndInventory(tabel);
+  finalTables = ensureMergedSingleCycleRentalTransactions(finalTables, session);
+  finalTables = ensureDomainProfileEntitiesInSchema(finalTables, session);
+  finalTables = ensureFormulaFieldsInTargetTables(finalTables, session.formulas?.daftar);
+  finalTables = sanitizeSchemaFieldsByDomainProfile(finalTables, session);
+
+  let fallbackViews: ViewConfig[] = session.dataSchema?.views || [];
+  if (!fallbackViews || fallbackViews.length === 0) {
+    const combinedText = (session.storyline?.narasi || '') + ' ' + (session.flow?.fiturPendukung || []).join(' ');
+    const mentionsReport = /laporan|rekap|harian|omzet|ringkasan/i.test(combinedText);
+    const mentionsManual = /tutup.*kasir|tutup.*shift|serah.*terima|hitung.*uang/i.test(combinedText);
+    if (mentionsReport && !mentionsManual) {
+      const mainTx = finalTables.find(t => !isTablePengguna(t.nama) && !/katalog|paket|master|sepeda|unit/i.test(t.nama)) || finalTables[0];
+      const mainTxFields = (mainTx?.field || []).map((f: any) => f.nama);
+      const dateField = mainTxFields.find(f => /jam_mulai|tanggal|waktu|created_at/i.test(f)) || 'tanggal';
+      const sumField = mainTxFields.find(f => /total_biaya|total|biaya|harga/i.test(f)) || 'total_biaya';
+
+      fallbackViews = [{
+        id: 'laporan_harian',
+        label: 'Laporan Harian',
+        icon: '📊',
+        targetRoles: ['Super Admin', 'Owner', 'Manajer'],
+        sourceTable: mainTx?.nama || 'transaksi_sewa',
+        groupByField: dateField,
+        groupByLabel: 'Tanggal Transaksi',
+        aggregates: [
+          { key: 'total_transaksi', label: 'Total Transaksi', op: 'COUNT', sourceKey: 'id', format: 'angka' },
+          { key: 'total_pendapatan', label: 'Total Omzet', op: 'SUM', sourceKey: sumField, format: 'rupiah' }
+        ],
+        keterangan: 'Laporan ringkasan terhitung otomatis dari data transaksi (Read-Only).'
+      }];
+    }
+  }
+
+  const markdownTable = renderDataSchemaMarkdown(finalTables, korelasiRingkas, fallbackViews);
 
   return {
-    tabel,
+    tabel: finalTables,
+    views: fallbackViews,
     korelasiRingkas,
     markdownTable
   };
@@ -2607,7 +3068,24 @@ export async function extractTablesAndCorrelationFromParsed(
   fallbackCorrelation?: string,
   officialRoles?: string[],
   semanticAiMatcher?: SemanticRoleMatcher
-): Promise<{ tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[] }[]; korelasiRingkas?: string } | null> {
+): Promise<{
+  tables: {
+    nama: string;
+    keterangan?: string;
+    displayField?: string;
+    compositeFields?: string[];
+    field: {
+      nama: string;
+      tipe: string;
+      keterangan: string;
+      targetRole?: string;
+      targetTable?: string;
+      isFormula?: boolean;
+      formulaExpression?: string;
+    }[];
+  }[];
+  korelasiRingkas?: string;
+} | null> {
   if (!parsed) return null;
   const rawTables = Array.isArray(parsed)
     ? parsed
@@ -2618,16 +3096,43 @@ export async function extractTablesAndCorrelationFromParsed(
   const validatedTables: {
     nama: string;
     keterangan?: string;
-    field: { nama: string; tipe: string; keterangan: string; targetRole?: string }[];
+    displayField?: string;
+    compositeFields?: string[];
+    field: {
+      nama: string;
+      tipe: string;
+      keterangan: string;
+      targetRole?: string;
+      targetTable?: string;
+      isFormula?: boolean;
+      formulaExpression?: string;
+    }[];
   }[] = [];
 
   for (const t of rawTables) {
     const rawFields = t && (t.field || t.fields || t.kolom);
     if (t && typeof t.nama === 'string' && Array.isArray(rawFields) && rawFields.length > 0) {
-      const validFields: { nama: string; tipe: string; keterangan: string; targetRole?: string }[] = [];
+      const validFields: {
+        nama: string;
+        tipe: string;
+        keterangan: string;
+        targetRole?: string;
+        targetTable?: string;
+        isFormula?: boolean;
+        formulaExpression?: string;
+      }[] = [];
+
       for (const f of rawFields) {
         if (f && typeof f.nama === 'string') {
-          const fieldObj: { nama: string; tipe: string; keterangan: string; targetRole?: string } = {
+          const fieldObj: {
+            nama: string;
+            tipe: string;
+            keterangan: string;
+            targetRole?: string;
+            targetTable?: string;
+            isFormula?: boolean;
+            formulaExpression?: string;
+          } = {
             nama: String(f.nama).trim().toLowerCase().replace(/\s+/g, '_'),
             tipe: String(f.tipe || 'text').trim(),
             keterangan: String(f.keterangan || f.deskripsi || '').trim()
@@ -2640,24 +3145,86 @@ export async function extractTablesAndCorrelationFromParsed(
               fieldObj.targetRole = detected;
             }
           }
+          if (f.targetTable && typeof f.targetTable === 'string' && f.targetTable.trim()) {
+            fieldObj.targetTable = f.targetTable.trim();
+          } else {
+            const relMatch = fieldObj.tipe.match(/^relasi ke\s+([a-zA-Z0-9_]+)/i);
+            if (relMatch) {
+              fieldObj.targetTable = relMatch[1].toLowerCase();
+            }
+          }
+          if (f.isFormula) {
+            fieldObj.isFormula = true;
+          }
+          if (f.formulaExpression && typeof f.formulaExpression === 'string' && f.formulaExpression.trim()) {
+            fieldObj.formulaExpression = f.formulaExpression.trim();
+          }
           validFields.push(fieldObj);
         }
       }
+
       if (validFields.length > 0) {
-        validatedTables.push({
+        const tableObj: {
+          nama: string;
+          keterangan?: string;
+          displayField?: string;
+          compositeFields?: string[];
+          field: typeof validFields;
+        } = {
           nama: String(t.nama).trim().toLowerCase().replace(/\s+/g, '_'),
           keterangan: t.keterangan ? String(t.keterangan).trim() : (t.deskripsi ? String(t.deskripsi).trim() : undefined),
           field: validFields
-        });
+        };
+
+        if (t.displayField && typeof t.displayField === 'string' && t.displayField.trim()) {
+          tableObj.displayField = t.displayField.trim();
+        } else {
+          // Smart fallback deklaratif untuk master/katalog
+          const naturalDisplay = validFields.find((fld) =>
+            /^(nama|nama_lengkap|nama_paket|nama_alat|nama_unit|nama_barang|nama_produk|nama_layanan|judul|kode_unit|label)$/i.test(fld.nama)
+          );
+          if (naturalDisplay) {
+            tableObj.displayField = naturalDisplay.nama;
+          }
+        }
+
+        if (t.compositeFields && Array.isArray(t.compositeFields)) {
+          tableObj.compositeFields = t.compositeFields.map((s: any) => String(s).trim()).filter(Boolean);
+        } else {
+          // Smart fallback deklaratif untuk tabel bridge / junction
+          const fkFields = validFields.filter((fld) =>
+            fld.tipe.includes('relasi ke') || fld.nama.endsWith('_id') || fld.nama.startsWith('id_')
+          );
+          if (fkFields.length >= 2 && !isTablePengguna(tableObj.nama)) {
+            tableObj.compositeFields = fkFields.slice(0, 2).map((fld) => fld.nama);
+          }
+        }
+
+        validatedTables.push(tableObj);
       }
     }
   }
 
   if (validatedTables.length === 0) return null;
 
+  // Pastikan tabel pengguna selalu ada jika sistem memiliki peran resmi aktif
+  const existingUserTable = validatedTables.find((t) => isTablePengguna(t.nama));
+  let userTable = existingUserTable ? existingUserTable.nama : 'pengguna';
+  if (!existingUserTable && officialRoles && officialRoles.length > 0) {
+    validatedTables.push({
+      nama: 'pengguna',
+      keterangan: 'Menyimpan data akun dan hak akses pengguna sistem',
+      field: [
+        { nama: 'id', tipe: 'text', keterangan: 'Identitas unik pengguna' },
+        { nama: 'nama_lengkap', tipe: 'text', keterangan: 'Nama lengkap pengguna sistem' },
+        { nama: 'peran', tipe: 'text', keterangan: `Hak akses / peran aktif: ${officialRoles.join(', ')}` }
+      ]
+    });
+    userTable = 'pengguna';
+  }
+
   // Normalisasi otomatis dan verifikasi integritas relasi (Bug 1 Fix)
   const tableNames = new Set(validatedTables.map((t) => t.nama.toLowerCase()));
-  const userTable = validatedTables.find((t) => isTablePengguna(t.nama))?.nama || 'pengguna';
 
   for (const t of validatedTables) {
     for (const f of t.field) {
@@ -2765,6 +3332,1213 @@ export function detectMissingCoreTermsFromSchema(
   return Array.from(new Set(missing));
 }
 
+export function isBaseIdentityField(fieldName: string): boolean {
+  const f = fieldName.toLowerCase().replace(/[\s_-]+/g, '');
+  return (
+    f === 'id' ||
+    f.includes('nama') ||
+    f.includes('kontak') ||
+    f.includes('telepon') ||
+    f.includes('phone') ||
+    f.includes('hp') ||
+    f.includes('email') ||
+    f.includes('alamat') ||
+    f.includes('lahir') ||
+    f.includes('daftar') ||
+    f.includes('registrasi') ||
+    f.includes('gender') ||
+    f.includes('kelamin') ||
+    f.includes('nik') ||
+    f.includes('identitas') ||
+    f.includes('keterangan') ||
+    f.includes('catatan') ||
+    f.includes('status') ||
+    f.includes('foto') ||
+    f.endsWith('oleh')
+  );
+}
+
+export function findBridgeTablesForEntity(
+  entityTableName: string,
+  allTables: { nama: string; field: { nama: string; tipe: string }[] }[]
+): { nama: string; catalogTable: string }[] {
+  const bridges: { nama: string; catalogTable: string }[] = [];
+  const entityNorm = entityTableName.toLowerCase().replace(/[\s_-]+/g, '');
+
+  for (const table of allTables) {
+    if (table.nama.toLowerCase().replace(/[\s_-]+/g, '') === entityNorm) continue;
+
+    // Cek apakah tabel ini memiliki relasi ke entitas ini
+    const hasRelToEntity = table.field.some((f) => {
+      const match = (f.tipe || '').match(/^relasi ke\s+([a-zA-Z0-9_]+)/i);
+      if (!match) return false;
+      const targetNorm = match[1].toLowerCase().replace(/[\s_-]+/g, '');
+      return targetNorm === entityNorm;
+    });
+
+    if (!hasRelToEntity) continue;
+
+    // Cek apakah tabel ini JUGA memiliki relasi ke entitas lain C (C bukan entitas ini, C bukan pengguna/user)
+    const relToCatalog = table.field.find((f) => {
+      const match = (f.tipe || '').match(/^relasi ke\s+([a-zA-Z0-9_]+)/i);
+      if (!match) return false;
+      const targetNorm = match[1].toLowerCase().replace(/[\s_-]+/g, '');
+      return targetNorm !== entityNorm && targetNorm !== 'pengguna' && !targetNorm.startsWith('user');
+    });
+
+    if (relToCatalog) {
+      const match = relToCatalog.tipe.match(/^relasi ke\s+([a-zA-Z0-9_]+)/i);
+      bridges.push({ nama: table.nama, catalogTable: match ? match[1] : '' });
+    }
+  }
+
+  return bridges;
+}
+
+export type SchemaFlatnessAuditor = (
+  entityActor: string,
+  entityTable: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] },
+  allTables: { nama: string; field: { nama: string; tipe: string }[] }[],
+  session: MockupSessionState
+) => Promise<{ isViolation: boolean; reason?: string } | null>;
+
+let _mockSchemaFlatnessAuditor: SchemaFlatnessAuditor | null = null;
+let _schemaAuditorCallCount = 0;
+
+export function setMockSchemaFlatnessAuditorForTesting(auditor: SchemaFlatnessAuditor | null) {
+  _mockSchemaFlatnessAuditor = auditor;
+}
+
+export function getSchemaAuditorCallCount(): number {
+  return _schemaAuditorCallCount;
+}
+
+export function resetSchemaAuditorCallCount(): void {
+  _schemaAuditorCallCount = 0;
+}
+
+export async function auditSchemaFlatnessWithAI(
+  entityActor: string,
+  entityTable: { nama: string; field: { nama: string; tipe: string; keterangan?: string }[] },
+  allTables: { nama: string; field: { nama: string; tipe: string }[] }[],
+  session: MockupSessionState,
+  options?: { provider?: string; apiKey?: string; model?: string }
+): Promise<{ isViolation: boolean; reason?: string }> {
+  _schemaAuditorCallCount++;
+
+  if (_mockSchemaFlatnessAuditor) {
+    const mockRes = await _mockSchemaFlatnessAuditor(entityActor, entityTable, allTables, session);
+    if (mockRes) return mockRes;
+  }
+
+  const systemInstruction = `Anda adalah Analis Basis Data dan Auditor Arsitektur Relasi Skema.
+Tugas Anda: Mengevaluasi apakah entitas data "${entityActor}" dalam proses bisnis aplikasi seharusnya menggunakan POLA 3-LAPIS (Master Katalog/Aset + Tabel Penghubung/Transaksi + Tabel Operasional) ataukah POLA HUBUNGAN LANGSUNG SEDERHANA.
+
+KRITERIA POLA 3-LAPIS:
+1. Peminjaman / Sewa aset fisik beridentitas/terbatas (kendaraan, kamera, kostum, tenda/alat kamping, kamar/studio).
+2. Pendaftaran paket/layanan berulang atau multi-sesi (kursus, pelatihan, terapi, tes laboratorium).
+3. Entitas memiliki catatan progres/riwayat berkala dari waktu ke waktu.
+
+ATURAN AUDIT:
+- Periksa field pada tabel entitas "${entityTable.nama}": Apakah ada field yang menyimpan pilihan penawaran produk/paket/layanan/aset secara teks bebas (misal pilihan kostum, jenis alat, instrumen, paket)?
+- Periksa seluruh tabel skema: Apakah ada tabel katalog master mandiri untuk aset/produk tersebut dan tabel jembatan transaksi penghubung?
+- JIKA proses bisnis butuh 3-lapis TAPI tabel katalog terpisah belum ada (skema flat atau menyerap penawaran ke profil entitas), maka isViolation = true.
+- JIKA proses bisnis memang transaksi langsung 1x selesai (misal tambal ban reguler, cuci mobil cepat tanpa katalog aset), maka isViolation = false.
+
+Format keluaran WAJIB JSON murni:
+{
+  "isViolation": boolean,
+  "reason": "Penjelasan spesifik tabel katalog apa yang seharusnya ada dan apa yang salah tempat (kosongkan jika isViolation false)"
+}`;
+
+  const userPrompt = `Entitas yang diaudit: "${entityActor}" (Tabel: "${entityTable.nama}")
+Field tabel entitas:
+${entityTable.field.map((f) => `- ${f.nama} (${f.tipe}): ${f.keterangan || ''}`).join('\n')}
+
+Seluruh tabel dalam skema saat ini:
+${allTables.map((t) => `- ${t.nama}: ${t.field.map((f) => `${f.nama} (${f.tipe})`).join(', ')}`).join('\n')}
+
+Narasi Bisnis:
+${session.storyline?.narasi || session.match?.businessCategory || '-'}
+
+Alur Operasional:
+${(session.flow?.alurInti || []).map((s) => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
+
+Evaluasi apakah skema untuk entitas "${entityActor}" melanggar kaidah 3-lapis (FLAT violation):`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 500,
+      provider: options?.provider,
+      userApiKey: options?.apiKey,
+      userModel: options?.model
+    });
+    const parsed = robustJsonParse<any>(raw);
+    if (parsed && typeof parsed.isViolation === 'boolean') {
+      return {
+        isViolation: parsed.isViolation,
+        reason: parsed.reason || undefined
+      };
+    }
+  } catch (err) {
+    console.warn(`[auditSchemaFlatnessWithAI] Gagal audit semantik untuk "${entityActor}":`, err);
+  }
+
+  // Fallback jika AI gagal: gunakan deteksi struktural field non-identitas
+  const nonIdFields = entityTable.field.filter((f) => !isBaseIdentityField(f.nama));
+  return {
+    isViolation: nonIdFields.length > 0,
+    reason: nonIdFields.length > 0
+      ? `Tabel profil "${entityTable.nama}" menyerap atribut non-identitas "${nonIdFields.map(f => f.nama).join(', ')}" tanpa tabel jembatan katalog penghubung.`
+      : undefined
+  };
+}
+
+export async function detectFlatSchemaViolation(
+  tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[],
+  session: MockupSessionState,
+  options?: { provider?: string; apiKey?: string; model?: string }
+): Promise<string | null> {
+  const entityActors = (session.actorsClassification || [])
+    .filter((a) => a.category === 'ENTITAS_DATA')
+    .map((a) => a.actor);
+
+  if (entityActors.length === 0) return null;
+
+  const violations: string[] = [];
+
+  // Lakukan evaluasi PER-ENTITAS (Scope Per-Entitas)
+  for (const actor of entityActors) {
+    const actorNorm = actor.toLowerCase().replace(/[\s_-]+/g, '');
+    const entityTable = tables.find((t) => {
+      const tNorm = t.nama.toLowerCase().replace(/[\s_-]+/g, '');
+      return tNorm === actorNorm || tNorm.includes(actorNorm) || actorNorm.includes(tNorm);
+    });
+    if (!entityTable) continue;
+
+    // 1. Cek Topologi Jembatan Per-Entitas
+    const bridges = findBridgeTablesForEntity(entityTable.nama, tables);
+    const nonIdFields = entityTable.field.filter((f) => !isBaseIdentityField(f.nama));
+
+    // Jika tabel entitas murni profil identitas DAN memiliki tabel jembatan ke katalog -> Terbukti 3-lapis valid!
+    if (bridges.length > 0 && nonIdFields.length === 0) {
+      continue; // Entitas ini aman, lanjut periksa entitas lainnya
+    }
+
+    // 2. Jika tidak ada jembatan ATAU ada field non-identitas di profil -> MENCURIGAKAN (SUSPICIOUS FLAT)
+    // Panggil Lapis 2 AI Semantik untuk mengevaluasi berdasarkan konteks alur bisnis
+    console.log(`[SCHEMA-FLAT-AUDIT] Entitas "${actor}" mencurigakan (bridges: ${bridges.length}, non-identity fields: ${nonIdFields.map(f => f.nama).join(', ')}). Menjalankan audit AI semantik...`);
+    const audit = await auditSchemaFlatnessWithAI(actor, entityTable, tables, session, options);
+    if (audit.isViolation) {
+      violations.push(
+        audit.reason ||
+          `Tabel profil "${entityTable.nama}" menyerap penawaran layanan/aset sebagai teks bebas tanpa tabel katalog master independen dan tabel jembatan penghubung.`
+      );
+    }
+  }
+
+  return violations.length > 0 ? violations.join('\n- ') : null;
+}
+
+/**
+ * BAGIAN 2: Audit Kelaziman Desain Database (Database Normalization & Industry Best Practices)
+ * Mendeteksi anomali struktural seperti tabel master ganda (katalog vs inventaris terpisah),
+ * field yang seharusnya 1 tabel malah dipecah tanpa relasi, dsb.
+ */
+export async function auditDatabaseDesignStandardsWithAI(
+  tables: { nama: string; keterangan?: string; field: { nama: string; tipe: string; keterangan: string }[] }[],
+  session: MockupSessionState,
+  options?: { provider?: string; apiKey?: string; model?: string }
+): Promise<string | null> {
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+  const narrative = session.storyline?.narasi || '';
+  const anomalies: string[] = [];
+
+  // 1. Audit Topologis Cepat (Lapis 1 Heuristik):
+  // Cek apakah ada tabel katalog dan inventaris terpisah untuk entitas yang sama (seperti katalog_sepeda vs inventaris_sepeda)
+  // Akumulasikan seluruh anomali struktural dari setiap tabel (tidak berhenti di temuan pertama)
+  const tableNames = tables.map(t => t.nama.toLowerCase());
+  for (const t of tables) {
+    const tName = t.nama.toLowerCase();
+    if (tName.startsWith('inventaris_') || tName.startsWith('stok_')) {
+      const root = tName.replace(/^(inventaris_|stok_)/, '');
+      const hasDuplicateCatalog = tableNames.some(other => 
+        (other === `katalog_${root}` || other === root || other === `unit_${root}`) && other !== tName
+      );
+      if (hasDuplicateCatalog) {
+        anomalies.push(
+          `Tabel "${t.nama}" dan tabel katalog/unit untuk entitas "${root}" terpecah menjadi 2 tabel master independen tanpa relasi logis. Sesuai kelaziman baku database, satukan informasi aset/unit fisik dan kuantitas stok ke dalam satu tabel master katalog, jangan dibuat terpisah.`
+        );
+      }
+    }
+  }
+
+  // 1b. Cek apakah tabel transaksi sewa single-cycle dipecah menjadi tabel pembayaran atau pemeriksaan kondisi yang berelasi 1-ke-1
+  const rentalMain = tableNames.find(n => n === 'transaksi_sewa' || n === 'penyewaan_sepeda' || n === 'pendaftaran_sewa' || n === 'sewa_sepeda');
+  if (rentalMain) {
+    const has1to1Split = tableNames.some(n => 
+      /pembayaran|pembayaran_penyewaan/i.test(n) || /pemeriksaan_kondisi|kondisi_sepeda/i.test(n) || /pengembalian_sepeda/i.test(n)
+    );
+    if (has1to1Split) {
+      anomalies.push(
+        `Tabel "${rentalMain}" terpecah dengan tabel pembayaran atau pemeriksaan kondisi yang sebenarnya memiliki kardinalitas 1-ke-1 dalam satu siklus transaksi sewa. Satukan atribut pemeriksaan kondisi (saat ambil vs kembali) dan atribut biaya/transaksi langsung ke dalam tabel "${rentalMain}". DILARANG menambahkan field pembayaran atau biaya yang tidak terdaftar di Profil Domain atau Formula resmi.`
+      );
+    }
+  }
+
+  // 1c. Cek Kelaziman Domain Profile (Lapis 1 Heuristik Profil Domain):
+  if (session.domainProfile) {
+    const dp = session.domainProfile;
+    // Jika DI_TEMPAT, cek apakah ada field pengiriman/logistik/ongkir/kurir
+    if (dp.modelOperasional === 'DI_TEMPAT') {
+      for (const t of tables) {
+        const foundField = t.field.find(f => /ongkir|biaya_kirim|kurir|ekspedisi|no_resi|nomor_resi/i.test(f.nama));
+        if (foundField) {
+          anomalies.push(
+            `Tabel "${t.nama}" memuat field "${foundField.nama}" padahal model operasional bisnis adalah DI_TEMPAT (di lokasi/counter langsung tanpa pengiriman kurir). Hapus field pengiriman ini.`
+          );
+        }
+      }
+    }
+
+    // Jika tanpa deposit, cek apakah ada field deposit
+    if (dp.adaJaminanDeposit === false) {
+      for (const t of tables) {
+        const foundDeposit = t.field.find(f => /deposit|uang_jaminan|jaminan_deposit/i.test(f.nama));
+        if (foundDeposit) {
+          anomalies.push(
+            `Tabel "${t.nama}" memuat field "${foundDeposit.nama}" padahal profil bisnis tidak menggunakan sistem deposit jaminan. Hapus field deposit ini.`
+          );
+        }
+      }
+    }
+  }
+
+  // 2. Audit Semantik AI (Lapis 2 - Standar Industri & Kelaziman Baku)
+  const systemInstruction = `Anda adalah Principal Database Architect & Data Modeling Auditor berpengalaman.
+Tugas Anda adalah mengaudit rancangan skema database dari sisi KELAZIMAN BAKU PERANCANGAN DATABASE (Best Practices Normalisasi, Standar Industri, dan Integritas Relasional) untuk jenis bisnis terkait.
+${session.domainProfile ? `
+BATASAN KELAZIMAN DOMAIN PROFILE:
+- Model Operasional: ${session.domainProfile.modelOperasional}
+- Model Tarif: ${session.domainProfile.modelTarif}
+- Jaminan/Deposit: ${session.domainProfile.adaJaminanDeposit ? 'Ada' : 'Tidak Ada'}
+- Master Katalog Sah: [${session.domainProfile.entitasKatalogMaster.join(', ')}]
+- Transaksi Sah: [${session.domainProfile.entitasPencatatanTransaksi.join(', ')}]
+` : ''}
+KRITERIA ANOMALI / KETIDAKLAZIMAN DESAIN DATABASE:
+1. ENTITAS GANDA / DUPLIKASI MASTER:
+   - Terjadi pemecahan entitas fisik yang sama menjadi 2 tabel master tanpa relasi (contoh: 'katalog_sepeda' dan 'inventaris_sepeda', atau 'menu_makanan' dan 'stok_makanan'). Seharusnya stok/ketersediaan menjadi atribut pada tabel katalog master tersebut, BUKAN tabel mandiri terpisah.
+2. TABEL PECAHAN TANPA RELASI (ORPHAN TABLE):
+   - Tabel yang hanya menampung 1-2 atribut turunan tanpa Foreign Key ke tabel entitas utamanya.
+3. INKONSISTENSI DATA ENTITAS:
+   - Atribut yang nilainya bertentangan atau redundan antar-tabel untuk objek fisik yang sama.
+4. OVER-NORMALISASI TRANSAKSI SINGLE-CYCLE (1-KE-1 DIPERLAKUKAN SEBAGAI LAPIS 3):
+   - Pada bisnis dengan transaksi rental / sewa single-cycle (seperti rental sepeda, rental mobil, persewaan alat), siklus sewa adalah satu transaksi utuh (serah unit, deposit, pembayaran, cek kondisi kembali).
+   - DILARANG memecah pembayaran atau pemeriksaan kondisi menjadi tabel Lapis 3 terpisah karena kardinalitasnya 1-ke-1. Satukan atribut pembayaran dan pemeriksaan kondisi langsung ke dalam tabel transaksi sewa Lapis 2. Tabel Lapis 3 HANYA boleh dibuat jika relasinya genuinely 1-ke-banyak (seperti sesi les berulang di kursus musik atau riwayat angsuran).
+
+Jika skema SUDAH LAZIM, rapi, dan sesuai kaidah database industri, kembalikan:
+{"isAnomaly": false, "reason": null}
+
+Jika skema TIDAK LAZIM dan melanggar kelaziman baku desain database, kembalikan:
+{"isAnomaly": true, "reason": "Jelaskan kejanggalan spesifik dan instruksi perbaikan (tabel mana yang harus digabung ke mana)..."}
+
+KEMBALIKAN HANYA JSON.`;
+
+  const userPrompt = `Audit rancangan skema database berikut untuk domain bisnis "${businessDomain}":
+Narasi Bisnis: "${narrative}"
+
+Rancangan Tabel Saat Ini:
+${JSON.stringify(tables.map(t => ({
+  nama: t.nama,
+  keterangan: t.keterangan,
+  field: t.field.map(f => ({ nama: f.nama, tipe: f.tipe, keterangan: f.keterangan }))
+})), null, 2)}
+`;
+
+  try {
+    const aiRes = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 600,
+      provider: options?.provider,
+      userApiKey: options?.apiKey,
+      userModel: options?.model
+    });
+    if (aiRes) {
+      const parsed = robustJsonParse<{ isAnomaly?: boolean; reason?: string }>(aiRes);
+      if (parsed && parsed.isAnomaly && parsed.reason) {
+        // Hindari duplikasi teks anomali jika sudah ditangkap Lapis 1
+        const reasonLower = parsed.reason.toLowerCase();
+        const alreadyCovered = anomalies.some(a => reasonLower.includes(a.slice(0, 30).toLowerCase()));
+        if (!alreadyCovered) {
+          anomalies.push(parsed.reason);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AI-DB-DESIGN-AUDIT] Gagal mengeksekusi audit AI:', err);
+  }
+
+  return anomalies.length > 0 ? anomalies.join('\n- ') : null;
+}
+
+/**
+ * Jaring Pengaman Programatis: Memastikan tabel katalog dan inventaris entitas yang sama
+ * disatukan ke tabel katalog, dan tabel inventaris duplikat dihapus.
+ */
+export function ensureMergedCatalogAndInventory<T extends { nama: string; field: any[] }>(tables: T[]): T[] {
+  const result: T[] = [];
+  const inventoryTablesToRemove = new Set<string>();
+
+  for (const t of tables) {
+    const tName = t.nama.toLowerCase();
+    if (tName.startsWith('inventaris_') || tName.startsWith('stok_')) {
+      const root = tName.replace(/^(inventaris_|stok_)/, '');
+      const catalogTable = tables.find(other => {
+        const oName = other.nama.toLowerCase();
+        return (oName === `katalog_${root}` || oName === root || oName === `unit_${root}`) && oName !== tName;
+      });
+
+      if (catalogTable) {
+        // Pindahkan field unik dari tabel inventaris ke tabel katalog
+        const existingKeys = new Set(catalogTable.field.map((f: any) => f.nama.toLowerCase()));
+        for (const f of t.field) {
+          const fNameLower = f.nama.toLowerCase();
+          if (fNameLower !== 'id' && !existingKeys.has(fNameLower)) {
+            catalogTable.field.push(f);
+            existingKeys.add(fNameLower);
+          }
+        }
+        inventoryTablesToRemove.add(t.nama);
+      }
+    }
+  }
+
+  return tables.filter(t => !inventoryTablesToRemove.has(t.nama));
+}
+
+/**
+ * Jaring Pengaman Programatis (Bagian C): Memastikan transaksi sewa single-cycle (seperti Rental Sepeda)
+ * tidak diover-normalisasi menjadi tabel Lapis 3 terpisah untuk pembayaran atau pemeriksaan kondisi.
+ * Menggabungkan tabel pendaftaran sewa + pembayaran + pemeriksaan kondisi menjadi SATU tabel transaksi_sewa,
+ * sehingga skema Rental Sepeda bersih tepat menjadi 3 tabel: pelanggan, katalog_sepeda, transaksi_sewa.
+ */
+export function ensureMergedSingleCycleRentalTransactions<T extends { nama: string; field: any[]; keterangan?: string }>(
+  tables: T[],
+  session?: MockupSessionState
+): T[] {
+  // Cari tabel transaksi sewa utama
+  const rentalMainTable = tables.find(t => {
+    const n = t.nama.toLowerCase();
+    return n === 'transaksi_sewa' || n === 'penyewaan_sepeda' || n === 'pendaftaran_sewa' || n === 'sewa_sepeda';
+  });
+
+  if (!rentalMainTable) {
+    return tables;
+  }
+
+  // Standarisasi nama tabel menjadi 'transaksi_sewa'
+  if (rentalMainTable.nama.toLowerCase() !== 'transaksi_sewa') {
+    rentalMainTable.nama = 'transaksi_sewa';
+  }
+
+  const childTablesToRemove = new Set<string>();
+  const mainFieldKeys = new Set(rentalMainTable.field.map((f: any) => (f.nama || '').toLowerCase()));
+
+  for (const t of tables) {
+    const tName = t.nama.toLowerCase();
+    if (tName === rentalMainTable.nama.toLowerCase()) continue;
+
+    // Entitas agregasi operasional/laporan harian BUKAN child 1:1 per transaksi individual!
+    if (/rekap|laporan|summary|omzet/i.test(tName)) {
+      continue;
+    }
+
+    const is1to1Child = 
+      /pembayaran|pembayaran_penyewaan|bayar/i.test(tName) ||
+      /pemeriksaan|inspeksi|kondisi_sepeda|cek_sepeda/i.test(tName) ||
+      /pengembalian_sepeda|pengembalian/i.test(tName);
+
+    if (is1to1Child) {
+      for (const f of t.field) {
+        const fNameLower = (f.nama || '').toLowerCase();
+        // Abaikan PK 'id', atau FK yang merujuk ke tabel rental parent
+        if (fNameLower === 'id' || fNameLower === 'transaksi_sewa_id' || fNameLower === 'penyewaan_id' || fNameLower === 'penyewaan_sepeda_id' || fNameLower === 'sewa_id') {
+          continue;
+        }
+
+        // Filter ketat: DILARANG menyuntikkan field pembayaran/biaya liar yang tidak sah menurut Profil Domain atau Formula resmi
+        if (session && !isFieldAllowedByDomainProfile(f.nama, session.domainProfile, session.formulas?.daftar)) {
+          continue;
+        }
+
+        if (!mainFieldKeys.has(fNameLower)) {
+          rentalMainTable.field.push(f);
+          mainFieldKeys.add(fNameLower);
+        }
+      }
+      childTablesToRemove.add(t.nama);
+    }
+  }
+
+  // Pastikan field pemeriksaan kondisi ada di transaksi_sewa:
+  if (!mainFieldKeys.has('kondisi_saat_ambil') && !mainFieldKeys.has('kondisi_ambil')) {
+    rentalMainTable.field.push({ nama: 'kondisi_saat_ambil', tipe: 'text', keterangan: 'Kondisi fisik unit saat diserahkan ke pelanggan' });
+    mainFieldKeys.add('kondisi_saat_ambil');
+  }
+  if (!mainFieldKeys.has('kondisi_saat_kembali') && !mainFieldKeys.has('kondisi_kembali')) {
+    rentalMainTable.field.push({ nama: 'kondisi_saat_kembali', tipe: 'text', keterangan: 'Kondisi fisik unit saat dikembalikan' });
+    mainFieldKeys.add('kondisi_saat_kembali');
+  }
+
+  // Preservasi & Konsolidasi Field Deposit:
+  const hasDepositDiterima = mainFieldKeys.has('deposit_diterima');
+  const hasDepositPembayaran = mainFieldKeys.has('deposit_pembayaran');
+  const hasGenericDeposit = mainFieldKeys.has('deposit');
+
+  let canonicalDepositKey = 'deposit_diterima';
+  if (hasDepositDiterima) {
+    canonicalDepositKey = 'deposit_diterima';
+    if (hasDepositPembayaran) {
+      rentalMainTable.field = rentalMainTable.field.filter((f: any) => f.nama.toLowerCase() !== 'deposit_pembayaran');
+    }
+  } else if (hasDepositPembayaran) {
+    const depFld = rentalMainTable.field.find((f: any) => f.nama.toLowerCase() === 'deposit_pembayaran');
+    if (depFld) depFld.nama = 'deposit_diterima';
+    canonicalDepositKey = 'deposit_diterima';
+  } else if (hasGenericDeposit) {
+    canonicalDepositKey = 'deposit';
+  } else if (session?.domainProfile?.adaJaminanDeposit) {
+    rentalMainTable.field.push({ nama: 'deposit_diterima', tipe: 'angka', keterangan: 'Uang jaminan deposit yang diserahkan pelanggan' });
+    mainFieldKeys.add('deposit_diterima');
+    canonicalDepositKey = 'deposit_diterima';
+  }
+
+  // Hapus formula redundan jumlah_kembalian_deposit
+  rentalMainTable.field = rentalMainTable.field.filter((f: any) => !/kembalian_deposit|sisa_deposit/i.test(f.nama));
+  mainFieldKeys.delete('jumlah_kembalian_deposit');
+  mainFieldKeys.delete('kembalian_deposit');
+  mainFieldKeys.delete('sisa_deposit');
+
+  // Pertahankan formula sisa_tagihan HANYA jika terdaftar di Formula resmi yang dikonfirmasi pengguna
+  const confirmedFormulas = session?.formulas?.daftar || [];
+  const hasConfirmedSisaTagihan = confirmedFormulas.some(f => /sisa_tagihan|sisa_bayar/i.test(f.namaField || ''));
+  const sisaTagihanFld = rentalMainTable.field.find((f: any) => /sisa_tagihan|sisa_bayar/i.test(f.nama));
+
+  if (hasConfirmedSisaTagihan && sisaTagihanFld) {
+    const totalKey = mainFieldKeys.has('total_biaya_sewa') ? 'total_biaya_sewa' : 'total_biaya';
+    sisaTagihanFld.isFormula = true;
+    sisaTagihanFld.formulaExpression = `${totalKey} - ${canonicalDepositKey}`;
+  } else if (!hasConfirmedSisaTagihan && sisaTagihanFld) {
+    rentalMainTable.field = rentalMainTable.field.filter((f: any) => !/sisa_tagihan|sisa_bayar/i.test(f.nama));
+    mainFieldKeys.delete('sisa_tagihan');
+    mainFieldKeys.delete('sisa_bayar');
+  }
+
+  return tables.filter(t => !childTablesToRemove.has(t.nama));
+}
+
+/**
+ * Gerbang Validasi Whitelist Universal untuk Field Biaya / Moneter / Logistik.
+ * Memeriksa apakah suatu field diperbolehkan berdasarkan Profil Domain atau Formula terkonfirmasi.
+ * Field data operasional standar (non-moneter, non-logistik) selalu diizinkan.
+ */
+export function isFieldAllowedByDomainProfile(
+  fieldName: string,
+  domainProfile?: DomainProfile,
+  confirmedFormulas?: BusinessFormula[]
+): boolean {
+  if (!fieldName) return false;
+  const fLower = fieldName.toLowerCase().trim();
+
+  // 1. Cek field logistik / pengiriman: jika DI_TEMPAT dan tidak di whitelist komponen biaya, dilarang
+  const isLogistic = /ongkir|biaya_kirim|kurir|ekspedisi|no_resi|nomor_resi|pengiriman/i.test(fLower);
+  if (isLogistic) {
+    if (domainProfile?.modelOperasional === 'DI_TEMPAT') {
+      const inWhitelist = (domainProfile.komponenBiayaYangLazim || []).some(k =>
+        fLower.includes(k.toLowerCase().replace(/\s+/g, '_'))
+      );
+      if (!inWhitelist) return false;
+    }
+  }
+
+  // 2. Cek field deposit / jaminan: jika tidak ada jaminan deposit di domainProfile, dilarang
+  const isDeposit = /deposit|jaminan/i.test(fLower);
+  if (isDeposit) {
+    if (domainProfile && domainProfile.adaJaminanDeposit === false) {
+      return false;
+    }
+  }
+
+  // 3. Cek apakah field ini tergolong komponen finansial / biaya / pembayaran / tagihan
+  const isFinancial = /biaya|tarif|harga|ongkir|kirim|deposit|jaminan|bayar|pembayaran|tagihan|sisa_|denda|potongan|diskon|komisi|subtotal|total/i.test(
+    fLower
+  );
+
+  // Jika BUKAN field finansial dan lolos cek logistik/deposit di atas, field operasional selalu diizinkan
+  if (!isFinancial) {
+    return true;
+  }
+
+  // 4. Jika finansial: Cek apakah field ini terdaftar di Formula yang telah dikonfirmasi pengguna
+  if (confirmedFormulas && confirmedFormulas.length > 0) {
+    for (const form of confirmedFormulas) {
+      if ((form.namaField || '').toLowerCase() === fLower) return true;
+      if (Array.isArray(form.komponenInput) && form.komponenInput.some(ki => ki.toLowerCase() === fLower)) {
+        return true;
+      }
+      const exprVars = extractFormulaVariables(form.formulaExpression, form.formulaText);
+      if (exprVars.some(v => v.toLowerCase() === fLower)) return true;
+    }
+  }
+
+  // 5. Cek apakah field ini terdaftar di Whitelist Komponen Biaya Yang Lazim dari Domain Profile
+  if (domainProfile && Array.isArray(domainProfile.komponenBiayaYangLazim)) {
+    for (const kb of domainProfile.komponenBiayaYangLazim) {
+      const kbNorm = kb.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').trim();
+      if (fLower === kbNorm) return true;
+      if (fLower.includes(kbNorm) || kbNorm.includes(fLower)) return true;
+      if (kbNorm.includes('denda') && fLower.includes('denda')) return true;
+      if (kbNorm.includes('tarif') && fLower.includes('tarif')) return true;
+      if (kbNorm.includes('deposit') && fLower.includes('deposit')) return true;
+      if (kbNorm.includes('sewa') && fLower.includes('sewa')) return true;
+    }
+  }
+
+  // Khusus total umum & field agregat operasional penutupan yang sah:
+  if (
+    /^total(_biaya|_harga|_tagihan|_pendapatan|_omzet|_transaksi|_deposit_ditahan)?$/i.test(fLower) ||
+    fLower === 'catatan_penutupan' ||
+    fLower === 'tanggal_rekap'
+  ) {
+    if (domainProfile && domainProfile.komponenBiayaYangLazim && domainProfile.komponenBiayaYangLazim.length > 0) {
+      return true;
+    }
+  }
+
+  // Jika terdeteksi sebagai field finansial/pembayaran (misal jumlah_bayar, metode_pembayaran, sisa_tagihan)
+  // namun TIDAK lolos satupun whitelist di atas: TOLAK / HAPUS
+  return false;
+}
+
+/**
+ * Penyapuan Akhir Skema Data (Sanitization Sweep).
+ * Dijalankan SEBELUM skema ditampilkan ke pengguna (sebelum renderDataSchemaMarkdown).
+ */
+export function sanitizeSchemaFieldsByDomainProfile<T extends { nama: string; field: any[]; keterangan?: string }>(
+  tables: T[],
+  session: MockupSessionState
+): T[] {
+  if (!tables || tables.length === 0) return tables;
+  const domainProfile = session.domainProfile;
+  const confirmedFormulas = session.formulas?.daftar;
+
+  for (const table of tables) {
+    if (!table.field || !Array.isArray(table.field)) continue;
+    const initialCount = table.field.length;
+    table.field = table.field.filter(f => {
+      const allowed = isFieldAllowedByDomainProfile(f.nama, domainProfile, confirmedFormulas);
+      if (!allowed) {
+        console.log(`[Schema-Sanitizer] Menghapus field liar "${f.nama}" dari tabel "${table.nama}" (tidak ada di Profil Domain atau Formula).`);
+      }
+      return allowed;
+    });
+    if (table.field.length < initialCount) {
+      console.log(`[Schema-Sanitizer] Tabel "${table.nama}" disanitasi: ${initialCount} -> ${table.field.length} field.`);
+    }
+  }
+
+  return tables;
+}
+
+/**
+ * Evaluasi semantik AI: Apakah kebutuhan laporan merupakan VIEW_TURUNAN (default)
+ * atau TABEL_TERSIMPAN (kekecualian operasional penutupan manual).
+ */
+export async function evaluateReportRequirementWithAI(
+  session: MockupSessionState,
+  opts?: { provider?: string; apiKey?: string; model?: string }
+): Promise<{
+  needsReport: boolean;
+  isManualClosing: boolean;
+  reason: string;
+  reportTitle?: string;
+  sourceTable?: string;
+  groupByField?: string;
+  groupByLabel?: string;
+  aggregates?: ViewAggregateField[];
+}> {
+  const domainProfile = session.domainProfile;
+  const mainFlow = session.flow?.alurInti || [];
+  const alurPendukung = session.flow?.alurPendukung || [];
+  const fiturPendukung = session.flow?.fiturPendukung || [];
+  const narrative = session.storyline?.narasi || '';
+
+  const systemInstruction = `Anda adalah Analis Sistem & Arsitek Database Profesional.
+Tugas Anda: Menganalisis kebutuhan pelaporan/rekapitulasi data pada suatu aplikasi bisnis dan menentukan arsitektur penyimpanannya secara cerdas (Normalisasi Database & Single Source of Truth).
+
+PRINSIP KELAZIMAN PERANCANGAN:
+1. APAKAH BUTUH LAPORAN/REKAPITULASI BERKALA (needsReport)?
+   - Evaluasi narasi, alur, dan fitur pendukung: jika ada kebutuhan melihat ringkasan transaksi, rekap omzet, total pendapatan, atau performa berkala -> needsReport = true.
+   - Jika murni sistem pencatatan sederhana tanpa kebutuhan rekapitulasi berkala -> needsReport = false.
+
+2. JIKA BUTUH LAPORAN, TENTUKAN ARSITEKTUR PENYIMPANAN BERDASARKAN MAKNA BISNIS:
+   * KATEGORI A: VIEW_TURUNAN (isManualClosing: false) — [DEFAULT KELAZIMAN DATABASE]
+     PILIH INI JIKA tujuannya adalah PEMANTAUAN, MELIHAT OMZET, ATAU MONITORING PERFORMA (misal: "Super Admin memantau rekap omzet harian", "melihat total transaksi per hari", "laporan performa transaksi").
+     Seluruh data ini BISA dan HARUS dihitung secara realtime dari tabel transaksi (menggunakan agregasi COUNT/SUM tanpa membuat tabel fisik baru) agar mencegah redundansi dan anomali data.
+
+   * KATEGORI B: TABEL_TERSIMPAN (isManualClosing: true) — [KEKECUALIAN OPERASIONAL KHUSUS]
+     PILIH INI HANYA DAN HANYA JIKA proses bisnis secara eksplisit melibatkan TINDAKAN OPERASIONAL PENUTUPAN MANUAL oleh staf atau kasir.
+     Kriteria makna operasional manual:
+     - Kasir/staf secara fisik menghitung uang tunai di laci / mencocokkan fisik uang dengan catatan sistem.
+     - Ada proses serah-terima shift kasir / pergantian petugas jaga yang mencatat saldo kas fisik penutupan.
+     - Ada pencatatan catatan kendala harian / berita acara penutupan kasir manual yang ditandatangani staf.
+     (PERINGATAN KERAS: JANGAN memilih TABEL_TERSIMPAN hanya karena ada frasa "laporan harian" atau "rekap harian"! Pilih TABEL_TERSIMPAN hanya jika alur operasionalnya secara makna memang memiliki proses penutupan/serah-terima shift manual oleh manusia).
+
+KEMBALIKAN HANYA FORMAT JSON:
+{
+  "needsReport": true,
+  "isManualClosing": false,
+  "reason": "Penjelasan singkat dasar penalaran semantik",
+  "reportTitle": "Laporan Harian",
+  "sourceTable": "transaksi_sewa",
+  "groupByField": "jam_mulai",
+  "groupByLabel": "Tanggal Transaksi",
+  "aggregates": [
+    { "key": "total_transaksi", "label": "Total Transaksi", "op": "COUNT", "sourceKey": "id", "format": "angka" },
+    { "key": "total_pendapatan", "label": "Total Omzet", "op": "SUM", "sourceKey": "total_biaya", "format": "rupiah" }
+  ]
+}`;
+
+  const userPrompt = `Narasi Bisnis:
+${narrative}
+
+Alur Inti:
+${mainFlow.map(s => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
+
+Alur Pendukung:
+${alurPendukung.map(ap => `- ${ap.nama}: ${ap.steps.map(s => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
+${fiturPendukung.length > 0 ? `\nFitur Pendukung:\n${fiturPendukung.map((fp, i) => `${i + 1}. ${fp}`).join('\n')}` : ''}
+${domainProfile ? `\nProfil Domain:\n- Model Operasional: ${domainProfile.modelOperasional}\n- Entitas Pencatatan: ${domainProfile.entitasPencatatanTransaksi?.join(', ')}` : ''}
+
+Lakukan evaluasi semantik dan kembalikan JSON:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 1000,
+      provider: opts?.provider,
+      userApiKey: opts?.apiKey,
+      userModel: opts?.model
+    });
+
+    const parsed = robustJsonParse<any>(raw);
+    if (parsed && typeof parsed.needsReport === 'boolean') {
+      return {
+        needsReport: parsed.needsReport,
+        isManualClosing: Boolean(parsed.isManualClosing),
+        reason: parsed.reason || '',
+        reportTitle: parsed.reportTitle || 'Laporan Harian',
+        sourceTable: parsed.sourceTable,
+        groupByField: parsed.groupByField,
+        groupByLabel: parsed.groupByLabel || 'Tanggal Transaksi',
+        aggregates: Array.isArray(parsed.aggregates) ? parsed.aggregates : undefined
+      };
+    }
+  } catch (err) {
+    console.warn('[AI-REPORT-EVAL] Gagal evaluasi semantik AI kebutuhan laporan, beralih ke penalaran fallback:', err);
+  }
+
+  // Fallback penalaran semantik jika pemanggilan API gagal:
+  const combinedText = (narrative + ' ' + fiturPendukung.join(' ') + ' ' + mainFlow.map(s => s.aksi).join(' ')).toLowerCase();
+  const mentionsReport = /laporan|rekap|harian|omzet|ringkasan/i.test(combinedText);
+  // Manual closing hanya jika menyiratkan aktivitas fisik staf menutup kasir/laci/shift
+  const mentionsManualClosing = /tutup kasir|tutup shift|serah terima|hitung uang|uang fisik|laci kasir|rekonsiliasi kas/i.test(combinedText);
+
+  return {
+    needsReport: mentionsReport,
+    isManualClosing: mentionsManualClosing,
+    reason: mentionsManualClosing ? 'Fallback: terdeteksi proses operasional penutupan kasir manual' : 'Fallback: pemantauan performa standar (view turunan)',
+    reportTitle: 'Laporan Harian',
+    groupByField: 'tanggal',
+    groupByLabel: 'Tanggal Transaksi'
+  };
+}
+
+/**
+ * Penyelarasan Entitas Tabel & Laporan Turunan (viewsConfig) berdasarkan
+ * hasil penalaran semantik AI atas kelaziman kebutuhan pelaporan.
+ */
+export async function ensureDomainProfileEntitiesAndViews<T extends { nama: string; field: any[]; keterangan?: string }>(
+  tables: T[],
+  session: MockupSessionState,
+  opts?: { provider?: string; apiKey?: string; model?: string }
+): Promise<{ tables: T[]; views: ViewConfig[] }> {
+  const evalReport = await evaluateReportRequirementWithAI(session, opts);
+  let finalTables = [...tables];
+  let finalViews: ViewConfig[] = [];
+
+  // Cari tabel transaksi operasional utama (transaksi sewa, pesanan, layanan, dll)
+  const mainTx =
+    finalTables.find(t => /transaksi|sewa|rental|order|pesanan|pendaftaran|layanan|servis|booking/i.test(t.nama)) ||
+    finalTables.find(t => !isTablePengguna(t.nama) && !/pelanggan|customer|klien|siswa|pasien|member|katalog|paket|master|sepeda|unit/i.test(t.nama)) ||
+    finalTables[0];
+  const sourceTable = evalReport.sourceTable || mainTx?.nama || 'transaksi_sewa';
+  const mainTxFields = (mainTx?.field || []).map((f: any) => f.nama);
+  const dateField = evalReport.groupByField || mainTxFields.find(f => /jam_mulai|tanggal|waktu|created_at/i.test(f)) || 'tanggal';
+  const sumField = evalReport.aggregates?.find(a => a.op === 'SUM')?.sourceKey || mainTxFields.find(f => /total_biaya|total|biaya|harga/i.test(f)) || 'total_biaya';
+
+  if (evalReport.needsReport && evalReport.isManualClosing) {
+    // KEKECUALIAN: Tabel Tersimpan (Operasional Tutup Kasir Fisik Manual)
+    console.log(`[Report-Architect] Terdeteksi kebutuhan TABEL TERSIMPAN operasional penutupan manual: ${evalReport.reason}`);
+    const alreadyHas = finalTables.some(t => /rekap|laporan|summary|omzet/i.test(t.nama));
+    if (!alreadyHas) {
+      finalTables.push({
+        nama: 'rekap_transaksi_harian',
+        keterangan: 'Menyimpan riwayat pembukuan dan penutupan kasir harian operasional',
+        field: [
+          { nama: 'id', tipe: 'text', keterangan: 'Identitas unik rekap penutupan' },
+          { nama: 'tanggal_rekap', tipe: 'tanggal', keterangan: 'Tanggal penutupan operasional' },
+          { nama: 'total_transaksi', tipe: 'angka', keterangan: 'Jumlah total transaksi pada hari penutupan' },
+          { nama: 'total_pendapatan', tipe: 'angka', keterangan: 'Total omzet penerimaan biaya yang dibukukan' },
+          { nama: 'total_deposit_ditahan', tipe: 'angka', keterangan: 'Total nominal jaminan deposit yang masih aktif' },
+          { nama: 'catatan_penutupan', tipe: 'text', keterangan: 'Catatan fisik / kendala operasional kasir saat penutupan shift' },
+          { nama: 'petugas_rekap_id', tipe: 'relasi ke pengguna', keterangan: 'Staf kasir yang melakukan penutupan' }
+        ]
+      } as any);
+    }
+  } else if (evalReport.needsReport && !evalReport.isManualClosing) {
+    // DEFAULT: VIEW_TURUNAN (Computed View Tanpa Tabel Fisik Baru)
+    console.log(`[Report-Architect] Terdeteksi kebutuhan VIEW TURUNAN (Computed View): ${evalReport.reason}`);
+    // HAPUS generik seluruh tabel laporan/rekap dari daftar tabel fisik:
+    finalTables = finalTables.filter(t => !/rekap|laporan|summary|omzet/i.test(t.nama));
+
+    finalViews.push({
+      id: 'laporan_harian',
+      label: evalReport.reportTitle || 'Laporan Harian',
+      icon: '📊',
+      targetRoles: ['Super Admin', 'Owner', 'Manajer'],
+      sourceTable,
+      groupByField: dateField,
+      groupByLabel: evalReport.groupByLabel || 'Tanggal Transaksi',
+      aggregates: evalReport.aggregates && evalReport.aggregates.length > 0 ? evalReport.aggregates : [
+        { key: 'total_transaksi', label: 'Total Transaksi', op: 'COUNT', sourceKey: 'id', format: 'angka' },
+        { key: 'total_pendapatan', label: 'Total Omzet', op: 'SUM', sourceKey: sumField, format: 'rupiah' }
+      ],
+      keterangan: 'Laporan ringkasan terhitung otomatis secara realtime dari data transaksi (Read-Only).'
+    });
+  } else {
+    // Tidak membutuhkan laporan: hapus tabel laporan yang mungkin terbentuk
+    finalTables = finalTables.filter(t => !/rekap|laporan|summary|omzet/i.test(t.nama));
+  }
+
+  // Sinkronkan ke state session
+  if (session.dataSchema) {
+    session.dataSchema.views = finalViews;
+  }
+
+  return { tables: finalTables, views: finalViews };
+}
+
+/**
+ * Memastikan seluruh entitas agregasi pelaporan / rekapitulasi harian
+ * dari DomainProfile atau Fitur Pendukung benar-benar terbentuk di skema data final (versi sinkron).
+ */
+export function ensureDomainProfileEntitiesInSchema<T extends { nama: string; field: any[]; keterangan?: string }>(
+  tables: T[],
+  session: MockupSessionState
+): T[] {
+  // Jika session sudah memiliki views terkonfigurasi, pastikan tabel fisik rekap dihapus
+  if (session.dataSchema?.views && session.dataSchema.views.length > 0) {
+    return tables.filter(t => !/rekap|laporan|summary|omzet/i.test(t.nama));
+  }
+  // Jika narasi eksplisit tutup kasir manual:
+  const narrative = (session.storyline?.narasi || '') + ' ' + (session.flow?.alurInti || []).map(s => s.aksi).join(' ');
+  const isManual = /tutup.*kasir|tutup.*shift|serah.*terima.*shift|hitung.*uang.*fisik/i.test(narrative);
+  if (isManual) {
+    const alreadyHas = tables.some(t => /rekap|laporan|summary|omzet/i.test(t.nama));
+    if (!alreadyHas) {
+      return [...tables, {
+        nama: 'rekap_transaksi_harian',
+        keterangan: 'Menyimpan riwayat pembukuan dan penutupan kasir harian operasional',
+        field: [
+          { nama: 'id', tipe: 'text', keterangan: 'Identitas unik rekap penutupan' },
+          { nama: 'tanggal_rekap', tipe: 'tanggal', keterangan: 'Tanggal penutupan operasional' },
+          { nama: 'total_transaksi', tipe: 'angka', keterangan: 'Jumlah transaksi pada hari penutupan' },
+          { nama: 'total_pendapatan', tipe: 'angka', keterangan: 'Total omzet penerimaan biaya yang dibukukan' },
+          { nama: 'catatan_penutupan', tipe: 'text', keterangan: 'Catatan operasional saat penutupan kasir' },
+          { nama: 'petugas_rekap_id', tipe: 'relasi ke pengguna', keterangan: 'Staf kasir yang menyusun rekap' }
+        ]
+      } as any];
+    }
+    return tables;
+  }
+  return tables.filter(t => !/rekap|laporan|summary|omzet/i.test(t.nama));
+}
+
+/**
+ * Memastikan semua variabel input formula yang dideklarasikan benar-benar tersedia langsung
+ * di tabel target sebagai snapshot field saat transaksi terjadi (Opsi A - Best Practice Audit Trail).
+ */
+export function ensureFormulaFieldsInTargetTables<T extends { nama: string; field: any[]; keterangan?: string }>(
+  tables: T[],
+  formulas?: BusinessFormula[]
+): T[] {
+  if (!formulas || formulas.length === 0 || !tables || tables.length === 0) {
+    return tables;
+  }
+
+  for (const f of formulas) {
+    // 1. Identifikasi tabel target
+    const targetTableName = (f.targetTable || '').toLowerCase().trim();
+    let targetTable = tables.find((t) => t.nama.toLowerCase() === targetTableName);
+
+    if (!targetTable && targetTableName) {
+      // Fuzzy matching tabel target
+      targetTable = tables.find((t) => {
+        const tn = t.nama.toLowerCase();
+        return (
+          tn.includes(targetTableName) ||
+          targetTableName.includes(tn) ||
+          (/sewa|rental|transaksi/i.test(tn) && /sewa|rental|transaksi/i.test(targetTableName))
+        );
+      });
+    }
+
+    // Jika tetap tidak ditemukan, pilih tabel transaksi utama (non-pengguna, non-katalog)
+    if (!targetTable) {
+      targetTable = tables.find((t) => !isTablePengguna(t.nama) && !/katalog|paket|master/i.test(t.nama)) || tables[0];
+    }
+
+    if (!targetTable) continue;
+
+    const tableFieldMap = new Map(targetTable.field.map((fld: any) => [(fld.nama || '').toLowerCase(), fld]));
+
+    // 2. Pastikan field hasil formula ada di tabel target
+    const resultFieldKey = (f.namaField || '').toLowerCase();
+    const existingResultFld = tableFieldMap.get(resultFieldKey);
+    if (existingResultFld) {
+      existingResultFld.isFormula = true;
+      existingResultFld.formulaExpression = f.formulaExpression || f.formulaText;
+    } else if (f.namaField) {
+      const newResultFld = {
+        nama: f.namaField,
+        tipe: 'angka',
+        keterangan: f.deskripsi || f.labelField || `Hasil kalkulasi formula ${f.namaField}`,
+        isFormula: true,
+        formulaExpression: f.formulaExpression || f.formulaText
+      };
+      targetTable.field.push(newResultFld);
+      tableFieldMap.set(resultFieldKey, newResultFld);
+    }
+
+    // 3. Pastikan SEMUA variabel input formula tersedia langsung di tabel target (Opsi A - Snapshot Field)
+    const pureVars = extractFormulaVariables(f.formulaExpression, f.formulaText);
+    const varsToCheck = pureVars.length > 0 ? pureVars : (f.komponenInput || []);
+
+    for (const varName of varsToCheck) {
+      const vKey = varName.toLowerCase();
+      if (tableFieldMap.has(vKey)) {
+        continue; // Sudah ada langsung di tabel target
+      }
+
+      // Cari apakah variabel ini ada di tabel lain (misal tabel master katalog sepeda/layanan)
+      let foundInOtherTable: { table: T; field: any } | null = null;
+      for (const otherTable of tables) {
+        if (otherTable.nama.toLowerCase() === targetTable.nama.toLowerCase()) continue;
+        const matchedField = otherTable.field.find((of: any) => (of.nama || '').toLowerCase() === vKey);
+        if (matchedField) {
+          foundInOtherTable = { table: otherTable, field: matchedField };
+          break;
+        }
+      }
+
+      if (foundInOtherTable) {
+        // Salin sebagai snapshot field ke tabel target
+        const snapshotField = {
+          nama: varName,
+          tipe: foundInOtherTable.field.tipe || 'angka',
+          keterangan: `${foundInOtherTable.field.keterangan || varName} (snapshot dari ${foundInOtherTable.table.nama} saat transaksi dicatat)`
+        };
+        targetTable.field.push(snapshotField);
+        tableFieldMap.set(vKey, snapshotField);
+      } else {
+        // Buat field baru jika belum ada di tabel manapun
+        const fallbackField = {
+          nama: varName,
+          tipe: 'angka',
+          keterangan: `Snapshot ${varName.replace(/_/g, ' ')} saat transaksi dicatat`
+        };
+        targetTable.field.push(fallbackField);
+        tableFieldMap.set(vKey, fallbackField);
+      }
+    }
+  }
+
+  return tables;
+}
+
+export function filterFormulasByDomainProfile(
+  formulas: BusinessFormula[],
+  profile?: DomainProfile
+): BusinessFormula[] {
+  // Sinkronkan komponenInput dengan variabel yang benar-benar ada di formulaExpression
+  const syncedFormulas = formulas.map((f) => {
+    const pureVars = extractFormulaVariables(f.formulaExpression, f.formulaText);
+    return {
+      ...f,
+      komponenInput: pureVars.length > 0 ? pureVars : (f.komponenInput || [])
+    };
+  });
+
+  if (!profile || !profile.komponenBiayaYangLazim || profile.komponenBiayaYangLazim.length === 0) {
+    return syncedFormulas;
+  }
+
+  // Normalisasi whitelist menjadi token bersih
+  const whitelist = profile.komponenBiayaYangLazim.map((k) =>
+    k.toLowerCase().trim().replace(/[\s_-]/g, '')
+  );
+
+  // Term kalkulasi agregasi standar yang inheren
+  const neutralTerms = [
+    'total', 'subtotal', 'grandtotal', 'sisa', 'kembalian', 'selisih', 'net', 'gross', 'tagihan', 'biaya'
+  ];
+
+  const isAllowedToken = (token: string): boolean => {
+    const clean = token.toLowerCase().trim().replace(/[\s_-]/g, '');
+    if (!clean || /^\d+$/.test(clean)) return true;
+    if (whitelist.some((w) => clean === w || clean.includes(w) || w.includes(clean))) {
+      return true;
+    }
+    if (neutralTerms.some((n) => clean === n || clean.includes(n))) {
+      return true;
+    }
+    return false;
+  };
+
+  return syncedFormulas.filter((f) => {
+    // 0. Cek namaField formula itu sendiri
+    if (!isAllowedToken(f.namaField)) {
+      console.warn(
+        `[filterFormulasByDomainProfile] Eliminasi formula "${f.namaField}": namaField tidak ada dalam whitelist domain [${profile.komponenBiayaYangLazim.join(', ')}]`
+      );
+      return false;
+    }
+
+    // 1. Cek komponenInput (yang sudah murni di-derive dari formulaExpression)
+    if (Array.isArray(f.komponenInput) && f.komponenInput.length > 0) {
+      for (const input of f.komponenInput) {
+        if (!isAllowedToken(input)) {
+          console.warn(
+            `[filterFormulasByDomainProfile] Eliminasi formula "${f.namaField}": input "${input}" tidak ada dalam whitelist domain [${profile.komponenBiayaYangLazim.join(', ')}]`
+          );
+          return false;
+        }
+      }
+    }
+
+    // 2. Cek token dalam ekspresi matematika
+    const expr = (f.formulaExpression || f.formulaText || '').replace(/[^a-zA-Z0-9_]/g, ' ');
+    const tokens = expr.split(/\s+/).filter((t) => t.length > 0 && !/^\d+$/.test(t));
+    for (const token of tokens) {
+      if (!isAllowedToken(token)) {
+        console.warn(
+          `[filterFormulasByDomainProfile] Eliminasi formula "${f.namaField}": token ekspresi "${token}" tidak ada dalam whitelist domain [${profile.komponenBiayaYangLazim.join(', ')}]`
+        );
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+export async function generateFormulasWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<{ formulas: BusinessFormula[] }> {
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+  const narrative = session.storyline?.narasi || '';
+  const mainFlow = session.flow?.alurInti || [];
+  const alurPendukung = session.flow?.alurPendukung || [];
+  const fiturPendukung = session.flow?.fiturPendukung || [];
+  const rbacModul = session.rbac?.modul || [];
+  const domainProfile = session.domainProfile;
+
+  const systemInstruction = `Anda adalah Analis Sistem & Bisnis yang bertugas mengidentifikasi seluruh kebutuhan kalkulasi / formula otomatis untuk aplikasi.
+Analisis secara teliti dan mendalam dari narasi alur bisnis, tahapan transaksi, dan modul yang disepakati:
+1. OPERASI ARITMETIKA BISNIS YANG LAZIM:
+   - Perkalian (Multiplication):
+     * durasi/jam/hari * tarif_per_satuan (sewa/rental/kursus per jam/hari)
+     * kuantitas/qty * harga_satuan (belanja/jasa/sparepart)
+     * berat_kg * tarif_per_kg (laundry/ekspedisi/pengepul)
+   - Penjumlahan (Addition):
+     * subtotal + biaya_layanan + denda (total bayar akhir)
+     * angsuran_pokok + bunga_jasa
+   - Pengurangan (Subtraction):
+     * total_tagihan - nominal_diskon - uang_muka (sisa tagihan/pelunasan)
+     * stok_awal - jumlah_keluar (sisa stok)
+     * target - capaian_realisasi
+   - Pembagian / Persentase:
+     * bagi hasil, komisi persen, dsb.
+
+2. ATURAN PENAMAAN FIELD & TABEL:
+   - Gunakan huruf kecil dengan underscore (snake_case) untuk namaField (misal: 'total_biaya', 'subtotal', 'denda_keterlambatan', 'sisa_tagihan').
+   - Field formula HARUS memiliki targetTable yang relevan dengan transaksi/pencatatan tersebut (misal: 'transaksi_sewa', 'pendaftaran_kursus', 'pesanan', 'layanan_servis').
+   - komponenInput adalah daftar nama field numerik yang menjadi variabel perhitungan di tabel tersebut (misal: ["durasi_jam", "tarif_per_jam"]).
+   - formulaExpression adalah ekspresi matematika javascript valid sederhana menggunakan nama field input (misal: "durasi_jam * tarif_per_jam", "subtotal + denda", "jumlah * harga_satuan").
+   * ATURAN SINKRONISASI MUTLAK: Seluruh elemen di 'komponenInput' HARUS 100% SAMA dan EKSPLISIT DIGUNAKAN di 'formulaExpression'. DILARANG KERAS mencantumkan variabel di 'komponenInput' yang tidak pernah dipakai di 'formulaExpression' (misalnya: jika rumus total_biaya adalah "durasi_jam * tarif_per_jam + denda_keterlambatan", JANGAN masukkan 'deposit' ke dalam komponenInput karena deposit tidak dipakai di rumus tersebut)!
+
+3. JIKA BISNIS SANGAT SEDERHANA TANPA RUMUS KALKULASI:
+   Kembalikan array kosong: {"formulas": []}. JANGAN MENGADA-ADA rumus jika alur bisnis murni pencatatan status tanpa kalkulasi numerik.
+${domainProfile ? `
+4. BATASAN KELAZIMAN BISNIS (STRICT WHITELIST):
+   - Model Operasional: ${domainProfile.modelOperasional}
+   - Model Tarif: ${domainProfile.modelTarif}
+   - Jaminan / Deposit: ${domainProfile.adaJaminanDeposit ? `Ada (${domainProfile.fungsiDeposit || 'Jaminan unit'})` : 'Tidak Ada'}
+   - WHITELIST KOMPONEN SAH: [${domainProfile.komponenBiayaYangLazim.join(', ')}]
+   * PENTING: Variabel atau komponen biaya dalam formula kalkulasi HANYA boleh berasal dari whitelist sah di atas. Dilarang keras mengada-ada variabel di luar whitelist (misalnya: dilarang menambahkan ongkir/pengiriman jika bukan bisnis pengiriman atau jika ongkir tidak ada di whitelist).
+   * WAJIB TELITI MEMANFAATKAN WHITELIST: Periksa setiap butir dalam WHITELIST KOMPONEN SAH di atas. Jika suatu komponen biaya sah (seperti denda keterlambatan, biaya overtime, diskon, dll.) relevan dengan narasi alur operasional, penyelesaian, atau pengembalian di Alur Inti atau Alur Pendukung, WAJIB rumuskan formula perhitungannya (misalnya formula denda_keterlambatan atau integrasikan ke dalam formula total biaya/pelunasan). Jangan biarkan komponen sah terabaikan jika alur operasionalnya ada!` : ''}
+
+KEMBALIKAN HANYA FORMAT JSON:
+{
+  "formulas": [
+    {
+      "namaField": "total_biaya",
+      "labelField": "Total Biaya (Rp)",
+      "targetTable": "transaksi_rental",
+      "deskripsi": "Total biaya sewa dihitung dari durasi jam dikalikan tarif per jam",
+      "formulaText": "durasi_jam * tarif_per_jam",
+      "komponenInput": ["durasi_jam", "tarif_per_jam"],
+      "tipeOperasi": "perkalian",
+      "formulaExpression": "durasi_jam * tarif_per_jam"
+    }
+  ]
+}`;
+
+  const userPrompt = `Domain Usaha: ${businessDomain}
+
+Gambaran Proses:
+${narrative}
+${session.storyline?.asumsiAlurUtama ? `Alur Utama: ${session.storyline.asumsiAlurUtama}` : ''}
+
+Alur Inti Operasional:
+${mainFlow.map((s) => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
+
+Alur Pendukung:
+${alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
+${fiturPendukung.length > 0 ? `\nFitur Pendukung:\n${fiturPendukung.map((fp, idx) => `${idx + 1}. ${fp}`).join('\n')}` : ''}
+
+Modul RBAC:
+${rbacModul.map((m) => `- ${m.nama}: ${m.deskripsiFungsional || ''}`).join('\n')}
+${domainProfile ? `\nWhitelist Komponen Biaya Sah:\n${domainProfile.komponenBiayaYangLazim.join(', ')}` : ''}
+
+Identifikasi seluruh formula dan rumus kalkulasi otomatis yang dibutuhkan aplikasi ini dalam format JSON:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.2,
+      maxTokens: 2000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+    if (raw) {
+      const parsed = robustJsonParse<{ formulas?: BusinessFormula[] }>(raw);
+      if (parsed && Array.isArray(parsed.formulas)) {
+        const filtered = filterFormulasByDomainProfile(parsed.formulas, domainProfile);
+        return { formulas: filtered };
+      }
+    }
+  } catch (err) {
+    console.warn('[generateFormulasWithAI] Gagal invoke AI formula:', err);
+  }
+
+  return { formulas: [] };
+}
+
+export async function reviseFormulasWithAI(
+  session: MockupSessionState,
+  correctionText: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<{ formulas: BusinessFormula[]; markdownTable: string }> {
+  const currentFormulas = session.formulas?.daftar || [];
+  const domainProfile = session.domainProfile;
+
+  const systemInstruction = `Anda adalah Analis Sistem yang membantu pengguna menyesuaikan daftar formula / rumus kalkulasi aplikasi bisnis.
+Tugas Anda: Memperbarui daftar formula berdasarkan permintaan koreksi dari pengguna.
+Anda dapat menambahkan formula baru, mengedit rumus yang ada, atau menghapus formula yang diminta dihapus.
+* ATURAN SINKRONISASI MUTLAK: Seluruh elemen di 'komponenInput' HARUS 100% SAMA dan EKSPLISIT DIGUNAKAN di 'formulaExpression'. DILARANG mencantumkan variabel yang tidak dipakai di ekspresi rumus.
+${domainProfile ? `
+BATASAN KELAZIMAN BISNIS (STRICT WHITELIST):
+- WHITELIST KOMPONEN SAH: [${domainProfile.komponenBiayaYangLazim.join(', ')}]
+Kecuali pengguna secara eksplisit meminta komponen biaya baru dalam teks koreksinya, pertahankan kalkulasi hanya pada komponen biaya yang sah.` : ''}
+
+KEMBALIKAN HANYA FORMAT JSON:
+{
+  "formulas": [
+    {
+      "namaField": "string snake_case",
+      "labelField": "Label Manusiawi",
+      "targetTable": "nama_tabel",
+      "deskripsi": "keterangan rumus",
+      "formulaText": "ekspresi manusiawi",
+      "komponenInput": ["field1", "field2"],
+      "tipeOperasi": "perkalian",
+      "formulaExpression": "field1 * field2"
+    }
+  ]
+}`;
+
+  const userPrompt = `Daftar Formula Saat Ini:
+${JSON.stringify(currentFormulas, null, 2)}
+
+Permintaan Koreksi Pengguna:
+"${correctionText}"
+
+Perbarui daftar formula sesuai permintaan di atas dalam format JSON:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.2,
+      maxTokens: 2000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+    if (raw) {
+      const parsed = robustJsonParse<{ formulas?: BusinessFormula[] }>(raw);
+      if (parsed && Array.isArray(parsed.formulas)) {
+        const filtered = filterFormulasByDomainProfile(parsed.formulas, domainProfile);
+        const md = renderFormulaMarkdownTable(filtered);
+        return { formulas: filtered, markdownTable: md };
+      }
+    }
+  } catch (err) {
+    console.warn('[reviseFormulasWithAI] Gagal revisi formula dengan AI:', err);
+  }
+
+  return {
+    formulas: currentFormulas,
+    markdownTable: renderFormulaMarkdownTable(currentFormulas)
+  };
+}
+
 export async function generateDataSchemaWithAI(
   session: MockupSessionState,
   provider?: string,
@@ -2781,6 +4555,14 @@ export async function generateDataSchemaWithAI(
   const rbacModul = session.rbac?.modul || [];
   const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
 
+  const formulaListPrompt = (session.formulas?.daftar || []).length > 0
+    ? `\n⚠️ DAFTAR FORMULA / KALKULASI YANG SUDAH DIKONFIRMASI (WAJIB DIMASUKKAN KE SKEMA):
+${session.formulas!.daftar.map((f) => `- Tabel "${f.targetTable || 'terkait'}": Field "${f.namaField}" (${f.labelField})
+  * Rumus: ${f.formulaText || f.formulaExpression}
+  * Komponen Input: [${(f.komponenInput || []).join(', ')}]
+  * ATURAN WAJIB: Masukkan field "${f.namaField}" bertipe "angka" ke tabel "${f.targetTable || 'terkait'}" dengan tanda isFormula: true dan formulaExpression: "${f.formulaExpression || f.formulaText}". Pastikan seluruh komponen input (${(f.komponenInput || []).join(', ')}) juga ada sebagai field numerik di tabel tersebut!`).join('\n')}`
+    : '';
+
   const delegationRulesPrompt = delegated.length > 0
     ? `\n⚠️ ATURAN KHUSUS PELIMPAHAN TUGAS PADA FIELD TABEL (WAJIB DIPATUHI):
 ${delegated.map((d) => `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan seluruh wewenangnya dialihkan ke "${d.keRole}".
@@ -2794,17 +4576,38 @@ ${entityDataActors
   .map(
     (e) =>
       `- "${e.actor}" adalah ENTITAS DATA yang dicatat dan dilayani oleh "${e.ownerRole || 'Staf Operasional'}", BUKAN akun pengguna login.
-  * WAJIB dibuatkan tabel data tersendiri (misal: "${e.actor.toLowerCase()}") untuk mencatat profil dan riwayat bisnisnya.
+  * WAJIB dibuatkan tabel data tersendiri (misal: "${e.actor.toLowerCase()}") untuk mencatat profil dan identitas bisnisnya.
   * DILARANG KERAS menyertakan field kredensial (username, password, pin, token) pada tabel "${e.actor.toLowerCase()}".
-  * Field relasi dari tabel transaksi ke ${e.actor} merujuk ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}"), dan seluruh field staf pencatat/pendaftar (misal: "terdaftar_oleh", "dicatat_oleh", "didaftarkan_oleh") WAJIB merujuk ke pengguna dengan targetRole "${e.ownerRole || 'Staf Operasional'}". DILARANG melimpahkan pencatatan ke peran lain!`
+  * TABEL PROFIL "${e.actor.toLowerCase()}" HANYA BERISI IDENTITAS DASAR (misal: nama, kontak, alamat, tanggal lahir/pendaftaran). DILARANG KERAS MENYIMPAN PILIHAN PRODUK/PAKET/LAYANAN/INSTRUMEN (misal: 'instrumen', 'paket_kursus', 'jenis_layanan', 'layanan_dipilih') SEBAGAI FIELD DI DALAM TABEL "${e.actor.toLowerCase()}"!
+  * Jika alur melibatkan pilihan paket, layanan, kursus, atau instrumen yang diambil: WAJIB pisahkan menjadi tabel katalog master (Lapis 1) dan tabel pendaftaran penghubung (Lapis 2) yang merelasikan "${e.actor.toLowerCase()}" dengan katalog terkait!
+  * Seluruh field staf pencatat/pendaftar (misal: "terdaftar_oleh", "dicatat_oleh", "didaftarkan_oleh") WAJIB merujuk ke pengguna dengan targetRole "${e.ownerRole || 'Staf Operasional'}". DILARANG melimpahkan pencatatan ke peran lain!
+  * HUBUNGAN RELASI TRANSAKSI:
+    - Jika alur menggunakan Pola 3 Lapis (Katalog + Penghubung): tabel pendaftaran/transaksi penghubung Lapis 2 yang memiliki field relasi ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}"). Tabel transaksi turunan Lapis 3 (jadwal, pembayaran, evaluasi/progres) merujuk ke tabel penghubung Lapis 2 tersebut (BUKAN langsung ke "${e.actor.toLowerCase()}").
+    - Jika alur menggunakan Pola Hubungan Langsung: tabel transaksi operasional langsung merujuk ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}").`
   )
   .join('\n')}`
     : '';
 
+  const domainProfilePrompt = session.domainProfile
+    ? `
+BATASAN KELAZIMAN SKEMA DARI DOMAIN PROFILE (STRICT WHITELIST):
+- Model Operasional: ${session.domainProfile.modelOperasional}
+  * Jika DI_TEMPAT: Transaksi dilakukan langsung di counter/lokasi fisik. DILARANG KERAS membuat field kurir, ongkir, biaya pengiriman, ekspedisi, atau nomor resi pada tabel manapun!
+  * Jika PENGIRIMAN_LOGISTIK: Transaksi melibatkan kurir/ekspedisi pengiriman barang.
+- Model Tarif: ${session.domainProfile.modelTarif}
+- Jaminan Deposit: ${session.domainProfile.adaJaminanDeposit ? `Ada jaminan fisik (${session.domainProfile.fungsiDeposit || 'Jaminan unit'}). Tabel transaksi harus memiliki field 'deposit' yang konsisten dengan formula kalkulasi.` : 'Tanpa deposit jaminan. DILARANG membuat field deposit atau uang jaminan.'}
+- Entitas Master Katalog Disepakati: [${session.domainProfile.entitasKatalogMaster.join(', ')}]
+- Entitas Transaksi Disepakati: [${session.domainProfile.entitasPencatatanTransaksi.join(', ')}]
+- Whitelist Komponen Biaya: [${session.domainProfile.komponenBiayaYangLazim.join(', ')}]
+`
+    : '';
+
   const systemInstruction = `Anda adalah Analis Basis Data & Perancang Skema Data Aplikasi Bisnis Nyata.
-Tugas Anda: Menyusun Skema Tabel Data dan Relasi Entitas yang SANGAT PRESISI, MURNI DIGROUNDING pada alur proses bisnis nyata, peran pengguna yang aktif, dan matriks hak akses (RBAC) yang telah disepakati.
+Tugas Anda: Menyusun Skema Tabel Data dan Relasi Entitas yang SANGAT PRESISI, MURNI DIGROUNDING pada alur proses bisnis nyata, peran pengguna yang aktif, matriks hak akses (RBAC), formula kalkulasi yang telah disepakati, dan Domain Profile kelaziman bisnis.
+${domainProfilePrompt}
 ${entityDataRulesPrompt}
 ${delegationRulesPrompt}
+${formulaListPrompt}
 
 ATURAN WAJIB & STRICT PRINCIPLES:
 1. PENYISIRAN KATA BENDA & ATRIBUT PILIHAN (GROUNDING MUTLAK):
@@ -2819,37 +4622,57 @@ ATURAN WAJIB & STRICT PRINCIPLES:
 
    A. HEURISTIK PEMICU POLA "KATALOG PRODUK + PENDAFTARAN PENGHUBUNG":
       Terapkan pola Katalog + Penghubung JIKA narasi alur yang dikonfirmasi menunjukkan SALAH SATU dari kondisi berikut:
-      1) Entitas (pelanggan/siswa/anggota/klien/pasien/pengguna) dapat mengambil lebih dari satu jenis produk/layanan yang sama-sama tercatat di sistem (bukan hanya satu opsi sekali pakai).
-      2) Entitas dapat mengambil produk/layanan yang sama secara berulang kali (misal: mengambil paket baru setelah paket pertama selesai, menyewa unit lagi di waktu berbeda, langganan multi-periode).
-      3) Terdapat indikasi eksplisit mengenai "riwayat" / "histori pembelian atau pendaftaran" / "riwayat transaksi" per entitas di alur operasional.
+      1) Entitas (pelanggan/siswa/anggota/klien/pasien/pengguna) dapat mengambil jenis produk/layanan/paket/instrumen yang ditawarkan oleh bisnis.
+      2) Entitas mengikuti sesi layanan yang memiliki jadwal, pertemuan, atau pembayaran berkala (misal: sesi les/kursus dengan jadwal sesi berkala, langganan iuran/SPP berkala, sewa multi-periode).
+      3) Terdapat indikasi mengenai riwayat, progres, atau evaluasi berkala per entitas di alur operasional (misal: rekap perkembangan belajar, catatan progres, log pengerjaan).
+      4) ASET / INVENTARIS FISIK TERBATAS BERIDENTITAS (Dipakai / Disewa Bergantian): Narasi alur menunjukkan adanya aset atau inventaris fisik terbatas yang memiliki nama/kode unit (misal: unit kendaraan seperti sepeda/mobil/motor, peralatan/kamera/tenda, kamar/ruangan studio/lapangan, perangkat) yang dipinjam, disewa, atau digunakan bergantian oleh banyak entitas/pelanggan berbeda.
 
       JIKA HEURISTIK INI TERPICU, WAJIB SUSUN STRUKTUR DENGAN POLA 3 LAPIS:
-      - LAPIS 1: TABEL KATALOG PRODUK/LAYANAN (Master Data)
-        * Berisi daftar produk, paket, atau layanan dengan field deskriptif (misal: nama_paket/nama_layanan, tarif/harga, durasi/kapasitas, deskripsi, status_aktif).
-        * DILARANG memiliki field relasi ke entitas pelanggan/pengguna (ini katalog master yang independen).
+      - LAPIS 1: TABEL KATALOG PRODUK/LAYANAN ATAU INVENTARIS UNIT ASET (Master Data)
+        * Berisi daftar produk, paket, layanan, materi/mata pelajaran/instrumen musik, ATAU inventaris unit fisik yang disewakan (misal: 'paket_kursus', 'katalog_layanan', 'unit_sepeda', 'armada_kendaraan', 'inventaris_alat', 'katalog_ruangan').
+        * Field deskriptif wajib: kode_unit/nama_paket/nama_layanan, jenis/tipe, tarif_sewa/harga/biaya, kondisi_fisik, status_ketersediaan (misal: 'Tersedia' / 'Disewa' / 'Perawatan').
+        * DILARANG memiliki field relasi ke entitas pelanggan/siswa/pengguna (ini master data/katalog independen).
+        * Tentukan properti "displayField": nama field yang merepresentasikan baris secara manusiawi (misal: "nama_paket", "kode_unit", "nama_layanan").
       - LAPIS 2: TABEL PENDAFTARAN / TRANSAKSI PENGHUBUNG (Connector / Bridge)
-        * Berfungsi sebagai jembatan pencatatan antara entitas pengguna/pelanggan dan produk/layanan yang diambil.
+        * Berfungsi sebagai jembatan pencatatan antara entitas (pengguna/pelanggan/siswa) dan produk/paket/unit yang diambil.
+        * DILARANG KERAS menggabungkan pilihan produk/paket/layanan/instrumen ke dalam tabel profil pelanggan/siswa sebagai teks biasa! Pilihan produk/paket/layanan WAJIB dicatat melalui tabel jembatan Lapis 2 ini.
         * WAJIB MEMILIKI DUA FIELD RELASI KUNCI (DILARANG KERAS MELEWATKAN SALAH SATUNYA):
-          1) Field relasi ke entitas akun pengguna: WAJIB bertipe 'relasi ke pengguna' dengan targetRole diisi nama peran terkait (contoh: 'relasi ke pengguna' dengan targetRole 'Klien Perusahaan' atau 'Siswa'). DILARANG KERAS membuat nama tipe relasi ke nama peran seperti 'relasi ke klien', 'relasi ke siswa', atau 'relasi ke pelanggan' jika akun mereka tersimpan di tabel 'pengguna'!
-          2) Field relasi ke tabel katalog produk/layanan yang dipilih: WAJIB 'relasi ke [nama_tabel_katalog_nyata]', contoh: 'relasi ke paket_kursus', 'relasi ke katalog_parameter_uji', 'relasi ke katalog_alat'.
-          3) Tanggal transaksi/pendaftaran, status proses (misal: 'Menunggu Verifikasi' / 'Aktif' / 'Selesai' / 'Dibatalkan'), dan nomor/kode registrasi transaksi.
-      - LAPIS 3: TABEL TRANSAKSIONAL TURUNAN (Jadwal, Evaluasi/Progres, Pembayaran/Angsuran, Presensi, Pelaksanaan Tugas, dsb)
-        * Jika alur membutuhkan pencatatan turunan (misal sesi belajar/jadwal pertemuan, catatan perkembangan/evaluasi, bukti/angsuran pembayaran, progres pengerjaan):
-        * Field relasi pada tabel turunan WAJIB MERUJUK KE TABEL PENDAFTARAN/TRANSAKSI PENGHUBUNG (misal: 'relasi ke pendaftaran_kursus', 'relasi ke transaksi_sewa', 'relasi ke pendaftaran_pengujian_sampel'), BUKAN langsung ke entitas pelanggan atau ke tabel katalog produk secara terpisah!
+          1) Field relasi ke entitas akun pengguna ATAU entitas data:
+             - Jika entitas adalah AKUN PENGGUNA login (tersimpan di tabel 'pengguna'): WAJIB bertipe 'relasi ke pengguna' dengan targetRole diisi nama peran terkait (contoh: 'relasi ke pengguna' dengan targetRole 'Pelanggan' atau 'Penyewa'). DILARANG KERAS membuat nama tipe relasi ke nama peran seperti 'relasi ke klien' jika akun mereka tersimpan di tabel 'pengguna'!
+             - Jika entitas adalah ENTITAS DATA yang dibuatkan tabel profil tersendiri (misal: tabel 'siswa' atau 'pasien'): WAJIB bertipe 'relasi ke [nama_tabel_entitas]' (contoh: 'relasi ke siswa' atau 'relasi ke pasien').
+          2) Field relasi ke tabel katalog produk/layanan ATAU tabel master unit aset yang dipilih: WAJIB 'relasi ke [nama_tabel_katalog_nyata]' (contoh: 'relasi ke paket_kursus', 'relasi ke unit_sepeda', 'relasi ke armada_kendaraan', 'relasi ke katalog_alat'). DILARANG KERAS MEREDUKSI pilihan unit/aset fisik/paket menjadi field teks bebas seperti 'rincian_kebutuhan' atau 'catatan'!
+          3) Tanggal transaksi/pendaftaran/sewa, tanggal pengembalian/selesai, status proses (misal: 'Aktif' / 'Selesai' / 'Dibatalkan'), dan nomor/kode registrasi transaksi.
+        * Tentukan properti "compositeFields": array string berisi nama field relasi FK yang membentuk identitas komposit (misal: ["siswa_id", "paket_id"] atau ["pelanggan_id", "unit_sepeda_id"]).
+      - LAPIS 3: TABEL TRANSAKSIONAL TURUNAN BERULANG / HISTORI RIWAYAT (KARDINALITAS 1-KE-BANYAK MURNI):
+        * ATURAN KARDINALITAS MUTLAK (1-KE-BANYAK VS 1-KE-1):
+          1) KAPAN HARUS MENJADI TABEL LAPIS 3 TERPISAH (1-KE-BANYAK MURNI):
+             HANYA JIKA satu baris transaksi Lapis 2 memiliki BANYAK baris turunan yang terjadi di waktu berbeda-beda / berulang sepanjang masa transaksi.
+             Contoh nyata yang BENAR untuk Lapis 3:
+             - Kursus Musik / Les / Pelatihan: Satu pendaftaran kursus memiliki BANYAK 'jadwal_sesi_studio' di tanggal berbeda, dan BANYAK catatan 'evaluasi_perkembangan' berkala per pertemuan.
+             - Pinjaman / Kredit: Satu kontrak pinjaman memiliki BANYAK baris 'riwayat_angsuran_cicilan'.
+             - Layanan Bertahap: Satu order proyek memiliki BANYAK baris log 'progres_pengerjaan'.
+             * Field relasi pada tabel Lapis 3 WAJIB merujuk ke tabel pendaftaran/transaksi penghubung Lapis 2 (misal: 'relasi ke pendaftaran_kursus').
+          
+          2) KAPAN DILARANG KERAS MEMBUAT TABEL LAPIS 3 (1-KE-1 / SINGLE-EVENT):
+             Jika data turunan itu HANYA TERJADI SATU KALI per transaksi Lapis 2 (relasi 1-ke-1 atau snapshot dua momen dalam satu siklus sewa yang sama):
+             - Pembayaran langsung / pelunasan sekali bayar: DILARANG membuat tabel 'pembayaran' atau 'pembayaran_detail' terpisah! Catat langsung atribut transaksi sewa di tabel transaksi Lapis 2 ('transaksi_sewa'). Field biaya atau moneter yang boleh ada HANYA yang terdaftar di Whitelist Profil Domain atau Formula resmi.
+             - Pemeriksaan kondisi barang (snapshot serah-terima ambil vs kembali): DILARANG membuat tabel 'pemeriksaan_kondisi' terpisah! Cukup tambahkan field 'kondisi_saat_ambil' dan 'kondisi_saat_kembali' langsung di tabel Lapis 2.
+             - Uang deposit / denda rental: Cukup jadi field 'deposit' dan 'denda' di tabel Lapis 2 jika terdaftar di Profil Domain atau Formula.
+             - SIKLUS SEWA RENTAL (Rental Sepeda, Mobil, Kamera): Merupakan transaksi single-cycle 2-lapis (Master Katalog + Transaksi Sewa Lapis 2). DILARANG MEMECAH transaksi sewa menjadi tabel pembayaran atau pemeriksaan terpisah! Skema rental bersih cukup 3 tabel: pelanggan, katalog unit, dan transaksi sewa.
 
    B. POLA HUBUNGAN LANGSUNG (BISNIS TRANSAKSI TUNGGAL / SEKALI SELESAI):
-      JIKA TIDAK ADA tanda-tanda multi-layanan berulang, histori pendaftaran per entitas, atau langganan berkelanjutan di narasi alur (misal: servis motor sekali datang langsung beres, cuci mobil reguler sekali datang langsung selesai):
+      JIKA TIDAK ADA tanda-tanda multi-layanan berulang, histori pendaftaran per entitas, inventaris unit fisik terbatas, atau langganan berkelanjutan di narasi alur (misal: servis motor sekali datang langsung beres, cuci mobil reguler sekali datang langsung selesai):
       - TETAP GUNAKAN POLA SEDERHANA: Tabel transaksi/pencatatan langsung menghubungkan pelanggan dengan layanan atau pengerjaan saat itu.
       - JANGAN OVER-ENGINEER! Dilarang memaksakan pembuatan tabel katalog master dan tabel pendaftaran terpisah jika alurnya murni transaksi langsung sekali selesai.
 
    C. PRINSIP GENERALITAS PENALARAN (ZERO HARDCODED DOMAIN):
-      Keputusan pola di atas MURNI HASIL PENALARAN ATAS DINAMIKA ALUR, BUKAN daftar kata kunci domain (jangan otomatis memicu hanya karena kata "kursus", dan jangan menolak hanya karena domain tidak umum). Evaluasi apakah relasi entitas ke produk bersifat transaksi langsung 1-kali-selesai atau multi-transaksi/berulang/histori.
+      Keputusan pola di atas MURNI HASIL PENALARAN ATAS DINAMIKA ALUR, BUKAN daftar kata kunci domain (jangan otomatis memicu hanya karena kata "kursus", dan jangan menolak hanya karena domain tidak umum). Evaluasi apakah relasi entitas ke produk bersifat transaksi langsung 1-kali-selesai atau multi-transaksi/berulang/histori/inventaris fisik terbatas.
 
 3. REFERENSI POLA SKEMA UMUM INDUSTRI (MURNI PENALARAN AI - SEBAGAI PERTIMBANGAN PELENGKAP):
    - Gunakan pemahaman Anda tentang pola skema data yang LAZIM untuk jenis bisnis yang sedang dibangun:
-     * Bisnis kursus / edukasi: lazim mencatat jenis/paket kursus, instrumen/mata pelajaran, level kemahiran, ruangan, jadwal sesi.
+     * Bisnis kursus / edukasi / pelatihan: WAJIB memisahkan tabel master katalog paket/layanan/instrumen (misal: 'paket_kursus' atau 'katalog_layanan' dengan field nama_paket, jenis_instrumen, tarif, durasi) — TANPA relasi ke siswa/pengguna. Pendaftaran/pengambilan paket dicatat pada tabel penghubung (Lapis 2, misal 'pendaftaran_kursus' yang menghubungkan siswa dengan paket_kursus via 'relasi ke paket_kursus' — DILARANG KERAS mereduksi paket/instrumen menjadi field teks bebas di tabel siswa). Tabel jadwal sesi/les studio, pembayaran iuran/SPP, dan evaluasi/perkembangan siswa berelasi ke pendaftaran penghubung tersebut (Lapis 3) karena relasinya 1-ke-banyak berulang.
      * Bisnis servis / bengkel / klinik: lazim mencatat jenis layanan/tindakan, keluhan awal, diagnosa, suku cadang/obat.
-     * Bisnis rental / sewa: lazim mencatat tipe/kategori unit, nomor polisi/identitas unit, tarif sewa, kondisi fisik unit.
+     * Bisnis rental / sewa: WAJIB mencatat tabel katalog unit aset fisik (Lapis 1, misal: 'katalog_sepeda' atau 'unit_sepeda') dengan field stok dan tarif. Tabel transaksi sewa (Lapis 2, misal 'transaksi_sewa') menghubungkan pelanggan dengan unit sepeda. Seluruh siklus transaksi (jam mulai, jam selesai, durasi, total biaya, dan kondisi unit saat diambil & dikembalikan) dicatat langsung dalam tabel Lapis 2 ini TANPA memecah tabel pembayaran atau pemeriksaan menjadi Lapis 3 terpisah. Seluruh field biaya atau moneter WAJIB berpedoman pada Whitelist Profil Domain dan Formula resmi.
      * Bisnis retail / inventaris: lazim mencatat kategori produk, satuan unit, harga modal/jual, stok minimum.
    - Seluruh field tambahan dari referensi umum ini TETAP harus masuk akal untuk alur spesifik dan tunduk pada prinsip "tanpa kuota artifisial" (tidak dipaksakan jika tidak relevan).
 
@@ -2868,21 +4691,45 @@ ATURAN WAJIB & STRICT PRINCIPLES:
      a. "text" (untuk nama, catatan, kode, status, nomor surat, alamat, jenis, kategori)
      b. "angka" (untuk nominal uang, tarif, harga, durasi waktu, jumlah item, persentase)
      c. "tanggal" (untuk tanggal pengajuan, batas waktu, jadwal pelaksanaan, jam transaksi)
-     d. "relasi ke [Nama Tabel]" (INTEGRITAS MUTLAK: [Nama Tabel] WAJIB merupakan NAMA TABEL NYATA yang tercantum dalam skema JSON Anda! Dilarang menaruh nama peran jika tabel fisiknya tidak dibuat. Semua relasi ke akun pengguna/pelanggan/siswa/klien/staf WAJIB bertipe "relasi ke pengguna").
+     d. "relasi ke [Nama Tabel]" (INTEGRITAS MUTLAK: [Nama Tabel] WAJIB merupakan NAMA TABEL NYATA yang tercantum dalam skema JSON Anda! Untuk akun pengguna login, gunakan "relasi ke pengguna". Untuk aktor yang berstatus ENTITAS DATA dan dibuatkan tabel profil tersendiri seperti 'siswa' atau 'pasien', gunakan "relasi ke [nama_tabel_entitas]").
 
-7. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
+7. FIELD FORMULA DAN SNAPSHOT VARIABEL INPUT TRANSAKSI (AUDIT TRAIL BEST PRACTICE):
+   - Jika suatu field merupakan hasil perhitungan formula (misal total_biaya = durasi_jam * tarif_per_jam), sertakan properti "isFormula": true dan "formulaExpression": "ekspresi_matematika_valid".
+   - WAJIB MENYALIN VARIABEL INPUT KE TABEL TRANSAKSI SEBAGAI SNAPSHOT NILAI:
+     Jika variabel yang dipakai formula (seperti 'tarif_per_jam' atau 'harga_satuan') berada di tabel katalog/master terpisah, tabel transaksi target (misal: 'transaksi_sewa') WAJIB memiliki field tersebut secara langsung (misal: field 'tarif_per_jam' bertipe 'angka' di 'transaksi_sewa') sebagai snapshot histori nilai saat transaksi dicatat!
+     Alasan bisnis/akuntansi: Nilai tarif/harga di katalog bisa berubah di masa mendatang. Snapshot nilai di tabel transaksi menjamin audit trail histori transaksi masa lalu tetap akurat dan tidak berubah!
+     DILARANG membiarkan variabel formula hanya ada di tabel katalog relasi tanpa disalin ke tabel transaksi!
+
+8. ENTITAS LAPORAN & REKAP OPERASIONAL HARIAN (AGREGASI):
+   - Jika pada Domain Profile atau Fitur Pendukung disepakati adanya fitur rekap harian / laporan omzet (misal: "Laporan akhir harian otomatis: rekap transaksi..."), entitas ini BUKAN child 1-ke-1 transaksi individual! Ini adalah tabel agregasi operasional harian tersendiri.
+   - WAJIB sertakan tabel 'rekap_transaksi_harian' dengan field: id, tanggal_rekap, total_transaksi, total_pendapatan, total_deposit_ditahan, catatan_penutupan, dan petugas_rekap_id ('relasi ke pengguna').
+
+9. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
    - Di akhir, berikan 2-3 kalimat penjelasan korelasi ringkas yang menggambarkan aliran data antar-tabel dari hulu ke hilir.
 ${delegationRulesPrompt}
 
-8. FORMAT OUTPUT JSON WAJIB:
+10. FORMAT OUTPUT JSON WAJIB:
 {
   "tabel": [
     {
-      "nama": "nama_tabel_huruf_kecil_underscore",
+      "nama": "nama_tabel_master",
       "keterangan": "Fungsi dan tujuan tabel ini",
+      "displayField": "nama_item",
       "field": [
         { "nama": "id", "tipe": "text", "keterangan": "Identitas unik record" },
-        { "nama": "nama_field", "tipe": "text", "keterangan": "Fungsi field ini" }
+        { "nama": "nama_item", "tipe": "text", "keterangan": "Nama item" }
+      ]
+    },
+    {
+      "nama": "nama_tabel_penghubung",
+      "keterangan": "Fungsi dan tujuan tabel penghubung",
+      "compositeFields": ["entitas_id", "item_id"],
+      "field": [
+        { "nama": "id", "tipe": "text", "keterangan": "Identitas unik record" },
+        { "nama": "entitas_id", "tipe": "relasi ke pengguna", "keterangan": "Pengguna terkait" },
+        { "nama": "item_id", "tipe": "relasi ke nama_tabel_master", "keterangan": "Item yang dipilih" },
+        { "nama": "jumlah", "tipe": "angka", "keterangan": "Jumlah unit" },
+        { "nama": "total_harga", "tipe": "angka", "keterangan": "Total biaya", "isFormula": true, "formulaExpression": "jumlah * 50000" }
       ]
     }
   ],
@@ -2907,6 +4754,7 @@ ${fiturPendukung.length > 0 ? `\nFitur Pendukung Disepakati:\n${fiturPendukung.m
 
 Matriks Modul RBAC yang Disepakati:
 ${rbacModul.map((m) => `- ${m.nama}: ${m.deskripsiFungsional || ''}`).join('\n')}
+${session.formulas?.daftar && session.formulas.daftar.length > 0 ? `\nFormula & Rumus Terdefinisi:\n${session.formulas.daftar.map((f) => `- [${f.targetTable || 'tabel'}] ${f.namaField} (${f.labelField}): ${f.formulaText || f.formulaExpression} (komponen: ${f.komponenInput.join(', ')})`).join('\n')}` : ''}
 
 Rancang skema tabel data dan relasi dalam format JSON:`;
 
@@ -3003,7 +4851,8 @@ ${invalidRelations.map((e) => `- ${e}`).join('\n')}
 
 ATURAN PERBAIKAN MUTLAK:
 1. Seluruh field bertipe "relasi ke [Nama Tabel]" WAJIB menunjuk tabel yang benar-benar ada di daftar tabel Anda!
-2. Jika relasi mengarah ke akun pengguna (misal: pelanggan, siswa, klien, staf, instruktur), gunakan tipe "relasi ke pengguna" dengan targetRole peran tersebut (DILARANG membuat tipe relasi ke nama peran seperti "relasi ke klien" jika tabel fisiknya tidak ada).
+2. Jika ada field yang bertipe "relasi ke pengguna", tabel "pengguna" WAJIB disertakan dalam daftar tabel skema Anda!
+3. Jika relasi mengarah ke akun pengguna (misal: staf, instruktur, admin), gunakan tipe "relasi ke pengguna" dengan targetRole peran tersebut, dan pastikan tabel "pengguna" disertakan.
 Kembalikan JSON lengkap seluruh tabel yang telah diperbaiki:`;
 
       const retryRaw = await invokeAIChat({
@@ -3020,12 +4869,111 @@ Kembalikan JSON lengkap seluruh tabel yang telah diperbaiki:`;
         parsedSchema = retryParsed;
       }
     }
+
+    const flatViolation = await detectFlatSchemaViolation(parsedSchema.tabel, session, {
+      provider,
+      apiKey,
+      model
+    });
+    if (flatViolation) {
+      console.log(`[AI-DATA-SCHEMA] Terdeteksi skema FLAT: ${flatViolation}. Melakukan restrukturisasi 3-lapis...`);
+      const flatRetryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN RESTRUKTURISASI SKEMA DATA (WAJIB POLA 3-LAPIS):
+Skema data Anda sebelumnya terdeteksi FLAT dan menyerap penawaran layanan ke profil entitas:
+- ${flatViolation}
+
+ATURAN RESTRUKTURISASI MUTLAK:
+1. LAPIS 1 (Master Katalog): Buatkan tabel katalog mandiri (misal: 'paket_kursus', 'unit_sepeda', 'instrumen_musik', 'katalog_layanan') dengan nama, jenis, tarif/harga — DILARANG memiliki relasi ke entitas profil!
+2. LAPIS 2 (Tabel Penghubung / Bridge): Buatkan tabel transaksi/pendaftaran penghubung yang menghubungkan entitas data dengan katalog produk/layanan yang diambil. DILARANG KERAS menaruh pilihan paket/unit/instrumen sebagai field teks bebas di tabel profil!
+3. LAPIS 3 (Transaksional Turunan): Tabel operasional (jadwal, pembayaran, evaluasi/progres) WAJIB merujuk ke tabel penghubung Lapis 2 ini.
+Kembalikan JSON lengkap seluruh tabel yang telah direstrukturisasi:`;
+
+      const retryRaw = await invokeAIChat({
+        systemInstruction,
+        userPrompt: flatRetryPrompt,
+        temperature: 0.2,
+        maxTokens: 4000,
+        provider,
+        userApiKey: apiKey,
+        userModel: model
+      });
+      const retryParsed = await parseAndValidateDataSchema(retryRaw);
+      if (retryParsed) {
+        parsedSchema = retryParsed;
+      }
+    }
+
+    // BAGIAN 2: Audit Kelaziman Desain Database (Best Practices Normalisasi & Standar Industri)
+    const designAnomaly = await auditDatabaseDesignStandardsWithAI(parsedSchema.tabel, session, {
+      provider,
+      apiKey,
+      model
+    });
+    if (designAnomaly) {
+      console.log(`[AI-DATA-SCHEMA] Terdeteksi anomali kelaziman desain database: ${designAnomaly}. Melakukan restrukturisasi otomatis...`);
+      const designRetryPrompt = `${userPrompt}\n\n⚠️ PERINGATAN KELAZIMAN DESAIN DATABASE (DATABASE NORMALIZATION & INDUSTRY STANDARDS):
+Rancangan skema data sebelumnya dinilai TIDAK LAZIM menurut standar perancangan database:
+- ${designAnomaly}
+
+ATURAN REVISI KELAZIMAN MUTLAK:
+1. GABUNGKAN entitas master yang terpecah (seperti katalog dan inventaris/stok fisik objek yang sama) menjadi satu tabel master yang utuh. Pindahkan field stok_awal, jumlah_keluar, dan formula sisa_stok langsung ke tabel katalog terkait. DILARANG membuat 2 tabel terpisah untuk entitas yang sama!
+2. HAPUS tabel pecahan yang redundan tanpa foreign key.
+3. Pastikan setiap tabel operasional/transaksi terhubung dengan foreign key yang jelas.
+4. GABUNGKAN transaksi single-cycle (seperti rental sepeda, rental mobil): DILARANG memecah pembayaran atau pemeriksaan kondisi menjadi tabel Lapis 3 terpisah karena kardinalitasnya 1-ke-1. Satukan atribut pemeriksaan kondisi (saat ambil vs kembali) langsung ke tabel Lapis 2 ('transaksi_sewa'). Field biaya/moneter HANYA boleh memuat komponen yang sah menurut Whitelist Profil Domain dan Formula resmi (DILARANG menyuntikkan jumlah_bayar, metode_pembayaran, atau sisa_tagihan jika tidak ada di Profil Domain atau Formula). Tabel Lapis 3 HANYA boleh dibuat jika relasinya genuinely 1-ke-banyak berulang.
+Kembalikan JSON lengkap seluruh tabel yang telah diselaraskan:`;
+
+      const retryRaw = await invokeAIChat({
+        systemInstruction,
+        userPrompt: designRetryPrompt,
+        temperature: 0.2,
+        maxTokens: 4000,
+        provider,
+        userApiKey: apiKey,
+        userModel: model
+      });
+      const retryParsed = await parseAndValidateDataSchema(retryRaw);
+      if (retryParsed) {
+        parsedSchema = retryParsed;
+      }
+    }
+
+    // Jaring Pengaman Programatis: Pastikan katalog & inventaris entitas sama selalu disatukan
+    parsedSchema.tabel = ensureMergedCatalogAndInventory(parsedSchema.tabel);
+    // Jaring Pengaman Programatis (Bagian C): Pastikan transaksi rental single-cycle digabung utuh ke transaksi_sewa
+    parsedSchema.tabel = ensureMergedSingleCycleRentalTransactions(parsedSchema.tabel, session);
+    // Jaring Pengaman Programatis: Evaluasi Semantik AI Laporan Turunan (viewConfig) vs Tabel Tersimpan
+    const { tables: entityTables, views: schemaViews } = await ensureDomainProfileEntitiesAndViews(
+      parsedSchema.tabel,
+      session,
+      { provider, apiKey, model }
+    );
+    parsedSchema.tabel = entityTables;
+    parsedSchema.views = schemaViews;
+    if (session.dataSchema) {
+      session.dataSchema.views = schemaViews;
+    }
+    // Jaring Pengaman Programatis (Opsi A): Pastikan seluruh variabel formula tersedia langsung sebagai snapshot field di tabel target
+    parsedSchema.tabel = ensureFormulaFieldsInTargetTables(parsedSchema.tabel, session.formulas?.daftar);
+    // Jaring Pengaman Programatis: Penyapuan akhir skema data (Sanitization Sweep)
+    parsedSchema.tabel = sanitizeSchemaFieldsByDomainProfile(parsedSchema.tabel, session);
   }
 
   const elapsed = Date.now() - startTime;
   console.log(`[AI-DATA-SCHEMA] Selesai dalam ${elapsed}ms`);
 
   if (parsedSchema) {
+    if (activeRoles.length > 0 && !parsedSchema.tabel.some((t) => isTablePengguna(t.nama))) {
+      parsedSchema.tabel.push({
+        nama: 'pengguna',
+        keterangan: 'Menyimpan data akun dan hak akses peran pengguna sistem',
+        field: [
+          { nama: 'id', tipe: 'text', keterangan: 'Identitas unik pengguna' },
+          { nama: 'nama_lengkap', tipe: 'text', keterangan: 'Nama lengkap pengguna' },
+          { nama: 'peran', tipe: 'text', keterangan: `Hak akses / peran aktif: ${activeRoles.join(', ')}` }
+        ]
+      });
+    }
+    // Re-render markdownTable agar selalu sinkron 100% dengan tabel final dan views yang sudah disanitasi
+    parsedSchema.markdownTable = renderDataSchemaMarkdown(parsedSchema.tabel, parsedSchema.korelasiRingkas, parsedSchema.views);
     return parsedSchema;
   }
 
@@ -3106,9 +5054,23 @@ Perbarui dan kembalikan JSON lengkap:`;
         semanticAiMatcher
       );
       if (extracted && extracted.tables.length > 0) {
-        const markdownTable = renderDataSchemaMarkdown(extracted.tables, extracted.korelasiRingkas);
+        let finalTables = ensureMergedCatalogAndInventory(extracted.tables);
+        finalTables = ensureMergedSingleCycleRentalTransactions(finalTables, session);
+        const { tables: entityTables, views: schemaViews } = await ensureDomainProfileEntitiesAndViews(
+          finalTables,
+          session,
+          { provider, apiKey, model }
+        );
+        finalTables = entityTables;
+        if (session.dataSchema) {
+          session.dataSchema.views = schemaViews;
+        }
+        finalTables = ensureFormulaFieldsInTargetTables(finalTables, session.formulas?.daftar);
+        finalTables = sanitizeSchemaFieldsByDomainProfile(finalTables, session);
+        const markdownTable = renderDataSchemaMarkdown(finalTables, extracted.korelasiRingkas, schemaViews);
         return {
-          tabel: extracted.tables,
+          tabel: finalTables,
+          views: schemaViews,
           korelasiRingkas: extracted.korelasiRingkas,
           markdownTable
         };
@@ -3119,9 +5081,23 @@ Perbarui dan kembalikan JSON lengkap:`;
   }
 
   // Fallback koreksi jika LLM gagal: pertahankan tabel yang ada
-  const markdownTable = renderDataSchemaMarkdown(currentTables, session.dataSchema?.korelasiRingkas);
+  let fallbackTables = ensureMergedCatalogAndInventory(currentTables);
+  fallbackTables = ensureMergedSingleCycleRentalTransactions(fallbackTables, session);
+  const { tables: fbTables, views: fbViews } = await ensureDomainProfileEntitiesAndViews(
+    fallbackTables,
+    session,
+    { provider, apiKey, model }
+  );
+  fallbackTables = fbTables;
+  if (session.dataSchema) {
+    session.dataSchema.views = fbViews;
+  }
+  fallbackTables = ensureFormulaFieldsInTargetTables(fallbackTables, session.formulas?.daftar);
+  fallbackTables = sanitizeSchemaFieldsByDomainProfile(fallbackTables, session);
+  const markdownTable = renderDataSchemaMarkdown(fallbackTables, session.dataSchema?.korelasiRingkas, fbViews);
   return {
-    tabel: currentTables,
+    tabel: fallbackTables,
+    views: fbViews,
     korelasiRingkas: session.dataSchema?.korelasiRingkas,
     markdownTable
   };
@@ -3402,6 +5378,14 @@ ATURAN KETAT:
      * Jika field berisi lokasi kerusakan/cacat/kondisi bagian fisik unit/barang (misal: "Lokasi kerusakan spesifik pada rangka atau ban", "Kondisi fisik barang"): nilai HARUS berupa deskripsi fisik komponen unit barang (misal sepeda: "Rantai kendor & lecet rangka", "Rem belakang aus", "Velg sedikit oleng"; kendaraan: "Baret pada bumper depan", "Lampu sen redup"; barang/alat: "Baret pemakaian wajar", "Komponen aus").
      * DILARANG KERAS menafsirkan kata "lokasi" pada kerusakan/kondisi barang sebagai alamat jalan atau alamat geografis ("Jl. Merdeka...", "Jl. Sudirman...")!
      * Alamat jalan ("Jl. ...", nomor jalan) HANYA untuk field tempat tinggal pelanggan/warga atau alamat outlet/cabang bisnis.
+   - SEMANTIK FIELD KONTAK vs ALAMAT (MUTLAK):
+     * Field kontak (misal 'kontak', 'telepon', 'hp', 'whatsapp'): HARUS diisi nomor telepon (misal "0812-3456-7890") atau alamat email (misal "pelanggan@gmail.com").
+     * DILARANG KERAS mengisi field kontak dengan alamat jalan ("Jl. ...") meskipun keterangan menyebutkan "Kontak telepon atau alamat email"! Alamat jalan HANYA untuk field alamat domisili/tempat tinggal.
+   - ANTI-LEAKING NAMA FIELD / LABEL / KETERANGAN SEBAGAI NILAI (MUTLAK):
+     * DILARANG KERAS menyalin nama field, label field, atau kutipan kata dari kolom keterangan sebagai isi datanya!
+     * Contoh terlarang: nama_sepeda = "Nama" atau "Label sepeda" (HARUS nama sepeda nyata seperti "Polygon Xtrada 5.0", "United Terrano", "Pacific Noris 2.0").
+     * Contoh terlarang: nomor_transaksi = "Nomor" atau "Kode transaksi sewa" (HARUS format nomor nyata seperti "TRX-20260910-001", "TRX-20260911-002").
+     * Contoh terlarang: kondisi_saat_ambil / kondisi_saat_kembali = "Opsional", "Untuk audit" (HARUS deskripsi kondisi nyata seperti "Baik & rem pakem", "Mulus tanpa lecet", "Baret ringan pemakaian wajar").
    - Jika field produk/barang/layanan/varian: gunakan nama produk/layanan nyata sesuai domain (misal distro/pakaian: "Kemeja Flannel Tartan", "Kaos Polos Cotton Combed", "Jaket Denim Trucker"; klinik hewan: "Kucing Persia", "Anjing Golden Retriever", "Kelinci Holland Lop"; es krim: "Vanilla Classic", "Dark Chocolate", "Strawberry Swirl").
    - Jika field ukuran baju/produk: gunakan ukuran industri nyata ("S", "M", "L", "XL").
    - Jika field warna: gunakan warna nyata ("Hitam Solid", "Navy Blue", "Olive Green", "Maroon").
@@ -3432,6 +5416,8 @@ ${opts.masalahDariValidasi.map((m) => `- ${m}`).join('\n')}
 INSTRUKSI KHUSUS PERBAIKAN:
 - Perbaiki setiap field di atas agar nilainya bervariasi, realistis, dan kontekstual sesuai skema.
 - Untuk field yang memiliki pilihan di keterangan, pilih HANYA salah satu nilai dari daftar pilihan tersebut.
+- DILARANG menyalin nama field, label, atau kata keterangan ("Opsional", "Audit", "Nama", "Nomor") sebagai data! Berikan data contoh sungguhan.
+- DILARANG mengisi field kontak dengan alamat jalan ("Jl. ..."); isi dengan nomor HP atau email.
 - Pastikan field kerusakan fisik barang TIDAK diisi alamat jalan ("Jl. ..."), melainkan bagian fisik yang rusak/kondisinya (misal 'rantai kendor', 'rem aus').
 - Pastikan seluruh field nominal uang (deposit, total_tagihan, biaya) berskala Rupiah penuh dan proporsional (dilarang jomplang seperti deposit 15 vs tagihan 150.000).
 - DILARANG membuat nilai increment rata (seperti 10, 20, 30); berikan skor/nilai natural yang bervariasi.
@@ -3482,8 +5468,33 @@ INSTRUKSI KHUSUS PERBAIKAN:
           ? vals.filter((v: unknown) => v !== null && v !== undefined)
           : [];
         if (arr.length === 0) continue;
+
+        const fLower = f.nama.toLowerCase();
+        const isContact = /^(kontak|telepon|hp|wa|whatsapp|phone|no_hp|nomor_telepon)$/i.test(fLower);
+
+        // Validasi dan filter nilai AI yang bocor atau tidak realistis (Bug 1 & Bug 2)
+        const cleanArr = arr.filter((v: unknown) => {
+          const s = String(v ?? '').trim();
+          if (!s) return false;
+          // Tolak alamat jalan di field kontak (Bug 2)
+          if (isContact && /(?:^jl\.|\bjalan\b|\bgg\.|\bblok\b|\brt\/?rw\b|\bno\.\s*\d+)/i.test(s)) {
+            return false;
+          }
+          // Tolak nama/label field yang bocor jadi value (Bug 1)
+          const sLower = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const fClean = fLower.replace(/[^a-z0-9]/g, '');
+          if (sLower === fClean || /^(nama|nomor|kode|opsional|audit|label)$/i.test(s)) {
+            return false;
+          }
+          if (/opsional|untuk audit/i.test(s)) {
+            return false;
+          }
+          return true;
+        });
+
+        if (cleanArr.length === 0) continue;
         if (!nilai[t.nama]) nilai[t.nama] = {};
-        nilai[t.nama][f.nama] = arr;
+        nilai[t.nama][f.nama] = cleanArr;
       }
     }
 
@@ -3908,6 +5919,94 @@ export async function POST(req: Request) {
     const userApiKey = body.apiKey;
     const userModel = body.model;
 
+    if (action === 'ANALYZE_CUSTOM_MODULE') {
+      const moduleName = (body.moduleName || '').trim();
+      const moduleDesc = (body.moduleDesc || '').trim();
+      const roleName = (body.roleName || '').trim();
+      const existingModules = body.existingModules || [];
+
+      if (!moduleName) {
+        return NextResponse.json({ success: false, error: 'Nama modul wajib diisi.' }, { status: 400 });
+      }
+
+      const businessContext =
+        body.session?.match?.businessCategory ||
+        body.session?.match?.templateId ||
+        'bisnis';
+
+      const existingList = existingModules
+        .map((m, i) => `${i + 1}. ${m.nama}${m.deskripsi ? ` — ${m.deskripsi}` : ''}`)
+        .join('\n');
+
+      const mergePrompt = `Kamu adalah analis desain sistem. Seorang pengguna sedang membangun aplikasi untuk bisnis "${businessContext}".
+
+Peran yang sedang dikonfigurasi: ${roleName || '(tidak dispesifikasikan)'}
+
+Daftar modul/form kerja yang SUDAH ADA untuk peran ini:
+${existingList || '(belum ada modul)'}
+
+Pengguna ingin menambahkan:
+- Nama: ${moduleName}
+- Deskripsi: ${moduleDesc || '(tidak ada deskripsi tambahan)'}
+
+Evaluasi:
+1. Apakah "${moduleName}" merupakan FORM MANDIRI BARU yang memiliki alur kerja independen dan data entitas tersendiri (misalnya: Form Pendaftaran Agen Mitra, Form Klaim Garansi)?
+2. ATAU apakah "${moduleName}" lebih tepat berupa KOLOM TAMBAHAN / SUB-FITUR yang bisa digabungkan ke salah satu modul yang sudah ada (misalnya: "Nomor WhatsApp" bisa masuk ke form pendataan pelanggan, "Diskon Member" bisa masuk ke form transaksi kasir)?
+
+Jawab HANYA dalam JSON:
+{
+  "canMerge": boolean,
+  "targetModuleName": string | null,
+  "mergeExplanation": string,
+  "enhancedTargetDescription": string | null
+}
+
+Aturan:
+- canMerge: true HANYA jika modul baru adalah tambahan field/fitur minor yang SANGAT JELAS cocok dimasukkan ke modul yang ada
+- canMerge: false jika modul baru memiliki aksi, entitas, atau alur tersendiri yang tidak relevan dengan modul lain
+- Jika canMerge true, targetModuleName WAJIB diisi nama modul target yang tepat dari daftar
+- mergeExplanation: penjelasan singkat dalam Bahasa Indonesia (1-2 kalimat)
+- enhancedTargetDescription: deskripsi baru modul target setelah digabungkan (null jika canMerge false)`;
+
+      try {
+        const rawText = await invokeAIChat({
+          systemInstruction: 'Kamu adalah analis desain sistem. Jawab HANYA dalam format JSON yang diminta, tanpa teks tambahan di luar JSON.',
+          userPrompt: mergePrompt,
+          temperature: 0.1,
+          maxTokens: 500,
+          provider,
+          userApiKey,
+          userModel
+        });
+        const cleaned = (rawText || '').replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        const result = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+        if (result && typeof result.canMerge === 'boolean') {
+          return NextResponse.json({
+            success: true,
+            action,
+            canMerge: result.canMerge,
+            targetModuleName: result.targetModuleName || null,
+            mergeExplanation: result.mergeExplanation || '',
+            enhancedTargetDescription: result.enhancedTargetDescription || null
+          });
+        }
+      } catch (_err) {
+        // Gagal analisis — fallback: tambahkan sebagai modul mandiri
+      }
+
+      // Fallback: tidak bisa merge
+      return NextResponse.json({
+        success: true,
+        action,
+        canMerge: false,
+        targetModuleName: null,
+        mergeExplanation: 'Analisis tidak tersedia, modul ditambahkan sebagai form terpisah.',
+        enhancedTargetDescription: null
+      });
+    }
+
     if (action === 'ANALYZE_CUSTOM_ROLE') {
       const roleName = (body.roleName || '').trim();
       if (!roleName) {
@@ -4221,6 +6320,11 @@ export async function POST(req: Request) {
             session.rbac?.catatanPelimpahan
           );
         narration = `Berikut matriks hak akses (RBAC) yang telah disusun:\n\n${rbacMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi.`;
+      } else if (targetStep === 'FORMULA') {
+        const formulaMd =
+          session.formulas?.markdownTable ||
+          renderFormulaMarkdownTable(session.formulas?.daftar || []);
+        narration = `Berikut formula kalkulasi otomatis yang telah disusun:\n\n${formulaMd}\n\nSilakan periksa dan lanjutkan jika sudah sesuai.`;
       } else if (targetStep === 'SKEMA_DATA') {
         const schemaMd =
           session.dataSchema?.markdownTable ||
@@ -4312,6 +6416,11 @@ export async function POST(req: Request) {
               jumpedSession.rbac?.catatanPelimpahan
             );
           narration = `Berikut matriks hak akses (RBAC) sebelumnya:\n\n${rbacMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan hak akses.`;
+        } else if (targetStep === 'FORMULA') {
+          const formulaMd =
+            jumpedSession.formulas?.markdownTable ||
+            renderFormulaMarkdownTable(jumpedSession.formulas?.daftar || []);
+          narration = `Berikut formula kalkulasi otomatis sebelumnya:\n\n${formulaMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan formula.`;
         } else if (targetStep === 'SKEMA_DATA') {
           const schemaMd =
             jumpedSession.dataSchema?.markdownTable ||
@@ -4654,11 +6763,23 @@ export async function POST(req: Request) {
             });
           }
 
-          // Semua aktor selesai diklarifikasi -> lanjut ke ROLE
-          await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
+          // Semua aktor selesai diklarifikasi -> lanjut ke DOMAIN_PROFILE (Mind-Map)
+          if (!updated.domainProfile) {
+            updated.domainProfile = await generateDomainProfileWithAI(
+              updated,
+              provider,
+              userApiKey,
+              userModel
+            );
+          }
           const guidedStep = buildGuidedStep(updated);
+          const businessName = updated.match?.businessCategory || 'Operasional Bisnis';
+          const md = updated.domainProfile.markdownMindMap || renderDomainProfileMarkdown(updated.domainProfile, businessName);
           const narration =
-            'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nMantap! Klasifikasi pihak terlibat sudah beres. Sekarang, yuk kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
+            `Klasifikasi pihak yang terlibat sudah selesai!\n\n` +
+            `Berikut adalah **Peta Pemahaman Profil & Batasan Bisnis** yang berhasil saya ekstrak dari alurmu:\n\n` +
+            `${md}\n\n` +
+            `Apakah pemahaman model operasional, model tarif, dan whitelist batasan biaya di atas sudah tepat?`;
           return NextResponse.json({
             success: true,
             action,
@@ -4870,7 +6991,7 @@ export async function POST(req: Request) {
             };
           } else {
             delete updated.storyline.pendingActorClarification;
-            updated.step = 'ROLE';
+            updated.step = 'DOMAIN_PROFILE';
           }
         }
 
@@ -4891,10 +7012,100 @@ export async function POST(req: Request) {
           });
         }
 
+        if (updated.step === 'DOMAIN_PROFILE') {
+          if (!updated.domainProfile) {
+            updated.domainProfile = await generateDomainProfileWithAI(
+              updated,
+              provider,
+              userApiKey,
+              userModel
+            );
+          }
+          const guidedStep = buildGuidedStep(updated);
+          const businessName = updated.match?.businessCategory || 'Operasional Bisnis';
+          const md = updated.domainProfile.markdownMindMap || renderDomainProfileMarkdown(updated.domainProfile, businessName);
+          const narration =
+            `Alur cerita bisnis sudah disepakati!\n\n` +
+            `Berikut adalah **Peta Pemahaman Profil & Batasan Bisnis** yang berhasil saya ekstrak dari alurmu:\n\n` +
+            `${md}\n\n` +
+            `Apakah pemahaman model operasional, model tarif, dan whitelist batasan biaya di atas sudah tepat?`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updated,
+            guidedStep,
+            narration
+          });
+        }
+
         await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
         const guidedStep = buildGuidedStep(updated);
         const narration =
           'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nMantap! Senang alurnya sudah pas dengan bayanganmu. Sekarang, yuk kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Khusus step DOMAIN_PROFILE: visual mind-map profil & batasan kelaziman bisnis
+      if (stepId === 'DOMAIN_PROFILE') {
+        const otherText = (body.other || '').trim();
+        const isConfirm =
+          (body.selected || []).includes('confirm_domain_profile') ||
+          (!otherText && (body.selected || []).length === 0) ||
+          (Boolean(otherText) && isPureConfirmationText(otherText));
+
+        if (!isConfirm && otherText) {
+          // User memberikan masukan koreksi profil / penambahan whitelist
+          const revised = await reviseDomainProfileWithAI(
+            session,
+            otherText,
+            provider,
+            userApiKey,
+            userModel
+          );
+          session.domainProfile = revised;
+          session.step = 'DOMAIN_PROFILE';
+          // Bersihkan downstream agar konsisten
+          session.roles = { selected: [REQUIRED_ROLE], wajib: [REQUIRED_ROLE], tambahan: [] };
+          if (session.flow) {
+            delete session.flow.selectedId;
+            delete session.flow.alurInti;
+            delete session.flow.alurPendukung;
+            delete session.flow.fiturPendukung;
+            delete session.flow.kasusGanda;
+          }
+          delete session.rbac;
+          delete session.formulas;
+          delete session.dataSchema;
+          delete session.simulasiDb;
+
+          const guidedStep = buildGuidedStep(session);
+          const businessName = session.match?.businessCategory || 'Operasional Bisnis';
+          const md = revised.markdownMindMap || renderDomainProfileMarkdown(revised, businessName);
+          const narration =
+            `Siap, pemahaman profil bisnis telah diperbarui sesuai masukanmu:\n\n` +
+            `${md}\n\n` +
+            `Jika batasan profil ini sudah pas, pilih "Sudah pas" untuk lanjut ke pemilihan peran pengguna.`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session,
+            guidedStep,
+            narration
+          });
+        }
+
+        // Konfirmasi profil domain -> Lanjut ke step ROLE
+        let updated = applyGuidedAnswer(session, 'DOMAIN_PROFILE', body.selected || [], body.other);
+        await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
+        const guidedStep = buildGuidedStep(updated);
+        const narration =
+          'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nMantap! Batasan profil bisnis sudah disepakati. Sekarang, yuk kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
         return NextResponse.json({
           success: true,
           action,
@@ -4957,6 +7168,60 @@ export async function POST(req: Request) {
               narasi: edited.description,
               tanggungJawab: edited.responsibilities
             };
+          }
+        }
+
+        // 3. Integrasikan entitas data yang dipromosikan pengguna menjadi peran login sistem
+        if (body.promotedEntities && Array.isArray(body.promotedEntities) && body.promotedEntities.length > 0) {
+          if (!session.actorsClassification) {
+            const { classifications } = analyzeActorClassification(session);
+            session.actorsClassification = classifications;
+          }
+          for (const pe of body.promotedEntities) {
+            const cleanPe = typeof pe === 'string' ? pe.trim() : '';
+            if (!cleanPe) continue;
+            const target = session.actorsClassification.find(
+              (ac) => ac.actor.toLowerCase() === cleanPe.toLowerCase()
+            );
+            if (target) {
+              target.category = 'PENGGUNA_SISTEM';
+              delete target.ownerRole;
+              target.reason = `Dikonfirmasi pengguna sebagai peran sistem (akses login mandiri)`;
+            } else {
+              session.actorsClassification.push({
+                actor: cleanPe,
+                category: 'PENGGUNA_SISTEM',
+                reason: `Dikonfirmasi pengguna sebagai peran sistem (akses login mandiri)`
+              });
+            }
+            if (session.storyline && !session.storyline.asumsiAktor.includes(cleanPe)) {
+              session.storyline.asumsiAktor.push(cleanPe);
+            }
+          }
+        }
+
+        // 4. Integrasikan koreksi teks detail entitas data yang diedit pengguna
+        if (body.editedEntities && typeof body.editedEntities === 'object') {
+          for (const [entId, entData] of Object.entries(body.editedEntities as Record<string, { name: string; description: string }>)) {
+            const cleanId = entId.trim();
+            const cleanName = (entData.name || cleanId).trim();
+            const cleanDesc = (entData.description || '').trim();
+
+            if (session.actorsClassification) {
+              const target = session.actorsClassification.find(
+                (ac) => ac.actor.toLowerCase() === cleanId.toLowerCase()
+              );
+              if (target) {
+                target.actor = cleanName;
+                target.reason = cleanDesc || target.reason;
+              }
+            }
+            if (session.storyline?.detailAktor) {
+              session.storyline.detailAktor[cleanName] = {
+                narasi: cleanDesc,
+                tanggungJawab: session.storyline.detailAktor[cleanId]?.tanggungJawab || []
+              };
+            }
           }
         }
 
@@ -5444,34 +7709,27 @@ export async function POST(req: Request) {
           }
         }
 
-        // Syarat 1: Generate RBAC segar jika belum ada atau baru dibersihkan dari cache
-        if (!updated.rbac || !updated.rbac.modul || updated.rbac.modul.length === 0) {
-          const rbacResult = await generateRbacMatrixWithAI(updated, provider, userApiKey, userModel);
-          updated.rbac = {
-            modul: rbacResult.modul,
-            markdownTable: rbacResult.markdownTable,
-            catatanPelimpahan: rbacResult.catatanPelimpahan,
-            statusKonfirmasi: 'dikoreksi',
-            revisiCount: 0
-          };
-        }
+        // Step RBAC: Siapkan Checklist Modul per Role (Fase 1 RBAC)
+        const checklistPerRole = generateRoleModuleChecklist(updated);
+        updated.step = 'RBAC';
+        updated.rbac = {
+          modul: [],
+          checklistPerRole,
+          stage: 'CHECKLIST',
+          statusKonfirmasi: 'dikoreksi',
+          revisiCount: 0
+        };
 
         const guidedStep = buildGuidedStep(updated);
-        const tableMarkdown =
-          updated.rbac.markdownTable ||
-          renderRbacMarkdownTable(
-            updated.roles?.selected || [],
-            updated.rbac.modul,
-            updated.rbac.catatanPelimpahan
-          );
-
         const changeNoteRbac = generateChangeNote('RBAC', updated);
         const narration =
           (changeNoteRbac ? `${changeNoteRbac}\n\n` : '') +
           `Mantap! Alur kerja dan fitur pendukung sudah tersimpan.\n\n` +
-          `Berikut adalah rancangan matriks pembagian hak akses (RBAC) per modul fungsional untuk setiap peran di aplikasi Anda:\n\n` +
-          `${tableMarkdown}\n\n` +
-          `Silakan periksa pembagian wewenang di atas. Jika sudah pas, klik "Sudah pas" untuk lanjut ke perancangan Skema Data.`;
+          `Sebelum menyusun matriks hak akses (RBAC), silakan tinjau **Daftar Modul / Form Kerja** untuk setiap peran aktif di bawah ini.\n\n` +
+          `- Modul dari alur yang Anda susun telah **tercentang secara otomatis**.\n` +
+          `- Modul bertanda **(disarankan)** merupakan modul lazim industri yang belum eksplisit di alur Anda.\n` +
+          `- Anda juga dapat menambahkan modul custom jika ada form unik yang dibutuhkan.\n\n` +
+          `Jika sudah sesuai atau ingin menggunakan default yang ada, klik **"Lanjut Susun Matriks Hak Akses (RBAC)"**.`;
 
         return NextResponse.json({
           success: true,
@@ -5482,13 +7740,117 @@ export async function POST(req: Request) {
         });
       }
 
-      // Khusus step RBAC: tangani koreksi hak akses atau persetujuan lanjut ke SKEMA_DATA
+      // Khusus step RBAC: tangani checklist modul, koreksi hak akses, atau persetujuan lanjut ke SKEMA_DATA
       if (stepId === 'RBAC') {
         const otherText = (body.other || '').trim();
         const isPureConfirm = isPureConfirmationText(otherText);
+
+        // Sub-kasus 1: Pengguna ingin membuka kembali checklist modul dari tampilan matriks
+        if (body.selected && body.selected.includes('reopen_module_checklist')) {
+          const checklistPerRole =
+            session.rbac?.checklistPerRole && session.rbac.checklistPerRole.length > 0
+              ? session.rbac.checklistPerRole
+              : generateRoleModuleChecklist(session);
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'RBAC',
+            rbac: {
+              ...session.rbac,
+              modul: session.rbac?.modul || [],
+              checklistPerRole,
+              stage: 'CHECKLIST'
+            }
+          };
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          const narration =
+            `Silakan sesuaikan kembali checklist modul/form kerja per peran di bawah ini. Anda dapat mencentang/menghapus centang atau menambahkan modul custom sesuai kebutuhan.`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
+
         const isCorrection =
           (body.selected && body.selected.includes('koreksi_rbac')) ||
           (Boolean(otherText) && !isPureConfirm);
+
+        // Sub-kasus 2: Konfirmasi checklist modul (atau transisi dari CHECKLIST ke MATRIX)
+        const isChecklistStage =
+          session.rbac?.stage === 'CHECKLIST' ||
+          (!session.rbac?.modul || session.rbac.modul.length === 0);
+
+        const isChecklistConfirm =
+          (body.selected && body.selected.includes('confirm_role_modules')) ||
+          Boolean(body.roleModuleChecklist) ||
+          (isChecklistStage && !isCorrection && !body.selected?.includes('confirm_rbac'));
+
+        if (isChecklistConfirm) {
+          const updatedChecklist: RoleModuleChecklistGroup[] =
+            Array.isArray(body.roleModuleChecklist) && body.roleModuleChecklist.length > 0
+              ? body.roleModuleChecklist
+              : session.rbac?.checklistPerRole || generateRoleModuleChecklist(session);
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'RBAC',
+            rbac: {
+              modul: [],
+              checklistPerRole: updatedChecklist,
+              stage: 'MATRIX',
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: session.rbac?.revisiCount || 0
+            }
+          };
+
+          const rbacResult = await generateRbacMatrixWithAI(
+            updatedSession,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          updatedSession.rbac = {
+            ...updatedSession.rbac,
+            modul: rbacResult.modul,
+            markdownTable: rbacResult.markdownTable,
+            catatanPelimpahan: rbacResult.catatanPelimpahan,
+            stage: 'MATRIX',
+            statusKonfirmasi: 'dikoreksi'
+          };
+
+          // Regenerasi otomatis saat RBAC baru disusun
+          delete updatedSession.formulas;
+          delete updatedSession.dataSchema;
+          delete updatedSession.simulasiDb;
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          const tableMarkdown =
+            rbacResult.markdownTable ||
+            renderRbacMarkdownTable(
+              updatedSession.roles?.selected || [],
+              rbacResult.modul,
+              rbacResult.catatanPelimpahan
+            );
+
+          const narration =
+            `Berdasarkan checklist modul yang telah disepakati, berikut rancangan matriks pembagian hak akses (RBAC) per modul fungsional untuk setiap peran:\n\n` +
+            `${tableMarkdown}\n\n` +
+            `Silakan periksa pembagian wewenang di atas. Jika sudah pas, klik "Sudah pas" untuk lanjut ke perancangan Formula & Skema Data.`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
 
         if (isCorrection) {
           const correctionText = (body.other || '').trim() || (body.selected || []).join(', ');
@@ -5512,6 +7874,7 @@ export async function POST(req: Request) {
             }
           };
           // Regenerasi otomatis saat RBAC berubah
+          delete updatedSession.formulas;
           delete updatedSession.dataSchema;
           delete updatedSession.simulasiDb;
 
@@ -5527,6 +7890,99 @@ export async function POST(req: Request) {
           const narration =
             `Siap, matriks hak akses telah saya perbarui sesuai masukanmu:\n\n` +
             `${tableMarkdown}\n\n` +
+            `Silakan tinjau kembali perubahan di atas. Jika sudah sesuai, pilih "Sudah pas" untuk lanjut ke tahap Deklarasi Formula.`;
+
+          return NextResponse.json({
+            success: true,
+            action,
+            session: updatedSession,
+            guidedStep,
+            narration
+          });
+        }
+
+        // User memilih confirm_rbac ("Sudah pas, lanjut ke Deklarasi Formula")
+        let updated = applyGuidedAnswer(session, 'RBAC', body.selected || [], body.other);
+
+        // Pastikan formula kalkulasi digenerate saat transisi ke FORMULA
+        if (!updated.formulas || !updated.formulas.daftar || updated.formulas.daftar.length === 0) {
+          try {
+            const formulaResult = await generateFormulasWithAI(updated, provider, userApiKey, userModel);
+            const md = renderFormulaMarkdownTable(formulaResult.formulas);
+            updated.formulas = {
+              daftar: formulaResult.formulas,
+              markdownTable: md,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: 0
+            };
+          } catch (err: any) {
+            console.error('[guided/route] Error generating formulas with AI:', err);
+            const md = renderFormulaMarkdownTable([]);
+            updated.formulas = {
+              daftar: [],
+              markdownTable: md,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: 0
+            };
+          }
+        }
+
+        const guidedStep = buildGuidedStep(updated);
+        const formulaMarkdown =
+          updated.formulas?.markdownTable ||
+          renderFormulaMarkdownTable(updated.formulas?.daftar || []);
+        const changeNoteFormula = generateChangeNote('FORMULA', updated);
+        const narration =
+          (changeNoteFormula ? `${changeNoteFormula}\n\n` : '') +
+          `Bagus sekali! Matriks hak akses (RBAC) telah disetujui.\n\n` +
+          `Berikut identifikasi formula dan rumus kalkulasi otomatis yang dibutuhkan aplikasi Anda:\n\n` +
+          `${formulaMarkdown}\n\n` +
+          `Silakan tinjau rumus di atas. Jika sudah pas, klik "Sudah pas" untuk lanjut ke Skema Data.`;
+
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Khusus step FORMULA: tangani koreksi atau konfirmasi lanjut ke SKEMA_DATA
+      if (stepId === 'FORMULA') {
+        const otherText = (body.other || '').trim();
+        const isPureConfirm = isPureConfirmationText(otherText);
+        const isCorrection =
+          (body.selected && body.selected.includes('koreksi_formula')) ||
+          (Boolean(otherText) && !isPureConfirm);
+
+        if (isCorrection) {
+          const correctionText = (body.other || '').trim() || (body.selected || []).join(', ');
+          const revised = await reviseFormulasWithAI(
+            session,
+            correctionText,
+            provider,
+            userApiKey,
+            userModel
+          );
+
+          const updatedSession: MockupSessionState = {
+            ...session,
+            step: 'FORMULA',
+            formulas: {
+              daftar: revised.formulas,
+              markdownTable: revised.markdownTable,
+              statusKonfirmasi: 'dikoreksi',
+              revisiCount: (session.formulas?.revisiCount || 0) + 1
+            }
+          };
+          delete updatedSession.dataSchema;
+          delete updatedSession.simulasiDb;
+
+          const guidedStep = buildGuidedStep(updatedSession);
+          const narration =
+            `Siap, daftar formula kalkulasi telah saya perbarui sesuai masukanmu:\n\n` +
+            `${revised.markdownTable}\n\n` +
             `Silakan tinjau kembali perubahan di atas. Jika sudah sesuai, pilih "Sudah pas" untuk lanjut ke tahap Skema Data.`;
 
           return NextResponse.json({
@@ -5538,8 +7994,8 @@ export async function POST(req: Request) {
           });
         }
 
-        // User memilih confirm_rbac ("Sudah pas, lanjut ke Skema Data")
-        let updated = applyGuidedAnswer(session, 'RBAC', body.selected || [], body.other);
+        // User memilih confirm_formula ("Sudah pas, lanjut ke Skema Data")
+        let updated = applyGuidedAnswer(session, 'FORMULA', body.selected || [], body.other);
 
         // Pastikan skema data digenerate saat transisi ke SKEMA_DATA
         if (!updated.dataSchema || !updated.dataSchema.tabel || updated.dataSchema.tabel.length === 0) {
@@ -5547,6 +8003,7 @@ export async function POST(req: Request) {
             const schemaResult = await generateDataSchemaWithAI(updated, provider, userApiKey, userModel);
             updated.dataSchema = {
               tabel: schemaResult.tabel,
+              views: schemaResult.views,
               korelasiRingkas: schemaResult.korelasiRingkas,
               markdownTable: schemaResult.markdownTable,
               statusKonfirmasi: 'dikoreksi',
@@ -5555,24 +8012,39 @@ export async function POST(req: Request) {
           } catch (err: any) {
             console.error('[guided/route] Error generating data schema with AI:', err);
             const fallback = generateFallbackDataSchema(updated);
-            const md = renderDataSchemaMarkdown(fallback.tabel, fallback.korelasiRingkas);
+            const md = renderDataSchemaMarkdown(fallback.tabel, fallback.korelasiRingkas, fallback.views);
             updated.dataSchema = {
               tabel: fallback.tabel,
+              views: fallback.views,
               korelasiRingkas: fallback.korelasiRingkas,
               markdownTable: md,
               statusKonfirmasi: 'dikoreksi',
               revisiCount: 0
             };
           }
+        } else {
+          let finalTables = ensureMergedCatalogAndInventory(updated.dataSchema.tabel);
+          finalTables = ensureMergedSingleCycleRentalTransactions(finalTables, updated);
+          const { tables: entityTables, views: schemaViews } = await ensureDomainProfileEntitiesAndViews(
+            finalTables,
+            updated,
+            { provider, apiKey: userApiKey, model: userModel }
+          );
+          finalTables = entityTables;
+          finalTables = ensureFormulaFieldsInTargetTables(finalTables, updated.formulas?.daftar);
+          finalTables = sanitizeSchemaFieldsByDomainProfile(finalTables, updated);
+          updated.dataSchema.tabel = finalTables;
+          updated.dataSchema.views = schemaViews;
+          updated.dataSchema.markdownTable = renderDataSchemaMarkdown(finalTables, updated.dataSchema.korelasiRingkas, schemaViews);
         }
 
         const guidedStep = buildGuidedStep(updated);
-        const schemaMarkdown = updated.dataSchema?.markdownTable || (updated.dataSchema ? renderDataSchemaMarkdown(updated.dataSchema.tabel, updated.dataSchema.korelasiRingkas) : '');
+        const schemaMarkdown = updated.dataSchema?.markdownTable || (updated.dataSchema ? renderDataSchemaMarkdown(updated.dataSchema.tabel, updated.dataSchema.korelasiRingkas, updated.dataSchema.views) : '');
         const changeNoteSchema = generateChangeNote('SKEMA_DATA', updated);
         const narration =
           (changeNoteSchema ? `${changeNoteSchema}\n\n` : '') +
-          `Bagus sekali! Matriks hak akses (RBAC) telah disetujui.\n\n` +
-          `Berikut rancangan skema tabel data & relasi yang dibutuhkan aplikasi Anda berdasarkan alur dan wewenang yang telah disepakati:\n\n` +
+          `Mantap! Formula kalkulasi otomatis telah disepakati.\n\n` +
+          `Berikut rancangan skema tabel data & relasi yang memuat entitas, wewenang, dan formula kalkulasi yang telah disepakati:\n\n` +
           `${schemaMarkdown}\n\n` +
           `Silakan periksa struktur tabel dan relasinya di atas. Jika sudah pas, klik "Sudah pas" untuk lanjut ke Simulasi Database.`;
 
@@ -5807,6 +8279,11 @@ export async function POST(req: Request) {
               updated.rbac?.catatanPelimpahan
             );
           narration = `Berikut tinjauan matriks hak akses (RBAC) aplikasi Anda saat ini:\n\n${rbacMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan hak akses.`;
+        } else if (updated.step === 'FORMULA') {
+          const formulaMd =
+            updated.formulas?.markdownTable ||
+            renderFormulaMarkdownTable(updated.formulas?.daftar || []);
+          narration = `Berikut tinjauan formula kalkulasi otomatis aplikasi Anda saat ini:\n\n${formulaMd}\n\nSilakan pilih "Sudah pas" untuk melanjutkan atau berikan koreksi untuk menyesuaikan formula.`;
         } else if (updated.step === 'SKEMA_DATA') {
           const schemaMd =
             updated.dataSchema?.markdownTable ||

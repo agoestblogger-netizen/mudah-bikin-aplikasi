@@ -278,10 +278,14 @@ async function main() {
 
   const overriddenPelanggan = afterOverride.actorsClassification?.find(a => a.actor === 'Pelanggan');
   assert.strictEqual(overriddenPelanggan?.category, 'PENGGUNA_SISTEM', 'FAILED: Pelanggan harus berubah menjadi PENGGUNA_SISTEM');
-  assert.strictEqual(afterOverride.step, 'ROLE', 'FAILED: Setelah klasifikasi selesai, harus lanjut ke ROLE');
+  assert.strictEqual(afterOverride.step, 'DOMAIN_PROFILE', 'FAILED: Setelah klasifikasi selesai, harus lanjut ke DOMAIN_PROFILE');
+
+  // Lanjut konfirmasi domain profile ke ROLE
+  const afterDomain = applyGuidedAnswer(afterOverride, 'DOMAIN_PROFILE', ['confirm_domain_profile']);
+  assert.strictEqual(afterDomain.step, 'ROLE', 'FAILED: Setelah DOMAIN_PROFILE dikonfirmasi, harus lanjut ke ROLE');
 
   // Sekarang periksa Bagian B (buildRoleStep via buildGuidedStep)
-  const roleStepOverridden = buildGuidedStep(afterOverride)!;
+  const roleStepOverridden = buildGuidedStep(afterDomain)!;
   const roleLabelsOverridden = roleStepOverridden.options.map(o => o.label);
   console.log('  Opsi Peran setelah override:', roleLabelsOverridden);
 
@@ -330,10 +334,10 @@ async function main() {
     assert.strictEqual(c.category, 'PENGGUNA_SISTEM', `FAILED: Role ${c.actor} harus PENGGUNA_SISTEM`);
   });
 
-  // Konfirmasi storytelling langsung lompat ke ROLE tanpa sub-step pertanyaan yang memblokir
+  // Konfirmasi storytelling langsung lompat ke DOMAIN_PROFILE tanpa sub-step pertanyaan yang memblokir
   const afterCrmConfirm = applyGuidedAnswer(crmSession, 'STORYTELLING', ['confirm_story'], '');
   console.log('  Step setelah konfirmasi storytelling CRM:', afterCrmConfirm.step);
-  assert.strictEqual(afterCrmConfirm.step, 'ROLE', 'FAILED: CRM harus langsung lanjut ke step ROLE (0 blocking questions)');
+  assert.strictEqual(afterCrmConfirm.step, 'DOMAIN_PROFILE', 'FAILED: CRM harus langsung lanjut ke step DOMAIN_PROFILE (0 blocking questions)');
   assert(!afterCrmConfirm.storyline?.pendingActorClarification, 'FAILED: Tidak boleh ada pendingActorClarification');
   console.log('  ✅ Poin 4 Selesai: Regresi Sales Prospek CRM lolos tanpa hambatan.\n');
 
