@@ -73,6 +73,7 @@ import {
   type RoleModuleChecklistItem,
   type ReferensiModulRole,
   generateRoleModuleChecklist,
+  extractUncheckedModules,
   isRoleMatch,
   isSemanticModuleMatch
 } from '@/lib/templates';
@@ -2492,11 +2493,20 @@ export async function generateRbacMatrixWithAI(
     }
   }
 
+  const allUncheckedModules = extractUncheckedModules(checklistPerRole);
+
   const confirmedModulesPrompt =
     confirmedModulesPerRole.length > 0
       ? `\n📋 DAFTAR MODUL / FORM KERJA YANG TELAH DISETUJUI PENGGUNA PER ROLE (WAJIB JADI ACUAN UTAMA):
 ${confirmedModulesPerRole.map((c) => `- Peran "${c.role}": ${c.modules.join(', ')}`).join('\n')}
 PENTING: Pastikan semua modul yang disetujui di atas (termasuk modul custom dan modul saran yang dicentang) TERWAKILI di baris modul matriks RBAC!`
+      : '';
+
+  const uncheckedModulesPrompt =
+    allUncheckedModules.length > 0
+      ? `\n🚫 DAFTAR MODUL / FORM KERJA YANG TELAH DIBATALKAN / DI-UNCHECK PENGGUNA (DILARANG KERAS MUNCUL DI MATRIKS RBAC):
+${allUncheckedModules.map((u) => `- "${u}"`).join('\n')}
+PENTING & WAJIB: Pengguna telah secara sadar MEMBATALKAN/MENOLAK modul-modul di atas dari checklist. DILARANG KERAS membuat baris modul untuk modul di atas atau sinonimnya dalam matriks RBAC!`
       : '';
 
   const delegationNotesPrompt =
@@ -2537,7 +2547,8 @@ ATURAN WAJIB & LARANGAN MUTLAK:
      * Jika role TIDAK BERHAK / tidak terlibat pada modul tersebut: tulis "-" atau "Tidak Memiliki Akses".
 
 4. JUMLAH MODUL PROPORSIONAL & MENGAKOMODASI CHECKLIST:
-   - Buat 4 hingga 8 modul fungsional yang mencakup seluruh modul yang disetujui di checklist pengguna, Alur Inti, Alur Pendukung, dan Fitur Utama.
+   - Buat 4 hingga 8 modul fungsional yang mencakup seluruh modul yang disetujui di checklist pengguna, Alur Inti, dan Fitur Utama.
+   - DILARANG KERAS memasukkan modul yang secara eksplisit telah DI-UNCHECK / DITOLAK oleh pengguna pada checklist, meskipun modul tersebut sebelumnya ada di Alur Inti, Alur Pendukung, atau narasi awal!
    - Setiap modul harus punya nama yang jelas dan deskripsi fungsional 1 kalimat.
 
 ${delegationNotesPrompt}
@@ -2575,6 +2586,7 @@ ${alurPendukung.map((ap) => `- ${ap.nama}: ${ap.steps.map((s) => `(${s.pelaku}) 
 Fitur Pendukung:
 ${fiturPendukung.map((fp) => `- ${typeof fp === 'string' ? fp : (fp as any)?.label || fp}`).join('\n')}
 ${confirmedModulesPrompt}
+${uncheckedModulesPrompt}
 
 Susun matriks hak akses per modul fungsional dalam format JSON:`;
 
@@ -2583,7 +2595,7 @@ Susun matriks hak akses per modul fungsional dalam format JSON:`;
     try {
       const parsed = robustJsonParse<any>(rawText);
       if (parsed && Array.isArray(parsed.modul) && parsed.modul.length > 0) {
-        const validatedModul: {
+        let validatedModul: {
           nama: string;
           deskripsiFungsional?: string;
           izinPerRole: { role: string; level: string; keterangan?: string }[];
@@ -2640,6 +2652,21 @@ Susun matriks hak akses per modul fungsional dalam format JSON:`;
               });
             }
           }
+        }
+
+        // Filter ketat: buang modul apa pun yang secara eksplisit telah di-uncheck oleh pengguna
+        if (allUncheckedModules.length > 0) {
+          validatedModul = validatedModul.filter((m) => {
+            const isUnchecked = allUncheckedModules.some(
+              (u) =>
+                m.nama.toLowerCase() === u.toLowerCase() ||
+                isSemanticModuleMatch(m.nama, u) ||
+                m.nama.toLowerCase().includes(u.toLowerCase()) ||
+                u.toLowerCase().includes(m.nama.toLowerCase())
+            );
+            const isEssentialUserMgmt = /manajemen user|manajemen pengguna/i.test(m.nama);
+            return !isUnchecked || isEssentialUserMgmt;
+          });
         }
 
         if (validatedModul.length > 0) {
@@ -2766,13 +2793,15 @@ Perbarui dan kembalikan JSON lengkap:`;
   const elapsed = Date.now() - startTime;
   console.log(`[AI-RBAC-REVISE] Selesai dalam ${elapsed}ms`);
 
+  const allUncheckedModules = extractUncheckedModules(session.rbac?.checklistPerRole || []);
+
   if (raw) {
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         if (Array.isArray(parsed.modul) && parsed.modul.length > 0) {
-          const validatedModul: {
+          let validatedModul: {
             nama: string;
             deskripsiFungsional?: string;
             izinPerRole: { role: string; level: string; keterangan?: string }[];
@@ -2797,6 +2826,20 @@ Perbarui dan kembalikan JSON lengkap:`;
                 izinPerRole
               });
             }
+          }
+
+          if (allUncheckedModules.length > 0) {
+            validatedModul = validatedModul.filter((m) => {
+              const isUnchecked = allUncheckedModules.some(
+                (u) =>
+                  m.nama.toLowerCase() === u.toLowerCase() ||
+                  isSemanticModuleMatch(m.nama, u) ||
+                  m.nama.toLowerCase().includes(u.toLowerCase()) ||
+                  u.toLowerCase().includes(m.nama.toLowerCase())
+              );
+              const isEssentialUserMgmt = /manajemen user|manajemen pengguna/i.test(m.nama);
+              return !isUnchecked || isEssentialUserMgmt;
+            });
           }
 
           if (validatedModul.length > 0) {
@@ -7786,9 +7829,15 @@ Aturan:
           (!session.rbac?.modul || session.rbac.modul.length === 0);
 
         const isChecklistConfirm =
-          (body.selected && body.selected.includes('confirm_role_modules')) ||
-          Boolean(body.roleModuleChecklist) ||
-          (isChecklistStage && !isCorrection && !body.selected?.includes('confirm_rbac'));
+          !body.selected?.includes('confirm_rbac') &&
+          !isCorrection &&
+          (
+            (body.selected && body.selected.includes('confirm_role_modules')) ||
+            (isChecklistStage && (
+              (Array.isArray(body.roleModuleChecklist) && body.roleModuleChecklist.length > 0) ||
+              !body.selected?.some((s) => s.startsWith('jump_step_') || s === 'back_to_previous')
+            ))
+          );
 
         if (isChecklistConfirm) {
           const updatedChecklist: RoleModuleChecklistGroup[] =
@@ -7820,6 +7869,7 @@ Aturan:
             modul: rbacResult.modul,
             markdownTable: rbacResult.markdownTable,
             catatanPelimpahan: rbacResult.catatanPelimpahan,
+            checklistPerRole: updatedChecklist,
             stage: 'MATRIX',
             statusKonfirmasi: 'dikoreksi'
           };
@@ -7869,6 +7919,8 @@ Aturan:
               modul: revised.modul,
               markdownTable: revised.markdownTable,
               catatanPelimpahan: revised.catatanPelimpahan,
+              checklistPerRole: session.rbac?.checklistPerRole,
+              stage: 'MATRIX',
               statusKonfirmasi: 'dikoreksi',
               revisiCount: (session.rbac?.revisiCount || 0) + 1
             }

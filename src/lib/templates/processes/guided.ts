@@ -5085,6 +5085,35 @@ export function generateRoleModuleChecklist(session: MockupSessionState): RoleMo
   return groups;
 }
 
+export function extractUncheckedModules(checklistPerRole: RoleModuleChecklistGroup[]): string[] {
+  const allUnchecked: string[] = [];
+  for (const group of checklistPerRole) {
+    for (const item of group.items) {
+      if (!item.checked) {
+        const isCheckedElsewhere = checklistPerRole.some((g) =>
+          g.items.some(
+            (other) =>
+              other.checked &&
+              (other.nama.toLowerCase() === item.nama.toLowerCase() ||
+                isSemanticModuleMatch(other.nama, item.nama))
+          )
+        );
+        if (
+          !isCheckedElsewhere &&
+          !allUnchecked.some(
+            (u) =>
+              u.toLowerCase() === item.nama.toLowerCase() ||
+              isSemanticModuleMatch(u, item.nama)
+          )
+        ) {
+          allUnchecked.push(item.nama);
+        }
+      }
+    }
+  }
+  return allUnchecked;
+}
+
 export function buildRbacStep(session: MockupSessionState): GuidedStepPayload {
   const isChecklistStage =
     session.rbac?.stage === 'CHECKLIST' ||

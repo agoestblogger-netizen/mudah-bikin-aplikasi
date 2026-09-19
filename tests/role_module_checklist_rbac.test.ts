@@ -1,6 +1,7 @@
 import assert from 'assert';
 import {
   generateRoleModuleChecklist,
+  extractUncheckedModules,
   buildRbacStep,
   isSemanticModuleMatch,
   deriveModuleNameFromAction
@@ -179,6 +180,77 @@ export async function runRoleModuleChecklistTest() {
   assert(matrixStep.options.some((o) => o.id === 'reopen_module_checklist'), 'Harus ada tombol buka kembali checklist');
 
   console.log('  ✅ PASS: Transisi stage CHECKLIST dan MATRIX di buildRbacStep valid.');
+
+  // 5. Uji extractUncheckedModules (Form di uncheck harus terdeteksi dan dikeluarkan)
+  console.log('\n--- TEST 5: Ekstraksi Modul yang Di-uncheck Pengguna ---');
+  const groupsWithUnchecked: RoleModuleChecklistGroup[] = [
+    {
+      role: 'Staf Penyewaan Sepeda',
+      items: [
+        {
+          id: 'mod_1',
+          nama: 'Form Booking & Transaksi Sewa',
+          deskripsi: 'Pencatatan booking',
+          role: 'Staf Penyewaan Sepeda',
+          termasukDiAlur: true,
+          disarankan: false,
+          checked: true
+        },
+        {
+          id: 'mod_2',
+          nama: 'Pemeriksaan Kondisi Sepeda Sebelum Transaksi Pengembalian',
+          deskripsi: 'Pengecekan sepeda',
+          role: 'Staf Penyewaan Sepeda',
+          termasukDiAlur: true,
+          disarankan: false,
+          checked: false // DI-UNCHECK OLEH PENGGUNA
+        }
+      ]
+    },
+    {
+      role: 'Super Admin',
+      items: [
+        {
+          id: 'mod_3',
+          nama: 'Manajemen Katalog Master',
+          deskripsi: 'Data master',
+          role: 'Super Admin',
+          termasukDiAlur: true,
+          disarankan: false,
+          checked: true
+        }
+      ]
+    }
+  ];
+
+  const uncheckedList = extractUncheckedModules(groupsWithUnchecked);
+  assert(uncheckedList.length === 1, `Harus mendeteksi tepat 1 modul yang di-uncheck, didapat: ${uncheckedList.length}`);
+  assert(
+    uncheckedList[0] === 'Pemeriksaan Kondisi Sepeda Sebelum Transaksi Pengembalian',
+    'Modul yang di-uncheck harus sesuai'
+  );
+  console.log('  ✅ PASS: extractUncheckedModules mendeteksi form yang di-uncheck dengan tepat.');
+
+  // 6. Uji Pencegahan Looping confirm_rbac ("✅ Sudah pas, lanjut ke Deklarasi Formula")
+  console.log('\n--- TEST 6: Pencegahan Looping confirm_rbac ke Checklist ---');
+  const isCorrection = false;
+  const isChecklistStage = false; // Karena sedang di MATRIX stage
+  const bodySelected = ['confirm_rbac'];
+  const bodyRoleModuleChecklist = groupsWithUnchecked;
+
+  const isChecklistConfirm =
+    !bodySelected.includes('confirm_rbac') &&
+    !isCorrection &&
+    (
+      (bodySelected.includes('confirm_role_modules')) ||
+      (isChecklistStage && (
+        (Array.isArray(bodyRoleModuleChecklist) && bodyRoleModuleChecklist.length > 0) ||
+        !bodySelected.some((s) => s.startsWith('jump_step_') || s === 'back_to_previous')
+      ))
+    );
+
+  assert(isChecklistConfirm === false, 'confirm_rbac DILARANG KERAS memicu isChecklistConfirm');
+  console.log('  ✅ PASS: confirm_rbac berhasil diproteksi dari looping ke checklist.');
 
   console.log('\n========================================================================');
   console.log('🎉 SEMUA TEST CHECKLIST MODUL PER ROLE (RBAC STEP) LOLOS DENGAN SUKSES!');

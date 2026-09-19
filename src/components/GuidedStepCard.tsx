@@ -310,7 +310,7 @@ export const GuidedStepCard: React.FC<GuidedStepCardProps> = ({
       Object.keys(editedRoles).length > 0 ? editedRoles : undefined,
       promotedEntities.length > 0 ? promotedEntities : undefined,
       Object.keys(editedEntities).length > 0 ? editedEntities : undefined,
-      checklistGroups.length > 0 ? checklistGroups : undefined
+      isChecklistStage && checklistGroups.length > 0 ? checklistGroups : undefined
     );
   };
 
