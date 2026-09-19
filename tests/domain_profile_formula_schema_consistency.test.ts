@@ -2,6 +2,8 @@ import assert from 'assert';
 import {
   extractFormulaVariables,
   renderFormulaMarkdownTable,
+  renderDomainProfileMarkdown,
+  buildDomainProfileStep,
   type BusinessFormula,
   type DomainProfile,
   type MockupSessionState
@@ -13,7 +15,10 @@ import {
   ensureDomainProfileEntitiesAndViews,
   ensureFormulaFieldsInTargetTables,
   isFieldAllowedByDomainProfile,
-  sanitizeSchemaFieldsByDomainProfile
+  sanitizeSchemaFieldsByDomainProfile,
+  ensureStaffRecorderInActivityTables,
+  formatModelOperasionalPrompt,
+  formatModelTarifPrompt
 } from '../src/app/api/guided/route';
 import { checkAndRepairMissingSchemaTables } from '../src/lib/codeValidator';
 
@@ -59,7 +64,7 @@ console.log('--- TEST 1: Sinkronisasi komponenInput dari formulaExpression (Poin
 
   const filtered = filterFormulasByDomainProfile(rawFormulas, profile);
   assert.strictEqual(filtered.length, 2);
-  
+
   // Verifikasi 'deposit' halusinasi telah dibersihkan dari komponenInput
   assert.deepStrictEqual(filtered[0].komponenInput, ['durasi_jam', 'tarif_per_jam', 'denda_keterlambatan']);
   assert.deepStrictEqual(filtered[1].komponenInput, ['total_biaya', 'deposit_diterima']);
@@ -156,12 +161,12 @@ console.log('--- TEST 3: Evaluasi computeFormulaValue dengan Relasi Fallback (Po
               if (key.endsWith('_id') && form[key]) {
                 var targetName = key.slice(0, -3).toLowerCase();
                 var tableKeys = Object.keys(dbSource);
-                var matchedKey = tableKeys.find(function(k) {
+                var matchedKey = tableKeys.find(function (k) {
                   var lk = k.toLowerCase();
                   return lk === targetName || lk === 'katalog_' + targetName || lk === targetName + 's';
                 });
                 if (matchedKey && Array.isArray(dbSource[matchedKey])) {
-                  var targetRow = dbSource[matchedKey].find(function(r: any) { return r && r.id === form[key]; });
+                  var targetRow = dbSource[matchedKey].find(function (r: any) { return r && r.id === form[key]; });
                   if (targetRow) {
                     for (var rk in targetRow) {
                       if (ctx[rk] === undefined || ctx[rk] === null) {
@@ -532,8 +537,227 @@ async function runTest7() {
   console.log('✅ PASS Test 7C: Validator checkAndRepairMissingSchemaTables mengecualikan tab view_* secara aman');
 }
 
+console.log('\n--- TEST 8: Opsi TIDAK_RELEVAN & Fallback komponenBiayaYangLazim Kosong ---');
+{
+  const crmProfile: DomainProfile = {
+    modelOperasional: 'TIDAK_RELEVAN',
+    modelTarif: 'TIDAK_RELEVAN',
+    adaJaminanDeposit: false,
+    entitasKatalogMaster: ['klien', 'layanan_konsultasi'],
+    entitasPencatatanTransaksi: ['prospek_sales', 'aktivitas_follow_up'],
+    komponenBiayaYangLazim: []
+  };
+
+  // 1. Markdown rendering harus netral dan jujur
+  const md = renderDomainProfileMarkdown(crmProfile, 'CRM Sales B2B');
+  assert.ok(md.includes('- **Model Operasional**: ⚪ Tidak berlaku untuk jenis aplikasi ini'), 'Model Operasional harus netral saat TIDAK_RELEVAN');
+  assert.ok(md.includes('- **Model Tarif & Kalkulasi**: ⚪ Tidak berlaku untuk jenis aplikasi ini'), 'Model Tarif harus netral saat TIDAK_RELEVAN');
+  assert.ok(md.includes('- **Whitelist Komponen Biaya Sah**: *(Tidak ada komponen biaya / murni non-finansial)*'), 'Whitelist kosong harus menampilkan teks informatif non-finansial');
+
+  // 2. buildDomainProfileStep harus menampilkan label "Tidak berlaku"
+  const mockSession: MockupSessionState = {
+    step: 'DOMAIN_PROFILE',
+    match: { templateId: 'MT-21', overlayIds: [], patternIds: [], tier: 'BASIC', businessCategory: 'CRM Sales B2B' },
+    roles: { selected: ['Super Admin'] },
+    flow: {},
+    painPoints: { selected: [] },
+    features: { selected: [] },
+    domainProfile: crmProfile
+  };
+  const stepPayload = buildDomainProfileStep(mockSession);
+  const confirmOpt = stepPayload.options.find(o => o.id === 'confirm_domain_profile');
+  assert.ok(confirmOpt?.description?.includes('Tidak berlaku'), 'Deskripsi opsi harus ramah dan memuat "Tidak berlaku"');
+
+  // 3. isFieldAllowedByDomainProfile harus tetap mengizinkan field non-finansial operasional
+  assert.strictEqual(isFieldAllowedByDomainProfile('status_prospek', crmProfile), true, 'Field non-finansial harus diizinkan');
+  assert.strictEqual(isFieldAllowedByDomainProfile('nama_klien', crmProfile), true, 'Field non-finansial harus diizinkan');
+  assert.strictEqual(isFieldAllowedByDomainProfile('catatan_follow_up', crmProfile), true, 'Field non-finansial harus diizinkan');
+
+  // Field finansial liar tanpa rumus atau whitelist harus ditolak
+  assert.strictEqual(isFieldAllowedByDomainProfile('harga_satuan', crmProfile), false, 'Field finansial tanpa whitelist harus ditolak');
+  assert.strictEqual(isFieldAllowedByDomainProfile('total_biaya', crmProfile), false, 'Field finansial tanpa whitelist harus ditolak');
+
+  console.log('✅ PASS Test 8: TIDAK_RELEVAN dan fallback biaya kosong diverifikasi dengan sukses.');
+}
+
+console.log('\n--- TEST 9: Konsistensi Field dicatat_oleh / Pemilik Baris (Row-Level Access) ---');
+{
+  const crmSession: MockupSessionState = {
+    step: 'SKEMA_DATA',
+    match: { templateId: 'MT-21', overlayIds: [], patternIds: [], tier: 'BASIC', businessCategory: 'CRM Sales B2B' },
+    roles: {
+      selected: ['Super Admin', 'Sales Executive', 'Klien / Prospek']
+    },
+    flow: {},
+    painPoints: { selected: [] },
+    features: { selected: [] },
+    domainProfile: {
+      modelOperasional: 'TIDAK_RELEVAN',
+      modelTarif: 'TIDAK_RELEVAN',
+      adaJaminanDeposit: false,
+      entitasKatalogMaster: ['katalog_layanan'],
+      entitasPencatatanTransaksi: ['prospek_leads', 'aktivitas_kunjungan', 'penawaran_deals'],
+      komponenBiayaYangLazim: []
+    }
+  };
+
+  const sampleTables = [
+    {
+      nama: 'pengguna',
+      keterangan: 'Akun login pengguna',
+      field: [{ nama: 'id', tipe: 'text', keterangan: 'ID' }]
+    },
+    {
+      nama: 'katalog_layanan',
+      keterangan: 'Katalog produk dan paket layanan',
+      field: [
+        { nama: 'id', tipe: 'text', keterangan: 'ID' },
+        { nama: 'nama_layanan', tipe: 'text', keterangan: 'Nama Layanan' }
+      ]
+    },
+    {
+      nama: 'prospek_leads',
+      keterangan: 'Mencatat prospek calon pelanggan baru',
+      field: [
+        { nama: 'id', tipe: 'text', keterangan: 'ID' },
+        { nama: 'nama_prospek', tipe: 'text', keterangan: 'Nama Prospek' },
+        { nama: 'nilai_potensi', tipe: 'angka', keterangan: 'Nilai potensi' }
+      ]
+    },
+    {
+      nama: 'aktivitas_kunjungan',
+      keterangan: 'Log kunjungan staf sales ke klien',
+      field: [
+        { nama: 'id', tipe: 'text', keterangan: 'ID' },
+        { nama: 'sales_id', tipe: 'relasi ke pengguna', keterangan: 'Sales yang berkunjung', targetRole: 'Sales Executive' },
+        { nama: 'catatan_hasil', tipe: 'text', keterangan: 'Hasil meeting' }
+      ]
+    }
+  ];
+
+  const processed = ensureStaffRecorderInActivityTables(sampleTables, crmSession);
+
+  // 1. Tabel 'pengguna' tidak boleh disuntik 'dicatat_oleh'
+  const userTable = processed.find(t => t.nama === 'pengguna');
+  assert.strictEqual(userTable?.field.some(f => f.nama === 'dicatat_oleh'), false, 'Tabel pengguna tidak boleh disuntik dicatat_oleh');
+
+  // 2. Tabel katalog master tidak boleh disuntik 'dicatat_oleh'
+  const catalogTable = processed.find(t => t.nama === 'katalog_layanan');
+  assert.strictEqual(catalogTable?.field.some(f => f.nama === 'dicatat_oleh'), false, 'Tabel katalog tidak boleh disuntik dicatat_oleh');
+
+  // 3. Tabel aktivitas tanpa field pencatat ('prospek_leads') WAJIB disuntik 'dicatat_oleh'
+  const leadsTable = processed.find(t => t.nama === 'prospek_leads');
+  const recorderField = leadsTable?.field.find(f => f.nama === 'dicatat_oleh');
+  assert.ok(recorderField, 'Tabel prospek_leads harus disuntik field dicatat_oleh');
+  assert.strictEqual(recorderField?.tipe, 'relasi ke pengguna', 'Tipe dicatat_oleh harus relasi ke pengguna');
+  assert.strictEqual(recorderField?.targetRole, 'Sales Executive', 'Target role harus Staf / Sales Executive');
+
+  // 4. Tabel yang SUDAH punya field staf ('aktivitas_kunjungan' dengan sales_id) tidak boleh diduplikasi
+  const visitTable = processed.find(t => t.nama === 'aktivitas_kunjungan');
+  assert.strictEqual(visitTable?.field.some(f => f.nama === 'dicatat_oleh'), false, 'Tabel dengan sales_id tidak boleh disuntik duplikat');
+
+  console.log('✅ PASS Test 9: ensureStaffRecorderInActivityTables sukses menjamin konsistensi field pencatat.');
+}
+
+console.log('\n--- TEST 10: Dynamic domainProfile & Skenario Kontras (CSIRT vs Rental Sepeda) ---');
+{
+  // Skenario A: CSIRT Incident Response (Ekstrem Non-Finansial, Non-Logistik)
+  const csirtProfile: DomainProfile = {
+    modelOperasional: {
+      label: 'Respon Insiden & Mitigasi Krisis Siber (CSIRT)',
+      deskripsi: 'Penanganan tiket insiden dari triage, investigasi, mitigasi, hingga post-mortem.'
+    },
+    modelTarif: null,
+    melibatkanPengirimanFisik: false,
+    adaJaminanDeposit: false,
+    entitasKatalogMaster: ['kategori_insiden', 'aset_terdampak'],
+    entitasPencatatanTransaksi: ['tiket_insiden', 'log_tindakan_mitigasi'],
+    komponenBiayaYangLazim: []
+  };
+
+  // 1. Markdown rendering CSIRT
+  const mdCsirt = renderDomainProfileMarkdown(csirtProfile, 'CSIRT Incident Response');
+  assert.ok(mdCsirt.includes('Respon Insiden & Mitigasi Krisis Siber (CSIRT)'), 'Label dinamis CSIRT harus muncul di markdown');
+  assert.ok(!mdCsirt.includes('Model Tarif & Kalkulasi'), 'Model Tarif TIDAK boleh muncul sama sekali jika null');
+  assert.ok(!mdCsirt.includes('Jaminan / Deposit'), 'Jaminan/Deposit TIDAK boleh muncul sama sekali jika false');
+
+  // 2. Format Prompt CSIRT
+  const opCsirtPrompt = formatModelOperasionalPrompt(csirtProfile.modelOperasional);
+  assert.ok(opCsirtPrompt.includes('Respon Insiden & Mitigasi Krisis Siber (CSIRT)'));
+  assert.ok(opCsirtPrompt.includes('Penanganan tiket insiden'));
+  const tarifCsirtPrompt = formatModelTarifPrompt(csirtProfile.modelTarif);
+  assert.ok(tarifCsirtPrompt.includes('Tidak Ada Model Tarif Khusus'));
+
+  // 3. Field gate CSIRT
+  assert.strictEqual(isFieldAllowedByDomainProfile('status_tiket', csirtProfile), true);
+  assert.strictEqual(isFieldAllowedByDomainProfile('tingkat_keparahan', csirtProfile), true);
+  assert.strictEqual(isFieldAllowedByDomainProfile('ongkir', csirtProfile), false, 'ongkir harus diblokir oleh melibatkanPengirimanFisik === false');
+  assert.strictEqual(isFieldAllowedByDomainProfile('kurir', csirtProfile), false, 'kurir harus diblokir oleh melibatkanPengirimanFisik === false');
+  assert.strictEqual(isFieldAllowedByDomainProfile('no_resi', csirtProfile), false, 'no_resi harus diblokir oleh melibatkanPengirimanFisik === false');
+  assert.strictEqual(isFieldAllowedByDomainProfile('total_biaya', csirtProfile), false, 'total_biaya liar harus diblokir');
+
+  // Skenario B: Rental Sepeda (Model Operasional Lokasi, Ada Tarif Sewa, Ada Deposit, Non-Logistik)
+  const rentalProfile: DomainProfile = {
+    modelOperasional: {
+      label: 'Pelayanan di Lokasi / Counter Langsung',
+      deskripsi: 'Pelanggan datang langsung ke lokasi usaha, memilih unit, dan mengembalikannya ke counter.'
+    },
+    modelTarif: {
+      label: 'Sewa Berdasarkan Durasi Waktu',
+      deskripsi: 'Tarif dihitung per jam dikalikan durasi pemakaian unit sepeda.'
+    },
+    melibatkanPengirimanFisik: false,
+    adaJaminanDeposit: true,
+    fungsiDeposit: 'Jaminan kerusakan/keterlambatan unit fisik sepeda',
+    entitasKatalogMaster: ['sepeda'],
+    entitasPencatatanTransaksi: ['transaksi_sewa'],
+    komponenBiayaYangLazim: ['durasi_jam', 'tarif_per_jam', 'deposit', 'denda_keterlambatan', 'total_biaya']
+  };
+
+  // 1. Markdown rendering Rental Sepeda
+  const mdRental = renderDomainProfileMarkdown(rentalProfile, 'Rental Sepeda Gowes');
+  assert.ok(mdRental.includes('Pelayanan di Lokasi / Counter Langsung'), 'Label operasional rental harus muncul');
+  assert.ok(mdRental.includes('Sewa Berdasarkan Durasi Waktu'), 'Model tarif rental harus muncul');
+  assert.ok(mdRental.includes('Jaminan / Deposit'), 'Jaminan deposit rental harus muncul karena true');
+  assert.ok(mdRental.includes('Jaminan kerusakan/keterlambatan unit fisik sepeda'));
+
+  // 2. Field gate Rental Sepeda
+  assert.strictEqual(isFieldAllowedByDomainProfile('durasi_jam', rentalProfile), true);
+  assert.strictEqual(isFieldAllowedByDomainProfile('tarif_per_jam', rentalProfile), true);
+  assert.strictEqual(isFieldAllowedByDomainProfile('deposit', rentalProfile), true);
+  assert.strictEqual(isFieldAllowedByDomainProfile('denda_keterlambatan', rentalProfile), true);
+  // Logistik terblokir via melibatkanPengirimanFisik === false
+  assert.strictEqual(isFieldAllowedByDomainProfile('ongkir', rentalProfile), false, 'ongkir terblokir via melibatkanPengirimanFisik === false');
+  assert.strictEqual(isFieldAllowedByDomainProfile('biaya_pengiriman', rentalProfile), false);
+  assert.strictEqual(isFieldAllowedByDomainProfile('ekspedisi', rentalProfile), false);
+  assert.strictEqual(isFieldAllowedByDomainProfile('no_resi', rentalProfile), false);
+
+  // Skenario C: Toko Online Fisik (Melibatkan Pengiriman Fisik === true)
+  const ecommerceProfile: DomainProfile = {
+    modelOperasional: {
+      label: 'Pesanan Online & Pengiriman Paket',
+      deskripsi: 'Pelanggan memesan secara daring dan barang dikirimkan via kurir logistik.'
+    },
+    modelTarif: {
+      label: 'Harga Satuan per Produk',
+      deskripsi: 'Kalkulasi harga barang dikalikan kuantitas belanja.'
+    },
+    melibatkanPengirimanFisik: true,
+    adaJaminanDeposit: false,
+    entitasKatalogMaster: ['produk'],
+    entitasPencatatanTransaksi: ['pesanan'],
+    komponenBiayaYangLazim: ['harga_satuan', 'jumlah_beli', 'ongkir', 'total_bayar']
+  };
+
+  // Ongkir dan no_resi harus diizinkan untuk ecommerce yang melibatkan pengiriman fisik
+  assert.strictEqual(isFieldAllowedByDomainProfile('ongkir', ecommerceProfile), true, 'ongkir diizinkan jika melibatkan pengiriman fisik & whitelist');
+  assert.strictEqual(isFieldAllowedByDomainProfile('no_resi', ecommerceProfile), true, 'no_resi diizinkan jika melibatkan pengiriman fisik');
+
+  console.log('✅ PASS Test 10: Dynamic domainProfile & Skenario Kontras (CSIRT vs Rental vs E-Commerce) tervalidasi sempurna.');
+}
+
 runTest7().then(() => {
-  console.log('\n🎉 ALL 7 TESTS PASSED! Seluruh arsitektur viewConfig & kelaziman laporan diverifikasi.');
+  console.log('\n🎉 ALL 10 TESTS PASSED! Seluruh arsitektur domainProfile dinamis, flag semantik terpisah & kelaziman diverifikasi.');
 }).catch((err) => {
   console.error('❌ Test 7 failed:', err);
   process.exit(1);

@@ -24,6 +24,7 @@ import {
   detectAmbiguousStorylineDomain,
   buildDirectionClarificationCard,
   buildNonBusinessClarificationCard,
+  hasClearBusinessOrAppIntent,
   DUAL_PROCESS_PATTERNS,
   REQUIRED_ROLE,
   isSuperAdminRole,
@@ -65,6 +66,8 @@ import {
   generateChangeNote,
   type DomainProfile,
   renderDomainProfileMarkdown,
+  type ProductRequirementsDocument,
+  renderPrdMarkdown,
   isPureConfirmationText,
   isTablePengguna,
   type ViewConfig,
@@ -279,15 +282,15 @@ export async function invokeAIChat(options: {
       const isGemmaOrNoSystem = openaiModel.toLowerCase().includes('gemma') || openaiModel.toLowerCase().includes('r1');
       const messages = isGemmaOrNoSystem
         ? [
-            {
-              role: 'user',
-              content: `[INSTRUKSI SISTEM & ATURAN]:\n${systemInstruction}\n\n[PERMINTAAN PENGGUNA]:\n${userPrompt}`
-            }
-          ]
+          {
+            role: 'user',
+            content: `[INSTRUKSI SISTEM & ATURAN]:\n${systemInstruction}\n\n[PERMINTAAN PENGGUNA]:\n${userPrompt}`
+          }
+        ]
         : [
-            { role: 'system', content: systemInstruction },
-            { role: 'user', content: userPrompt }
-          ];
+          { role: 'system', content: systemInstruction },
+          { role: 'user', content: userPrompt }
+        ];
 
       const bodyPayload: Record<string, any> = {
         model: openaiModel,
@@ -556,20 +559,26 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 0. ANALISIS KONSEPTUAL ARAH BISNIS (analisisArah - WAJIB):
    Analisis permintaan pengguna secara holistik untuk menyimpulkan salah satu dari EMPAT kondisi berikut:
 
-   d) "BUKAN_IDE_BISNIS" (CEK INI PERTAMA KALI SEBELUM CEK LAINNYA):
-      Jika input pengguna SAMA SEKALI TIDAK dapat diinterpretasikan sebagai ide aplikasi atau proses bisnis:
-      - Kata navigasi/kontrol yang nyasar: "lanjut", "ok", "ya", "oke", "next", "yes", "back", "kembali", "stop", "cancel"
-      - Input tidak bermakna/typo parah: huruf acak, karakter spesial tanpa konteks, angka saja
-      - Kalimat bukan bisnis: pertanyaan umum, kalimat acak, atau teks yang tidak menyiratkan bisnis/aplikasi apapun
-      JIKA kondisi ini terpenuhi, isi field "klarifikasiBukanIde" dan JANGAN isi field narasi/asumsiAktor/asumsiAlurUtama.
-      Jika ada kemungkinan kecil sekalipun bahwa input merujuk ke domain bisnis (contoh: "salon", "bakso", "cuci"), JANGAN pilih BUKAN_IDE_BISNIS.
+    d) "BUKAN_IDE_BISNIS" (HANYA UNTUK INPUT YANG BENAR-BENAR BUKAN IDE APLIKASI/BISNIS):
+       Kondisi BUKAN_IDE_BISNIS HANYA DAN EKSKLUSIF digunakan jika input pengguna SAMA SEKALI TIDAK menyebut atau menyiratkan ide aplikasi, bisnis, alur kerja, profesi, atau operasional:
+       - Kata navigasi/kontrol murni yang nyasar: "lanjut", "ok", "ya", "oke", "next", "yes", "back", "kembali", "stop", "cancel", "siap", "baik", "sudah"
+       - Sapaan / chitchat umum murni tanpa konteks: "halo", "hai", "selamat pagi", "p", "assalamualaikum", "siapa kamu", "apa kabar"
+       - Input tidak bermakna/typo parah: huruf acak ("asdfghjk"), angka saja, karakter spesial tanpa konteks
+       - Pertanyaan umum non-aplikasi di luar konteks pembuatan software
+
+       PRINSIP KELONGGARAN SEMANTIK (SEMANTIC LENIENCY - ATURAN WAJIB):
+       - Input singkat seperti "aplikasi aktifitas sales", "aplikasi kasir toko", "sistem antrian klinik", "sales crm", "tracking kurir", "manajemen inventaris", "rental sepeda", "pos kedai kopi", dsb. adalah IDE APLIKASI YANG 100% SAH DAN VALID!
+       - AI WAJIB MENYAMBUTNYA dan merangkai alur proses operasional konkret yang relevan dengan domain tersebut.
+       - Spektrum aplikasi bisnis mencakup: ritel/toko fisik, jasa konsumen, B2B, aktivitas sales lapangan/CRM, manajemen inventaris, operasional internal, logistik, dll. (TIDAK HARUS berupa toko fisik di mana pelanggan membawa barang fisik).
+       - JIKA ADA INDIKASI nama jenis aplikasi, bidang bisnis, proses kerja, atau profesi sekecil apa pun, DILARANG KERAS MEMILIH BUKAN_IDE_BISNIS!
 
    Jika bukan BUKAN_IDE_BISNIS, analisis aktivitas frontliner / customer-facing untuk menyimpulkan salah satu dari tiga kondisi berikut:
    a) "SATU_ARAH":
-      Aliran transaksi hanya SEARAH dari bisnis ke pelanggan (pelanggan memesan/dilayani dan membayar bisnis).
+      Aliran transaksi hanya SEARAH dari bisnis ke pelanggan (pelanggan memesan/dilayani dan membayar bisnis, atau sales/staf melayani alur kerja operasional).
       * Kafe, kedai kopi, restoran, bakery, rumah makan: Pelanggan memesan hidangan/minuman dan membayar ke kasir. Memiliki variasi menu kafe dan resto BUKAN dua arah transaksi! Ini MURNI "SATU_ARAH".
       * Cuci mobil, klinik gigi/medis, salon, barbershop, apotek, toko baju, retail umum: Pelanggan memesan/dilayani dan membayar. Ini MURNI "SATU_ARAH".
       * Rental mobil/motor/kost: Alur linier satu arah dengan tahap serah dan terima (pelanggan sewa, serah-terima kunci, lalu pengembalian unit saat durasi sewa selesai) TETAP dianggap "SATU_ARAH", karena ini adalah satu proses berkesinambungan awal-akhir, bukan dua transaksi berlawanan!
+      * Aplikasi Aktivitas Sales / CRM / Pelacakan Lapangan: Sales mengunjungi prospek, presentasi penawaran, dan mencatat transaksi closing/PO. Ini MURNI "SATU_ARAH".
       * Aktivitas sisipan/sesekali dengan modalitas rendah (misal bengkel yang "kadang juga jual sparepart") tetap "SATU_ARAH".
    b) "DUA_ARAH":
       HANYA JIKA ada dua jenis transaksi rutin dengan pelanggan yang ALIRANNYA BERLAWANAN (ada aliran barang/dana masuk DAN aliran barang/dana keluar):
@@ -663,15 +672,21 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 1. STRUKTUR ALUR CERITA LENGKAP END-TO-END BERTAHAP (WAJIB 3 FASE - DILARANG MELOMPAT):
    Narasi cerita (2-4 kalimat) DILARANG melompat langsung ke tengah proses (seperti langsung menimbang barang di timbangan atau langsung cetak nota kasir). Cerita WAJIB merangkai alur lengkap berkesinambungan yang memuat 3 tahapan kronologis:
    a) Fase Pembuka (Titik Awal Interaksi):
-      Pelanggan/warga/sumber barang mendatangi tempat usaha membawa barang/kebutuhan, atau petugas lapangan mendatangi lokasi sumber barang untuk penjemputan.
-   b) Fase Inti Operasional (Penanganan Fisik & Layanan Lapangan):
-      Staf/petugas memeriksa kondisi fisik, memilah jenis material/layanan, dan menimbang/menguji kelayakan dengan alat ukur presisi di tempat.
-   c) Fase Penutup (Penyelesaian Transaksi & Rekonsiliasi):
-      Pencatatan nota transaksi/tanda terima, pembayaran tunai/transfer ke pelanggan/warga, dan pelaporan berkala ke buku rekapitulasi pemilik.
+      - Ritel / Jasa Konsumen: Pelanggan/warga mendatangi tempat usaha membawa kebutuhan, atau staf mendatangi lokasi pelanggan.
+      - B2B / Sales / Operasional Internal: Petugas sales/lapangan menerima daftar target prospek atau mendatangi calon klien untuk kunjungan kerja/kanvasing.
+   b) Fase Inti Operasional (Penanganan Layanan, Produk, atau Aktivitas Penawaran):
+      - Ritel / Jasa Konsumen: Staf memeriksa kondisi fisik, memilah jenis material/layanan, dan menangani kebutuhan pelanggan dengan alat kerja presisi.
+      - B2B / Sales / Operasional: Sales mempresentasikan katalog solusi, mendemonstrasikan produk, mencatat kebutuhan spesifik atau menegosiasikan rincian penawaran.
+   c) Fase Penutup (Penyelesaian Transaksi, Rekonsiliasi, & Pelaporan):
+      - Ritel / Jasa Konsumen: Pencatatan nota transaksi/struk, pembayaran tunai/transfer, dan pelaporan berkala ke buku rekapitulasi pemilik.
+      - B2B / Sales / Operasional: Penerbitan formulir pesanan/purchase order (PO) atau kesepakatan closing, serta pembaruan status pipeline dan laporan aktivitas harian ke supervisor/manajer.
 
 2. OBJEK FISIK & AKTIVITAS SPESIFIK DOMAIN (WAJIB):
    - Cerita WAJIB menyebutkan minimal satu detail aktivitas atau objek fisik nyata yang spesifik ke domain bisnis yang diminta pengguna.
    - Contoh objek/aktivitas konkret:
+     * Aktivitas Sales / CRM: katalog sampel produk, lembar log kunjungan (visit log), check-in GPS lokasi prospek, dokumen penawaran/quotation, purchase order (PO), update status pipeline closing.
+     * Kasir / Toko Ritel: barcode scanner produk, struk thermal kasir, penataan stok rak barang, keranjang belanja, laci kasir (cash drawer).
+     * Sistem Antrian Klinik: nomor antrean mesin tiket, kartu identitas pasien/BPJS, ruang periksa dokter, resep digital obat, rekam medis keluhan.
      * Cuci mobil: selang air bertekanan, vakum interior, sabun salju, pengering chamois, plat nomor kendaraan, antrean slot cuci.
      * Klinik dokter gigi: dental chair (kursi periksa), rekam medis keluhan gigi/rongga mulut, alat rontgen/sterilisasi gigi, resep obat, jadwal penambalan/pembersihan karang gigi.
      * Laundry kiloan: timbangan digital cucian, pemilahan baju luntur/halus, mesin cuci/dryer, setrika uap, plastik packing wangi, nota kiloan.
@@ -680,7 +695,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
    - DILARANG KERAS menggunakan frasa generik lintas-industri seperti: "tim di lapangan", "aktivitas harian", "layanan pelanggan", "tim melayani secara teratur" tanpa detail konkret tambahan!
 
 3. PERAN SPESIFIK & MANUSIAWI (asumsiAktor) BESERTA DETAIL PERAN (detailAktor):
-   - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
+   - asumsiAktor WAJIB berisi istilah pekerjaan konkret di lapangan sesuai domain (contoh untuk aktivitas sales: "Super Admin", "Supervisor Sales", "Sales Executive / Lapangan", "Klien / Pelanggan"; untuk cuci mobil: "Super Admin", "Kasir Penerima Kendaraan", "Staf Cuci & Lap", "Pelanggan").
    - DILARANG memakai sebutan generik abstrak seperti "Staf Operasional", "Operator", "Pegawai", atau "Tim Lapangan".
    - Selalu sertakan "Super Admin" sebagai peran pemilik/pengelola tertinggi.
    - ATURAN WAJIB SUPER ADMIN (PENGATURAN USER/PENGGUNA DI SEMUA DOMAIN):
@@ -771,7 +786,7 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
 
   const raw = await invokeAIChat({
     systemInstruction,
-    userPrompt: `Permintaan Pengguna: "${prompt}"\nLangkah 1: Nilai apakah ini ide bisnis/aplikasi yang valid (jika tidak, kembalikan kondisi BUKAN_IDE_BISNIS). Langkah 2: Jika valid, analisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU) dan analisis pemisahan role frontliner berdasarkan Diagnostic Litmus Test jika DUA_ARAH, susun cerita proses bisnis yang hangat dan hidup memuat aktivitas konkret, lalu ekstrak semua field terstruktur:`,
+    userPrompt: `Permintaan Pengguna: "${prompt}"\nEvaluasi Semantik: Nilai apakah input ini menyiratkan jenis aplikasi, bisnis, atau alur kerja operasional (input singkat seperti "${prompt}" adalah sah jika menyebut jenis aplikasi/bisnis seperti sales, kasir, antrian, dll. Hanya kembalikan BUKAN_IDE_BISNIS jika input murni kata navigasi/sapaan/karakter acak). Jika valid, analisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU), analisis pemisahan role frontliner berdasarkan Diagnostic Litmus Test jika DUA_ARAH, susun cerita proses bisnis yang hangat, hidup, dan memuat aktivitas konkret, lalu ekstrak semua field terstruktur JSON:`,
     temperature: 0.6,
     maxTokens: 4000,
     provider,
@@ -783,7 +798,61 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
     try {
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+        let parsed = JSON.parse(jsonMatch[0]);
+
+        // CEK JARING PENGAMAN SEMANTIK:
+        // Jika AI mengembalikan BUKAN_IDE_BISNIS padahal input jelas memiliki intensi bisnis/aplikasi (misal "aplikasi aktifitas sales"),
+        // lakukan koreksi semantik AI terarah secara transparan agar tidak salah tolak.
+        if (parsed.analisisArah?.kondisi === 'BUKAN_IDE_BISNIS' && hasClearBusinessOrAppIntent(prompt)) {
+          console.log(`[generateStorylineWithAI] Koreksi semantik aktif untuk: "${prompt}"...`);
+          try {
+            const correctedRaw = await invokeAIChat({
+              systemInstruction,
+              userPrompt: `KOREKSI SEMANTIK: Permintaan pengguna "${prompt}" adalah ide aplikasi/bisnis yang 100% SAH dan VALID (bukan sapaan/kata navigasi). DILARANG mengembalikan BUKAN_IDE_BISNIS! Anda WAJIB menganalisis arah bisnis (SATU_ARAH, DUA_ARAH, atau AMBIGU), menyusun cerita proses bisnis nyata yang hangat dan hidup sesuai domain "${prompt}", dan mengembalikan JSON lengkap:`,
+              temperature: 0.2,
+              maxTokens: 4000,
+              provider,
+              userApiKey: apiKey,
+              userModel: model
+            });
+            if (correctedRaw) {
+              const correctedMatch = correctedRaw.match(/\{[\s\S]*\}/);
+              if (correctedMatch) {
+                const correctedParsed = JSON.parse(correctedMatch[0]);
+                if (correctedParsed.analisisArah && correctedParsed.analisisArah.kondisi !== 'BUKAN_IDE_BISNIS') {
+                  parsed = correctedParsed;
+                }
+              }
+            }
+          } catch (retryErr) {
+            console.warn('[generateStorylineWithAI] Gagal koreksi semantik retry:', retryErr);
+          }
+        }
+
+        // Jika setelah evaluasi kondisinya memang BUKAN_IDE_BISNIS (input murni sapaan, navigasi, atau karakter acak)
+        if (parsed.analisisArah?.kondisi === 'BUKAN_IDE_BISNIS') {
+          const rawArah = parsed.analisisArah;
+          const pesanKlarifikasi = rawArah.klarifikasiBukanIde?.pesanKlarifikasi
+            ? String(rawArah.klarifikasiBukanIde.pesanKlarifikasi).trim()
+            : 'Halo! Sepertinya input tadi belum mendeskripsikan ide bisnis atau aplikasi. Boleh ceritakan lebih detail, aplikasi apa yang ingin kamu bangun?';
+          return {
+            appName: '',
+            businessCategory: '',
+            templateId: 'MT-20',
+            overlayIds: [],
+            patternIds: [],
+            narasi: '',
+            asumsiMasalah: '',
+            asumsiAktor: [],
+            asumsiAlurUtama: '',
+            analisisArah: {
+              kondisi: 'BUKAN_IDE_BISNIS',
+              alasan: String(rawArah.alasan || '').trim(),
+              klarifikasiBukanIde: { pesanKlarifikasi }
+            }
+          };
+        }
+
         const businessCategory = String(parsed.businessCategory || '').trim() || 'Bisnis Anda';
         const appName =
           String(parsed.appName || '').trim() ||
@@ -825,32 +894,9 @@ PANDUAN & ATURAN WAJIB (DIPATUHI KETAT):
         let analisisArah: AnalisisArahResult | undefined = undefined;
         if (parsed.analisisArah && typeof parsed.analisisArah === 'object') {
           const rawArah = parsed.analisisArah;
-          const kondisi: KondisiArahBisnis = (['SATU_ARAH', 'DUA_ARAH', 'AMBIGU', 'BUKAN_IDE_BISNIS'].includes(rawArah.kondisi)
+          const kondisi: KondisiArahBisnis = (['SATU_ARAH', 'DUA_ARAH', 'AMBIGU'].includes(rawArah.kondisi)
             ? rawArah.kondisi
             : 'SATU_ARAH') as KondisiArahBisnis;
-
-          // Jika AI mendeteksi BUKAN_IDE_BISNIS, return langsung tanpa proses lebih lanjut
-          if (kondisi === 'BUKAN_IDE_BISNIS') {
-            const pesanKlarifikasi = rawArah.klarifikasiBukanIde?.pesanKlarifikasi
-              ? String(rawArah.klarifikasiBukanIde.pesanKlarifikasi).trim()
-              : 'Halo! Sepertinya input tadi bukan deskripsi ide bisnis atau aplikasi. Boleh ceritakan lebih detail, aplikasi apa yang ingin kamu bangun?';
-            return {
-              appName: '',
-              businessCategory: '',
-              templateId: 'MT-20',
-              overlayIds: [],
-              patternIds: [],
-              narasi: '',
-              asumsiMasalah: '',
-              asumsiAktor: [],
-              asumsiAlurUtama: '',
-              analisisArah: {
-                kondisi: 'BUKAN_IDE_BISNIS',
-                alasan: String(rawArah.alasan || '').trim(),
-                klarifikasiBukanIde: { pesanKlarifikasi }
-              }
-            };
-          }
 
           // Percayakan keputusan pemisahanRole sepenuhnya kepada AI (tanpa keyword override)
           let pemisahanRole: PemisahanRoleResult | undefined = undefined;
@@ -1192,32 +1238,32 @@ const CROSS_DOMAIN_ANOMALY_PATTERNS: {
   allowedIfContextHas: RegExp;
   categoryName: string;
 }[] = [
-  {
-    triggerAnomaly: /\b(hewan|kucing|anjing|anabul|pakan|kandang|grooming|vaksin.*hewan|pasir.*gumpal|sterilisasi.*kandang)\b/i,
-    allowedIfContextHas: /\b(pet|hewan|kucing|anjing|anabul|veteriner|fauna|satwa|ternak)\b/i,
-    categoryName: 'Pet / Penitipan Hewan'
-  },
-  {
-    triggerAnomaly: /\b(cukur|silet|clipper|pomade|kapster|pangkas.*rambut)\b/i,
-    allowedIfContextHas: /\b(barber|cukur|pangkas|rambut|salon|kapster)\b/i,
-    categoryName: 'Barbershop / Pangkas Rambut'
-  },
-  {
-    triggerAnomaly: /\b(kaporit|kolam\s*renang|waterpark|pemandian|pelampung)\b/i,
-    allowedIfContextHas: /\b(kolam|renang|waterpark|pemandian|waterboom)\b/i,
-    categoryName: 'Kolam Renang'
-  },
-  {
-    triggerAnomaly: /\b(armada|odometer|ganti\s*oli|stnk.*unit|mobil.*sewa|lepas\s*kunci)\b/i,
-    allowedIfContextHas: /\b(rental|sewa.*kendaraan|mobil|motor|armada|rent\s*car)\b/i,
-    categoryName: 'Rental Kendaraan'
-  },
-  {
-    triggerAnomaly: /\b(nozzle|cetak.*banner|roll\s*vinyl|mata\s*ayam|sablon.*kaos)\b/i,
-    allowedIfContextHas: /\b(percetakan|cetak|banner|sablon|offset|digital\s*print)\b/i,
-    categoryName: 'Percetakan Digital'
-  }
-];
+    {
+      triggerAnomaly: /\b(hewan|kucing|anjing|anabul|pakan|kandang|grooming|vaksin.*hewan|pasir.*gumpal|sterilisasi.*kandang)\b/i,
+      allowedIfContextHas: /\b(pet|hewan|kucing|anjing|anabul|veteriner|fauna|satwa|ternak)\b/i,
+      categoryName: 'Pet / Penitipan Hewan'
+    },
+    {
+      triggerAnomaly: /\b(cukur|silet|clipper|pomade|kapster|pangkas.*rambut)\b/i,
+      allowedIfContextHas: /\b(barber|cukur|pangkas|rambut|salon|kapster)\b/i,
+      categoryName: 'Barbershop / Pangkas Rambut'
+    },
+    {
+      triggerAnomaly: /\b(kaporit|kolam\s*renang|waterpark|pemandian|pelampung)\b/i,
+      allowedIfContextHas: /\b(kolam|renang|waterpark|pemandian|waterboom)\b/i,
+      categoryName: 'Kolam Renang'
+    },
+    {
+      triggerAnomaly: /\b(armada|odometer|ganti\s*oli|stnk.*unit|mobil.*sewa|lepas\s*kunci)\b/i,
+      allowedIfContextHas: /\b(rental|sewa.*kendaraan|mobil|motor|armada|rent\s*car)\b/i,
+      categoryName: 'Rental Kendaraan'
+    },
+    {
+      triggerAnomaly: /\b(nozzle|cetak.*banner|roll\s*vinyl|mata\s*ayam|sablon.*kaos)\b/i,
+      allowedIfContextHas: /\b(percetakan|cetak|banner|sablon|offset|digital\s*print)\b/i,
+      categoryName: 'Percetakan Digital'
+    }
+  ];
 
 export function validateSupportingFlowsRelevance(
   flows: SupportingFlowItem[],
@@ -1347,6 +1393,104 @@ export function validateRbacMatrixRelevance(
 }
 
 /**
+ * Detektor sinyal domain deterministik untuk jalur fallback AI offline.
+ * Hanya mendeteksi sinyal SEMANTIK FINANSIAL/OPERASIONAL UMUM
+ * (ada-tidaknya transaksi biaya, jaminan/deposit, dan pengiriman fisik),
+ * BUKAN pencocokan nama jenis bisnis/domain. Sehingga tetap netral lintas industri
+ * dan tidak menyimpulkan domain dari kata kunci spesifik produk.
+ */
+export function inferDomainSignalsFromNarrative(
+  narrative: string,
+  alurUtama = ''
+): {
+  nonFinansial: boolean;
+  adaTransaksiFinansial: boolean;
+  adaJaminanDeposit: boolean;
+  melibatkanPengirimanFisik: boolean;
+} {
+  const text = `${narrative} ${alurUtama}`.toLowerCase();
+
+  // 1) Sinyal non-finansial: negasi biaya ("tanpa ... biaya/pungutan") atau alat kerja internal
+  const negasi = /\b(tanpa|tidak ada|gratis|bebas|cuma-cuma|nol)\b/;
+  const biayaKata = /\b(biaya|pungutan|pembayaran|bayar|tarif|harga|ongkos|retribusi)\b/;
+  const internalKata = /\b(internal|non-?finansial|alat kerja|tools)\b/;
+  const nonFinansial = (negasi.test(text) && biayaKata.test(text)) || internalKata.test(text);
+
+  // 2) Sinyal jaminan/deposit yang dipegang staf selama unit digunakan
+  const depositKata = /\b(deposit|jaminan|uang muka|uang jaminan)\b/;
+  const adaJaminanDeposit = !nonFinansial && depositKata.test(text);
+
+  // 3) Sinyal pengiriman fisik via kurir/ekspedisi
+  const logistikKata = /\b(kurir|ekspedisi|ongkir|ongkos kirim|dikirim|pengiriman|antar[- ]?jemput|jasa kirim)\b/;
+  const melibatkanPengirimanFisik = !nonFinansial && logistikKata.test(text);
+
+  // 4) Bukti POSITIF transaksi komersial (agar jalur non-komersial seperti CRM internal
+  //    tidak dipaksa memiliki tarif hanya karena tidak ada penanda negasi biaya).
+  const finanPositif = /\b(biaya|tarif|harga|bayar|pembayaran|menyewa|sewa|ongkos|tagihan|retribusi|uang)\b/;
+  const adaTransaksiFinansial =
+    !nonFinansial && (adaJaminanDeposit || melibatkanPengirimanFisik || finanPositif.test(text));
+
+  return { nonFinansial, adaTransaksiFinansial, adaJaminanDeposit, melibatkanPengirimanFisik };
+}
+
+/**
+ * Mengaplikasikan sinyal domain deterministik (fallback offline) ke sebuah DomainProfile.
+ * Menjaga netralitas lintas industri: hanya menyesuaikan aspek finansial/operasional
+ * yang secara eksplisit tersirat di narasi, tanpa menebak nama domain/produk.
+ */
+export function enrichDomainProfileFromNarrative(
+  profile: DomainProfile,
+  session: MockupSessionState,
+  businessDomain?: string
+): DomainProfile {
+  const narrative = session.storyline?.narasi || '';
+  const alurUtama = session.storyline?.asumsiAlurUtama || '';
+  const signals = inferDomainSignalsFromNarrative(narrative, alurUtama);
+  const domain = businessDomain || session.match?.businessCategory || 'Operasional Bisnis';
+  const enriched: DomainProfile = { ...profile };
+
+  if (signals.nonFinansial) {
+    // Narasi menegaskan tanpa biaya/pungutan atau alat kerja internal: kunci jalur non-finansial.
+    enriched.modelTarif = null;
+    enriched.komponenBiayaYangLazim = [];
+    enriched.adaJaminanDeposit = false;
+    enriched.melibatkanPengirimanFisik = false;
+    return enriched;
+  }
+
+  // Tanpa bukti POSITIF transaksi biaya, jangan paksakan skema tarif/deposit
+  // (mis. CRM internal non-komersial yang tidak menyebut biaya sama sekali).
+  if (!signals.adaTransaksiFinansial) {
+    return enriched;
+  }
+
+  // Narasi menyiratkan transaksi komersial: pastikan skema tarif & jaminan tidak kosong.
+  if (!enriched.modelTarif) {
+    enriched.modelTarif = {
+      label: 'Skema Tarif Operasional Layanan',
+      deskripsi: `Perhitungan biaya transaksi berdasarkan alur operasional ${domain}.`
+    };
+  }
+  if (enriched.adaJaminanDeposit !== true) {
+    enriched.adaJaminanDeposit = signals.adaJaminanDeposit;
+  }
+  if (enriched.adaJaminanDeposit && !enriched.fungsiDeposit) {
+    enriched.fungsiDeposit = 'Jaminan unit/barang fisik yang dipegang selama masa penggunaan';
+  }
+  if (enriched.melibatkanPengirimanFisik !== true) {
+    enriched.melibatkanPengirimanFisik = signals.melibatkanPengirimanFisik;
+  }
+  if (!enriched.komponenBiayaYangLazim || enriched.komponenBiayaYangLazim.length === 0) {
+    enriched.komponenBiayaYangLazim = enriched.adaJaminanDeposit
+      ? ['tarif_dasar', 'durasi', 'deposit', 'denda_keterlambatan', 'total_biaya']
+      : enriched.melibatkanPengirimanFisik
+        ? ['harga_satuan', 'jumlah', 'ongkos_kirim', 'total_biaya']
+        : ['harga_satuan', 'jumlah', 'total_biaya'];
+  }
+  return enriched;
+}
+
+/**
  * Mengekstrak Shared Domain Profile Terpusat berbasis penalaran semantik AI dari narasi alur bisnis.
  * Berprinsip STRICT WHITELIST: komponen biaya di luar daftar yang lazim otomatis ditolak.
  */
@@ -1366,54 +1510,58 @@ export async function generateDomainProfileWithAI(
 Tugas Anda: Menganalisis narasi alur proses bisnis secara mendalam dan mengekstrak SATU objek Profil & Batasan Domain Bisnis (DomainProfile) yang definitif.
 
 ATURAN WAJIB & STRICT WHITELIST:
-1. modelOperasional:
-   - 'DI_TEMPAT' : Jika transaksi & pelayanan berlangsung fisik langsung di counter, toko, gerai, bengkel, studio, atau lokasi usaha.
-   - 'PENGIRIMAN_LOGISTIK' : Jika proses bisnis melibatkan jasa pengiriman kurir, ekspedisi paket, atau armada antar-jemput.
-   - 'DIGITAL' : Jika layanan berjalan murni digital/online/software.
-   PENTING: Jangan memilih 'PENGIRIMAN_LOGISTIK' jika narasi murni menyatakan pelanggan datang langsung ke tempat/counter!
+1. modelOperasional (DINAMIS - KARAKTERISTIK OPERASIONAL):
+   - Format: Objek { "label": "Nama Karakteristik Operasional", "deskripsi": "Penjelasan singkat bagaimana proses operasional berjalan" }
+   - AI BEBAS menentukan label & deskripsi yang paling tepat dan bermakna sesuai konteks bisnis nyata (BUKAN dari daftar pilihan kaku).
+   - Contoh nyata:
+     * Rental Sepeda: { "label": "Pelayanan di Lokasi / Counter", "deskripsi": "Pelanggan datang langsung ke lokasi usaha, memilih unit, dan mengembalikannya ke counter." }
+     * CRM Sales: { "label": "Pipeline Penjualan & Kunjungan Klien", "deskripsi": "Staf sales mengelola prospek dari penugasan, follow-up, kunjungan lapangan, hingga closing penawaran." }
+     * CSIRT: { "label": "Respon Insiden & Mitigasi Krisis Siber", "deskripsi": "Penanganan tiket laporan insiden keamanan dari triage, investigasi, mitigasi, hingga post-mortem." }
+     * Toko Online: { "label": "Pesanan Online & Pengiriman Paket", "deskripsi": "Pelanggan memesan secara daring dan barang dikirimkan via kurir logistik." }
 
-2. modelTarif:
-   - 'SEWA_DURASI' : Perhitungan berdasarkan durasi waktu pemakaian (jam, hari, bulan, unit sewa).
-   - 'BERAT_TIMBANGAN' : Perhitungan berdasarkan berat timbangan kg/gram (laundry kiloan, rongsok, dsb).
-   - 'PER_ITEM' : Perhitungan kuantitas per produk/menu belanjaan (toko retail, kafe, apotek).
-   - 'BIAYA_JASA' : Perhitungan per paket jasa, pendaftaran kursus, tarif per sesi les/perbaikan.
+2. modelTarif (OPSIONAL / KONDISIONAL - SKEMA TARIF & MONETISASI):
+   - Format: Objek { "label": "Nama Skema Tarif", "deskripsi": "Penjelasan bagaimana tarif/biaya dihitung" } ATAU null jika alur bisnis TIDAK memiliki transaksi tarif/monetisasi.
+   - HANYA DIISI jika proses bisnis nyata melibatkan skema biaya/transaksi komersial langsung (misal: tarif sewa durasi, timbangan kiloan, harga satuan per item, paket biaya jasa perbaikan).
+   - KOSONGKAN / ISI null jika aplikasi adalah alat kerja/tools operasional non-finansial internal (misal: CRM Sales internal, bug tracking, CSIRT incident response, manajemen dokumen, task tracker).
 
-3. adaJaminanDeposit & fungsiDeposit:
+3. melibatkanPengirimanFisik (BOOLEAN GERBANG LOGISTIK):
+   - true HANYA JIKA proses bisnis nyata-nyata melibatkan pengiriman fisik barang via kurir, ekspedisi paket, atau armada antar-jemput barang fisik.
+   - false untuk transaksi di tempat/counter langsung, jasa profesional digital/asinkron, tools internal, atau layanan tanpa pengiriman barang fisik.
+
+4. adaJaminanDeposit & fungsiDeposit:
    - Apakah alur bisnis melibatkan uang jaminan/deposit di muka yang dipegang staf saat unit digunakan?
-   - Jika ya, sebutkan fungsinya (misal: "Jaminan kerusakan/keterlambatan unit fisik (deposit < total biaya sewa)").
+   - Jika ya, set true dan sebutkan fungsinya (misal: "Jaminan kerusakan/keterlambatan unit fisik (deposit < total biaya sewa)").
    - Jika tidak, isi false dan string kosong "".
 
-4. entitasKatalogMaster:
-   - Daftar nama entitas master/katalog yang disewakan, dijual, atau dilayani (misal: ["sepeda"], ["menu"], ["paket_kursus"]).
+5. entitasKatalogMaster:
+   - Daftar nama entitas master/katalog yang disewakan, dijual, atau dilayani (misal: ["sepeda"], ["menu"], ["kategori_insiden"], ["paket_layanan"]).
 
-5. entitasPencatatanTransaksi:
-   - Daftar nama transaksi/pencatatan operasional utama (misal: ["transaksi_sewa"], ["pendaftaran_kursus"], ["pesanan"]).
+6. entitasPencatatanTransaksi:
+   - Daftar nama transaksi/pencatatan operasional utama (misal: ["transaksi_sewa"], ["tiket_insiden"], ["aktivitas_sales"], ["pesanan"]).
 
-6. komponenBiayaYangLazim (STRICT WHITELIST - SANGAT KRUSIAL):
+7. komponenBiayaYangLazim (STRICT WHITELIST - SANGAT KRUSIAL):
    - Daftar nama variabel/komponen biaya matematis snake_case yang SAH dan LAZIM untuk domain ini berdasarkan narasi alur!
-   - Contoh Rental Sepeda di tempat: ["durasi_jam", "tarif_per_jam", "deposit", "denda_keterlambatan", "total_biaya", "sisa_tagihan"]
-   - DILARANG KERAS memasukkan komponen yang tidak relevan dengan model operasional!
-     * JIKA modelOperasional === 'DI_TEMPAT', DILARANG KERAS memasukkan "ongkir", "biaya_pengiriman", atau "tarif_kurir"!
-     * JIKA bisnis jasa/sewa, DILARANG KERAS memasukkan "retur_barang" atau "hpp"!
+   - Contoh Rental Sepeda: ["durasi_jam", "tarif_per_jam", "deposit", "denda_keterlambatan", "total_biaya", "sisa_tagihan"]
+   - DILARANG KERAS memasukkan komponen yang tidak relevan dengan model operasional:
+     * JIKA melibatkanPengirimanFisik === false, DILARANG KERAS memasukkan "ongkir", "biaya_pengiriman", atau "tarif_kurir"!
+     * JIKA modelTarif === null (non-finansial/tools), kosongkan array ini []!
    - Whitelist ini akan menjadi acuan filtering mutlak di seluruh pipeline (Formula & Skema).
 
-7. referensiAlurKerjaLazim (REFERENSI ALUR KERJA LAZIM INDUSTRI):
-   - Penalaran AI semantik tentang modul/form kerja operasional yang LAZIM dan STANDAR INDUSTRI untuk jenis bisnis ini, dikelompokkan per peran/kelompok peran generik (misal: "Staf Operasional / Kasir / Petugas", "Super Admin / Pemilik").
+8. referensiAlurKerjaLazim (REFERENSI ALUR KERJA LAZIM INDUSTRI):
+   - Penalaran AI semantik tentang modul/form kerja operasional yang LAZIM dan STANDAR INDUSTRI untuk jenis bisnis ini, dikelompokkan per peran/kelompok peran generik (misal: "Staf Operasional / Analis", "Super Admin / Pemilik").
    - Dihasilkan dari penalaran AI mendalam atas jenis bisnis nyata, BUKAN template statis.
-   - Contoh Rental Sepeda:
-     * Staf Operasional / Petugas Rental:
-       - "Input Data Pelanggan" (pencatatan data identitas pelanggan/penyewa)
-       - "Input Transaksi Sewa" (pencatatan unit sewa, durasi, dan deposit)
-       - "Proses Pengembalian & Pemeriksaan Kondisi Unit" (inspeksi fisik saat unit kembali & cek denda)
-       - "Cetak Nota/Struk Transaksi" (pemberian bukti transaksi ke penyewa)
-     * Super Admin / Pemilik:
-       - "Manajemen Master Sepeda & Tarif" (katalog unit, tarif per jam, stok sepeda)
-       - "Laporan Keuangan & Rekap Sewa" (rekap omzet dan statistik harian)
 
 FORMAT OUTPUT HARUS JSON VALID:
 {
-  "modelOperasional": "DI_TEMPAT" | "PENGIRIMAN_LOGISTIK" | "DIGITAL",
-  "modelTarif": "SEWA_DURASI" | "BERAT_TIMBANGAN" | "PER_ITEM" | "BIAYA_JASA",
+  "modelOperasional": {
+    "label": "Nama Karakteristik Operasional",
+    "deskripsi": "Deskripsi singkat alur kerja operasional"
+  },
+  "modelTarif": {
+    "label": "Nama Skema Tarif",
+    "deskripsi": "Deskripsi singkat cara hitung biaya"
+  } | null,
+  "melibatkanPengirimanFisik": boolean,
   "adaJaminanDeposit": boolean,
   "fungsiDeposit": "penjelasan singkat atau kosong",
   "entitasKatalogMaster": ["string"],
@@ -1450,19 +1598,63 @@ Ekstrak objek Profil Domain Bisnis (DomainProfile) berprinsip strict whitelist d
     });
 
     if (raw) {
-      const parsed = robustJsonParse<DomainProfile>(raw);
+      const parsed = robustJsonParse<any>(raw);
       if (
         parsed &&
         parsed.modelOperasional &&
-        parsed.modelTarif &&
         Array.isArray(parsed.komponenBiayaYangLazim)
       ) {
-        if (!parsed.referensiAlurKerjaLazim || !Array.isArray(parsed.referensiAlurKerjaLazim) || parsed.referensiAlurKerjaLazim.length === 0) {
-          parsed.referensiAlurKerjaLazim = buildFallbackReferensiAlurKerjaLazim(parsed, businessDomain);
+        // Normalisasi modelOperasional jika model AI mengembalikan string warisan
+        let mo = parsed.modelOperasional;
+        if (typeof mo === 'string') {
+          mo = {
+            label: mo === 'DI_TEMPAT' ? 'Pelayanan di Lokasi / Counter' :
+              mo === 'PENGIRIMAN_LOGISTIK' ? 'Pengiriman & Logistik' :
+                mo === 'DIGITAL' ? 'Layanan Digital / Mandiri' :
+                  mo === 'TIDAK_RELEVAN' ? 'Operasional Internal' : mo,
+            deskripsi: `Model operasional ${mo}`
+          };
+        } else if (!mo.label) {
+          mo = { label: 'Operasional Layanan', deskripsi: mo.deskripsi || '' };
         }
-        const md = renderDomainProfileMarkdown(parsed, businessDomain);
-        return {
+
+        // Normalisasi modelTarif jika null, tidak relevan, atau string warisan
+        let mt = parsed.modelTarif;
+        if (!mt || mt === 'TIDAK_RELEVAN' || mt === 'null') {
+          mt = null;
+        } else if (typeof mt === 'string') {
+          mt = {
+            label: mt === 'SEWA_DURASI' ? 'Sewa Berdasarkan Durasi' :
+              mt === 'BERAT_TIMBANGAN' ? 'Tarif per Berat / Timbangan' :
+                mt === 'PER_ITEM' ? 'Tarif per Satuan Item' :
+                  mt === 'BIAYA_JASA' ? 'Tarif Berdasarkan Jasa / Layanan' : mt,
+            deskripsi: `Skema tarif ${mt}`
+          };
+        } else if (!mt.label) {
+          mt = null;
+        }
+
+        const normalizedProfile: DomainProfile = enrichDomainProfileFromNarrative({
           ...parsed,
+          modelOperasional: mo,
+          modelTarif: mt,
+          melibatkanPengirimanFisik: Boolean(parsed.melibatkanPengirimanFisik),
+          adaJaminanDeposit: Boolean(parsed.adaJaminanDeposit),
+          entitasKatalogMaster: Array.isArray(parsed.entitasKatalogMaster) && parsed.entitasKatalogMaster.length > 0
+            ? parsed.entitasKatalogMaster
+            : ['katalog_utama'],
+          entitasPencatatanTransaksi: Array.isArray(parsed.entitasPencatatanTransaksi) && parsed.entitasPencatatanTransaksi.length > 0
+            ? parsed.entitasPencatatanTransaksi
+            : ['transaksi_utama'],
+          komponenBiayaYangLazim: parsed.komponenBiayaYangLazim
+        }, session, businessDomain);
+
+        if (!normalizedProfile.referensiAlurKerjaLazim || !Array.isArray(normalizedProfile.referensiAlurKerjaLazim) || normalizedProfile.referensiAlurKerjaLazim.length === 0) {
+          normalizedProfile.referensiAlurKerjaLazim = buildFallbackReferensiAlurKerjaLazim(normalizedProfile, businessDomain);
+        }
+        const md = renderDomainProfileMarkdown(normalizedProfile, businessDomain);
+        return {
+          ...normalizedProfile,
           markdownMindMap: md,
           statusKonfirmasi: 'disetujui',
           revisiCount: 0
@@ -1473,90 +1665,67 @@ Ekstrak objek Profil Domain Bisnis (DomainProfile) berprinsip strict whitelist d
     console.warn('[generateDomainProfileWithAI] Gagal invoke AI domainProfile, menggunakan fallback deterministik:', err);
   }
 
-  // Fallback generik aman jika AI gagal/offline (tanpa tebak-tebakan kata kunci/template)
-  const fallbackProfile: DomainProfile = {
-    modelOperasional: 'DI_TEMPAT',
-    modelTarif: 'PER_ITEM',
+  // Fallback generik aman jika AI gagal/offline (tanpa tebak-tebakan kata kunci domain/template).
+  // Sinyal finansial & logistik dideteksi secara deterministik dari narasi agar PRD tidak
+  // salah mengunci asumsi (mis. deposit hilang atau salah menandai non-finansial).
+  const fallbackProfile: DomainProfile = enrichDomainProfileFromNarrative({
+    modelOperasional: {
+      label: 'Operasional Layanan / Internal',
+      deskripsi: `Model operasional standar terpadu untuk ${businessDomain}.`
+    },
+    modelTarif: null,
     adaJaminanDeposit: false,
+    melibatkanPengirimanFisik: false,
     entitasKatalogMaster: ['katalog_utama'],
     entitasPencatatanTransaksi: ['transaksi_utama'],
-    komponenBiayaYangLazim: ['jumlah_qty', 'harga_satuan', 'subtotal', 'total_biaya'],
+    komponenBiayaYangLazim: [],
     catatanOperasional: `Profil domain generik untuk ${businessDomain}. Silakan gunakan tombol "Ada yang Perlu Dikoreksi" jika rincian model operasional atau tarif memerlukan penyesuaian khusus.`,
     statusKonfirmasi: 'disetujui',
     revisiCount: 0
-  };
+  }, session, businessDomain);
 
   fallbackProfile.referensiAlurKerjaLazim = buildFallbackReferensiAlurKerjaLazim(fallbackProfile, businessDomain);
   fallbackProfile.markdownMindMap = renderDomainProfileMarkdown(fallbackProfile, businessDomain);
   return fallbackProfile;
 }
 
+export function formatModelOperasionalPrompt(mo: DomainProfile['modelOperasional'] | undefined): string {
+  if (!mo) return 'Operasional Layanan';
+  if (typeof mo === 'object' && mo.label) {
+    return `${mo.label}${mo.deskripsi ? `: ${mo.deskripsi}` : ''}`;
+  }
+  return String(mo);
+}
+
+export function formatModelTarifPrompt(mt: DomainProfile['modelTarif'] | undefined): string {
+  if (!mt || mt === 'TIDAK_RELEVAN') return 'Tidak Ada Model Tarif Khusus (Non-finansial / Alat Kerja)';
+  if (typeof mt === 'object' && mt.label) {
+    return `${mt.label}${mt.deskripsi ? `: ${mt.deskripsi}` : ''}`;
+  }
+  return String(mt);
+}
+
 export function buildFallbackReferensiAlurKerjaLazim(
   dp: Partial<DomainProfile>,
   domain: string
 ): ReferensiModulRole[] {
-  const isRental = dp.modelTarif === 'SEWA_DURASI' || /rental|sewa/i.test(domain);
-  const isLaundry = dp.modelTarif === 'BERAT_TIMBANGAN' || /laundry|kiloan/i.test(domain);
-
-  if (isRental) {
-    return [
-      {
-        role: 'Staf Operasional / Petugas Rental',
-        modul: [
-          { nama: 'Input Data Pelanggan', deskripsi: 'Pencatatan data identitas pelanggan/penyewa' },
-          { nama: 'Input Transaksi Sewa', deskripsi: 'Pencatatan unit sewa, durasi pemakaian, dan uang jaminan/deposit' },
-          { nama: 'Proses Pengembalian & Pemeriksaan Kondisi Unit', deskripsi: 'Inspeksi fisik unit saat kembali dan cek keterlambatan/denda' },
-          { nama: 'Cetak Nota/Struk Transaksi', deskripsi: 'Pemberian tanda bukti transaksi penyewaan ke pelanggan' }
-        ]
-      },
-      {
-        role: 'Super Admin / Pemilik',
-        modul: [
-          { nama: 'Manajemen Katalog Master Unit & Tarif', deskripsi: 'Pengelolaan inventaris unit sewa, tarif sewa, dan status ketersediaan' },
-          { nama: 'Laporan Rekapitulasi & Keuangan', deskripsi: 'Monitoring omzet sewa, audit riwayat unit, dan utilisasi armada' }
-        ]
-      }
-    ];
-  }
-
-  if (isLaundry) {
-    return [
-      {
-        role: 'Staf Kasir / Operasional Laundry',
-        modul: [
-          { nama: 'Penerimaan Cucian & Penimbangan', deskripsi: 'Pencatatan data pelanggan, jenis layanan cuci, dan timbangan kg' },
-          { nama: 'Pembaruan Status Proses Cuci', deskripsi: 'Update status pencucian (cuci, kering, setrika, selesai)' },
-          { nama: 'Pengambilan Cucian & Pelunasan', deskripsi: 'Pencatatan serah terima cucian bersih dan pembayaran akhir' },
-          { nama: 'Cetak Nota/Kwitansi Laundry', deskripsi: 'Cetak bukti transaksi dan nomor resi cucian' }
-        ]
-      },
-      {
-        role: 'Super Admin / Pemilik',
-        modul: [
-          { nama: 'Manajemen Paket Layanan & Tarif', deskripsi: 'Daftar harga cuci kiloan/satuan dan paket ekspres' },
-          { nama: 'Laporan Pendapatan & Beban Operasional', deskripsi: 'Rekap omzet harian/bulanan dan biaya deterjen/operasional' }
-        ]
-      }
-    ];
-  }
-
-  const katalog = dp.entitasKatalogMaster?.[0] || 'Katalog Master';
+  const katalog = dp.entitasKatalogMaster?.[0] || 'Data Master';
   const transaksi = dp.entitasPencatatanTransaksi?.[0] || 'Transaksi Operasional';
   return [
     {
-      role: 'Staf Operasional / Kasir',
+      role: 'Staf Operasional',
       modul: [
-        { nama: 'Input Data Pelanggan', deskripsi: 'Pencatatan identitas pelanggan atau pihak pemohon' },
+        { nama: 'Pencatatan Data Pelanggan / Pemohon', deskripsi: 'Pencatatan data identitas pelanggan atau pihak pemohon' },
         { nama: `Pencatatan ${transaksi.replace(/_/g, ' ')}`, deskripsi: 'Input transaksi operasional harian dan pembayaran' },
-        { nama: 'Cetak Nota/Bukti Transaksi', deskripsi: 'Pemberian bukti tanda terima atau dokumen transaksi' },
-        { nama: 'Pemeriksaan & Penyelesaian Layanan', deskripsi: 'Verifikasi akhir dan penutupan transaksi operasional' }
+        { nama: 'Cetak Bukti / Tanda Terima Transaksi', deskripsi: 'Pemberian bukti tanda terima atau dokumen transaksi' },
+        { nama: 'Verifikasi & Penyelesaian Layanan', deskripsi: 'Verifikasi akhir operasional dan penutupan transaksi' }
       ]
     },
     {
       role: 'Super Admin / Pemilik',
       modul: [
         { nama: `Manajemen Master ${katalog.replace(/_/g, ' ')}`, deskripsi: 'Pengaturan data induk referensi, harga, dan tarif layanan' },
-        { nama: 'Laporan Rekapitulasi & Monitoring', deskripsi: 'Audit seluruh transaksi dan statistik keuangan usaha' }
+        { nama: 'Laporan & Rekapitulasi Operasional', deskripsi: 'Audit seluruh transaksi dan statistik performa usaha' }
       ]
     }
   ];
@@ -1579,13 +1748,20 @@ export async function reviseDomainProfileWithAI(
   const systemInstruction = `Anda adalah Analis Sistem yang membantu pengguna menyesuaikan Profil & Batasan Domain Bisnis (DomainProfile).
 Tugas Anda: Memperbarui objek DomainProfile berdasarkan masukan koreksi dari pengguna.
 ATURAN STRICT WHITELIST:
-- Anda dapat mengubah modelOperasional, modelTarif, adaJaminanDeposit, entitasKatalogMaster, entitasPencatatanTransaksi, dan komponenBiayaYangLazim.
-- Komponen biaya yang ditambah WAJIB relevan dengan narasi dan model operasional.
+- Anda dapat mengubah modelOperasional ({ label, deskripsi }), modelTarif ({ label, deskripsi } | null), melibatkanPengirimanFisik (boolean), adaJaminanDeposit (boolean), entitasKatalogMaster, entitasPencatatanTransaksi, dan komponenBiayaYangLazim.
+- Komponen biaya yang ditambah WAJIB relevan dengan narasi dan model operasional (jika melibatkanPengirimanFisik === false, dilarang ada ongkir/kurir; jika modelTarif === null, kosongkan komponenBiayaYangLazim).
 
 FORMAT OUTPUT HARUS JSON VALID:
 {
-  "modelOperasional": "DI_TEMPAT" | "PENGIRIMAN_LOGISTIK" | "DIGITAL",
-  "modelTarif": "SEWA_DURASI" | "BERAT_TIMBANGAN" | "PER_ITEM" | "BIAYA_JASA",
+  "modelOperasional": {
+    "label": "Nama Karakteristik Operasional",
+    "deskripsi": "Deskripsi singkat alur kerja operasional"
+  },
+  "modelTarif": {
+    "label": "Nama Skema Tarif",
+    "deskripsi": "Deskripsi singkat cara hitung biaya"
+  } | null,
+  "melibatkanPengirimanFisik": boolean,
   "adaJaminanDeposit": boolean,
   "fungsiDeposit": "penjelasan singkat atau kosong",
   "entitasKatalogMaster": ["string"],
@@ -1618,15 +1794,55 @@ Perbarui objek DomainProfile sesuai permintaan di atas dalam format JSON:`;
     });
 
     if (raw) {
-      const parsed = robustJsonParse<DomainProfile>(raw);
-      if (parsed && parsed.modelOperasional && parsed.modelTarif && Array.isArray(parsed.komponenBiayaYangLazim)) {
-        const md = renderDomainProfileMarkdown(parsed, businessDomain);
-        return {
+      const parsed = robustJsonParse<any>(raw);
+      if (parsed && parsed.modelOperasional && Array.isArray(parsed.komponenBiayaYangLazim)) {
+        let mo = parsed.modelOperasional;
+        if (typeof mo === 'string') {
+          mo = {
+            label: mo === 'DI_TEMPAT' ? 'Pelayanan di Lokasi / Counter' :
+              mo === 'PENGIRIMAN_LOGISTIK' ? 'Pengiriman & Logistik' :
+                mo === 'DIGITAL' ? 'Layanan Digital / Mandiri' :
+                  mo === 'TIDAK_RELEVAN' ? 'Operasional Internal' : mo,
+            deskripsi: `Model operasional ${mo}`
+          };
+        } else if (!mo.label) {
+          mo = { label: 'Operasional Layanan', deskripsi: mo.deskripsi || '' };
+        }
+
+        let mt = parsed.modelTarif;
+        if (!mt || mt === 'TIDAK_RELEVAN' || mt === 'null') {
+          mt = null;
+        } else if (typeof mt === 'string') {
+          mt = {
+            label: mt === 'SEWA_DURASI' ? 'Sewa Berdasarkan Durasi' :
+              mt === 'BERAT_TIMBANGAN' ? 'Tarif per Berat / Timbangan' :
+                mt === 'PER_ITEM' ? 'Tarif per Satuan Item' :
+                  mt === 'BIAYA_JASA' ? 'Tarif Berdasarkan Jasa / Layanan' : mt,
+            deskripsi: `Skema tarif ${mt}`
+          };
+        } else if (!mt.label) {
+          mt = null;
+        }
+
+        const normalized: DomainProfile = {
+          ...currentProfile,
           ...parsed,
-          markdownMindMap: md,
-          statusKonfirmasi: 'dikoreksi',
-          revisiCount: (currentProfile.revisiCount || 0) + 1
+          modelOperasional: mo,
+          modelTarif: mt,
+          melibatkanPengirimanFisik: typeof parsed.melibatkanPengirimanFisik === 'boolean'
+            ? parsed.melibatkanPengirimanFisik
+            : currentProfile.melibatkanPengirimanFisik ?? false,
+          adaJaminanDeposit: typeof parsed.adaJaminanDeposit === 'boolean'
+            ? parsed.adaJaminanDeposit
+            : currentProfile.adaJaminanDeposit,
+          komponenBiayaYangLazim: parsed.komponenBiayaYangLazim,
+          revisiCount: (currentProfile.revisiCount || 0) + 1,
+          statusKonfirmasi: 'dikoreksi'
         };
+
+        const md = renderDomainProfileMarkdown(normalized, businessDomain);
+        normalized.markdownMindMap = md;
+        return normalized;
       }
     }
   } catch (err) {
@@ -1638,6 +1854,356 @@ Perbarui objek DomainProfile sesuai permintaan di atas dalam format JSON:`;
   updated.revisiCount = (currentProfile.revisiCount || 0) + 1;
   updated.catatanOperasional = `${updated.catatanOperasional || ''} (Koreksi: ${correctionText})`.trim();
   updated.markdownMindMap = renderDomainProfileMarkdown(updated, businessDomain);
+  return updated;
+}
+
+/**
+ * Lapis Penilaian Kesiapan (Readiness & Ambiguity Check) sebelum penyusunan PRD Lengkap:
+ * Menilai secara semantik apakah informasi yang terkumpul (Storytelling Lapis 1 + Kelaziman Industri Lapis 2)
+ * sudah cukup untuk menyusun PRD yang matang, atau masih ada ambiguitas kritis yang butuh klarifikasi cepat (Poin 2c).
+ */
+export async function assessPrdReadinessAndClarificationWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<{
+  isReady: boolean;
+  clarification?: {
+    pertanyaan: string;
+    aspek: 'model_transaksi' | 'skema_biaya' | 'alur_tanggung_jawab' | 'umum';
+    opsi: { id: string; label: string; deskripsi?: string; recommended?: boolean }[];
+  };
+}> {
+  const narrative = session.storyline?.narasi || '';
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+  const actors = session.storyline?.asumsiAktor || [];
+  const mainFlow = session.storyline?.asumsiAlurUtama || '';
+  const problem = session.storyline?.asumsiMasalah || '';
+
+  const systemInstruction = `Anda adalah Analis Sistem & Lead Product Manager Senior.
+Tugas Anda: Mengevaluasi apakah deskripsi bisnis dan alur proses sudah CUKUP JELAS DAN MATANG untuk langsung disusun menjadi Dokumen Spesifikasi Produk (PRD) Lengkap, atau masih terdapat AMBIGUITAS KRITIS yang harus diklarifikasi ke pengguna terlebih dahulu.
+
+KRITERIA EVALUASI KESIAPAN (READINESS CRITERIA):
+1. Model Transaksi Utama: Apakah sudah jelas bagaimana transaksi inti berlangsung (misal: disewa, dijual, jasa dikerjakan di tempat, atau tiket laporan)?
+2. Skema Finansial: Apakah sudah jelas apakah bisnis ini komersial berbayar vs alat kerja internal gratis?
+3. Batasan Tanggung Jawab: Apakah batas kerja staf vs pelanggan/pemohon sudah masuk akal?
+
+ATURAN KEPUTUSAN:
+- Jika narasi sudah jelas dan tidak ada ambiguitas mendasar yang mengganjal: return { "isReady": true } TANPA pertanyaan klarifikasi tambahan (jangan menambah friksi pengguna jika tidak perlu).
+- Jika ada ambiguitas kritis yang jika ditebak sembarangan akan merusak arsitektur data: return { "isReady": false, "clarification": { "pertanyaan": "...", "aspek": "...", "opsi": [ ... ] } }.
+- Format opsi WAJIB 2 atau 3 opsi pilihan ganda singkat dan mudah dipahami, BUKAN isian esai panjang. Berikan tanda "recommended": true pada opsi yang paling lazim.
+
+FORMAT OUTPUT HARUS JSON VALID:
+{
+  "isReady": true | false,
+  "clarification": {
+    "pertanyaan": "Pertanyaan klarifikasi singkat",
+    "aspek": "model_transaksi" | "skema_biaya" | "alur_tanggung_jawab" | "umum",
+    "opsi": [
+      { "id": "opsi_1", "label": "Nama Opsi A", "deskripsi": "Penjelasan singkat", "recommended": true },
+      { "id": "opsi_2", "label": "Nama Opsi B", "deskripsi": "Penjelasan singkat", "recommended": false }
+    ]
+  }
+}`;
+
+  const userPrompt = `Domain Bisnis: ${businessDomain}
+Narasi Bisnis: ${narrative}
+Masalah Operasional: ${problem}
+Alur Kerja Utama: ${mainFlow}
+Pihak Terlibat: ${actors.join(', ')}
+
+Nilai kesiapan dan kematangan informasi untuk penyusunan PRD Lengkap:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 1000,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const parsed = robustJsonParse<any>(raw);
+      if (parsed && typeof parsed.isReady === 'boolean') {
+        if (!parsed.isReady && parsed.clarification?.pertanyaan && Array.isArray(parsed.clarification?.opsi)) {
+          return {
+            isReady: false,
+            clarification: parsed.clarification
+          };
+        }
+        return { isReady: true };
+      }
+    }
+  } catch (err) {
+    console.warn('[assessPrdReadinessAndClarificationWithAI] Gagal evaluasi kesiapan PRD:', err);
+  }
+
+  return { isReady: true };
+}
+
+/**
+ * Menyusun Dokumen PRD Lengkap berbasis Analisis DUA LAPIS (Poin 2b):
+ * Lapis 1: Narasi Storytelling pengguna (kebutuhan riil).
+ * Lapis 2: Kelaziman industri (modul, entitas, dan skema standar industri).
+ * Dokumen ini menjadi Single Source of Truth bagi seluruh langkah turunan.
+ */
+export async function generateProductRequirementsDocumentWithAI(
+  session: MockupSessionState,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<ProductRequirementsDocument> {
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+  const narrative = session.storyline?.narasi || '';
+  const alurUtama = session.storyline?.asumsiAlurUtama || '';
+  const actors = session.storyline?.asumsiAktor || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const problem = session.storyline?.asumsiMasalah || '';
+  const dp = session.domainProfile || (await generateDomainProfileWithAI(session, provider, apiKey, model));
+
+  const systemInstruction = `Anda adalah Analis Sistem & Senior Principal Product Manager.
+Tugas Anda: Menyusun Dokumen Spesifikasi Kebutuhan Produk (Product Requirements Document / PRD) Lengkap yang akan menjadi SATU-SATUNYA SUMBER KEBENARAN (Single Source of Truth) untuk seluruh perancangan sistem, RBAC, Formula, Skema Data, hingga pembuatan kode aplikasi web.
+
+PRINSIP ANALISIS DUA LAPIS (SANGAT PENTING):
+1. LAPIS 1 (UTAMA & WAJIB): Narasi Storytelling pengguna. Ini adalah representasi kebutuhan spesifik, istilah riil, dan model yang diinginkan pengguna.
+2. LAPIS 2 (PENGAYAAN INDUSTRI): Kelaziman industri untuk jenis bisnis tersebut. Anda WAJIB melengkapi PRD dengan modul kerja standar industri, alur penanganan kendala yang lazim, dan komponen pemantauan operasional yang profesional — jangan membuat PRD tipis/generik yang hanya menyalin kata per kata.
+
+BATASAN ARSITEKTUR & TECH STACK MODUL (BAKU & TERKUNCI):
+PRD WAJIB mencerminkan tech stack modul resmi berikut (DILARANG memilih teknologi lain seperti Next.js/Better-Auth/SQLite/Vercel):
+- Frontend: Vanilla HTML5 + Tailwind CSS + Vue.js micro-state (Zero-Build CDN Artifact)
+- Backend: Google Apps Script Web App (doGet & doPost REST JSON)
+- Database: Google Sheets (Multi-Table Relational Spreadsheet)
+- Hosting: Google Apps Script Web App Deployment (script.google.com)
+- Security: Role-Based Access Control (RBAC) dengan multi-role tabs
+
+STRUKTUR PRD OUTPUT (JSON VALID):
+{
+  "judul": "PRD Sistem [Nama Aplikasi]",
+  "version": "1.0.0",
+  "overview": {
+    "namaAplikasi": "Nama Sistem / Aplikasi",
+    "domainBisnis": "${businessDomain}",
+    "tujuanUtama": "Tujuan sistem memecahkan masalah operasional",
+    "asumsiMasalah": "Masalah utama yang diselesaikan",
+    "kemenanganPertamaPengguna": "First win pengguna saat pertama kali membuka aplikasi (misal: langsung melihat katalog & harga tanpa login)",
+    "keunggulanUtama": "Nilai tambah / keunggulan utama sistem",
+    "ruangLingkup": {
+      "termasuk": ["Fitur/tahap A", "Fitur/tahap B", "Fitur/tahap C"],
+      "tidakTermasuk": ["Hal yang sengaja tidak ditangani di fase ini"]
+    }
+  },
+  "domainProfile": {
+    "modelOperasional": { "label": "...", "deskripsi": "..." },
+    "modelTarif": { "label": "...", "deskripsi": "..." } | null,
+    "adaJaminanDeposit": true | false,
+    "fungsiDeposit": "...",
+    "melibatkanPengirimanFisik": true | false,
+    "entitasKatalogMaster": ["..."],
+    "entitasPencatatanTransaksi": ["..."],
+    "komponenBiayaYangLazim": ["..."]
+  },
+  "techStack": {
+    "frontend": "HTML5, Tailwind CSS, Vue.js CDN",
+    "backend": "Google Apps Script Web App (doGet/doPost)",
+    "database": "Google Sheets (SpreadsheetApp)",
+    "hosting": "Google Apps Script Web App",
+    "securityAuth": "Role-Based Access Control (RBAC)"
+  },
+  "dataConcept": {
+    "entitasKatalogMaster": ["nama_tabel_master"],
+    "entitasPencatatanTransaksi": ["nama_tabel_transaksi"]
+  },
+  "actorsAndRbac": {
+    "aktorEksternal": ["Pelanggan / Pemohon (jika ada)"],
+    "aktorInternal": ["Staf Pelaksana Operasional"],
+    "aktorTataKelola": ["Super Admin / Pemilik"],
+    "modulKerjaPerRole": [
+      {
+        "role": "Nama Role",
+        "modul": [
+          { "nama": "Nama Modul", "deskripsi": "Deskripsi fungsi modul" }
+        ]
+      }
+    ]
+  },
+  "userFlow": {
+    "alurUtama": [
+      { "step": 1, "pelaku": "Role", "aksi": "Tindakan konkret" }
+    ],
+    "alurPenangananMasalah": {
+      "nama": "Penanganan Kendala Operasional",
+      "steps": [
+        { "pelaku": "Role", "aksi": "Tindakan mitigasi / koreksi" }
+      ]
+    },
+    "alurKesiapanOperasional": {
+      "nama": "Audit & Kesiapan Harian",
+      "steps": [
+        { "pelaku": "Role", "aksi": "Tindakan pemeliharaan/audit" }
+      ]
+    }
+  },
+  "coreFeatures": {
+    "formulirTransaksi": ["Form A", "Form B"],
+    "dashboardDanMonitoring": ["Monitoring X", "Laporan Y"]
+  }
+}`;
+
+  const userPrompt = `Domain Bisnis: ${businessDomain}
+Narasi Cerita Pengguna: ${narrative}
+Masalah Operasional: ${problem}
+Alur Kerja Cerita Awal: ${alurUtama}
+Pihak Terlibat: ${actors.join(', ')}
+Profil Domain Awal: ${JSON.stringify(dp)}
+
+Susun Dokumen PRD Lengkap (Product Requirements Document) yang kaya, spesifik, dan matang:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.15,
+      maxTokens: 2500,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const parsed = robustJsonParse<ProductRequirementsDocument>(raw);
+      if (parsed && parsed.overview && parsed.userFlow && parsed.techStack) {
+        parsed.version = '1.0.0';
+        parsed.statusKonfirmasi = 'disetujui';
+        parsed.revisiCount = 0;
+        if (!parsed.domainProfile) {
+          parsed.domainProfile = dp;
+        }
+        parsed.markdownDoc = renderPrdMarkdown(parsed);
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[generateProductRequirementsDocumentWithAI] Gagal invoke AI PRD, menggunakan fallback adaptif:', err);
+  }
+
+  // Fallback deterministik terstruktur jika panggilan AI gagal
+  const fallbackPrd: ProductRequirementsDocument = {
+    judul: `Spesifikasi Produk (PRD) — ${businessDomain}`,
+    version: '1.0.0-fallback',
+    overview: {
+      namaAplikasi: `Sistem Manajemen ${businessDomain}`,
+      domainBisnis: businessDomain,
+      tujuanUtama: `Digitalisasi alur operasional dan tata kelola transaksi pada ${businessDomain}.`,
+      asumsiMasalah: problem || 'Pencatatan aktivitas operasional yang masih manual dan rentan kekeliruan.',
+      kemenanganPertamaPengguna: `Melihat data katalog dan ketersediaan layanan ${businessDomain} secara langsung dan transparan.`,
+      keunggulanUtama: `Kemudahan pencatatan terpadu dan transparansi operasional harian.`,
+      ruangLingkup: {
+        termasuk: ['Pencatatan data transaksi dan pemohon', 'Pengelolaan data master/katalog', 'Laporan rekapitulasi operasional'],
+        tidakTermasuk: ['Integrasi payment gateway pihak ketiga di luar Google Apps Script']
+      }
+    },
+    domainProfile: dp,
+    techStack: {
+      frontend: 'HTML5 + Tailwind CSS + Vue.js (Zero-Build CDN Artifact)',
+      backend: 'Google Apps Script (doGet & doPost Web App REST JSON)',
+      database: 'Google Sheets (Multi-Table relational spreadsheet)',
+      hosting: 'Google Apps Script Web App Deployment',
+      securityAuth: 'Role-Based Access Control (RBAC)'
+    },
+    dataConcept: {
+      entitasKatalogMaster: dp.entitasKatalogMaster || ['katalog_master'],
+      entitasPencatatanTransaksi: dp.entitasPencatatanTransaksi || ['transaksi_operasional']
+    },
+    actorsAndRbac: {
+      aktorEksternal: actors.filter((a) => isExternalRole(a, session)),
+      aktorInternal: actors.filter((a) => !isExternalRole(a, session) && !isSuperAdminRole(a)),
+      aktorTataKelola: [REQUIRED_ROLE],
+      modulKerjaPerRole: dp.referensiAlurKerjaLazim || buildFallbackReferensiAlurKerjaLazim(dp, businessDomain)
+    },
+    userFlow: {
+      alurUtama: [
+        { step: 1, pelaku: actors[1] || 'Staf Operasional', aksi: `Menerima dan mencatat permohonan/transaksi ${businessDomain}` },
+        { step: 2, pelaku: actors[1] || 'Staf Operasional', aksi: 'Melakukan verifikasi data dan menyelesaikan layanan operasional' },
+        { step: 3, pelaku: REQUIRED_ROLE, aksi: 'Memeriksa rekapitulasi dan memonitor aktivitas harian' }
+      ]
+    },
+    coreFeatures: {
+      formulirTransaksi: ['Formulir Entri Transaksi & Data Pemohon'],
+      dashboardDanMonitoring: ['Tabel Monitoring Operasional', 'Laporan Rekapitulasi Data']
+    },
+    statusKonfirmasi: 'disetujui',
+    revisiCount: 0
+  };
+
+  fallbackPrd.markdownDoc = renderPrdMarkdown(fallbackPrd);
+  return fallbackPrd;
+}
+
+/**
+ * Merevisi Dokumen PRD dengan AI berdasarkan catatan / koreksi pengguna.
+ */
+export async function revisePrdWithAI(
+  session: MockupSessionState,
+  correctionText: string,
+  provider?: string,
+  apiKey?: string,
+  model?: string
+): Promise<ProductRequirementsDocument> {
+  const currentPrd = session.prd || (await generateProductRequirementsDocumentWithAI(session, provider, apiKey, model));
+  const businessDomain = session.match?.businessCategory || 'Operasional Bisnis';
+
+  const systemInstruction = `Anda adalah Analis Sistem yang membantu pengguna merevisi Dokumen Spesifikasi Produk (PRD).
+Tugas Anda: Memperbarui objek PRD berdasarkan catatan koreksi pengguna.
+PENTING:
+- Jaga konsistensi antar section (overview, domainProfile, dataConcept, actorsAndRbac, userFlow, coreFeatures).
+- Tech stack WAJIB TETAP: Frontend HTML+Tailwind+Vue, Backend Apps Script, Database Google Sheets, Hosting Apps Script Web App.
+- Jika pengguna meminta penambahan/pengurangan modul atau alur, perbarui userFlow dan actorsAndRbac.modulKerjaPerRole.
+- Jika pengguna mengoreksi aspek tarif atau deposit, perbarui domainProfile.`;
+
+  const userPrompt = `Dokumen PRD Saat Ini:
+${JSON.stringify(currentPrd, null, 2)}
+
+Catatan Koreksi Pengguna:
+"${correctionText}"
+
+Keluarkan objek PRD yang sudah disesuaikan dalam format JSON valid:`;
+
+  try {
+    const raw = await invokeAIChat({
+      systemInstruction,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 2500,
+      provider,
+      userApiKey: apiKey,
+      userModel: model
+    });
+
+    if (raw) {
+      const parsed = robustJsonParse<ProductRequirementsDocument>(raw);
+      if (parsed && parsed.overview && parsed.userFlow) {
+        const nextRevisi = (currentPrd.revisiCount || 0) + 1;
+        parsed.revisiCount = nextRevisi;
+        parsed.statusKonfirmasi = 'dikoreksi';
+        parsed.riwayatKoreksi = [...(currentPrd.riwayatKoreksi || []), correctionText];
+        parsed.markdownDoc = renderPrdMarkdown(parsed);
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[revisePrdWithAI] Gagal invoke AI revisi PRD:', err);
+  }
+
+  // Fallback koreksi teks jika AI gagal
+  const updated = { ...currentPrd };
+  updated.revisiCount = (currentPrd.revisiCount || 0) + 1;
+  updated.statusKonfirmasi = 'dikoreksi';
+  updated.riwayatKoreksi = [...(currentPrd.riwayatKoreksi || []), correctionText];
+  updated.overview.asumsiMasalah += ` (Catatan Koreksi: ${correctionText})`;
+  updated.markdownDoc = renderPrdMarkdown(updated);
   return updated;
 }
 
@@ -1987,22 +2553,22 @@ Perbarui dan kembalikan JSON lengkap:`;
 
           const refinedAlurPendukung = Array.isArray(parsed.alurPendukung)
             ? parsed.alurPendukung.map((ap: any, idx: number) => ({
-                id: String(ap.id || `alur_pendukung_${idx + 1}`),
-                nama: String(ap.nama || `Alur ${idx + 1}`),
-                steps: Array.isArray(ap.steps)
-                  ? ap.steps.map((st: any) => ({
-                      pelaku: resolveActorForStep(String(st.pelaku || 'Petugas').trim(), session.roles, session),
-                      aksi: String(st.aksi || '').trim()
-                    }))
-                  : []
-              }))
+              id: String(ap.id || `alur_pendukung_${idx + 1}`),
+              nama: String(ap.nama || `Alur ${idx + 1}`),
+              steps: Array.isArray(ap.steps)
+                ? ap.steps.map((st: any) => ({
+                  pelaku: resolveActorForStep(String(st.pelaku || 'Petugas').trim(), session.roles, session),
+                  aksi: String(st.aksi || '').trim()
+                }))
+                : []
+            }))
             : currentFlow.alurPendukung;
 
           const refinedFiturPendukung = Array.isArray(parsed.fiturPendukung)
             ? parsed.fiturPendukung.map((fp: any, idx: number) => ({
-                id: String(fp.id || `feat_custom_${idx + 1}`),
-                label: String(fp.label || fp).trim()
-              }))
+              id: String(fp.id || `feat_custom_${idx + 1}`),
+              label: String(fp.label || fp).trim()
+            }))
             : currentFlow.fiturPendukung;
 
           return {
@@ -2513,14 +3079,14 @@ PENTING & WAJIB: Pengguna telah secara sadar MEMBATALKAN/MENOLAK modul-modul di 
     delegated.length > 0
       ? `\n⚠️ ATURAN KHUSUS PELIMPAHAN TUGAS (WAJIB DIPATUHI):
 ${delegated
-  .map(
-    (d) =>
-      `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan seluruh wewenangnya DILIMPAHKAN ke "${d.keRole}".
+        .map(
+          (d) =>
+            `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan seluruh wewenangnya DILIMPAHKAN ke "${d.keRole}".
   * JANGAN membuat kolom untuk "${d.dariRole}". Kolom role WAJIB HANYA terdiri dari: ${activeRoles.join(', ')}.
   * Seluruh modul yang mencakup tugas "${d.dariRole}" (${d.daftarTugas.join(', ')}) TETAP HARUS ADA di baris modul, dan wewenang operasionalnya diberikan kepada "${d.keRole}".
   * Buat catatan pelimpahan: "Wewenang ${d.dariRole} dialihkan ke ${d.keRole} karena perampingan organisasi."`
-  )
-  .join('\n')}`
+        )
+        .join('\n')}`
       : '';
 
   const systemInstruction = `Anda adalah Analis Keamanan Sistem & Perancang Matriks Hak Akses (Role-Based Access Control / RBAC) untuk Aplikasi Bisnis Nyata.
@@ -2640,8 +3206,8 @@ Susun matriks hak akses per modul fungsional dalam format JSON:`;
                   level: isOwner
                     ? 'Catat & Proses (Data Bertugas)'
                     : isAdmin
-                    ? 'Supervisi & Kontrol Penuh'
-                    : '-',
+                      ? 'Supervisi & Kontrol Penuh'
+                      : '-',
                   keterangan: isOwner ? 'Akses operasional modul' : undefined
                 });
               }
@@ -3014,6 +3580,7 @@ export function generateFallbackDataSchema(session: MockupSessionState): DataSch
   let finalTables = ensureMergedCatalogAndInventory(tabel);
   finalTables = ensureMergedSingleCycleRentalTransactions(finalTables, session);
   finalTables = ensureDomainProfileEntitiesInSchema(finalTables, session);
+  finalTables = ensureStaffRecorderInActivityTables(finalTables, session);
   finalTables = ensureFormulaFieldsInTargetTables(finalTables, session.formulas?.daftar);
   finalTables = sanitizeSchemaFieldsByDomainProfile(finalTables, session);
 
@@ -3578,7 +4145,7 @@ export async function detectFlatSchemaViolation(
     if (audit.isViolation) {
       violations.push(
         audit.reason ||
-          `Tabel profil "${entityTable.nama}" menyerap penawaran layanan/aset sebagai teks bebas tanpa tabel katalog master independen dan tabel jembatan penghubung.`
+        `Tabel profil "${entityTable.nama}" menyerap penawaran layanan/aset sebagai teks bebas tanpa tabel katalog master independen dan tabel jembatan penghubung.`
       );
     }
   }
@@ -3608,7 +4175,7 @@ export async function auditDatabaseDesignStandardsWithAI(
     const tName = t.nama.toLowerCase();
     if (tName.startsWith('inventaris_') || tName.startsWith('stok_')) {
       const root = tName.replace(/^(inventaris_|stok_)/, '');
-      const hasDuplicateCatalog = tableNames.some(other => 
+      const hasDuplicateCatalog = tableNames.some(other =>
         (other === `katalog_${root}` || other === root || other === `unit_${root}`) && other !== tName
       );
       if (hasDuplicateCatalog) {
@@ -3622,7 +4189,7 @@ export async function auditDatabaseDesignStandardsWithAI(
   // 1b. Cek apakah tabel transaksi sewa single-cycle dipecah menjadi tabel pembayaran atau pemeriksaan kondisi yang berelasi 1-ke-1
   const rentalMain = tableNames.find(n => n === 'transaksi_sewa' || n === 'penyewaan_sepeda' || n === 'pendaftaran_sewa' || n === 'sewa_sepeda');
   if (rentalMain) {
-    const has1to1Split = tableNames.some(n => 
+    const has1to1Split = tableNames.some(n =>
       /pembayaran|pembayaran_penyewaan/i.test(n) || /pemeriksaan_kondisi|kondisi_sepeda/i.test(n) || /pengembalian_sepeda/i.test(n)
     );
     if (has1to1Split) {
@@ -3635,13 +4202,13 @@ export async function auditDatabaseDesignStandardsWithAI(
   // 1c. Cek Kelaziman Domain Profile (Lapis 1 Heuristik Profil Domain):
   if (session.domainProfile) {
     const dp = session.domainProfile;
-    // Jika DI_TEMPAT, cek apakah ada field pengiriman/logistik/ongkir/kurir
-    if (dp.modelOperasional === 'DI_TEMPAT') {
+    // Jika tidak melibatkan pengiriman fisik, cek apakah ada field pengiriman/logistik/ongkir/kurir
+    if (dp.melibatkanPengirimanFisik === false) {
       for (const t of tables) {
         const foundField = t.field.find(f => /ongkir|biaya_kirim|kurir|ekspedisi|no_resi|nomor_resi/i.test(f.nama));
         if (foundField) {
           anomalies.push(
-            `Tabel "${t.nama}" memuat field "${foundField.nama}" padahal model operasional bisnis adalah DI_TEMPAT (di lokasi/counter langsung tanpa pengiriman kurir). Hapus field pengiriman ini.`
+            `Tabel "${t.nama}" memuat field "${foundField.nama}" padahal profil bisnis tidak melibatkan pengiriman fisik barang (melibatkanPengirimanFisik = false). Hapus field pengiriman ini.`
           );
         }
       }
@@ -3665,8 +4232,9 @@ export async function auditDatabaseDesignStandardsWithAI(
 Tugas Anda adalah mengaudit rancangan skema database dari sisi KELAZIMAN BAKU PERANCANGAN DATABASE (Best Practices Normalisasi, Standar Industri, dan Integritas Relasional) untuk jenis bisnis terkait.
 ${session.domainProfile ? `
 BATASAN KELAZIMAN DOMAIN PROFILE:
-- Model Operasional: ${session.domainProfile.modelOperasional}
-- Model Tarif: ${session.domainProfile.modelTarif}
+- Model Operasional: ${formatModelOperasionalPrompt(session.domainProfile.modelOperasional)}
+- Model Tarif: ${formatModelTarifPrompt(session.domainProfile.modelTarif)}
+- Melibatkan Pengiriman Fisik: ${session.domainProfile.melibatkanPengirimanFisik ? 'Ya (Melibatkan kurir/logistik)' : 'Tidak (Tanpa pengiriman fisik barang)'}
 - Jaminan/Deposit: ${session.domainProfile.adaJaminanDeposit ? 'Ada' : 'Tidak Ada'}
 - Master Katalog Sah: [${session.domainProfile.entitasKatalogMaster.join(', ')}]
 - Transaksi Sah: [${session.domainProfile.entitasPencatatanTransaksi.join(', ')}]
@@ -3695,10 +4263,10 @@ Narasi Bisnis: "${narrative}"
 
 Rancangan Tabel Saat Ini:
 ${JSON.stringify(tables.map(t => ({
-  nama: t.nama,
-  keterangan: t.keterangan,
-  field: t.field.map(f => ({ nama: f.nama, tipe: f.tipe, keterangan: f.keterangan }))
-})), null, 2)}
+    nama: t.nama,
+    keterangan: t.keterangan,
+    field: t.field.map(f => ({ nama: f.nama, tipe: f.tipe, keterangan: f.keterangan }))
+  })), null, 2)}
 `;
 
   try {
@@ -3801,7 +4369,7 @@ export function ensureMergedSingleCycleRentalTransactions<T extends { nama: stri
       continue;
     }
 
-    const is1to1Child = 
+    const is1to1Child =
       /pembayaran|pembayaran_penyewaan|bayar/i.test(tName) ||
       /pemeriksaan|inspeksi|kondisi_sepeda|cek_sepeda/i.test(tName) ||
       /pengembalian_sepeda|pengembalian/i.test(tName);
@@ -3898,10 +4466,10 @@ export function isFieldAllowedByDomainProfile(
   if (!fieldName) return false;
   const fLower = fieldName.toLowerCase().trim();
 
-  // 1. Cek field logistik / pengiriman: jika DI_TEMPAT dan tidak di whitelist komponen biaya, dilarang
+  // 1. Cek field logistik / pengiriman: jika melibatkanPengirimanFisik === false dan tidak di whitelist komponen biaya, dilarang
   const isLogistic = /ongkir|biaya_kirim|kurir|ekspedisi|no_resi|nomor_resi|pengiriman/i.test(fLower);
   if (isLogistic) {
-    if (domainProfile?.modelOperasional === 'DI_TEMPAT') {
+    if (domainProfile && domainProfile.melibatkanPengirimanFisik === false) {
       const inWhitelist = (domainProfile.komponenBiayaYangLazim || []).some(k =>
         fLower.includes(k.toLowerCase().replace(/\s+/g, '_'))
       );
@@ -3966,6 +4534,72 @@ export function isFieldAllowedByDomainProfile(
   // Jika terdeteksi sebagai field finansial/pembayaran (misal jumlah_bayar, metode_pembayaran, sisa_tagihan)
   // namun TIDAK lolos satupun whitelist di atas: TOLAK / HAPUS
   return false;
+}
+
+/**
+ * Jaring Pengaman Programatis: Memastikan setiap tabel aktivitas / transaksi / pendaftaran / log
+ * memiliki field relasi pencatat/pemilik baris ('relasi ke pengguna') sebagai fondasi Row-Level Access.
+ */
+export function ensureStaffRecorderInActivityTables<T extends { nama: string; field: any[]; keterangan?: string }>(
+  tables: T[],
+  session: MockupSessionState
+): T[] {
+  if (!tables || tables.length === 0) return tables;
+
+  const activeRoles = session.roles?.selected || ['Super Admin', 'Staf Operasional', 'Pelanggan'];
+  const operationalRole =
+    activeRoles.find((r) => !isSuperAdminRole(r) && !isExternalRole(r, session) && !isActorEntityData(session, r)) ||
+    activeRoles.find((r) => !isSuperAdminRole(r) && !isActorEntityData(session, r)) ||
+    'Staf Operasional';
+
+  const catalogEntities = (session.domainProfile?.entitasKatalogMaster || []).map((e) => e.toLowerCase().trim());
+
+  for (const table of tables) {
+    const tName = table.nama.toLowerCase().trim();
+    // 1. Lewati tabel akun pengguna
+    if (isTablePengguna(tName)) continue;
+
+    // 2. Lewati computed view / viewConfig
+    if (tName.startsWith('view_') || (table as any).isView) continue;
+
+    // 3. Lewati tabel master katalog murni
+    const isCatalog =
+      catalogEntities.some((c) => c && (tName === c || tName.includes(c) || c.includes(tName))) ||
+      /^(katalog_|master_|kategori_|jenis_|paket_|unit_|armada_)/i.test(tName) ||
+      Boolean(
+        table.keterangan &&
+        /katalog|master data|daftar unit fisik|koleksi item/i.test(table.keterangan) &&
+        !/transaksi|pendaftaran|riwayat|kunjungan|order|pesanan|log|lead|prospek/i.test(table.keterangan)
+      );
+
+    if (isCatalog) continue;
+
+    // 4. Cek apakah tabel ini sudah memiliki field pencatat / relasi staf
+    const hasRecorder = table.field.some((f: any) => {
+      const fName = String(f.nama || '').toLowerCase();
+      const isRecorderName = /dicatat_oleh|terdaftar_oleh|didaftarkan_oleh|diproses_oleh|diinput_oleh|dibuat_oleh|ditangani_oleh|eksekutor|pencatat|pembuat|petugas|staf|kasir|sales|mekanik|teknisi|instruktur|admin|pic|penanggung_jawab/i.test(
+        fName
+      );
+      const isRelasiPengguna = String(f.tipe || '').toLowerCase().includes('relasi ke pengguna');
+      const isCustomerRelation =
+        /pelanggan|klien|siswa|pasien|penyewa|anggota|pemohon|murid/i.test(fName) ||
+        Boolean(f.targetRole && /pelanggan|klien|siswa|pasien|penyewa|anggota|pemohon|murid/i.test(f.targetRole));
+
+      return isRecorderName || (isRelasiPengguna && !isCustomerRelation);
+    });
+
+    if (!hasRecorder) {
+      console.log(`[Schema-Auditor] Menyuntikkan field 'dicatat_oleh' ke tabel aktivitas "${table.nama}" (fondasi Row-Level Access).`);
+      table.field.push({
+        nama: 'dicatat_oleh',
+        tipe: 'relasi ke pengguna',
+        keterangan: `Staf yang mencatat dan bertanggung jawab atas baris data ini (${operationalRole})`,
+        targetRole: operationalRole
+      });
+    }
+  }
+
+  return tables;
 }
 
 /**
@@ -4066,7 +4700,7 @@ ${mainFlow.map(s => `${s.step}. (${s.pelaku}) ${s.aksi}`).join('\n')}
 Alur Pendukung:
 ${alurPendukung.map(ap => `- ${ap.nama}: ${ap.steps.map(s => `(${s.pelaku}) ${s.aksi}`).join(' -> ')}`).join('\n')}
 ${fiturPendukung.length > 0 ? `\nFitur Pendukung:\n${fiturPendukung.map((fp, i) => `${i + 1}. ${fp}`).join('\n')}` : ''}
-${domainProfile ? `\nProfil Domain:\n- Model Operasional: ${domainProfile.modelOperasional}\n- Entitas Pencatatan: ${domainProfile.entitasPencatatanTransaksi?.join(', ')}` : ''}
+${domainProfile ? `\nProfil Domain:\n- Model Operasional: ${formatModelOperasionalPrompt(domainProfile.modelOperasional)}\n- Entitas Pencatatan: ${domainProfile.entitasPencatatanTransaksi?.join(', ')}` : ''}
 
 Lakukan evaluasi semantik dan kembalikan JSON:`;
 
@@ -4445,8 +5079,9 @@ Analisis secara teliti dan mendalam dari narasi alur bisnis, tahapan transaksi, 
    Kembalikan array kosong: {"formulas": []}. JANGAN MENGADA-ADA rumus jika alur bisnis murni pencatatan status tanpa kalkulasi numerik.
 ${domainProfile ? `
 4. BATASAN KELAZIMAN BISNIS (STRICT WHITELIST):
-   - Model Operasional: ${domainProfile.modelOperasional}
-   - Model Tarif: ${domainProfile.modelTarif}
+   - Model Operasional: ${formatModelOperasionalPrompt(domainProfile.modelOperasional)}
+   - Model Tarif: ${formatModelTarifPrompt(domainProfile.modelTarif)}
+   - Melibatkan Pengiriman Fisik: ${domainProfile.melibatkanPengirimanFisik ? 'Ya' : 'Tidak'}
    - Jaminan / Deposit: ${domainProfile.adaJaminanDeposit ? `Ada (${domainProfile.fungsiDeposit || 'Jaminan unit'})` : 'Tidak Ada'}
    - WHITELIST KOMPONEN SAH: [${domainProfile.komponenBiayaYangLazim.join(', ')}]
    * PENTING: Variabel atau komponen biaya dalam formula kalkulasi HANYA boleh berasal dari whitelist sah di atas. Dilarang keras mengada-ada variabel di luar whitelist (misalnya: dilarang menambahkan ongkir/pengiriman jika bukan bisnis pengiriman atau jika ongkir tidak ada di whitelist).
@@ -4616,9 +5251,9 @@ ${delegated.map((d) => `- Peran "${d.dariRole}" telah DIHAPUS dari sistem dan se
   const entityDataRulesPrompt = entityDataActors.length > 0
     ? `\n⚠️ ATURAN KHUSUS ENTITAS DATA (BUKAN PENGGUNA SISTEM YANG LOGIN):
 ${entityDataActors
-  .map(
-    (e) =>
-      `- "${e.actor}" adalah ENTITAS DATA yang dicatat dan dilayani oleh "${e.ownerRole || 'Staf Operasional'}", BUKAN akun pengguna login.
+      .map(
+        (e) =>
+          `- "${e.actor}" adalah ENTITAS DATA yang dicatat dan dilayani oleh "${e.ownerRole || 'Staf Operasional'}", BUKAN akun pengguna login.
   * WAJIB dibuatkan tabel data tersendiri (misal: "${e.actor.toLowerCase()}") untuk mencatat profil dan identitas bisnisnya.
   * DILARANG KERAS menyertakan field kredensial (username, password, pin, token) pada tabel "${e.actor.toLowerCase()}".
   * TABEL PROFIL "${e.actor.toLowerCase()}" HANYA BERISI IDENTITAS DASAR (misal: nama, kontak, alamat, tanggal lahir/pendaftaran). DILARANG KERAS MENYIMPAN PILIHAN PRODUK/PAKET/LAYANAN/INSTRUMEN (misal: 'instrumen', 'paket_kursus', 'jenis_layanan', 'layanan_dipilih') SEBAGAI FIELD DI DALAM TABEL "${e.actor.toLowerCase()}"!
@@ -4627,17 +5262,16 @@ ${entityDataActors
   * HUBUNGAN RELASI TRANSAKSI:
     - Jika alur menggunakan Pola 3 Lapis (Katalog + Penghubung): tabel pendaftaran/transaksi penghubung Lapis 2 yang memiliki field relasi ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}"). Tabel transaksi turunan Lapis 3 (jadwal, pembayaran, evaluasi/progres) merujuk ke tabel penghubung Lapis 2 tersebut (BUKAN langsung ke "${e.actor.toLowerCase()}").
     - Jika alur menggunakan Pola Hubungan Langsung: tabel transaksi operasional langsung merujuk ke tabel "${e.actor.toLowerCase()}" (tipe: "relasi ke ${e.actor.toLowerCase()}").`
-  )
-  .join('\n')}`
+      )
+      .join('\n')}`
     : '';
 
   const domainProfilePrompt = session.domainProfile
     ? `
 BATASAN KELAZIMAN SKEMA DARI DOMAIN PROFILE (STRICT WHITELIST):
-- Model Operasional: ${session.domainProfile.modelOperasional}
-  * Jika DI_TEMPAT: Transaksi dilakukan langsung di counter/lokasi fisik. DILARANG KERAS membuat field kurir, ongkir, biaya pengiriman, ekspedisi, atau nomor resi pada tabel manapun!
-  * Jika PENGIRIMAN_LOGISTIK: Transaksi melibatkan kurir/ekspedisi pengiriman barang.
-- Model Tarif: ${session.domainProfile.modelTarif}
+- Model Operasional: ${formatModelOperasionalPrompt(session.domainProfile.modelOperasional)}
+  * Pengiriman Fisik: ${session.domainProfile.melibatkanPengirimanFisik ? 'Melibatkan pengiriman kurir / ekspedisi / armada barang fisik.' : 'TIDAK melibatkan pengiriman fisik barang (melibatkanPengirimanFisik = false). DILARANG KERAS membuat field kurir, ongkir, biaya pengiriman, ekspedisi, atau nomor resi pada tabel manapun!'}
+- Model Tarif: ${formatModelTarifPrompt(session.domainProfile.modelTarif)}
 - Jaminan Deposit: ${session.domainProfile.adaJaminanDeposit ? `Ada jaminan fisik (${session.domainProfile.fungsiDeposit || 'Jaminan unit'}). Tabel transaksi harus memiliki field 'deposit' yang konsisten dengan formula kalkulasi.` : 'Tanpa deposit jaminan. DILARANG membuat field deposit atau uang jaminan.'}
 - Entitas Master Katalog Disepakati: [${session.domainProfile.entitasKatalogMaster.join(', ')}]
 - Entitas Transaksi Disepakati: [${session.domainProfile.entitasPencatatanTransaksi.join(', ')}]
@@ -4679,12 +5313,13 @@ ATURAN WAJIB & STRICT PRINCIPLES:
       - LAPIS 2: TABEL PENDAFTARAN / TRANSAKSI PENGHUBUNG (Connector / Bridge)
         * Berfungsi sebagai jembatan pencatatan antara entitas (pengguna/pelanggan/siswa) dan produk/paket/unit yang diambil.
         * DILARANG KERAS menggabungkan pilihan produk/paket/layanan/instrumen ke dalam tabel profil pelanggan/siswa sebagai teks biasa! Pilihan produk/paket/layanan WAJIB dicatat melalui tabel jembatan Lapis 2 ini.
-        * WAJIB MEMILIKI DUA FIELD RELASI KUNCI (DILARANG KERAS MELEWATKAN SALAH SATUNYA):
+        * WAJIB MEMILIKI TIGA FIELD RELASI KUNCI:
           1) Field relasi ke entitas akun pengguna ATAU entitas data:
              - Jika entitas adalah AKUN PENGGUNA login (tersimpan di tabel 'pengguna'): WAJIB bertipe 'relasi ke pengguna' dengan targetRole diisi nama peran terkait (contoh: 'relasi ke pengguna' dengan targetRole 'Pelanggan' atau 'Penyewa'). DILARANG KERAS membuat nama tipe relasi ke nama peran seperti 'relasi ke klien' jika akun mereka tersimpan di tabel 'pengguna'!
              - Jika entitas adalah ENTITAS DATA yang dibuatkan tabel profil tersendiri (misal: tabel 'siswa' atau 'pasien'): WAJIB bertipe 'relasi ke [nama_tabel_entitas]' (contoh: 'relasi ke siswa' atau 'relasi ke pasien').
           2) Field relasi ke tabel katalog produk/layanan ATAU tabel master unit aset yang dipilih: WAJIB 'relasi ke [nama_tabel_katalog_nyata]' (contoh: 'relasi ke paket_kursus', 'relasi ke unit_sepeda', 'relasi ke armada_kendaraan', 'relasi ke katalog_alat'). DILARANG KERAS MEREDUKSI pilihan unit/aset fisik/paket menjadi field teks bebas seperti 'rincian_kebutuhan' atau 'catatan'!
-          3) Tanggal transaksi/pendaftaran/sewa, tanggal pengembalian/selesai, status proses (misal: 'Aktif' / 'Selesai' / 'Dibatalkan'), dan nomor/kode registrasi transaksi.
+          3) Field relasi ke akun staf pencatat/pemroses ('dicatat_oleh' / 'terdaftar_oleh' / 'diproses_oleh' bertipe 'relasi ke pengguna') yang menandai siapa staf yang bertanggung jawab atas baris data transaksi tersebut!
+          4) Tanggal transaksi/pendaftaran/sewa, tanggal pengembalian/selesai, status proses (misal: 'Aktif' / 'Selesai' / 'Dibatalkan'), dan nomor/kode registrasi transaksi.
         * Tentukan properti "compositeFields": array string berisi nama field relasi FK yang membentuk identitas komposit (misal: ["siswa_id", "paket_id"] atau ["pelanggan_id", "unit_sepeda_id"]).
       - LAPIS 3: TABEL TRANSAKSIONAL TURUNAN BERULANG / HISTORI RIWAYAT (KARDINALITAS 1-KE-BANYAK MURNI):
         * ATURAN KARDINALITAS MUTLAK (1-KE-BANYAK VS 1-KE-1):
@@ -4695,6 +5330,7 @@ ATURAN WAJIB & STRICT PRINCIPLES:
              - Pinjaman / Kredit: Satu kontrak pinjaman memiliki BANYAK baris 'riwayat_angsuran_cicilan'.
              - Layanan Bertahap: Satu order proyek memiliki BANYAK baris log 'progres_pengerjaan'.
              * Field relasi pada tabel Lapis 3 WAJIB merujuk ke tabel pendaftaran/transaksi penghubung Lapis 2 (misal: 'relasi ke pendaftaran_kursus').
+             * Tabel Lapis 3 juga WAJIB memiliki field staf pelaksana / pencatat (misal: 'instruktur_id' atau 'petugas_evaluasi' bertipe 'relasi ke pengguna').
           
           2) KAPAN DILARANG KERAS MEMBUAT TABEL LAPIS 3 (1-KE-1 / SINGLE-EVENT):
              Jika data turunan itu HANYA TERJADI SATU KALI per transaksi Lapis 2 (relasi 1-ke-1 atau snapshot dua momen dalam satu siklus sewa yang sama):
@@ -4743,15 +5379,28 @@ ATURAN WAJIB & STRICT PRINCIPLES:
      Alasan bisnis/akuntansi: Nilai tarif/harga di katalog bisa berubah di masa mendatang. Snapshot nilai di tabel transaksi menjamin audit trail histori transaksi masa lalu tetap akurat dan tidak berubah!
      DILARANG membiarkan variabel formula hanya ada di tabel katalog relasi tanpa disalin ke tabel transaksi!
 
-8. ENTITAS LAPORAN & REKAP OPERASIONAL HARIAN (AGREGASI):
+8. KONSISTENSI FIELD PENCATAT / PEMILIK BARIS (FONDASI ROW-LEVEL ACCESS & AUDITABILITAS OPERASIONAL):
+   - ATURAN WAJIB & MUTLAK: SETIAP tabel yang mencatat AKTIVITAS, TRANSAKSI, PENDAFTARAN, KUNJUNGAN/LOG, PENAWARAN, atau INPUT OPERASIONAL dari seorang staf (yaitu seluruh tabel operasional non-katalog/non-master) WAJIB MEMILIKI FIELD RELASI KE PENGGUNA yang menandai staf yang mencatat / bertanggung jawab atas baris data tersebut!
+   - DILARANG KERAS membuat tabel transaksi/aktivitas tanpa field pencatat/pemilik baris.
+   - Nama field fleksibel menyesuaikan konteks bisnis dan peran:
+     * 'dicatat_oleh' / 'terdaftar_oleh' / 'didaftarkan_oleh' (standar umum transaksi/pendaftaran)
+     * 'diproses_oleh' / 'petugas_id' / 'kasir_id' (untuk transaksi kasir/counter/operasional)
+     * 'sales_id' / 'dicatat_oleh' / 'penanggung_jawab' (untuk prospek/leads, kunjungan lapangan, penawaran deal di CRM)
+     * 'mekanik_id' / 'teknisi_id' / 'dikerjakan_oleh' (untuk servis, bengkel, instalasi teknis)
+     * 'instruktur_id' / 'tutor_id' (untuk sesi bimbingan/pelatihan)
+   - Tipe data WAJIB "relasi ke pengguna".
+   - Keterangan WAJIB menyebutkan peran staf yang mengisi (misal: "Staf yang mencatat transaksi ini").
+   - Alasan arsitektural: Fondasi kepemilikan data (row-level ownership) agar sistem dapat melacak siapa staf yang bertanggung jawab atas setiap baris data transaksi/aktivitas.
+
+9. ENTITAS LAPORAN & REKAP OPERASIONAL HARIAN (AGREGASI):
    - Jika pada Domain Profile atau Fitur Pendukung disepakati adanya fitur rekap harian / laporan omzet (misal: "Laporan akhir harian otomatis: rekap transaksi..."), entitas ini BUKAN child 1-ke-1 transaksi individual! Ini adalah tabel agregasi operasional harian tersendiri.
    - WAJIB sertakan tabel 'rekap_transaksi_harian' dengan field: id, tanggal_rekap, total_transaksi, total_pendapatan, total_deposit_ditahan, catatan_penutupan, dan petugas_rekap_id ('relasi ke pengguna').
 
-9. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
+10. KORELASI RINGKAS (BUKAN ERD VISUAL / BUKAN TABEL TERPISAH):
    - Di akhir, berikan 2-3 kalimat penjelasan korelasi ringkas yang menggambarkan aliran data antar-tabel dari hulu ke hilir.
 ${delegationRulesPrompt}
 
-10. FORMAT OUTPUT JSON WAJIB:
+11. FORMAT OUTPUT JSON WAJIB:
 {
   "tabel": [
     {
@@ -4772,7 +5421,8 @@ ${delegationRulesPrompt}
         { "nama": "entitas_id", "tipe": "relasi ke pengguna", "keterangan": "Pengguna terkait" },
         { "nama": "item_id", "tipe": "relasi ke nama_tabel_master", "keterangan": "Item yang dipilih" },
         { "nama": "jumlah", "tipe": "angka", "keterangan": "Jumlah unit" },
-        { "nama": "total_harga", "tipe": "angka", "keterangan": "Total biaya", "isFormula": true, "formulaExpression": "jumlah * 50000" }
+        { "nama": "total_harga", "tipe": "angka", "keterangan": "Total biaya", "isFormula": true, "formulaExpression": "jumlah * 50000" },
+        { "nama": "dicatat_oleh", "tipe": "relasi ke pengguna", "keterangan": "Staf operasional yang mencatat transaksi ini" }
       ]
     }
   ],
@@ -4994,6 +5644,8 @@ Kembalikan JSON lengkap seluruh tabel yang telah diselaraskan:`;
     if (session.dataSchema) {
       session.dataSchema.views = schemaViews;
     }
+    // Jaring Pengaman Programatis: Pastikan setiap tabel aktivitas memiliki field pencatat / pemilik baris (Row-Level Access)
+    parsedSchema.tabel = ensureStaffRecorderInActivityTables(parsedSchema.tabel, session);
     // Jaring Pengaman Programatis (Opsi A): Pastikan seluruh variabel formula tersedia langsung sebagai snapshot field di tabel target
     parsedSchema.tabel = ensureFormulaFieldsInTargetTables(parsedSchema.tabel, session.formulas?.daftar);
     // Jaring Pengaman Programatis: Penyapuan akhir skema data (Sanitization Sweep)
@@ -5052,7 +5704,9 @@ ATURAN REVISI (KONSISTEN & SESUAI KEBUTUHAN):
 4. INTEGRITAS RELASI KE TABEL NYATA:
    - Seluruh field bertipe "relasi ke [Nama Tabel]" WAJIB merujuk ke tabel yang benar-benar ada di dalam skema. Jika relasi mengarah ke akun pengguna (siswa, klien, pelanggan), WAJIB bertipe "relasi ke pengguna" dengan targetRole peran tersebut (DILARANG membuat nama tipe seperti "relasi ke klien" jika tabel fisiknya tidak ada).
 5. Pertahankan tipe data manusiawi: "text", "angka", "tanggal", "relasi ke [Tabel]".
-6. Format output JSON WAJIB memuat array "tabel" (dengan "nama", "keterangan", dan "field") serta "korelasiRingkas".`;
+6. KONSISTENSI FIELD PENCATAT / PEMILIK BARIS (FONDASI ROW-LEVEL ACCESS):
+   - Setiap tabel aktivitas/transaksi/pendaftaran staf WAJIB mempertahankan atau memiliki field relasi ke pengguna (misal: 'dicatat_oleh', 'terdaftar_oleh', 'diproses_oleh') sebagai penanda staf pemilik/pencatat baris data.
+7. Format output JSON WAJIB memuat array "tabel" (dengan "nama", "keterangan", dan "field") serta "korelasiRingkas".`;
 
   const userPrompt = `Skema Tabel Data Saat Ini:
 ${JSON.stringify(currentTables, null, 2)}
@@ -5108,6 +5762,7 @@ Perbarui dan kembalikan JSON lengkap:`;
         if (session.dataSchema) {
           session.dataSchema.views = schemaViews;
         }
+        finalTables = ensureStaffRecorderInActivityTables(finalTables, session);
         finalTables = ensureFormulaFieldsInTargetTables(finalTables, session.formulas?.daftar);
         finalTables = sanitizeSchemaFieldsByDomainProfile(finalTables, session);
         const markdownTable = renderDataSchemaMarkdown(finalTables, extracted.korelasiRingkas, schemaViews);
@@ -5135,6 +5790,7 @@ Perbarui dan kembalikan JSON lengkap:`;
   if (session.dataSchema) {
     session.dataSchema.views = fbViews;
   }
+  fallbackTables = ensureStaffRecorderInActivityTables(fallbackTables, session);
   fallbackTables = ensureFormulaFieldsInTargetTables(fallbackTables, session.formulas?.daftar);
   fallbackTables = sanitizeSchemaFieldsByDomainProfile(fallbackTables, session);
   const markdownTable = renderDataSchemaMarkdown(fallbackTables, session.dataSchema?.korelasiRingkas, fbViews);
@@ -5240,10 +5896,10 @@ ATURAN REVISI KONSISTEN & KETAT:
   const currentDataBrief =
     currentSimulasi.contohData && Array.isArray(currentSimulasi.contohData.tabel)
       ? JSON.stringify(
-          currentSimulasi.contohData.tabel.map((t) => ({ nama: t.nama, baris: t.baris })),
-          null,
-          2
-        )
+        currentSimulasi.contohData.tabel.map((t) => ({ nama: t.nama, baris: t.baris })),
+        null,
+        2
+      )
       : '[]';
 
   const userPrompt = `Skema Tabel (Lengkap):
@@ -5472,14 +6128,14 @@ INSTRUKSI KHUSUS PERBAIKAN:
     raw = opts?.caller
       ? await opts.caller(systemInstruction, userPrompt + retryNote)
       : await invokeAIChat({
-          systemInstruction,
-          userPrompt: userPrompt + retryNote,
-          temperature: 0.4,
-          maxTokens: opts?.maxTokens || 3000,
-          provider: opts?.provider,
-          userApiKey: opts?.apiKey,
-          userModel: opts?.model
-        });
+        systemInstruction,
+        userPrompt: userPrompt + retryNote,
+        temperature: 0.4,
+        maxTokens: opts?.maxTokens || 3000,
+        provider: opts?.provider,
+        userApiKey: opts?.apiKey,
+        userModel: opts?.model
+      });
   } catch (e) {
     console.warn('[AI-SIMULASI-ISI] AI call throw/error:', e);
     return null;
@@ -6137,7 +6793,7 @@ Aturan:
           features: { selected: [] }
         };
 
-        const clarificationCard = buildNonBusinessClarificationCard(pesanKlarifikasi);
+        const clarificationCard = buildNonBusinessClarificationCard();
 
         return NextResponse.json({
           success: true,
@@ -6270,12 +6926,12 @@ Aturan:
         flow: {
           ...(isDual
             ? {
-                dualFlowPreDecided: true,
-                dualProcessNames: {
-                  processA: analisis!.duaArah!.prosesA,
-                  processB: analisis!.duaArah!.prosesB
-                }
+              dualFlowPreDecided: true,
+              dualProcessNames: {
+                processA: analisis!.duaArah!.prosesA,
+                processB: analisis!.duaArah!.prosesB
               }
+            }
             : {})
         },
         painPoints: { selected: [] },
@@ -6305,15 +6961,15 @@ Aturan:
         overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama })),
         semantic: semantic
           ? {
-              used: semantic.confident,
-              topScore: Number(semantic.topScore.toFixed(3)),
-              candidates: semantic.candidates.slice(0, 5).map((c) => ({
-                id: c.id,
-                kind: c.kind,
-                label: c.label,
-                similarity: Number(c.similarity.toFixed(3))
-              }))
-            }
+            used: semantic.confident,
+            topScore: Number(semantic.topScore.toFixed(3)),
+            candidates: semantic.candidates.slice(0, 5).map((c) => ({
+              id: c.id,
+              kind: c.kind,
+              label: c.label,
+              similarity: Number(c.similarity.toFixed(3))
+            }))
+          }
           : null
       });
     }
@@ -6496,7 +7152,7 @@ Aturan:
         if (session.storyline?.pendingNonBusinessClarification || selected.includes('clarify_business_input')) {
           const newPrompt = (other || '').trim();
           if (!newPrompt) {
-            const card = buildNonBusinessClarificationCard(session.storyline?.pendingNonBusinessClarification?.pesanKlarifikasi);
+            const card = buildNonBusinessClarificationCard();
             return NextResponse.json({
               success: true,
               action,
@@ -6541,7 +7197,7 @@ Aturan:
               success: true,
               action,
               session: updatedPending,
-              guidedStep: buildNonBusinessClarificationCard(pesan),
+              guidedStep: buildNonBusinessClarificationCard(),
               narration: pesan,
               tier: { tier: 'BASIC', reasons: [] },
               template: null,
@@ -6637,12 +7293,12 @@ Aturan:
             flow: {
               ...(isDual
                 ? {
-                    dualFlowPreDecided: true,
-                    dualProcessNames: {
-                      processA: analisis!.duaArah!.prosesA,
-                      processB: analisis!.duaArah!.prosesB
-                    }
+                  dualFlowPreDecided: true,
+                  dualProcessNames: {
+                    processA: analisis!.duaArah!.prosesA,
+                    processB: analisis!.duaArah!.prosesB
                   }
+                }
                 : {})
             }
           };
@@ -6749,12 +7405,12 @@ Aturan:
               // Jika pilih "Dua-duanya", tandai dualFlowPreDecided = true
               ...(isBoth
                 ? {
-                    dualFlowPreDecided: true,
-                    dualProcessNames: {
-                      processA: storylineResult.analisisArah?.duaArah?.prosesA || labelA,
-                      processB: storylineResult.analisisArah?.duaArah?.prosesB || labelB
-                    }
+                  dualFlowPreDecided: true,
+                  dualProcessNames: {
+                    processA: storylineResult.analisisArah?.duaArah?.prosesA || labelA,
+                    processB: storylineResult.analisisArah?.duaArah?.prosesB || labelB
                   }
+                }
                 : {})
             }
           };
@@ -6774,15 +7430,15 @@ Aturan:
             overlays: getIndustryOverlaysByIds(overlayIds).map((o) => ({ id: o.id, nama: o.nama })),
             semantic: semantic
               ? {
-                  used: semantic.confident,
-                  topScore: Number(semantic.topScore.toFixed(3)),
-                  candidates: semantic.candidates.slice(0, 5).map((c) => ({
-                    id: c.id,
-                    kind: c.kind,
-                    label: c.label,
-                    similarity: Number(c.similarity.toFixed(3))
-                  }))
-                }
+                used: semantic.confident,
+                topScore: Number(semantic.topScore.toFixed(3)),
+                candidates: semantic.candidates.slice(0, 5).map((c) => ({
+                  id: c.id,
+                  kind: c.kind,
+                  label: c.label,
+                  similarity: Number(c.similarity.toFixed(3))
+                }))
+              }
               : null
           });
         }
@@ -7143,12 +7799,73 @@ Aturan:
           });
         }
 
-        // Konfirmasi profil domain -> Lanjut ke step ROLE
+        // Konfirmasi profil domain -> Lanjut ke step PRD atau ROLE
         let updated = applyGuidedAnswer(session, 'DOMAIN_PROFILE', body.selected || [], body.other);
         await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
         const guidedStep = buildGuidedStep(updated);
         const narration =
           'Owner di sini berperan sebagai Super Admin — pemegang akses tertinggi di aplikasi.\n\nMantap! Batasan profil bisnis sudah disepakati. Sekarang, yuk kita tentukan siapa saja peran yang akan memakai aplikasi ini:';
+        return NextResponse.json({
+          success: true,
+          action,
+          session: updated,
+          guidedStep,
+          narration
+        });
+      }
+
+      // Khusus step PRD: Dokumen Spesifikasi Kebutuhan Produk (Single Source of Truth)
+      if (stepId === 'PRD') {
+        const otherText = (body.other || '').trim();
+        const isConfirm =
+          (body.selected || []).includes('confirm_prd') ||
+          (!otherText && (body.selected || []).length === 0) ||
+          (Boolean(otherText) && isPureConfirmationText(otherText));
+
+        if (!isConfirm && otherText) {
+          // User memberikan masukan koreksi pada Dokumen PRD
+          const revised = await revisePrdWithAI(
+            session,
+            otherText,
+            provider,
+            userApiKey,
+            userModel
+          );
+          session.prd = revised;
+          session.step = 'PRD';
+          // Bersihkan turunan downstream agar konsisten
+          session.roles = { selected: [REQUIRED_ROLE], wajib: [REQUIRED_ROLE], tambahan: [] };
+          if (session.flow) {
+            delete session.flow.selectedId;
+            delete session.flow.alurInti;
+            delete session.flow.alurPendukung;
+            delete session.flow.fiturPendukung;
+            delete session.flow.kasusGanda;
+          }
+          delete session.rbac;
+          delete session.formulas;
+          delete session.dataSchema;
+          delete session.simulasiDb;
+
+          const guidedStep = buildGuidedStep(session);
+          const narration =
+            `Siap, Dokumen PRD (Spesifikasi Produk) telah diperbarui sesuai catatanmu:\n\n` +
+            `Dokumen PRD ini telah ter-refresh sebagai satu-satunya acuan perancangan. Silakan tinjau kembali lalu konfirmasi untuk lanjut ke pemilihan peran pengguna.`;
+          return NextResponse.json({
+            success: true,
+            action,
+            session,
+            guidedStep,
+            narration
+          });
+        }
+
+        // Konfirmasi Dokumen PRD -> Lanjut ke step ROLE
+        let updated = applyGuidedAnswer(session, 'PRD', body.selected || [], body.other);
+        await ensureRoleDetailsGroundedWithAI(updated, provider, userApiKey, userModel);
+        const guidedStep = buildGuidedStep(updated);
+        const narration =
+          'Dokumen Spesifikasi Produk (PRD) telah disepakati dan terkunci sebagai satu sumber kebenaran!\n\nSekarang, yuk kita tetapkan peran-peran pengguna yang tercantum di PRD:';
         return NextResponse.json({
           success: true,
           action,
@@ -7627,17 +8344,17 @@ Aturan:
             alurPendukung:
               session.flow?.alurPendukung && session.flow.alurPendukung.length > 0
                 ? session.flow.alurPendukung.map((ap, i) => ({
-                    id: `alur_pendukung_${i + 1}`,
-                    nama: ap.nama,
-                    steps: ap.steps
-                  }))
+                  id: `alur_pendukung_${i + 1}`,
+                  nama: ap.nama,
+                  steps: ap.steps
+                }))
                 : flowData.alurPendukung,
             fiturPendukung:
               session.flow?.fiturPendukung && session.flow.fiturPendukung.length > 0
                 ? session.flow.fiturPendukung.map((fp, i) => ({
-                    id: `feat_custom_${i + 1}`,
-                    label: fp
-                  }))
+                  id: `feat_custom_${i + 1}`,
+                  label: fp
+                }))
                 : flowData.fiturPendukung
           };
 

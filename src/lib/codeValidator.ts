@@ -550,20 +550,52 @@ export function repairVueTabAndTableAlignment(html: string, jsCode: string): { h
       }
     }
 
-    // Periksa tabs: rebuild HANYA jika tab ID terdeteksi sebagai nama peran (Bug 1: role slug tabs)
+    // Periksa tabs: WAJIB ADA, NON-KOSONG, dan mencakup seluruh tabel di tablesList (dan views di viewsList)
     const tabsProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'tabs' || p.key.value === 'tabs'));
     let needRebuildTabs = false;
-    if (tabsProp && tabsProp.value && tabsProp.value.type === 'ArrayExpression') {
-      const existingTabIds: string[] = [];
+    const existingTabIds: string[] = [];
+    const existingTabObjects: any[] = [];
+    const existingMap = new Map<string, { label?: string; icon?: string }>();
+
+    if (!tabsProp || !tabsProp.value || tabsProp.value.type !== 'ArrayExpression') {
+      needRebuildTabs = true;
+    } else {
       for (const el of tabsProp.value.elements) {
         if (el && el.type === 'ObjectExpression') {
           const idP = el.properties?.find((x: any) => x.key && (x.key.name === 'id' || x.key.value === 'id'));
+          const lblP = el.properties?.find((x: any) => x.key && (x.key.name === 'label' || x.key.value === 'label'));
+          const iconP = el.properties?.find((x: any) => x.key && (x.key.name === 'icon' || x.key.value === 'icon'));
+          const rolesP = el.properties?.find((x: any) => x.key && (x.key.name === 'roles' || x.key.value === 'roles'));
+
           if (idP && idP.value && idP.value.type === 'Literal') {
-            existingTabIds.push(String(idP.value.value));
+            const idStr = String(idP.value.value);
+            existingTabIds.push(idStr);
+            const lblVal = lblP && lblP.value && lblP.value.type === 'Literal' ? String(lblP.value.value) : undefined;
+            const iconVal = iconP && iconP.value && iconP.value.type === 'Literal' ? String(iconP.value.value) : undefined;
+            existingMap.set(idStr, {
+              label: lblVal,
+              icon: iconVal
+            });
+
+            const rolesVal = rolesP && rolesP.value && rolesP.value.type === 'ArrayExpression'
+              ? rolesP.value.elements.map((e: any) => e && e.type === 'Literal' ? String(e.value) : '').filter(Boolean)
+              : ['*'];
+
+            existingTabObjects.push({
+              id: idStr,
+              label: lblVal || idStr,
+              roles: rolesVal
+            });
           }
         }
       }
-      // Rebuild HANYA jika seluruh ID tab cocok dengan slug nama peran (misal: ['superadmin', 'petugaspenyewaansepeda'])
+
+      // Rebuild jika tabs kosong
+      if (existingTabIds.length === 0) {
+        needRebuildTabs = true;
+      }
+
+      // Rebuild jika seluruh ID tab cocok dengan slug nama peran (misal: ['superadmin', 'petugaspenyewaansepeda'])
       const areAllRoleSlugs = existingTabIds.length > 0 && existingTabIds.every(id => {
         const cleanId = id.toLowerCase().replace(/^(?:tab_|view_)?/, '').replace(/[^a-z0-9]/g, '');
         return roleSlugs.has(cleanId);
@@ -573,34 +605,58 @@ export function repairVueTabAndTableAlignment(html: string, jsCode: string): { h
       }
     }
 
-    const replacements: { start: number; end: number; replacement: string }[] = [];
-
-    if (needRebuildTabs && tabsProp) {
-      const fallbackRoles = allRolesFromAccs.length > 0 ? allRolesFromAccs : ['*'];
-      const newTabs = [
-        ...tablesList.map(t => ({
+    const fallbackRoles = allRolesFromAccs.length > 0 ? allRolesFromAccs : ['*'];
+    const newTabs = [
+      ...tablesList.map(t => {
+        const existing = existingMap.get(t.key) || existingMap.get('tab_' + t.key);
+        return {
           id: t.key,
-          label: t.label,
+          label: existing?.label || t.label,
           roles: t.roles.includes('*') ? fallbackRoles : t.roles,
           editRoles: t.editRoles ? t.editRoles : (t.roles.includes('*') ? fallbackRoles : t.roles)
-        })),
-        ...viewsList.map(v => ({
+        };
+      }),
+      ...viewsList.map(v => {
+        const existing = existingMap.get(v.key) || existingMap.get('view_' + v.key);
+        return {
           id: 'view_' + v.key,
-          label: v.label,
+          label: existing?.label || v.label,
           roles: v.roles.includes('*') ? fallbackRoles : v.roles,
           editRoles: [],
           isView: true
-        }))
-      ];
+        };
+      })
+    ];
+
+    const effectiveTabs = needRebuildTabs ? newTabs : (existingTabObjects.length > 0 ? existingTabObjects : newTabs);
+    const finalTabIds = new Set<string>(effectiveTabs.map(t => t.id));
+    const replacements: { start: number; end: number; replacement: string }[] = [];
+
+    if (needRebuildTabs) {
       const tabsJson = JSON.stringify(newTabs, null, 8).replace(/^/gm, '      ').trim();
-      replacements.push({
-        start: tabsProp.value.start,
-        end: tabsProp.value.end,
-        replacement: tabsJson
-      });
+      if (tabsProp && tabsProp.value) {
+        replacements.push({
+          start: tabsProp.value.start,
+          end: tabsProp.value.end,
+          replacement: tabsJson
+        });
+      } else {
+        // Injeksi deklarasi tabs: [...] ke dalam data() returnObj jika belum didefinisikan oleh AI
+        const insertPos = (returnObj.properties && returnObj.properties.length > 0)
+          ? returnObj.properties[0].start
+          : returnObj.start + 1;
+        const prefix = (returnObj.properties && returnObj.properties.length > 0)
+          ? 'tabs: ' + tabsJson + ',\n      '
+          : '\n      tabs: ' + tabsJson + '\n    ';
+        replacements.push({
+          start: insertPos,
+          end: insertPos,
+          replacement: prefix
+        });
+      }
     }
 
-    // Periksa landingTab pada demoAccounts
+    // Periksa landingTab pada demoAccounts: Pastikan SELALU mengarah ke ID tab yang valid dan ADA di tabs
     if (accsProp && accsProp.value && accsProp.value.type === 'ArrayExpression') {
       for (const el of accsProp.value.elements) {
         if (el && el.type === 'ObjectExpression') {
@@ -609,17 +665,26 @@ export function repairVueTabAndTableAlignment(html: string, jsCode: string): { h
           const roleVal = roleP && roleP.value && roleP.value.type === 'Literal' ? String(roleP.value.value) : '';
           const landVal = landP && landP.value && landP.value.type === 'Literal' ? String(landP.value.value) : '';
 
-          if (landP && landVal && !validTargetIds.has(landVal)) {
-            const matchedTbl = tablesList.find(t => t.roles.some(r => r === roleVal || (r !== '*' && roleVal.toLowerCase().includes(r.toLowerCase()))))
-              || tablesList.find(t => t.roles.includes('*'))
-              || tablesList[0];
-            if (matchedTbl) {
+          const matchedTab = effectiveTabs.find(t => t.roles.some((r: string) => r === roleVal || (r !== '*' && roleVal.toLowerCase().includes(r.toLowerCase()))))
+            || effectiveTabs.find(t => t.roles.includes('*'))
+            || effectiveTabs[0];
+          const targetTabId = matchedTab ? matchedTab.id : (effectiveTabs[0]?.id || 'dashboard');
+
+          if (landP && landP.value) {
+            if (!finalTabIds.has(landVal)) {
               replacements.push({
                 start: landP.value.start,
                 end: landP.value.end,
-                replacement: `'${matchedTbl.key}'`
+                replacement: `'${targetTabId}'`
               });
             }
+          } else if (!landP && el.properties && el.properties.length > 0) {
+            const lastProp = el.properties[el.properties.length - 1];
+            replacements.push({
+              start: lastProp.end,
+              end: lastProp.end,
+              replacement: `, landingTab: '${targetTabId}'`
+            });
           }
         }
       }
@@ -627,13 +692,14 @@ export function repairVueTabAndTableAlignment(html: string, jsCode: string): { h
 
     // Periksa activeTab awal
     const activeTabProp = returnObj.properties?.find((p: any) => p.key && (p.key.name === 'activeTab' || p.key.value === 'activeTab'));
+    const initialTabId = effectiveTabs[0]?.id || (tablesList[0] ? tablesList[0].key : 'dashboard');
     if (activeTabProp && activeTabProp.value && activeTabProp.value.type === 'Literal') {
       const curActive = String(activeTabProp.value.value);
-      if (!validTargetIds.has(curActive)) {
+      if (!finalTabIds.has(curActive)) {
         replacements.push({
           start: activeTabProp.value.start,
           end: activeTabProp.value.end,
-          replacement: `'${tablesList[0].key}'`
+          replacement: `'${initialTabId}'`
         });
       }
     }
@@ -1043,11 +1109,12 @@ var Pilar1VueScaffoldMixin = {
         this.deleteModal.show = false;
       }
       var acc = (this.demoAccounts || []).find(function(a) { return a.role === role; });
-      if (acc && acc.landingTab) {
+      if (acc && acc.landingTab && this.tabs && this.tabs.some(function(t) { return t.id === acc.landingTab; })) {
         this.showTab(acc.landingTab);
       } else if (this.tabs && this.tabs.length) {
         var first = this.tabs.find(function(t) { return this.isRoleAllowed(t.roles); }.bind(this));
         if (first) this.showTab(first.id);
+        else this.showTab(this.tabs[0].id);
       }
     },
     logout() {
@@ -1123,17 +1190,103 @@ var Pilar1VueScaffoldMixin = {
       }
     },
     bukaModalTambahStaf() {
-      if (typeof this.openCreate === 'function' && this.tablesConfig && this.tablesConfig.pengguna) {
+      if (this.tabs && this.tabs.some(function(t) { return t.id === 'pengguna'; })) {
+        this.showTab('pengguna');
+      }
+      if (!this.tablesConfig) this.tablesConfig = {};
+      if (!this.tablesConfig.pengguna) {
+        this.tablesConfig.pengguna = {
+          label: 'Akun Staf & Pengguna',
+          fields: [
+            { key: 'id', label: 'ID', type: 'text' },
+            { key: 'nama', label: 'Nama Lengkap', type: 'text' },
+            { key: 'username', label: 'Username', type: 'text' },
+            { key: 'role', label: 'Peran / Hak Akses', type: 'text' },
+            { key: 'status', label: 'Status Akun', type: 'text' }
+          ]
+        };
+      }
+      if (!this.db) this.db = {};
+      if (!this.db.pengguna) {
+        this.db.pengguna = (this.demoAccounts || []).map(function(acc, i) {
+          return {
+            id: i + 1,
+            nama: acc.username ? (acc.username.charAt(0).toUpperCase() + acc.username.slice(1)) : 'User ' + (i + 1),
+            username: acc.username || ('user' + (i + 1)),
+            role: acc.role || 'Staf',
+            status: 'Aktif'
+          };
+        });
+      }
+      if (typeof this.openCreate === 'function') {
         this.openCreate('pengguna');
-      } else {
+      } else if (typeof this.showToast === 'function') {
         this.showToast('Membuka formulir pendaftaran akun staf', 'info');
       }
     },
     bukaModalAturHakAkses() {
-      this.showToast('Panel konfigurasi hak akses modul operasional dibuka', 'info');
+      if (this.tabs && this.tabs.some(function(t) { return t.id === 'pengguna'; })) {
+        this.showTab('pengguna');
+      }
+      if (!this.tablesConfig) this.tablesConfig = {};
+      if (!this.tablesConfig.pengguna) {
+        this.tablesConfig.pengguna = {
+          label: 'Akun Staf & Pengguna',
+          fields: [
+            { key: 'id', label: 'ID', type: 'text' },
+            { key: 'nama', label: 'Nama Lengkap', type: 'text' },
+            { key: 'username', label: 'Username', type: 'text' },
+            { key: 'role', label: 'Peran / Hak Akses', type: 'text' },
+            { key: 'status', label: 'Status Akun', type: 'text' }
+          ]
+        };
+      }
+      if (!this.db) this.db = {};
+      if (!this.db.pengguna) {
+        this.db.pengguna = (this.demoAccounts || []).map(function(acc, i) {
+          return {
+            id: i + 1,
+            nama: acc.username ? (acc.username.charAt(0).toUpperCase() + acc.username.slice(1)) : 'User ' + (i + 1),
+            username: acc.username || ('user' + (i + 1)),
+            role: acc.role || 'Staf',
+            status: 'Aktif'
+          };
+        });
+      }
+      var target = (this.db.pengguna && this.db.pengguna.find(function(u) { return u.role !== 'Super Admin'; })) || (this.db.pengguna && this.db.pengguna[0]);
+      if (target && typeof this.openEdit === 'function') {
+        this.openEdit('pengguna', target);
+      } else if (typeof this.showToast === 'function') {
+        this.showToast('Panel konfigurasi hak akses modul operasional dibuka', 'info');
+      }
     },
     nonaktifkanAkunStaf() {
-      this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
+      if (this.tabs && this.tabs.some(function(t) { return t.id === 'pengguna'; })) {
+        this.showTab('pengguna');
+      }
+      if (!this.db) this.db = {};
+      if (!this.db.pengguna) {
+        this.db.pengguna = (this.demoAccounts || []).map(function(acc, i) {
+          return {
+            id: i + 1,
+            nama: acc.username ? (acc.username.charAt(0).toUpperCase() + acc.username.slice(1)) : 'User ' + (i + 1),
+            username: acc.username || ('user' + (i + 1)),
+            role: acc.role || 'Staf',
+            status: 'Aktif'
+          };
+        });
+      }
+      var staf = (this.db.pengguna && this.db.pengguna.find(function(u) { return u.role !== 'Super Admin' && u.status !== 'Nonaktif'; }))
+        || (this.db.pengguna && this.db.pengguna.find(function(u) { return u.role !== 'Super Admin'; }))
+        || (this.db.pengguna && this.db.pengguna[0]);
+      if (staf) {
+        staf.status = staf.status === 'Nonaktif' ? 'Aktif' : 'Nonaktif';
+        if (typeof this.showToast === 'function') {
+          this.showToast('Status akun ' + (staf.username || staf.nama) + ' (' + staf.role + ') berhasil diubah menjadi: ' + staf.status, 'success');
+        }
+      } else if (typeof this.showToast === 'function') {
+        this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
+      }
     },
     resolveRelationDisplay(targetTable, id, depth, visited) {
       if (!id) return '-';
@@ -2003,6 +2156,72 @@ function showToast(msg, type = 'info') {
     if (isVueTabs) {
       // TAB GATING PADA VUE 3 CDN (Fase 2)
       hasFilterTabsByRole = true;
+
+      // ⚠️ VALIDATOR KRITIS: Pastikan array tabs dideklarasikan di data() dan memuat setiap tabel di tablesConfig
+      const hasTabsLoop = /v-for=["'][^"']*\btabs\b/i.test(repairedHtml);
+      if (hasTabsLoop) {
+        const fullCode = combinedJs + ' ' + repairedJs + ' ' + repairedHtml;
+
+        // Ekstrak isi array tabs secara seimbang (bracket counting) agar tidak terputus oleh nested array (misal roles: [...])
+        let tabsContent = '';
+        const tabsIndex = fullCode.search(/\btabs\s*:\s*\[/i);
+        if (tabsIndex !== -1) {
+          const startBracket = fullCode.indexOf('[', tabsIndex);
+          let depth = 0;
+          let endBracket = -1;
+          for (let i = startBracket; i < fullCode.length; i++) {
+            if (fullCode[i] === '[') depth++;
+            else if (fullCode[i] === ']') {
+              depth--;
+              if (depth === 0) {
+                endBracket = i;
+                break;
+              }
+            }
+          }
+          if (endBracket !== -1) {
+            tabsContent = fullCode.substring(startBracket + 1, endBracket);
+          }
+        }
+
+        const hasValidTabs = tabsIndex !== -1 && tabsContent.trim().length > 0 && /(?:id|['"]id['"])\s*:/i.test(tabsContent);
+
+        // Ekstrak isi tablesConfig secara seimbang (brace counting)
+        let tablesConfigContent = '';
+        const tcIndex = fullCode.search(/\btablesConfig\s*:\s*\{/i);
+        if (tcIndex !== -1) {
+          const startBrace = fullCode.indexOf('{', tcIndex);
+          let depth = 0;
+          let endBrace = -1;
+          for (let i = startBrace; i < fullCode.length; i++) {
+            if (fullCode[i] === '{') depth++;
+            else if (fullCode[i] === '}') {
+              depth--;
+              if (depth === 0) {
+                endBrace = i;
+                break;
+              }
+            }
+          }
+          if (endBrace !== -1) {
+            tablesConfigContent = fullCode.substring(startBrace + 1, endBrace);
+          }
+        }
+        const tablesCount = tablesConfigContent ? (tablesConfigContent.match(/(?:[a-zA-Z0-9_]+|['"][a-zA-Z0-9_]+['"])\s*:\s*\{/g) || []).length : 0;
+
+        if (tabsIndex === -1 || !hasValidTabs) {
+          issues.push(
+            `MISSING_TABS_ARRAY: Template navigasi menggunakan loop 'v-for="tab in tabs"', namun array 'tabs' tidak didefinisikan atau kosong di data() Vue. Seluruh tombol navigasi navbar akan hilang dan pengguna terjebak di satu halaman.`
+          );
+        } else if (tablesCount > 1) {
+          const tabEntriesCount = (tabsContent.match(/(?:id|['"]id['"])\s*:/gi) || []).length;
+          if (tabEntriesCount < tablesCount) {
+            issues.push(
+              `INCOMPLETE_TABS_ARRAY: tablesConfig memiliki ${tablesCount} tabel, namun array 'tabs' hanya memiliki ${tabEntriesCount} entri. Setiap tabel di tablesConfig WAJIB memiliki satu tombol tab navigasi di array tabs data() Vue.`
+            );
+          }
+        }
+      }
 
       if (isMultiRoleApp) {
         const tabRolesFromJs: string[] = [];
@@ -3602,6 +3821,7 @@ export function checkMissingCreateBranches(
     }
 
     const candidateSaveFns = fns.filter((f) => {
+      if (/^(?:buka|open|tutup|close)modal/i.test(f.name)) return false;
       if (formSubmitFns.has(f.name)) return true;
       return /^(?:simpan|save|handlesimpan|handlesubmit|tambah[a-z0-9]|create[a-z0-9]|submittransaksi|submitsiswa)/i.test(f.name);
     });

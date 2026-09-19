@@ -147,6 +147,7 @@ export interface GuidedStepOption {
 export type GuidedStepId =
   | 'STORYTELLING'
   | 'DOMAIN_PROFILE'
+  | 'PRD'
   | 'ROLE'
   | 'ALUR'
   | 'RBAC'
@@ -162,11 +163,22 @@ export interface EntityDataCardItem {
   ownerRole?: string;
 }
 
+export interface DomainKarakteristikOperasional {
+  label: string;
+  deskripsi: string;
+}
+
+export interface DomainKarakteristikTarif {
+  label: string;
+  deskripsi: string;
+}
+
 export interface DomainProfile {
-  modelOperasional: 'DI_TEMPAT' | 'PENGIRIMAN_LOGISTIK' | 'DIGITAL';
-  modelTarif: 'SEWA_DURASI' | 'BERAT_TIMBANGAN' | 'PER_ITEM' | 'BIAYA_JASA';
+  modelOperasional: DomainKarakteristikOperasional | string;
+  modelTarif?: DomainKarakteristikTarif | string | null;
   adaJaminanDeposit: boolean;
   fungsiDeposit?: string;
+  melibatkanPengirimanFisik?: boolean;
   entitasKatalogMaster: string[];
   entitasPencatatanTransaksi: string[];
   komponenBiayaYangLazim: string[]; // WHITELIST SAJA — strict whitelist tanpa blocklist
@@ -235,6 +247,67 @@ export interface ViewConfig {
   keterangan?: string;
 }
 
+export interface PrdSectionOverview {
+  namaAplikasi: string;
+  domainBisnis: string;
+  tujuanUtama: string;
+  asumsiMasalah: string;
+  kemenanganPertamaPengguna?: string; // First Win
+  keunggulanUtama?: string;
+  ruangLingkup: {
+    termasuk: string[];
+    tidakTermasuk?: string[];
+  };
+}
+
+export interface PrdSectionTechStack {
+  frontend: string;
+  backend: string;
+  database: string;
+  hosting: string;
+  securityAuth: string;
+}
+
+export interface PrdSectionDataConcept {
+  entitasKatalogMaster: string[];
+  entitasPencatatanTransaksi: string[];
+}
+
+export interface PrdSectionActorRbac {
+  aktorEksternal: string[];
+  aktorInternal: string[];
+  aktorTataKelola: string[];
+  modulKerjaPerRole: ReferensiModulRole[];
+}
+
+export interface PrdSectionUserFlow {
+  alurUtama: { step: number; pelaku: string; aksi: string }[];
+  alurPenangananMasalah?: { nama: string; steps: { pelaku: string; aksi: string }[] };
+  alurKesiapanOperasional?: { nama: string; steps: { pelaku: string; aksi: string }[] };
+}
+
+export interface PrdSectionCoreFeatures {
+  formulirTransaksi: string[];
+  dashboardDanMonitoring: string[];
+}
+
+export interface ProductRequirementsDocument {
+  id?: string;
+  judul: string;
+  version: string;
+  overview: PrdSectionOverview;
+  domainProfile: DomainProfile;
+  techStack: PrdSectionTechStack;
+  dataConcept: PrdSectionDataConcept;
+  actorsAndRbac: PrdSectionActorRbac;
+  userFlow: PrdSectionUserFlow;
+  coreFeatures: PrdSectionCoreFeatures;
+  markdownDoc?: string;
+  statusKonfirmasi?: 'disetujui' | 'dikoreksi';
+  revisiCount?: number;
+  riwayatKoreksi?: string[];
+}
+
 export interface GuidedStepPayload {
   stepId: GuidedStepId;
   title: string;
@@ -244,6 +317,7 @@ export interface GuidedStepPayload {
   backNavOption?: GuidedStepOption;
   entityDataList?: EntityDataCardItem[];
   domainProfile?: DomainProfile;
+  prd?: ProductRequirementsDocument;
   roleModuleChecklist?: RoleModuleChecklistGroup[];
   rbacStage?: 'CHECKLIST' | 'MATRIX';
 }
@@ -251,6 +325,7 @@ export interface GuidedStepPayload {
 export type SessionStep =
   | 'STORYTELLING'
   | 'DOMAIN_PROFILE'
+  | 'PRD'
   | 'ROLE'
   | 'ALUR'
   | 'RBAC'
@@ -323,6 +398,12 @@ export interface MockupSessionState {
   };
   actorsClassification?: ActorClassification[];
   domainProfile?: DomainProfile;
+  prd?: ProductRequirementsDocument;
+  pendingPrdClarification?: {
+    pertanyaan: string;
+    aspek: 'model_transaksi' | 'skema_biaya' | 'alur_tanggung_jawab' | 'umum';
+    opsi: { id: string; label: string; deskripsi?: string; recommended?: boolean }[];
+  };
   pendingOwnerRoleClarification?: {
     entity: string;
     suggestedOwnerRoles: string[];

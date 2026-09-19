@@ -36,19 +36,36 @@ export const DomainMindMapCard: React.FC<DomainMindMapCardProps> = ({
     setExpandedBranch((prev) => (prev === branchId ? null : branchId));
   };
 
-  const getModelOperasionalLabel = (model: DomainProfile['modelOperasional']) => {
+  const getModelOperasionalData = (model: DomainProfile['modelOperasional']) => {
+    if (typeof model === 'object' && model?.label) {
+      return {
+        label: model.label,
+        desc: model.deskripsi || 'Karakteristik operasional utama alur bisnis aplikasi.',
+        icon: Store
+      };
+    }
     switch (model) {
       case 'DI_TEMPAT':
         return { label: 'Di Tempat / Counter', desc: 'Pelanggan datang langsung ke lokasi fisik untuk bertransaksi.', icon: Store };
       case 'PENGIRIMAN_LOGISTIK':
         return { label: 'Pengiriman & Logistik', desc: 'Pesanan dikirim via kurir, armada, atau ekspedisi pengiriman.', icon: Truck };
+      case 'TIDAK_RELEVAN':
+        return { label: 'Operasional Internal', desc: 'Aplikasi alat kerja operasional internal tanpa transaksi fisik.', icon: Info };
       case 'DIGITAL':
       default:
-        return { label: 'Layanan Digital / Online', desc: 'Transaksi dan pengiriman diproses secara sistem digital.', icon: Sparkles };
+        return { label: typeof model === 'string' ? model : 'Layanan Digital / Mandiri', desc: 'Transaksi dan pengiriman diproses secara sistem digital.', icon: Sparkles };
     }
   };
 
-  const getModelTarifLabel = (tarif: DomainProfile['modelTarif']) => {
+  const getModelTarifData = (tarif: DomainProfile['modelTarif']) => {
+    if (!tarif || tarif === 'TIDAK_RELEVAN') return null;
+    if (typeof tarif === 'object' && tarif?.label) {
+      return {
+        label: tarif.label,
+        desc: tarif.deskripsi || 'Skema penentuan tarif dan perhitungan biaya transaksi.',
+        icon: Coins
+      };
+    }
     switch (tarif) {
       case 'SEWA_DURASI':
         return { label: 'Sewa Berdasarkan Durasi', desc: 'Kalkulasi dihitung per jam, hari, atau periode sewa.', icon: Clock };
@@ -58,14 +75,14 @@ export const DomainMindMapCard: React.FC<DomainMindMapCardProps> = ({
         return { label: 'Tarif per Satuan Item / Produk', desc: 'Dihitung per kuantitas (qty) barang fisik yang dijual.', icon: Package };
       case 'BIAYA_JASA':
       default:
-        return { label: 'Tarif Berdasarkan Jasa / Layanan', desc: 'Dihitung per paket tindakan, tarif flat, atau pengerjaan jasa.', icon: Coins };
+        return { label: typeof tarif === 'string' ? tarif : 'Tarif Berdasarkan Jasa / Layanan', desc: 'Dihitung per paket tindakan, tarif flat, atau pengerjaan jasa.', icon: Coins };
     }
   };
 
-  const operasional = getModelOperasionalLabel(profile.modelOperasional);
-  const tarif = getModelTarifLabel(profile.modelTarif);
+  const operasional = getModelOperasionalData(profile.modelOperasional);
+  const tarif = getModelTarifData(profile.modelTarif);
+  const showDeposit = Boolean(profile.adaJaminanDeposit);
   const OperasionalIcon = operasional.icon;
-  const TarifIcon = tarif.icon;
 
   return (
     <div className="w-full rounded-2xl border border-white/10 bg-[#0c0c11] overflow-hidden shadow-xl">
@@ -105,7 +122,7 @@ export const DomainMindMapCard: React.FC<DomainMindMapCardProps> = ({
 
         {/* Mind-Map Grid / Branches */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {/* Branch 1: Model Operasional */}
+          {/* Branch 1: Model Operasional (UNIVERSAL - Selalu Tampil) */}
           <div
             onClick={() => toggleBranch('operasional')}
             className={`cursor-pointer rounded-xl border p-2.5 transition-all text-left ${
@@ -141,89 +158,83 @@ export const DomainMindMapCard: React.FC<DomainMindMapCardProps> = ({
             )}
           </div>
 
-          {/* Branch 2: Model Tarif */}
-          <div
-            onClick={() => toggleBranch('tarif')}
-            className={`cursor-pointer rounded-xl border p-2.5 transition-all text-left ${
-              expandedBranch === 'tarif'
-                ? 'bg-white/[0.06] border-white/25 shadow-md'
-                : 'bg-white/[0.02] border-white/10 hover:border-white/20'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-md bg-amber-400/10 text-amber-400 flex items-center justify-center shrink-0">
-                  <TarifIcon className="w-3 h-3" />
+          {/* Branch 2: Model Tarif (KONDISIONAL - Hanya Tampil Jika Ada Skema Tarif) */}
+          {tarif && (
+            <div
+              onClick={() => toggleBranch('tarif')}
+              className={`cursor-pointer rounded-xl border p-2.5 transition-all text-left ${
+                expandedBranch === 'tarif'
+                  ? 'bg-white/[0.06] border-white/25 shadow-md'
+                  : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-amber-400/10 text-amber-400 flex items-center justify-center shrink-0">
+                    <tarif.icon className="w-3 h-3" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-zinc-400 font-semibold block">
+                      Model Tarif & Biaya
+                    </span>
+                    <span className="text-[11px] font-semibold text-zinc-200">
+                      {tarif.label}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[9px] uppercase tracking-wider text-zinc-400 font-semibold block">
-                    Model Tarif & Waktu
-                  </span>
-                  <span className="text-[11px] font-semibold text-zinc-200">
-                    {tarif.label}
-                  </span>
-                </div>
+                {expandedBranch === 'tarif' ? (
+                  <ChevronUp className="w-3 h-3 text-zinc-500" />
+                ) : (
+                  <ChevronDown className="w-3 h-3 text-zinc-500" />
+                )}
               </div>
-              {expandedBranch === 'tarif' ? (
-                <ChevronUp className="w-3 h-3 text-zinc-500" />
-              ) : (
-                <ChevronDown className="w-3 h-3 text-zinc-500" />
+              {expandedBranch === 'tarif' && (
+                <p className="text-[10px] text-zinc-400 mt-2 pt-2 border-t border-white/10 leading-relaxed">
+                  {tarif.desc}
+                </p>
               )}
             </div>
-            {expandedBranch === 'tarif' && (
-              <p className="text-[10px] text-zinc-400 mt-2 pt-2 border-t border-white/10 leading-relaxed">
-                {tarif.desc}
-              </p>
-            )}
-          </div>
+          )}
 
-          {/* Branch 3: Jaminan / Deposit */}
-          <div
-            onClick={() => toggleBranch('deposit')}
-            className={`cursor-pointer rounded-xl border p-2.5 transition-all text-left ${
-              expandedBranch === 'deposit'
-                ? 'bg-white/[0.06] border-white/25 shadow-md'
-                : 'bg-white/[0.02] border-white/10 hover:border-white/20'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                    profile.adaJaminanDeposit
-                      ? 'bg-emerald-400/10 text-emerald-400'
-                      : 'bg-zinc-700/30 text-zinc-500'
-                  }`}
-                >
-                  {profile.adaJaminanDeposit ? (
+          {/* Branch 3: Jaminan / Deposit (KONDISIONAL KETAT - Hanya Tampil Jika true) */}
+          {showDeposit && (
+            <div
+              onClick={() => toggleBranch('deposit')}
+              className={`cursor-pointer rounded-xl border p-2.5 transition-all text-left ${
+                expandedBranch === 'deposit'
+                  ? 'bg-white/[0.06] border-white/25 shadow-md'
+                  : 'bg-white/[0.02] border-white/10 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-emerald-400/10 text-emerald-400 flex items-center justify-center shrink-0">
                     <ShieldCheck className="w-3 h-3" />
-                  ) : (
-                    <ShieldAlert className="w-3 h-3" />
-                  )}
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-zinc-400 font-semibold block">
+                      Jaminan / Deposit
+                    </span>
+                    <span className="text-[11px] font-semibold text-zinc-200">
+                      Ada Jaminan Fisik
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[9px] uppercase tracking-wider text-zinc-400 font-semibold block">
-                    Jaminan / Deposit
-                  </span>
-                  <span className="text-[11px] font-semibold text-zinc-200">
-                    {profile.adaJaminanDeposit ? 'Ada Jaminan Fisik' : 'Tanpa Jaminan'}
-                  </span>
-                </div>
+                {expandedBranch === 'deposit' ? (
+                  <ChevronUp className="w-3 h-3 text-zinc-500" />
+                ) : (
+                  <ChevronDown className="w-3 h-3 text-zinc-500" />
+                )}
               </div>
-              {expandedBranch === 'deposit' ? (
-                <ChevronUp className="w-3 h-3 text-zinc-500" />
-              ) : (
-                <ChevronDown className="w-3 h-3 text-zinc-500" />
+              {expandedBranch === 'deposit' && (
+                <p className="text-[10px] text-zinc-400 mt-2 pt-2 border-t border-white/10 leading-relaxed">
+                  {profile.fungsiDeposit || 'Jaminan fisik unit selama masa pemakaian/sewa.'}
+                </p>
               )}
             </div>
-            {expandedBranch === 'deposit' && (
-              <p className="text-[10px] text-zinc-400 mt-2 pt-2 border-t border-white/10 leading-relaxed">
-                {profile.fungsiDeposit || (profile.adaJaminanDeposit ? 'Jaminan fisik unit selama masa sewa.' : 'Tidak memerlukan titip uang muka jaminan.')}
-              </p>
-            )}
-          </div>
+          )}
 
-          {/* Branch 4: Struktur Data (Katalog & Transaksi) */}
+          {/* Branch 4: Struktur Data (UNIVERSAL - Selalu Tampil) */}
           <div
             onClick={() => toggleBranch('entitas')}
             className={`cursor-pointer rounded-xl border p-2.5 transition-all text-left ${
@@ -286,15 +297,21 @@ export const DomainMindMapCard: React.FC<DomainMindMapCardProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {profile.komponenBiayaYangLazim.map((komponen, idx) => (
-              <span
-                key={idx}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/10 text-[10px] text-zinc-200 font-mono"
-              >
-                <CheckCircle2 className="w-2.5 h-2.5 text-[#10f48e]" />
-                {komponen}
+            {profile.komponenBiayaYangLazim && profile.komponenBiayaYangLazim.length > 0 ? (
+              profile.komponenBiayaYangLazim.map((komponen, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/10 text-[10px] text-zinc-200 font-mono"
+                >
+                  <CheckCircle2 className="w-2.5 h-2.5 text-[#10f48e]" />
+                  {komponen}
+                </span>
+              ))
+            ) : (
+              <span className="text-[10px] text-zinc-400 italic">
+                (Tidak ada komponen biaya / murni non-finansial)
               </span>
-            ))}
+            )}
           </div>
         </div>
 

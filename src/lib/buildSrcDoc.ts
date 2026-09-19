@@ -1058,17 +1058,103 @@ export function buildSrcDoc(canvasCode: { html: string; css: string; js: string 
           }
         },
         bukaModalTambahStaf() {
-          if (this.openCreate && this.tablesConfig && this.tablesConfig.pengguna) {
+          if (this.tabs && this.tabs.some(function(t) { return t.id === 'pengguna'; })) {
+            this.showTab('pengguna');
+          }
+          if (!this.tablesConfig) this.tablesConfig = {};
+          if (!this.tablesConfig.pengguna) {
+            this.tablesConfig.pengguna = {
+              label: 'Akun Staf & Pengguna',
+              fields: [
+                { key: 'id', label: 'ID', type: 'text' },
+                { key: 'nama', label: 'Nama Lengkap', type: 'text' },
+                { key: 'username', label: 'Username', type: 'text' },
+                { key: 'role', label: 'Peran / Hak Akses', type: 'text' },
+                { key: 'status', label: 'Status Akun', type: 'text' }
+              ]
+            };
+          }
+          if (!this.db) this.db = {};
+          if (!this.db.pengguna) {
+            this.db.pengguna = (this.demoAccounts || []).map(function(acc, i) {
+              return {
+                id: i + 1,
+                nama: acc.username ? (acc.username.charAt(0).toUpperCase() + acc.username.slice(1)) : 'User ' + (i + 1),
+                username: acc.username || ('user' + (i + 1)),
+                role: acc.role || 'Staf',
+                status: 'Aktif'
+              };
+            });
+          }
+          if (typeof this.openCreate === 'function') {
             this.openCreate('pengguna');
-          } else {
+          } else if (typeof this.showToast === 'function') {
             this.showToast('Membuka formulir pendaftaran akun staf', 'info');
           }
         },
         bukaModalAturHakAkses() {
-          this.showToast('Panel konfigurasi hak akses modul operasional dibuka', 'info');
+          if (this.tabs && this.tabs.some(function(t) { return t.id === 'pengguna'; })) {
+            this.showTab('pengguna');
+          }
+          if (!this.tablesConfig) this.tablesConfig = {};
+          if (!this.tablesConfig.pengguna) {
+            this.tablesConfig.pengguna = {
+              label: 'Akun Staf & Pengguna',
+              fields: [
+                { key: 'id', label: 'ID', type: 'text' },
+                { key: 'nama', label: 'Nama Lengkap', type: 'text' },
+                { key: 'username', label: 'Username', type: 'text' },
+                { key: 'role', label: 'Peran / Hak Akses', type: 'text' },
+                { key: 'status', label: 'Status Akun', type: 'text' }
+              ]
+            };
+          }
+          if (!this.db) this.db = {};
+          if (!this.db.pengguna) {
+            this.db.pengguna = (this.demoAccounts || []).map(function(acc, i) {
+              return {
+                id: i + 1,
+                nama: acc.username ? (acc.username.charAt(0).toUpperCase() + acc.username.slice(1)) : 'User ' + (i + 1),
+                username: acc.username || ('user' + (i + 1)),
+                role: acc.role || 'Staf',
+                status: 'Aktif'
+              };
+            });
+          }
+          var target = (this.db.pengguna && this.db.pengguna.find(function(u) { return u.role !== 'Super Admin'; })) || (this.db.pengguna && this.db.pengguna[0]);
+          if (target && typeof this.openEdit === 'function') {
+            this.openEdit('pengguna', target);
+          } else if (typeof this.showToast === 'function') {
+            this.showToast('Panel konfigurasi hak akses modul operasional dibuka', 'info');
+          }
         },
         nonaktifkanAkunStaf() {
-          this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
+          if (this.tabs && this.tabs.some(function(t) { return t.id === 'pengguna'; })) {
+            this.showTab('pengguna');
+          }
+          if (!this.db) this.db = {};
+          if (!this.db.pengguna) {
+            this.db.pengguna = (this.demoAccounts || []).map(function(acc, i) {
+              return {
+                id: i + 1,
+                nama: acc.username ? (acc.username.charAt(0).toUpperCase() + acc.username.slice(1)) : 'User ' + (i + 1),
+                username: acc.username || ('user' + (i + 1)),
+                role: acc.role || 'Staf',
+                status: 'Aktif'
+              };
+            });
+          }
+          var staf = (this.db.pengguna && this.db.pengguna.find(function(u) { return u.role !== 'Super Admin' && u.status !== 'Nonaktif'; }))
+            || (this.db.pengguna && this.db.pengguna.find(function(u) { return u.role !== 'Super Admin'; }))
+            || (this.db.pengguna && this.db.pengguna[0]);
+          if (staf) {
+            staf.status = staf.status === 'Nonaktif' ? 'Aktif' : 'Nonaktif';
+            if (typeof this.showToast === 'function') {
+              this.showToast('Status akun ' + (staf.username || staf.nama) + ' (' + staf.role + ') berhasil diubah menjadi: ' + staf.status, 'success');
+            }
+          } else if (typeof this.showToast === 'function') {
+            this.showToast('Pilih akun staf dari tabel pengguna untuk dinonaktifkan', 'warning');
+          }
         },
         resolveRelationDisplay(targetTable, id, depth, visited) {
           if (!id) return '-';

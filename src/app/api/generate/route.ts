@@ -1353,17 +1353,21 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      b) Mengaktifkan landingTab milik peran tersebut (this.showTab(acc.landingTab)).
      c) DILARANG KERAS membiarkan tab peran sebelumnya tetap aktif saat peran baru login!
 7. NAVIGASI TAB REAKTIF DENGAN ROLE GATING & LEVEL AKSES CRUD vs VIEW-ONLY:
-   - ATURAN MUTLAK ID TAB: Setiap elemen di array tabs data() HARUS menggunakan ID yang sama persis dengan kunci tabel di tablesConfig atau kunci laporan di viewsConfig (misal: 'katalog_sepeda', 'pelanggan', 'transaksi_sewa', 'view_laporan_harian').
-   - DILARANG KERAS membuat tab dengan ID nama peran (seperti { id: 'superadmin' } atau { id: 'petugaspenyewaansepeda' })! Tab adalah untuk navigasi data tabel/laporan, BUKAN peran.
+   - ⚠️ ATURAN KRITIS (WAJIB DIIKUTI 100%): Array \`tabs\` WAJIB SELALU DIDEKLARASIKAN DI \`data()\`, DILARANG KERAS HILANG ATAU KOSONG!
+     Karena template navbar menggunakan loop \`<button v-for="tab in tabs" :key="tab.id" v-show="isRoleAllowed(tab.roles)">\`,
+     jika array \`tabs\` tidak Anda tulis di \`data()\`, navbar akan KOSONG TOTAL dan seluruh pengguna dari SEMUA peran akan terjebak di satu halaman tanpa tombol navigasi!
+   - SATU ENTRY UNTUK SETIAP TABEL: Array \`tabs\` WAJIB memiliki PERSIS SATU entry untuk SETIAP tabel di \`tablesConfig\` (dan setiap view di \`viewsConfig\`).
+   - ATURAN MUTLAK ID TAB: Setiap elemen di array tabs data() HARUS menggunakan \`id\` yang SAMA PERSIS dengan kunci tabel di \`tablesConfig\` atau kunci laporan di \`viewsConfig\` (misal: 'pelanggan', 'aktivitas_sales', 'target_penjualan', 'view_laporan_harian').
+   - DILARANG KERAS membuat tab dengan ID nama peran (seperti { id: 'superadmin' } atau { id: 'salesexecutive' })! Tab adalah untuk navigasi data tabel/laporan, BUKAN peran.
    - SETIAP TAB WAJIB MEMILIKI \`roles\` (siapa yang boleh lihat) DAN \`editRoles\` (siapa yang boleh CRUD Tambah/Edit/Hapus):
      * Role yang "Supervisi & Audit" (Read-Only) masuk ke \`roles\`, tapi TIDAK masuk ke \`editRoles\`.
      * Tab laporan (isView: true) memiliki \`editRoles: []\`.
-     Contoh deklarasi tabs di data():
+     Contoh deklarasi tabs di data() untuk aplikasi CRM / Sales:
      \`\`\`javascript
      tabs: [
-       { id: 'katalog_sepeda', label: 'Katalog Sepeda', roles: ['Super Admin', 'Petugas Rental'], editRoles: ['Super Admin', 'Petugas Rental'] },
-       { id: 'pelanggan', label: 'Pelanggan', roles: ['Super Admin', 'Petugas Rental'], editRoles: ['Petugas Rental'] },
-       { id: 'transaksi_sewa', label: 'Transaksi Sewa', roles: ['Super Admin', 'Petugas Rental'], editRoles: ['Petugas Rental'] },
+       { id: 'pelanggan', label: 'Data Pelanggan', roles: ['Super Admin', 'Sales Executive'], editRoles: ['Super Admin', 'Sales Executive'] },
+       { id: 'aktivitas_sales', label: 'Aktivitas Sales', roles: ['Super Admin', 'Sales Executive'], editRoles: ['Sales Executive'] },
+       { id: 'target_penjualan', label: 'Target & Omzet', roles: ['Super Admin', 'Sales Executive'], editRoles: ['Super Admin'] },
        { id: 'view_laporan_harian', label: '📊 Laporan Harian', roles: ['Super Admin'], editRoles: [], isView: true }
      ]
      \`\`\`
@@ -1371,8 +1375,8 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      \`v-show="activeTab === tblKey || activeTab === 'tab_' + tblKey"\`
    - KONTEN LAPORAN: Pada kontainer laporan (views), gunakan kondisi v-show:
      \`v-show="activeTab === vKey || activeTab === 'view_' + vKey"\`
-   - INITIAL activeTab: Nilai awal activeTab di data() WAJIB diinisialisasi dengan nama tabel pertama yang dapat diakses (misal: 'katalog_sepeda'), BUKAN nama peran dan BUKAN string kosong!
-   - LANDING TAB DI DEMO_ACCOUNTS: Setiap akun demo WAJIB memiliki landingTab yang mengarah ke ID TABEL operasional pertama yang relevan untuk peran tersebut (misal: 'transaksi_sewa' atau 'katalog_sepeda'), BUKAN nama peran!
+   - INITIAL activeTab: Nilai awal activeTab di data() WAJIB diinisialisasi dengan ID tabel pertama yang ada di array tabs (misal: 'pelanggan'), BUKAN nama peran dan BUKAN string kosong!
+   - LANDING TAB DI DEMO_ACCOUNTS: Setiap akun demo WAJIB memiliki landingTab yang mengarah ke ID TABEL operasional pertama yang relevan untuk peran tersebut (dan HARUS benar-benar ADA di array tabs! Misal: 'aktivitas_sales' atau 'pelanggan'), BUKAN nama peran!
    - Navigasi tab dirender melalui loop:
      \`\`\`html
      <button 
@@ -1387,7 +1391,7 @@ PRINSIP TERVALIDASI WAJIB (FR-03, NFR-10, NFR-10b):
      </button>
      \`\`\`
    - Pasang akun demo di window: \`window.DEMO_ACCOUNTS = this.demoAccounts;\`.
-   - Pasang Owner role di window: \`window.OWNER_ROLE_NAME = '${ownerRole}';\`.`;
+   - Pasang Owner role di window: \`window.OWNER_ROLE_NAME = '\${ownerRole}';\`.`;
 
       // Mode Pure AI: Matikan semua template/referensi statis
       systemPrompt += `\n\n${pureAIGuidance}`;
@@ -1456,6 +1460,7 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
 
 2. LABEL TOMBOL TAB ADALAH NAMA FITUR, BUKAN NAMA PERAN:
    - DILARANG KERAS menamai tombol tab dengan nama peran mentah (misal: tombol tab bertuliskan "Super Admin" atau "Anggota")!
+   - ⚠️ Array \`tabs\` WAJIB SELALU DIDEKLARASIKAN LENGKAP DI \`data()\`: Memuat 1 entry untuk setiap tabel di \`tablesConfig\` dan 1 entry untuk setiap view di \`viewsConfig\`. DILARANG KERAS melupakan atau mengosongkan array \`tabs\`!
    - Tombol tab di dalam aplikasi adalah NAVIGASI FITUR sesuai Job Description di Brief Kebutuhan:
       * Navigasi tab dirender melalui loop:
         <button v-for="tab in tabs" :key="tab.id" v-show="isRoleAllowed(tab.roles)" @click="showTab(tab.id)" :class="activeTab === tab.id ? 'border-b-2 border-indigo-600 text-indigo-600 font-bold' : 'text-gray-500 hover:text-gray-700'" class="tab-btn px-4 py-2.5 text-sm font-medium transition whitespace-nowrap">{{ tab.label }}</button>
@@ -1494,10 +1499,14 @@ ${approvedBrief ? approvedBrief : `Peran Resmi: ${officialRoles.join(', ')}`}
        - Kolom Data Aksi: \`<td v-if="canEditCurrentTab()" class="...">... Edit ... Hapus ...</td>\`
        - Banner Mode Supervisi: \`<div v-if="!canEditCurrentTab()" class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800"><span class="text-base">👁️</span><span>Mode Supervisi & Audit (Read-Only) — Anda memiliki hak memantau data tanpa izin penambahan atau perubahan data.</span></div>\`
 
-7. ⚠️ ATURAN PANEL MANAJEMEN SISTEM (ANTI-LEAK & ANTI-DEAD BUTTONS):
+7. ⚠️ ATURAN PANEL MANAJEMEN SISTEM & AKUN PENGGUNA (ANTI-FAKE BUTTONS & AKSI DATA NYATA):
    - SEMUA elemen UI, kartu, panel (termasuk panel Manajemen Sistem / Akun Staf Super Admin), modal, dan toast WAJIB berada di DALAM template Vue <div id="app">. DILARANG KERAS menempatkan elemen UI apa pun di luar <div id="app">!
    - Panel 'Manajemen Sistem' khusus Super Admin WAJIB berada di dalam #appContainer dengan proteksi v-if="isRoleAllowed(['Super Admin'])" (atau v-if="currentRole === 'Super Admin'").
-   - Setiap tombol di panel ini WAJIB memiliki @click yang memanggil method Vue nyata (@click="bukaModalTambahStaf", @click="bukaModalAturHakAkses", @click="nonaktifkanAkunStaf") yang benar-benar memunculkan modal/form, memutasi data, atau menampilkan toast feedback (DILARANG tombol mati / tanpa @click).
+   - 🚨 DILARANG KERAS MEMBUAT TOMBOL PALSU YANG HANYA MEMANGGIL showToast()! Setiap tombol WAJIB mengeksekusi aksi fungsional nyata:
+     * @click="bukaModalTambahStaf" : WAJIB membuka modal form tambah akun staf nyata di tabel 'pengguna' (openCreate('pengguna')).
+     * @click="bukaModalAturHakAkses" : WAJIB membuka modal edit hak akses staf nyata (openEdit('pengguna', ...)).
+     * @click="nonaktifkanAkunStaf" : WAJIB mengubah status akun staf ('Aktif' <-> 'Nonaktif') secara nyata dan reaktif pada db.pengguna.
+   - Tabel 'pengguna' di tablesConfig dan db.pengguna WAJIB DISEDIAKAN jika aplikasi memiliki peran Super Admin / multi-role, berisi data akun awal dari demoAccounts dengan field: id, nama, username, role, status.
 
 ================================================================================
 ⚠️ SUMBER KEBENARAN TUNGGAL PERAN, KEAMANAN DATA & AUTENTIKASI:

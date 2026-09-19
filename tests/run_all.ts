@@ -155,6 +155,12 @@ const testFiles = [
     name: 'Checklist Modul/Form per Role & Stage RBAC (Alur + Referensi Lazim)',
     file: 'tests/role_module_checklist_rbac.test.ts',
     desc: 'Verifikasi pembagian modul tersirat alur (default checked) vs rekomendasi lazim industri (default unchecked), custom modules, dan transisi tahap RBAC'
+  },
+  {
+    id: 26,
+    name: 'PRD Generator Phase 1 (Dua Lapis Analisis, Standard Tech Stack, & Gate Non-Finansial)',
+    file: 'tests/prd_generator_phase1.test.ts',
+    desc: 'Verifikasi generator PRD menyusun dokumen lengkap (overview, domain profile, tech stack baku, RBAC, user flow), renderPrdMarkdown, buildPrdStep, deteksi deposit dari narasi, dan penguncian jalur non-finansial (tanpa tarif/deposit)'
   }
 ];
 

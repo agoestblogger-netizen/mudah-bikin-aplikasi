@@ -18,6 +18,7 @@ import type {
   ReferensiModulRole,
   RoleModuleChecklistGroup,
   RoleModuleChecklistItem,
+  ProductRequirementsDocument,
   SessionStep,
   ViewConfig
 } from './types';
@@ -1183,27 +1184,51 @@ export function deduplicateRoleOptionsSemantically(options: GuidedStepOption[]):
 }
 
 export function renderDomainProfileMarkdown(profile: DomainProfile, businessName: string): string {
-  const opLabel = profile.modelOperasional === 'DI_TEMPAT'
-    ? '🏢 Operasional Langsung di Lokasi (Di Tempat / Counter)'
-    : profile.modelOperasional === 'PENGIRIMAN_LOGISTIK'
-    ? '🚚 Pengiriman & Antar-Jemput (Logistik / Kurir)'
-    : '💻 Layanan Digital / Mandiri';
+  let opLabel = '';
+  if (typeof profile.modelOperasional === 'object' && profile.modelOperasional?.label) {
+    opLabel = `🏢 ${profile.modelOperasional.label}${profile.modelOperasional.deskripsi ? ` - *${profile.modelOperasional.deskripsi}*` : ''}`;
+  } else if (profile.modelOperasional === 'DI_TEMPAT') {
+    opLabel = '🏢 Operasional Langsung di Lokasi (Di Tempat / Counter)';
+  } else if (profile.modelOperasional === 'PENGIRIMAN_LOGISTIK') {
+    opLabel = '🚚 Pengiriman & Antar-Jemput (Logistik / Kurir)';
+  } else if (profile.modelOperasional === 'TIDAK_RELEVAN') {
+    opLabel = '⚪ Tidak berlaku untuk jenis aplikasi ini';
+  } else {
+    opLabel = `💻 ${profile.modelOperasional || 'Layanan Digital / Mandiri'}`;
+  }
 
-  const tarifLabel = profile.modelTarif === 'SEWA_DURASI'
-    ? '⏱️ Berdasarkan Durasi Waktu Sewa (Jam / Hari)'
-    : profile.modelTarif === 'BERAT_TIMBANGAN'
-    ? '⚖️ Berdasarkan Berat / Timbangan (Kg)'
-    : profile.modelTarif === 'PER_ITEM'
-    ? '📦 Berdasarkan Kuantitas per Item / Produk'
-    : '📋 Biaya Paket Jasa / Pendaftaran';
+  let tarifLabel: string | null = null;
+  if (profile.modelTarif) {
+    if (typeof profile.modelTarif === 'object' && profile.modelTarif.label) {
+      tarifLabel = `⏱️ ${profile.modelTarif.label}${profile.modelTarif.deskripsi ? ` - *${profile.modelTarif.deskripsi}*` : ''}`;
+    } else if (profile.modelTarif === 'SEWA_DURASI') {
+      tarifLabel = '⏱️ Berdasarkan Durasi Waktu Sewa (Jam / Hari)';
+    } else if (profile.modelTarif === 'BERAT_TIMBANGAN') {
+      tarifLabel = '⚖️ Berdasarkan Berat / Timbangan (Kg)';
+    } else if (profile.modelTarif === 'PER_ITEM') {
+      tarifLabel = '📦 Berdasarkan Kuantitas per Item / Produk';
+    } else if (profile.modelTarif === 'TIDAK_RELEVAN') {
+      tarifLabel = '⚪ Tidak berlaku untuk jenis aplikasi ini';
+    } else {
+      tarifLabel = `📋 ${profile.modelTarif || 'Biaya Paket Jasa / Pendaftaran'}`;
+    }
+  }
+
+  const whitelistBiaya = profile.komponenBiayaYangLazim && profile.komponenBiayaYangLazim.length > 0
+    ? `\`${profile.komponenBiayaYangLazim.join('`, `')}\``
+    : '*(Tidak ada komponen biaya / murni non-finansial)*';
 
   let md = `### 🗺️ Peta Profil & Kelaziman Bisnis: **${businessName}**\n\n`;
   md += `- **Model Operasional**: ${opLabel}\n`;
-  md += `- **Model Tarif & Kalkulasi**: ${tarifLabel}\n`;
-  md += `- **Jaminan / Deposit**: ${profile.adaJaminanDeposit ? `✅ Ada (${profile.fungsiDeposit || 'Jaminan unit fisik'})` : '❌ Tidak Ada'}\n`;
+  if (tarifLabel) {
+    md += `- **Model Tarif & Kalkulasi**: ${tarifLabel}\n`;
+  }
+  if (profile.adaJaminanDeposit) {
+    md += `- **Jaminan / Deposit**: ✅ Ada (${profile.fungsiDeposit || 'Jaminan unit fisik'})\n`;
+  }
   md += `- **Katalog Master**: \`${profile.entitasKatalogMaster?.join('`, `') || '-'}\`\n`;
   md += `- **Pencatatan Transaksi**: \`${profile.entitasPencatatanTransaksi?.join('`, `') || '-'}\`\n`;
-  md += `- **Whitelist Komponen Biaya Sah**: \`${profile.komponenBiayaYangLazim?.join('`, `') || '-'}\`\n`;
+  md += `- **Whitelist Komponen Biaya Sah**: ${whitelistBiaya}\n`;
   if (profile.referensiAlurKerjaLazim && profile.referensiAlurKerjaLazim.length > 0) {
     md += `- **Referensi Alur Kerja Lazim Industri**:\n`;
     for (const ref of profile.referensiAlurKerjaLazim) {
@@ -1217,9 +1242,175 @@ export function renderDomainProfileMarkdown(profile: DomainProfile, businessName
   return md;
 }
 
+/**
+ * Menyusun representasi Markdown lengkap dari Product Requirements Document (PRD).
+ * Digunakan untuk render dokumen di Panel Kanan serta acuan audit Single Source of Truth.
+ */
+export function renderPrdMarkdown(prd: ProductRequirementsDocument): string {
+  const { overview, domainProfile: dp, techStack, dataConcept, actorsAndRbac, userFlow, coreFeatures } = prd;
+
+  let md = `# PRODUCT REQUIREMENTS DOCUMENT (PRD)\n`;
+  md += `## ${prd.judul || overview.namaAplikasi || 'Aplikasi Operasional'}\n\n`;
+  md += `> **Versi Dokumen**: \`${prd.version || '1.0.0-draft'}\` | **Status**: \`${prd.statusKonfirmasi || 'draft'}\`\n\n`;
+
+  md += `### 1. Ringkasan Eksekutif & Batasan Bisnis (Overview)\n`;
+  md += `- **Nama Aplikasi**: ${overview.namaAplikasi}\n`;
+  md += `- **Kategori Bisnis**: ${overview.domainBisnis}\n`;
+  md += `- **Tujuan Utama**: ${overview.tujuanUtama}\n`;
+  md += `- **Masalah Operasional Utama**: ${overview.asumsiMasalah}\n`;
+  if (overview.keunggulanUtama) {
+    md += `- **Keunggulan Utama**: ${overview.keunggulanUtama}\n`;
+  }
+  if (overview.kemenanganPertamaPengguna) {
+    md += `- **Kemenangan Pertama Pengguna (First Win)**: ${overview.kemenanganPertamaPengguna}\n`;
+  }
+  if (overview.ruangLingkup?.termasuk?.length > 0) {
+    md += `- **Ruang Lingkup (In-Scope)**:\n`;
+    overview.ruangLingkup.termasuk.forEach((it) => {
+      md += `  * ${it}\n`;
+    });
+  }
+  if (overview.ruangLingkup?.tidakTermasuk && overview.ruangLingkup.tidakTermasuk.length > 0) {
+    md += `- **Di Luar Ruang Lingkup (Out-of-Scope)**:\n`;
+    overview.ruangLingkup.tidakTermasuk.forEach((it) => {
+      md += `  * ${it}\n`;
+    });
+  }
+  md += `\n`;
+
+  md += `### 2. Karakteristik & Batasan Domain (Domain Profile)\n`;
+  const opLabel = typeof dp.modelOperasional === 'object' && dp.modelOperasional?.label
+    ? `${dp.modelOperasional.label} (${dp.modelOperasional.deskripsi || ''})`
+    : String(dp.modelOperasional || '-');
+  md += `- **Model Operasional**: ${opLabel}\n`;
+
+  let tarifLabel = 'Tidak Berlaku (Murni Non-Finansial / Internal Tools)';
+  if (dp.modelTarif) {
+    tarifLabel = typeof dp.modelTarif === 'object' && dp.modelTarif.label
+      ? `${dp.modelTarif.label} (${dp.modelTarif.deskripsi || ''})`
+      : String(dp.modelTarif);
+  }
+  md += `- **Model Tarif & Skema Biaya**: ${tarifLabel}\n`;
+  md += `- **Uang Jaminan / Deposit Fisik**: ${dp.adaJaminanDeposit ? `✅ Ada — *${dp.fungsiDeposit || 'Jaminan unit/barang fisik'}*` : '❌ Tanpa Deposit'}\n`;
+  md += `- **Melibatkan Pengiriman Fisik / Ekspedisi**: ${dp.melibatkanPengirimanFisik ? '✅ Ya (Kurir / Ekspedisi)' : '❌ Tidak (Di Lokasi / Digital)'}\n`;
+  const whitelist = dp.komponenBiayaYangLazim?.length > 0
+    ? `\`${dp.komponenBiayaYangLazim.join('`, `')}\``
+    : '*(Tidak ada / murni non-finansial)*';
+  md += `- **Whitelist Komponen Biaya Sah (Strict Whitelist)**: ${whitelist}\n\n`;
+
+  md += `### 3. Arsitektur Sistem & Tech Stack (Standard Module Stack)\n`;
+  md += `- **Frontend UI**: ${techStack?.frontend || 'Vanilla HTML5 + Tailwind CSS + Vue.js (Zero Build Artifact)'}\n`;
+  md += `- **Backend Service**: ${techStack?.backend || 'Google Apps Script (doGet / doPost Web App REST JSON)'}\n`;
+  md += `- **Database Layer**: ${techStack?.database || 'Google Sheets (Multi-Table relational spreadsheet)'}\n`;
+  md += `- **Deployment & Hosting**: ${techStack?.hosting || 'Google Apps Script Web App Deployment'}\n`;
+  md += `- **Keamanan & Autentikasi**: ${techStack?.securityAuth || 'Multi-Role Session Control & Role-Based Access Control (RBAC)'}\n\n`;
+
+  md += `### 4. Konsep Data & Entitas Utama (High-Level Schema)\n`;
+  md += `- **Entitas Master / Katalog**: \`${dataConcept?.entitasKatalogMaster?.join('`, `') || '-'}\`\n`;
+  md += `- **Entitas Transaksi / Aktivitas**: \`${dataConcept?.entitasPencatatanTransaksi?.join('`, `') || '-'}\`\n\n`;
+
+  md += `### 5. Pengguna Sistem & Hak Akses (Actors & RBAC Blueprint)\n`;
+  if (actorsAndRbac?.aktorEksternal?.length > 0) {
+    md += `- **Aktor Eksternal**: ${actorsAndRbac.aktorEksternal.join(', ')}\n`;
+  }
+  if (actorsAndRbac?.aktorInternal?.length > 0) {
+    md += `- **Aktor Internal (Staf)**: ${actorsAndRbac.aktorInternal.join(', ')}\n`;
+  }
+  if (actorsAndRbac?.aktorTataKelola?.length > 0) {
+    md += `- **Aktor Tata Kelola (Owner/Admin)**: ${actorsAndRbac.aktorTataKelola.join(', ')}\n`;
+  }
+  if (actorsAndRbac?.modulKerjaPerRole?.length > 0) {
+    md += `- **Cakupan Modul Kerja per Peran**:\n`;
+    actorsAndRbac.modulKerjaPerRole.forEach((rm) => {
+      const modList = rm.modul.map((m) => m.nama).join(', ');
+      md += `  * *${rm.role}*: ${modList}\n`;
+    });
+  }
+  md += `\n`;
+
+  md += `### 6. Alur Kerja Pengguna (User Flow by Role)\n`;
+  if (userFlow?.alurUtama?.length > 0) {
+    md += `#### Alur Utama (Happy Path):\n`;
+    userFlow.alurUtama.forEach((s) => {
+      md += `${s.step}. **${s.pelaku}**: ${s.aksi}\n`;
+    });
+  }
+  if (userFlow?.alurPenangananMasalah?.steps?.length) {
+    md += `\n#### Alur Penanganan Kendala (${userFlow.alurPenangananMasalah.nama}):\n`;
+    userFlow.alurPenangananMasalah.steps.forEach((s, i) => {
+      md += `${i + 1}. **${s.pelaku}**: ${s.aksi}\n`;
+    });
+  }
+  if (userFlow?.alurKesiapanOperasional?.steps?.length) {
+    md += `\n#### Alur Audit & Pemeliharaan (${userFlow.alurKesiapanOperasional.nama}):\n`;
+    userFlow.alurKesiapanOperasional.steps.forEach((s, i) => {
+      md += `${i + 1}. **${s.pelaku}**: ${s.aksi}\n`;
+    });
+  }
+  md += `\n`;
+
+  md += `### 7. Kebutuhan Antarmuka & Modul Utama (Core Features)\n`;
+  if (coreFeatures?.formulirTransaksi?.length > 0) {
+    md += `- **Formulir Transaksi & Kerja**:\n`;
+    coreFeatures.formulirTransaksi.forEach((f) => {
+      md += `  * ${f}\n`;
+    });
+  }
+  if (coreFeatures?.dashboardDanMonitoring?.length > 0) {
+    md += `- **Dashboard & Rekapitulasi Operasional**:\n`;
+    coreFeatures.dashboardDanMonitoring.forEach((d) => {
+      md += `  * ${d}\n`;
+    });
+  }
+
+  return md;
+}
+
+export function buildPrdStep(session: MockupSessionState): GuidedStepPayload {
+  const isRevising = Boolean(session.prd?.revisiCount && session.prd.revisiCount > 0);
+  const prd = session.prd;
+
+  return {
+    stepId: 'PRD',
+    title: 'Konfirmasi Dokumen Spesifikasi Produk (PRD) — Satu Sumber Kebenaran',
+    multi: false,
+    allowOther: false,
+    prd,
+    options: [
+      {
+        id: 'confirm_prd',
+        label: '✅ Dokumen PRD sudah lengkap & sesuai, lanjut ke Pemilihan Peran',
+        recommended: true,
+        description: prd
+          ? `Seluruh ruang lingkup, model domain (${typeof prd.domainProfile?.modelOperasional === 'object' ? prd.domainProfile.modelOperasional.label : prd.domainProfile?.modelOperasional}), alur, dan batasan arsitektur sudah terfiksasi sebagai acuan tunggal.`
+          : 'Lanjut mengekstrak peran pengguna dan modul operasional dari PRD.'
+      },
+      {
+        id: 'koreksi_prd',
+        label: isRevising ? '✏️ Masih ada koreksi spesifikasi pada PRD' : '✏️ Ada koreksi / catatan spesifikasi pada PRD',
+        description: 'Tuliskan catatan perbaikan jika ada modul, batasan biaya, atau alur yang perlu disesuaikan.',
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Tambahkan modul serah terima unit rusak, atau hapus komponen deposit...'
+      }
+    ],
+    backNavOption: {
+      id: 'back_to_previous',
+      label: '⬅️ Ada yang terlewat di narasi awal',
+      description: 'Kembali ke langkah cerita alur bisnis awal untuk memeriksa atau memperbaiki narasi.'
+    }
+  };
+}
+
 export function buildDomainProfileStep(session: MockupSessionState): GuidedStepPayload {
   const isRevising = Boolean(session.domainProfile?.revisiCount && session.domainProfile.revisiCount > 0);
   const profile = session.domainProfile;
+
+  const formatModelLabel = (val?: any) => {
+    if (!val) return '-';
+    if (typeof val === 'object' && val.label) return val.label;
+    if (val === 'TIDAK_RELEVAN') return 'Tidak berlaku';
+    return String(val);
+  };
 
   return {
     stepId: 'DOMAIN_PROFILE',
@@ -1233,7 +1424,7 @@ export function buildDomainProfileStep(session: MockupSessionState): GuidedStepP
         label: '✅ Pemahaman domain sudah pas, lanjut ke Pemilihan Peran',
         recommended: true,
         description: profile
-          ? `Model operasional (${profile.modelOperasional}), model tarif (${profile.modelTarif}), dan ${profile.komponenBiayaYangLazim?.length || 0} whitelist komponen biaya sudah sesuai.`
+          ? `Model operasional (${formatModelLabel(profile.modelOperasional)})${profile.modelTarif ? `, model tarif (${formatModelLabel(profile.modelTarif)})` : ''}, dan ${profile.komponenBiayaYangLazim?.length || 0} whitelist komponen biaya sudah sesuai.`
           : 'Lanjut ke pemilihan peran pengguna dan tanggung jawab aplikasi.'
       },
       {
@@ -2601,28 +2792,94 @@ export function buildDirectionClarificationCard(
 }
 
 /**
+ * Memeriksa apakah input pengguna memiliki indikasi semantik yang jelas sebagai
+ * ide aplikasi, alur proses bisnis, profesi kerja, atau domain usaha tertentu
+ * (seperti "aplikasi aktifitas sales", "aplikasi kasir toko", "sistem antrian klinik", "crm", dll).
+ * 
+ * Fungsi ini digunakan sebagai jaring pengaman semantik (safety net) agar input singkat
+ * tapi bermakna TIDAK salah ditolak sebagai BUKAN_IDE_BISNIS oleh model AI.
+ */
+export function hasClearBusinessOrAppIntent(input: string): boolean {
+  if (!input || typeof input !== 'string') return false;
+  const text = input.trim().toLowerCase();
+  if (text.length < 2) return false;
+
+  // 1. Blacklist ketat: Input murni kata kontrol/navigasi
+  const pureNavigationPattern = /^(lanjut(kan)?|next|ok|oke|okee|yes|ya|y|iya|siap|baik|kembali|back|batal|cancel|stop|sudah|done)$/i;
+  if (pureNavigationPattern.test(text)) return false;
+
+  // 2. Blacklist ketat: Input murni sapaan / chitchat umum tanpa konteks
+  const pureGreetingPattern = /^(halo|hai|helo|hello|hi|p|tes|test|testing|selamat\s+(pagi|siang|sore|malam)|assalamu['a]?laikum|punten|permisi|oy|woy|bro|gan|min|admin)$/i;
+  if (pureGreetingPattern.test(text)) return false;
+
+  // 3. Blacklist ketat: Pertanyaan meta / chitchat umum
+  const pureChitchatPattern = /^(kamu\s+siapa|siapa\s+kamu|apa\s+kabar|bisa\s+(bantu\s+)?apa|lagi\s+apa)$/i;
+  if (pureChitchatPattern.test(text)) return false;
+
+  // 4. Blacklist ketat: Karakter acak / spam tanda baca / angka acak murni
+  if (/^[0-9\s\-_.+]+$/.test(text)) return false;
+  if (/^[^a-z0-9\s]+$/i.test(text)) return false;
+  // Deteksi spam konsonan berulang tanpa vokal jika panjang >= 5 (misal: "asdfghjk", "qwerty")
+  if (text.length >= 5 && !/[aiueo]/i.test(text) && !/^(crm|pos|erp|hrd|ksp|bpr|b2b|b2c|lms|sla)$/i.test(text)) {
+    return false;
+  }
+
+  // 5. Whitelist: Kata kunci indikator aplikasi / software / platform
+  const appIndicatorRegex = /\b(aplikasi|app|apps|sistem|software|platform|web|website|portal|program|bot|dashboard|tool|tools)\b/i;
+
+  // 6. Whitelist: Domain bisnis, workflow, profesi, atau transaksi komersial umum
+  const businessDomainRegex = /\b(sales|penjualan|crm|marketing|leads|prospek|kanvas|kanvasing|pipeline|closing|kasir|pos|point of sale|toko|warung|kios|minimarket|supermarket|retail|ritel|laundry|cuci|dry clean|rental|rent|sewa|penyewaan|bengkel|montir|servis|service|salon|barber|barbershop|spa|klinik|dokter|gigi|medis|rumah sakit|apotek|obat|bidan|puskesmas|restoran|resto|kafe|cafe|kedai|warteg|angkringan|kuliner|katering|bakery|roti|hotel|homestay|penginapan|kost|kos|kontrakan|losmen|gudang|stok|inventori|inventory|inventaris|pergudangan|logistik|kurir|ekspedisi|pengiriman|delivery|antrian|antre|booking|reservasi|tiket|ticketing|koperasi|simpan pinjam|gadai|pegadaian|emas|money changer|valas|keuangan|akuntansi|pembukuan|kas|arus kas|invoice|faktur|tagihan|absensi|presensi|hrd|karyawan|pegawai|payroll|gaji|sekolah|kursus|bimbel|les|universitas|kampus|properti|fotografi|studio|wedding|event|jual|beli|order|pesanan|pelanggan|customer|tracking|monitoring|aktivitas|aktifitas|operasional|produk|barang|jasa)\b/i;
+
+  if (appIndicatorRegex.test(text) || businessDomainRegex.test(text)) {
+    return true;
+  }
+
+  // Jika input 2 kata atau lebih, periksa apakah ada frasa kata kerja aksi bisnis
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    const actionRegex = /\b(catat|pencatatan|kelola|pengelolaan|pantau|pemantauan|bikin|buat|terima|penerimaan|kirim|pengiriman|bayar|pembayaran|hitung|perhitungan|tukar|tukar tambah|pinjam|simpan)\b/i;
+    if (actionRegex.test(text)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Menyusun GuidedStepPayload kartu klarifikasi ramah jika input awal BUKAN ide bisnis/aplikasi.
+ * Menghindari duplikasi pesan:
+ * - Pesan ramah penjelasan penolakan disajikan di chat bubble (narration).
+ * - Kartu ini menyajikan header instruksional yang bersih dan input box TANPA badge "DISARANKAN".
  */
 export function buildNonBusinessClarificationCard(
-  pertanyaan?: string
+  cardTitle?: string
 ): GuidedStepPayload {
-  const promptQuestion = pertanyaan && pertanyaan.trim()
-    ? pertanyaan.trim()
-    : 'Boleh ceritakan lebih detail, aplikasi apa yang ingin kamu bangun?';
+  // Jika parameter cardTitle berisi pesan penolakan yang sama dengan chat bubble,
+  // normalisasikan ke judul kartu fungsional yang bersih agar tidak muncul ganda.
+  const isDuplicateMessage = cardTitle && (
+    cardTitle.toLowerCase().includes('bukan deskripsi') ||
+    cardTitle.toLowerCase().includes('sepertinya input') ||
+    cardTitle.toLowerCase().includes('belum mendeskripsikan')
+  );
+
+  const title = (cardTitle && cardTitle.trim() && !isDuplicateMessage)
+    ? cardTitle.trim()
+    : '💡 Tuliskan Ide Aplikasi atau Bidang Usahamu';
 
   return {
     stepId: 'STORYTELLING',
-    title: promptQuestion,
+    title,
     multi: false,
     allowOther: true,
     options: [
       {
         id: 'clarify_business_input',
-        label: '✏️ Tuliskan deskripsi ide aplikasi/bisnismu',
-        description: 'Jelaskan bidang usaha atau jenis aplikasi yang ingin dibuat',
-        recommended: true,
+        label: '✏️ Deskripsi Ide Aplikasi / Bidang Usaha',
+        description: 'Ketik jenis aplikasi atau alur bisnis yang ingin Anda buat',
+        recommended: false,
         requiresInput: true,
-        inputPlaceholder: 'Contoh: Buatkan aplikasi kasir barbershop, laundry kiloan, atau toko buku...'
+        inputPlaceholder: 'Contoh: aplikasi aktifitas sales, kasir toko kelontong, sistem antrian klinik...'
       }
     ]
   };
@@ -5476,6 +5733,8 @@ export function buildGuidedStep(session: MockupSessionState): GuidedStepPayload 
       return buildStorytellingStep(session);
     case 'DOMAIN_PROFILE':
       return buildDomainProfileStep(session);
+    case 'PRD':
+      return buildPrdStep(session);
     case 'ROLE':
       return buildRoleStep(session);
     case 'ALUR':
@@ -5802,6 +6061,43 @@ export function applyGuidedAnswer(
     delete next.simulasiDb;
 
     next.step = 'DOMAIN_PROFILE';
+    return next;
+  } else if (stepId === 'PRD') {
+    const feedbackText = (other || '').trim();
+    const isConfirm =
+      cleanSelected.includes('confirm_prd') ||
+      (!feedbackText && cleanSelected.length === 0) ||
+      (Boolean(feedbackText) && isPureConfirmationText(feedbackText));
+
+    if (isConfirm) {
+      if (next.prd) {
+        next.prd.statusKonfirmasi = 'disetujui';
+      }
+      next.step = 'ROLE';
+      return next;
+    }
+
+    // Koreksi spesifikasi PRD: sesi tetap di PRD untuk di-recompute
+    if (next.prd) {
+      next.prd.statusKonfirmasi = 'dikoreksi';
+      next.prd.revisiCount = (next.prd.revisiCount || 0) + 1;
+      next.prd.riwayatKoreksi = [...(next.prd.riwayatKoreksi || []), feedbackText];
+    }
+    // Bersihkan turunan downstream jika PRD dikoreksi
+    next.roles = { selected: [REQUIRED_ROLE], wajib: [REQUIRED_ROLE], tambahan: [] };
+    if (next.flow) {
+      delete next.flow.selectedId;
+      delete next.flow.alurInti;
+      delete next.flow.alurPendukung;
+      delete next.flow.fiturPendukung;
+      delete next.flow.kasusGanda;
+    }
+    delete next.rbac;
+    delete next.formulas;
+    delete next.dataSchema;
+    delete next.simulasiDb;
+
+    next.step = 'PRD';
     return next;
   } else if (stepId === 'ROLE') {
     const offeredStep = buildRoleStep(session);
